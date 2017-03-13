@@ -42,7 +42,13 @@ def download_scores(id, type)
     return nil
   end
 
-  uri = scores_uri(type == "levels" ? level_id(id) : episode_id(id))
+  uri = nil
+  if type == "levels"
+    uri = scores_uri(level_id(id))
+  else
+    uri = scores_uri(episode_id(id), true)
+  end
+
   response = Net::HTTP.get(uri)
 
   if response == "-1337"
@@ -53,7 +59,9 @@ def download_scores(id, type)
   # Sort by rank, except in the case where the scores are tied. For ties, the API returns scores sorted
   # in reverse (compared to the N++ ingame UI). So, flip those ones.
   # Then, use their index in this list instead of the rank, because the rank is wrong.
-  JSON.parse(response)["scores"].sort { |a, b| a["score"] == b["score"] ? b["rank"] <=> a["rank"] : a["rank"] <=> b["rank"] }
+  # Also, ignore hackers for obvious reasons :)
+  # JSON.parse(response)["scores"].sort { |a, b| a["score"] == b["score"] ? b["rank"] <=> a["rank"] : a["rank"] <=> b["rank"] }
+  JSON.parse(response)["scores"].sort_by { |score| score["rank"] }
     .select { |score| !IGNORED_PLAYERS.include?(score["user_name"]) }
     .each_with_index
     .map { |score, i| {"rank" => i, "user" => score["user_name"], "score" => score["score"] / 1000.0} }
@@ -149,7 +157,9 @@ def improvable_scores(player, type)
   $score_lock.synchronize do
     $highscores[type].each do |id, scores|
       i = scores.find_index { |score| score["user"] == player }
-      improvable[id] = scores[0]["score"] - scores[i]["score"] unless i.nil?
+      if !i.nil?
+        improvable[id] = scores[0]["score"] - scores[i]["score"]
+      end
     end
   end
 
@@ -177,10 +187,11 @@ end
 # Format of message:
 # '@inne++.*top 10.*[level|episode].*rank.*'
 # '@inne++.*0th.*[level|episode].*rank.*'
+# '@inne++.*[level|episode].*rank.*'
 def send_top_n_rankings(event)
   msg = event.content
 
-  n = (msg =~ /0th/i ? 1 : msg[/top ([0-9][0-9]?)/i, 1].to_i)
+  n = ((msg[/top ([0-9][0-9]?)/i, 1]) || 1).to_i
   level = !!(msg =~ /level/i || msg !~ /episode/i)
   episode = !!(msg =~ /episode/i || msg !~ /level/i)
   ties = !!(msg =~ /ties/i)
@@ -282,7 +293,6 @@ end
 # Format of message:
 # '@inne++.*stat(s|istics).*for <username>[.?]'
 def send_stats(event)
-  # username = event.content[/for (.*)[\.\?]?/i, 1]
   username = parse_username(event)
   if username.empty?
     event << "Sorry, I couldn't figure out a username :( You need to send a message that ends with 'for <username>'."
@@ -328,7 +338,6 @@ def send_suggestions(event)
 
   type = ((msg[/level/] || !msg[/episode/]) ? "levels" : "episodes")
   n = (msg[/\b[0-9][0-9]?\b/] || 10).to_i
-  log("getting #{player} worst scores for #{type}")
 
   if player.nil?
     event << "I couldn't figure out who you were asking about :("
@@ -357,7 +366,7 @@ def identify(event)
   end
 
   $users[user] = nick
-  event << "Awesome! From now on you can just say 'me' and I'll look up scores for #{nick}."
+  event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
 end
 
 def random_element(array)
@@ -374,19 +383,33 @@ def hello(event)
   end
 end
 
-def send_times(event)
+def send_level_time(event)
   next_level = $next_level_update - Time.now
-  next_episode = $next_episode_update - Time.now
-
   next_level_hours = (next_level / (60 * 60)).to_i
   next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
-  next_episode_days = (next_episode / (24 * 60 * 60)).to_i
 
-  event << "I'll post a new level of the day in #{next_level_hours} hours and #{next_level_minutes} minutes, and a new episode of the week in #{next_episode_days} days."
+  event << "I'll post a new level of the day in #{next_level_hours} hours and #{next_level_minutes} minutes."
+end
+
+def send_episode_time(event)
+  next_episode = $next_episode_update - Time.now
+  next_episode_days = (next_episode / (24 * 60 * 60)).to_i
+  next_episode_hours = (next_episode / (60 * 60)).to_i - (next_episode / (24 * 60 * 60)).to_i * 24
+
+  event << "I'll post a new episode of the week in #{next_episode_days} days and #{next_episode_hours} hours."
+end
+
+def send_times(event)
+  send_level_time(event)
+  send_episode_time(event)
 end
 
 def send_level(event)
   event << "The current level of the day is #{$current[:level]}."
+end
+
+def send_episode(event)
+  event << "The current episode of the day is #{$current[:episode]}."
 end
 
 def dump(event)
@@ -406,12 +429,12 @@ def download_high_scores
     # If we don't sleep this thread basically always has the lock and querying stats takes
     # a very long time
     $levels.each do |level|
-      get_scores(level, "levels");
+      get_scores(level, "levels")
       sleep(0.01)
     end
 
     $episodes.each do |episode|
-      get_scores(episode, "episodes");
+      get_scores(episode, "episodes")
       sleep(0.01)
     end
 
@@ -542,9 +565,11 @@ puts "the bot's URL is #{$bot.invite_url}"
 def respond(event)
   hello(event) if event.content =~ /hello/i || event.content =~ /hi/i
   dump(event) if event.content =~ /dump/i
-  send_times(event) if event.content =~ /when.*next/i
-  send_level(event) if event.content =~ /what( is|'s).*(level|lotd)/i
-  send_top_n_rankings(event) if event.content =~ /(0th|top [0-9][0-9]?).*rank/i
+  send_episode_time(event) if event.content =~ /when.*next.*(episode|eotw)/i
+  send_level_time(event) if  event.content =~ /when.*next.*(level|lotd)/i
+  send_level(event) if event.content =~ /what.*(level|lotd)/i
+  send_episode(event) if event.content =~ /what.*(episode|eotw)/i
+  send_top_n_rankings(event) if event.content =~ /rankings/i
   send_stats(event) if event.content =~ /stat/i
   send_spreads(event) if event.content =~ /spread/i
   send_screenshot(event) if event.content =~ /screenshot/i

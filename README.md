@@ -37,7 +37,7 @@ This will also force inne++ to update the scores with the latest results from N+
 inne++ will respond with a rough estimate of how long until a new level or episode is posted.
 
 ### Identify yourself
-- *my name is <username>*
+- *my name is \<username\>*
 
 inne++ will save your username, so you don't need to specify it when looking up high score data with the following commands.
 For any command that requires a username, if you don't specify a username, inne++ will use this one.
@@ -60,6 +60,7 @@ If 'with ties' is specified, inne++ will consider a tie for the score to count t
 - *biggest spread*
 - *level spread*
 - *episode spread*
+- *biggest level spread 19th*
 
 inne++ will display the episodes or levels with smallest or largest spread between 0th and Nth.
 
@@ -70,7 +71,7 @@ If 'smallest' or 'biggest' is not specified, inne++ defaults to 'biggest'.
 If 'episode' or 'level' is not specified, inne++ defaults to 'level'.
 
 ### Display high score stats
-- *stats for <username>*
+- *stats for \<username\>*
 - *stats*
 
 inne++ will display the total number of level and episode high scores for the specified user, broken down by rank, and also a histogram of the player's scores.
@@ -78,12 +79,12 @@ inne++ will display the total number of level and episode high scores for the sp
 If a username isn't specified, inne++ will use the one the user specified earlier with the 'my name is' command.
 
 ### Display your most improvable scores
-- *worst for <username>*
+- *worst for \<username\>*
 - *worst*
 - *worst 20*
-- *worst 20 for <username>*
+- *worst 20 for \<username\>*
 - *worst 20 episodes*
-- *worst 20 episodes for <username>*
+- *worst 20 episodes for \<username\>*
 - *worst 20 levels*
 
 inne++ will display a list of your N most improvable level or episode scores (eg. your scores which are furthest from 0th), along with the spread for each. inne++ will also display a list of N levels or episodes on which you do not have a high score.
