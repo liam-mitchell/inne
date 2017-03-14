@@ -234,7 +234,7 @@ def send_top_n_count(event)
 
   header = (n == 1 ? "0th" : "top #{n}")
   type = (level ^ episode) ? (level ? "level" : "episode") : "overall"
-  event << "#{player} has #{count} #{type} #{header} scores."
+  event << "#{player} has #{count} #{type} #{header} scores#{ties ? " with ties" : ""}."
 end
 
 def send_top_n_rankings(event)
@@ -261,7 +261,7 @@ def send_top_n_rankings(event)
         .map { |r, i| "#{format_rank(i)}: #{r[0]} (#{r[1]})" }
         .join("\n\t")
 
-  header = (n == 1 ? "0th" : "Top #{n}")
+  header = (n == 1 ? "0th" : "top #{n}")
   type = (level ^ episode) ? (level ? "Level" : "Episode") : "Overall"
   event << "#{type} #{header} rankings #{ties ? "with ties " : ""}at #{Time.now}:\n\t#{top}"
 end
@@ -395,6 +395,7 @@ def send_list(event)
   end
 
   event.attach_file(File::open(tmpfile))
+  # TODO we can't delete this for some reason?...
 end
 
 def send_suggestions(event)
