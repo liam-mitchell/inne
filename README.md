@@ -95,8 +95,24 @@ If a username isn't specified, inne++ will use the one the user specified earlie
 
 If neither 'levels' or 'episodes' is specified, inne++ defaults to level scores.
 
+### Display a list of all your high scores
+- *list*
+- *list for \<username\>*
+
+inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank.
+
+If a username isn't specified, inne++ will use the one the user specified earlier.
+
 ### Initialize inne++
 - *hello*
 - *hi*
 
 When inne++ first joins a channel, in order to start sending levels and episodes of the day, you have to say hi. Note that if you run this in a private message before you run it in the channel, inne++ will send the levels/episodes to your PMs instead of the channel, so don't do that ;)
+
+
+
+
+## License and attributions
+This project is licensed under the terms of the MIT license (see LICENSE.txt in the root directory of the project).
+
+Special thanks to jg9000, eru_bahagon and EddyMataGallos from the N forums for their work on NHigh (https://forum.droni.es/viewtopic.php?f=79&t=10472), which inspired most of the high-scoring features in inne++, and provided key guidance on using the N high scores API.
