@@ -53,6 +53,18 @@ inne++ will compute the overall number of top-N scores for every player, and dis
 
 If 'with ties' is specified, inne++ will consider a tie for the score to count towards the rankings, even if that means taking more than N rankings for the level.
 
+### Display your top N count
+- *how many*
+- *how many 0ths*
+- *how many top 10s*
+- *how many top 10s for \<username\>*
+
+inne++ will display the number of top-N scores you have.
+
+If no rank is specified, defaults to 0ths.
+
+If no username is specified, uses the one specified for the user earlier.
+
 ### Display scores with the largest or smallest spread between 0th and Nth
 - *spread*
 - *spread 19th*

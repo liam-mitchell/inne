@@ -56,12 +56,10 @@ def download_scores(id, type)
     return nil
   end
 
-  # Sort by rank, except in the case where the scores are tied. For ties, the API returns scores sorted
-  # in reverse (compared to the N++ ingame UI). So, flip those ones.
-  # Then, use their index in this list instead of the rank, because the rank is wrong.
-  # Also, ignore hackers for obvious reasons :)
-  # JSON.parse(response)["scores"].sort { |a, b| a["score"] == b["score"] ? b["rank"] <=> a["rank"] : a["rank"] <=> b["rank"] }
-  JSON.parse(response)["scores"].sort_by { |score| score["rank"] }
+  # Rank is distinctly strange here - not in the order returned at all. N++ displays using the order of the
+  # list, not the rank, so match that here.
+  # Also ignore hackers here.
+  JSON.parse(response)["scores"]
     .select { |score| !IGNORED_PLAYERS.include?(score["user_name"]) }
     .each_with_index
     .map { |score, i| {"rank" => i, "user" => score["user_name"], "score" => score["score"] / 1000.0} }
@@ -178,16 +176,67 @@ def missing_scores(player, type)
   end.compact.flatten
 end
 
+def all_scores(player)
+  all = Array.new(20, [])
+
+  $score_lock.synchronize do
+    $highscores.each do |type, values|
+      values.each do |id, scores|
+        scores.each_with_index do |score, i|
+          if score["user"] == player
+            all[i] |= [id]
+          end
+        end
+      end
+    end
+  end
+
+  all
+end
+
+def top_n_count(player, type, n, ties)
+  count = 0
+
+  $score_lock.synchronize do
+    $highscores[type].each do |id, scores|
+      scores.each_with_index
+        .take_while { |score, i| i < n || (ties && (score["score"] == scores[n]["score"])) }
+        .each { |score, i| count += 1 if score["user"] == player }
+    end
+  end
+
+  count
+end
+
 def parse_username(event)
   user = event.content[/for (.*)[\.\?]?/i, 1]
   user = $users[event.user.name] if user == "me" || user.nil?
   user
 end
 
-# Format of message:
-# '@inne++.*top 10.*[level|episode].*rank.*'
-# '@inne++.*0th.*[level|episode].*rank.*'
-# '@inne++.*[level|episode].*rank.*'
+def send_top_n_count(event)
+  msg = event.content
+  player = parse_username(event)
+
+  n = ((msg[/top ([0-9][0-9]?)/i, 1]) || 1).to_i
+  level = !!(msg =~ /level/i || msg !~ /episode/i)
+  episode = !!(msg =~ /episode/i || msg !~ /level/i)
+  ties = !!(msg =~ /ties/i)
+
+  count = 0
+  if level
+    count = top_n_count(player, "levels", n, ties)
+  end
+
+  if episode
+    count += top_n_count(player, "episodes", n, ties)
+  end
+
+  header = (n == 1 ? "0th" : "top #{n}")
+  type = (level ^ episode) ? (level ? "level" : "episode") : "overall"
+  event << "#{player} has #{count} #{type} #{header} scores."
+end
+
 def send_top_n_rankings(event)
   msg = event.content
 
@@ -330,6 +379,22 @@ def send_stats(event)
 
   event << "Player high score counts for #{username}:\n```\t    Overall:\tLevel:\tEpisode:\n\t#{totals}\n#{overall}```"
   event << "Player score histogram: \n```#{histogram}```"
+end
+
+def send_list(event)
+  player = parse_username(event)
+  all = all_scores(player)
+  tmpfile = "scores-#{player}.txt"
+
+  File::open(tmpfile, "w") do |f|
+    all.each_with_index do |scores, i|
+      f.write("#{i}:\n  ")
+      f.write(scores.join("\n  "))
+      f.write("\n")
+    end
+  end
+
+  event.attach_file(File::open(tmpfile))
 end
 
 def send_suggestions(event)
@@ -570,11 +635,13 @@ def respond(event)
   send_level(event) if event.content =~ /what.*(level|lotd)/i
   send_episode(event) if event.content =~ /what.*(episode|eotw)/i
   send_top_n_rankings(event) if event.content =~ /rankings/i
+  send_top_n_count(event) if event.content =~ /how many/i
   send_stats(event) if event.content =~ /stat/i
   send_spreads(event) if event.content =~ /spread/i
   send_screenshot(event) if event.content =~ /screenshot/i
   send_scores(event) if event.content =~ /scores/i
   send_suggestions(event) if event.content =~ /worst/i
+  send_list(event) if event.content =~ /list/i
   identify(event) if event.content =~ /my name is/i
 end
 
