@@ -1,6 +1,12 @@
 #include <ScreenCapture.au3>
 
 Func Screenshots($prefix, $rows, $columns)
+   $window = WinGetHandle("NPP")
+   $left = 3
+   $top = WinGetPos("NPP")[3] - WinGetClientSize("NPP")[1] + 3
+   $right = WinGetClientSize("NPP")[0] - 3
+   $bottom = WinGetClientSize("NPP")[1] - 3
+
    For $row = 0 To $rows - 1
 	  $rowname = "A"
 	  If $row == 1 Then
@@ -34,7 +40,7 @@ Func Screenshots($prefix, $rows, $columns)
 			Sleep(500)
 			Send("{SPACE}")
 			Sleep(1)
-			_ScreenCapture_Capture($filename)
+			_ScreenCapture_CaptureWnd($filename, $window, $left, $top, $right, $bottom, False)
 			Send("{ESCAPE}")
  			Sleep(1)
 			Send("{DOWN}")
