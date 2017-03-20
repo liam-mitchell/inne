@@ -57,6 +57,7 @@ If 'with ties' is specified, inne++ will consider a tie for the score to count t
 - *how many*
 - *how many 0ths*
 - *how many top 10s*
+- *how many top 10s with ties*
 - *how many top 10s for \<username\>*
 
 inne++ will display the number of top-N scores you have.

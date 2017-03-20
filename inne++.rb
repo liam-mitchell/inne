@@ -79,7 +79,7 @@ end
 
 def get_scores(id, type)
   $score_lock.synchronize do
-    $highscores[type][id] = download_scores(id, type)
+    $highscores[type][id] = download_scores(id, type) || $highscores[type][id]
     $highscores[type][id]
   end
 end
@@ -370,10 +370,10 @@ def send_stats(event)
 
   totals = counts["levels"].zip(counts["episodes"])
            .each_with_index
-           .map { |a, i| "#{format_rank(i)}: #{"%3d         %3d       %3d" % [a[0] + a[1], a[0], a[1]]}" }
+           .map { |a, i| "#{format_rank(i)}: #{"\t%3d   \t%3d\t\t %3d" % [a[0] + a[1], a[0], a[1]]}" }
            .join("\n\t")
 
-  overall = "Totals: %3d         %3d       %3d" % counts["levels"].zip(counts["episodes"])
+  overall = "Totals: \t%3d   \t%3d\t\t %3d" % counts["levels"].zip(counts["episodes"])
             .map { |a| [a[0] + a[1], a[0], a[1]] }
             .reduce([0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
 
