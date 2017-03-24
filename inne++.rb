@@ -3,13 +3,13 @@ require 'discordrb'
 require 'json'
 require 'net/http'
 require 'thread'
+require 'yaml'
+require_relative 'models.rb'
+
+require 'byebug'
 
 TOKEN = 'Mjg5MTQxNzc2MjA2MjY2MzY5.C6IDyQ.1B1a2x_k7CF4UfaGWvhbGFVqdqM'
 CLIENT_ID = 289141776206266369
-
-HIGHSCORES_FILE = 'highscores.json'
-COMPLETED_FILE = 'completed.json'
-USERS_FILE = 'users.json'
 
 HIGHSCORE_UPDATE_FREQUENCY = 30 * 60 # every 30 minutes
 LEVEL_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
@@ -18,251 +18,56 @@ EPISODE_UPDATE_FREQUENCY = 7 * 24 * 60 * 60 # weekly
 LEVEL_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]-[0-9][0-9]/i
 EPISODE_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]/i
 
-IGNORED_PLAYERS = [
-  "Kronogenics",
-  "BlueIsTrue",
-  "fiordhraoi",
-]
+DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
 
 def log(msg)
-  puts "[LOG] [#{Time.now}] #{msg}"
+  puts "[INFO] [#{Time.now}] #{msg}"
 end
 
 def err(msg)
-  STDERR.puts "[ERR] [#{Time.now}] #{msg}"
+  STDERR.puts "[ERROR] [#{Time.now}] #{msg}"
 end
 
-def scores_uri(id, episode = false)
-  URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=76561197992013087&steam_auth=&#{episode ? "episode" : "level"}_id=#{id}")
+def parse_type(msg)
+  (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : nil))
 end
 
-def download_scores(id, type)
-  if type != "levels" && type != "episodes"
-    err("incorrect type in get_scores: #{type}")
-    return nil
-  end
-
-  uri = nil
-  if type == "levels"
-    uri = scores_uri(level_id(id))
-  else
-    uri = scores_uri(episode_id(id), true)
-  end
-
-  response = Net::HTTP.get(uri)
-
-  if response == "-1337"
-    err("failed to retrieve scores from #{uri}")
-    return nil
-  end
-
-  # Rank is distinctly strange here - not in the order returned at all. N++ displays using the order of the
-  # list, not the rank, so match that here.
-  # Also ignore hackers here.
-  JSON.parse(response)["scores"]
-    .select { |score| !IGNORED_PLAYERS.include?(score["user_name"]) }
-    .each_with_index
-    .map { |score, i| {"rank" => i, "user" => score["user_name"], "score" => score["score"] / 1000.0} }
-end
-
-def format_rank(rank)
-  "#{rank < 10 ? "0" : ""}#{rank}"
-end
-
-def format_score(score)
-  "#{format_rank(score["rank"])}: #{score["user"]} (#{"%.3f" % [score["score"].round(3)]})"
-end
-
-def format_scores(scores)
-  scores.map { |score| format_score(score) }.join("\n\t")
-end
-
-def get_scores(id, type)
-  $score_lock.synchronize do
-    $highscores[type][id] = download_scores(id, type) || $highscores[type][id]
-    $highscores[type][id]
-  end
-end
-
-def levels(episodes)
-  episodes.product((0..4).to_a).map { |a| a.join("-0") }
-end
-
-def episodes
-  intro = ["SI"].product(["A", "B", "C", "D", "E"])
-          .product((0..4).to_a)
-
-  main = ["S", "SL"].product(["A", "B", "C", "D", "E", "X"])
-         .product((0..19).to_a)
-
-  (intro + main).map(&:flatten).map do |prefix, row, column|
-    column = "0" + column.to_s if column < 10
-    [prefix, row, column.to_s].join("-")
-  end
-end
-
-def level_id(level)
-  episode_id(level) * 5 + level[/[0-9][0-9]$/].to_i
-end
-
-def episode_id(episode)
-  first_episodes = {"SI" => 0, "S" => 120, "SL" => 240}
-
-  prefix, row, column = episode.split("-")
-  column = column.to_i
-
-  id = first_episodes[prefix.upcase]
-
-  if row !~ /X/i
-    id += column * 5
-    id += row.upcase.ord - "A".ord
-  else
-    id += column + 100
-  end
-
-  id
-end
-
-def score_spreads(n, type)
-  spreads = {}
-
-  $score_lock.synchronize do
-    $highscores[type].each do |id, scores|
-      i = (n < scores.length ? n : scores.length - 1)
-      spreads[id] = scores[0]["score"] - scores[i]["score"]
-    end
-  end
-
-  spreads
-end
-
-def score_top_n_rankings(n, type, ties)
-  rankings = Hash.new { |h, k| h[k] = 0 }
-
-  $score_lock.synchronize do
-    $highscores[type].each do |id, scores|
-      scores.take_while { |score| score["rank"] < n || (ties && (score["score"] == scores[n]["score"])) }
-        .each { |score| rankings[score["user"]] += 1 }
-    end
-  end
-
-  rankings
-end
-
-def improvable_scores(player, type)
-  improvable = {}
-
-  $score_lock.synchronize do
-    $highscores[type].each do |id, scores|
-      i = scores.find_index { |score| score["user"] == player }
-      if !i.nil?
-        improvable[id] = scores[0]["score"] - scores[i]["score"]
-      end
-    end
-  end
-
-  improvable
-end
-
-def missing_scores(player, type)
-  $score_lock.synchronize do
-    $highscores[type].map do |id, scores|
-      if scores.find_index { |score| score["user"] == player }.nil?
-        id
-      else
-        nil
-      end
-    end
-  end.compact.flatten
-end
-
-def all_scores(player)
-  all = Array.new(20, [])
-
-  $score_lock.synchronize do
-    $highscores.each do |type, values|
-      values.each do |id, scores|
-        scores.each_with_index do |score, i|
-          if score["user"] == player
-            all[i] |= [id]
-          end
-        end
-      end
-    end
-  end
-
-  all
-end
-
-def top_n_count(player, type, n, ties)
-  count = 0
-
-  $score_lock.synchronize do
-    $highscores[type].each do |id, scores|
-      scores.each_with_index
-        .take_while { |score, i| i < n || (ties && (score["score"] == scores[n]["score"])) }
-        .each { |score, i| count += 1 if score["user"] == player }
-    end
-  end
-
-  count
-end
-
-def parse_username(event)
-  user = event.content[/for (.*)[\.\?]?/i, 1]
-  user = $users[event.user.name] if user == "me" || user.nil?
-  user
+def get_next(type)
+  ret = type.where(completed: nil).sample
+  ret.update(completed: true)
+  ret
 end
 
 def send_top_n_count(event)
   msg = event.content
-  player = parse_username(event)
+  player = Player.parse(event.content, event.user.name)
 
   n = ((msg[/top ([0-9][0-9]?)/i, 1]) || 1).to_i
-  level = !!(msg =~ /level/i || msg !~ /episode/i)
-  episode = !!(msg =~ /episode/i || msg !~ /level/i)
   ties = !!(msg =~ /ties/i)
+  type = parse_type(msg)
 
-  count = 0
-  if level
-    count = top_n_count(player, "levels", n, ties)
-  end
-
-  if episode
-    count += top_n_count(player, "episodes", n, ties)
-  end
+  count = player.top_n_count(n, type, ties)
 
   header = (n == 1 ? "0th" : "top #{n}")
-  type = (level ^ episode) ? (level ? "level" : "episode") : "overall"
-  event << "#{player} has #{count} #{type} #{header} scores#{ties ? " with ties" : ""}."
+  type = (type || 'overall').to_s
+  event << "#{player.name} has #{count} #{type} #{header} scores#{ties ? " with ties" : ""}."
 end
 
 def send_top_n_rankings(event)
   msg = event.content
 
   n = ((msg[/top ([0-9][0-9]?)/i, 1]) || 1).to_i
-  level = !!(msg =~ /level/i || msg !~ /episode/i)
-  episode = !!(msg =~ /episode/i || msg !~ /level/i)
+  type = parse_type(msg)
   ties = !!(msg =~ /ties/i)
 
-  rankings = {}
-
-  if level
-    rankings = score_top_n_rankings(n, "levels", ties)
-  end
-
-  if episode
-    rankings.merge!(score_top_n_rankings(n, "episodes", ties)) { |key, old, new| old + new }
-  end
-
-  top = rankings.sort_by { |player, count| -count }
+  top = Player.top_n_rankings(n, type, ties)
         .take(20)
         .each_with_index
-        .map { |r, i| "#{format_rank(i)}: #{r[0]} (#{r[1]})" }
+        .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{r[1]})" }
         .join("\n\t")
 
   header = (n == 1 ? "0th" : "top #{n}")
-  type = (level ^ episode) ? (level ? "Level" : "Episode") : "Overall"
+  type = (type || 'Overall').to_s
   event << "#{type} #{header} rankings #{ties ? "with ties " : ""}at #{Time.now}:\n\t#{top}"
 end
 
@@ -283,8 +88,9 @@ def send_spreads(event)
     return
   end
 
-  type = episode ? "Episodes" : "Levels"
-  spreads = score_spreads(n, type.downcase)
+  byebug
+  type = episode ? Episode : Level
+  spreads = HighScore.spreads(n, type)
             .sort_by { |level, spread| (smallest ? spread : -spread) }
             .take(20)
             .map { |s| "#{s[0]} (#{"%.3f" % [s[1]]})"}
@@ -304,16 +110,17 @@ def send_scores(event)
   scores = []
 
   if level
-    scores = get_scores(level, "levels")
+    scores = Level.find_by(name: level)
   elsif episode
-    scores = get_scores(episode, "episodes")
+    scores = Episode.find_by(name: episode)
   else
     event << "Sorry, I couldn't figure out what scores you wanted :("
     event << "You need to send a message with a level that looks like 'SI-A-00-00', or an episode that looks like 'SI-A-00'."
     return
   end
 
-  event << "Current high scores for #{level ? level : episode}:\n\t#{format_scores(scores)}"
+  scores.download_scores
+  event << "Current high scores for #{level ? level : episode}:\n\t#{scores.format_scores}"
 end
 
 # Format of message:
@@ -342,54 +149,51 @@ end
 # Format of message:
 # '@inne++.*stat(s|istics).*for <username>[.?]'
 def send_stats(event)
-  username = parse_username(event)
-  if username.empty?
-    event << "Sorry, I couldn't figure out a username :( You need to send a message that ends with 'for <username>'."
+  player = Player.parse(event.content, event.user.name)
+  if player.nil?
+    event << "I couldn't find a player with your username!"
     return
   end
 
-  counts = {"levels" => Array.new(20, 0), "episodes" => Array.new(20, 0)}
+  counts = player.score_counts
 
-  $score_lock.synchronize do
-    $highscores.each do |type, values|
-      values.each do |id, scores|
-        scores.each do |score|
-          if score["user"] == username
-            counts[type][score["rank"]] += 1
-          end
-        end
-      end
-    end
-  end
-
-  histdata = counts["levels"].zip(counts["episodes"])
+  histdata = counts[:levels].zip(counts[:episodes])
              .each_with_index
              .map { |a, i| [i, a[0] + a[1]]}
 
-  histogram = AsciiCharts::Cartesian.new(histdata, bar: true, hide_zero: true).draw
+  histogram = AsciiCharts::Cartesian.new(
+    histdata,
+    bar: true,
+    hide_zero: true,
+    max_y_vals: 15,
+    title: 'Score histogram'
+  ).draw
 
-  totals = counts["levels"].zip(counts["episodes"])
+  totals = counts[:levels].zip(counts[:episodes])
            .each_with_index
-           .map { |a, i| "#{format_rank(i)}: #{"\t%3d   \t%3d\t\t %3d" % [a[0] + a[1], a[0], a[1]]}" }
+           .map { |a, i| "#{HighScore.format_rank(i)}: #{"\t%3d   \t%3d\t\t %3d" % [a[0] + a[1], a[0], a[1]]}" }
            .join("\n\t")
 
-  overall = "Totals: \t%3d   \t%3d\t\t %3d" % counts["levels"].zip(counts["episodes"])
+  overall = "Totals: \t%3d   \t%3d\t\t %3d" % counts[:levels].zip(counts[:episodes])
             .map { |a| [a[0] + a[1], a[0], a[1]] }
             .reduce([0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
 
-  event << "Player high score counts for #{username}:\n```\t    Overall:\tLevel:\tEpisode:\n\t#{totals}\n#{overall}```"
-  event << "Player score histogram: \n```#{histogram}```"
+  event << "Player high score counts for #{player.name}:\n```\t    Overall:\tLevel:\tEpisode:\n\t#{totals}\n#{overall}"
+  event << "#{histogram}```"
 end
 
 def send_list(event)
-  player = parse_username(event)
-  all = all_scores(player)
-  tmpfile = "scores-#{player}.txt"
+  player = Player.parse(event.content, event.user.name)
+
+  all = player.scores_by_rank
+  tmpfile = "scores-#{player.name}.txt"
 
   File::open(tmpfile, "w") do |f|
     all.each_with_index do |scores, i|
+      list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
+             .join("\n  ")
       f.write("#{i}:\n  ")
-      f.write(scores.join("\n  "))
+      f.write(list)
       f.write("\n")
     end
   end
@@ -400,9 +204,9 @@ end
 
 def send_suggestions(event)
   msg = event.content
-  player = parse_username(event)
+  player = Player.parse(msg, event.user.name)
 
-  type = ((msg[/level/] || !msg[/episode/]) ? "levels" : "episodes")
+  type = ((msg[/level/] || !msg[/episode/]) ? Level : Episode)
   n = (msg[/\b[0-9][0-9]?\b/] || 10).to_i
 
   if player.nil?
@@ -410,15 +214,16 @@ def send_suggestions(event)
     return
   end
 
-  improvable = improvable_scores(player, type)
+  improvable = player.improvable_scores(type)
                .sort_by { |level, gap| -gap }
                .take(n)
                .map { |level, gap| "#{level} (-#{"%.3f" % [gap]})" }
                .join("\n\t")
 
-  missing = missing_scores(player, type).sample(n).join("\n\t")
+  missing = player.missing_scores(type).sample(n).join("\n\t")
+  type = type.to_s.downcase
 
-  event << "Your #{n} most improvable #{type} are:\n\t#{improvable}.\nYou're not on the board for:\n\t#{missing}."
+  event << "Your #{n} most improvable #{type}s are:\n\t#{improvable}.\nYou're not on the board for:\n\t#{missing}."
 end
 
 def identify(event)
@@ -431,13 +236,12 @@ def identify(event)
     return
   end
 
-  $users[user] = nick
-  event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
-end
+  player = Player.find_or_create_by(name: nick)
+  user = User.create(username: user)
+  user.player = player
+  user.save
 
-def random_element(array)
-  return nil if array.length == 0
-  array.delete_at(rand(array.length))
+  event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
 end
 
 def hello(event)
@@ -479,8 +283,6 @@ def send_episode(event)
 end
 
 def dump(event)
-  log("high scores: #{$highscores}")
-  log("completed levels/episodes: #{$completed}")
   log("current level/episode: #{$current}")
   log("next updates: scores #{$next_score_update}, level #{$next_level_update}, episode #{$next_episode_update}")
 
@@ -488,21 +290,13 @@ def dump(event)
 end
 
 def download_high_scores
+  ActiveRecord::Base.establish_connection(YAML.load_file('db/config.yml')[DATABASE_ENV])
+
   while true
     log("updating high scores...")
 
-    # Sleep here to give other threads a chance to lock $score_lock and read high scores
-    # If we don't sleep this thread basically always has the lock and querying stats takes
-    # a very long time
-    $levels.each do |level|
-      get_scores(level, "levels")
-      sleep(0.01)
-    end
-
-    $episodes.each do |episode|
-      get_scores(episode, "episodes")
-      sleep(0.01)
-    end
+    Level.all.each(&:download_scores)
+    Episode.all.each(&:download_scores)
 
     $next_score_update += HIGHSCORE_UPDATE_FREQUENCY
     delay = $next_score_update - Time.now
@@ -522,48 +316,58 @@ def start_level_of_the_day
       next
     end
 
-    $current[:level] = random_element($levels)
-    $completed["levels"] |= [$current[:level]]
+    $channel.send_message("Time for a new level of the day!")
 
-    err("no more levels") if $current[:level].nil?
+    if $current[:level]
+      diff = $current[:level].format_difference($original_scores[:level])
+      $channel.send_message("Score changes on #{$current[:level].name} since yesterday:\n```#{diff}```")
+    end
 
-    $channel.send_message("Time for a new level of the day! The level for today is #{$current[:level]}.")
+    $current[:level] = get_next(Level)
+    if !$current[:level]
+      err("no more levels")
+      break
+    end
 
-    screenshot = "screenshots/#{$current[:level]}.jpg"
+    $original_scores[:level] = $current[:level].scores.to_json(include: {player: {only: :name}})
+
+    $channel.send_message("The level for today is #{$current[:level].name}.")
+
+    screenshot = "screenshots/#{$current[:level].name}.jpg"
     if File.exist? screenshot
       $channel.send_file(File::open(screenshot))
     else
       $channel.send_message("I don't have a screenshot for this one... :(")
     end
 
-    $channel.send_message("Current high scores: \n\t#{format_scores(level_scores($current[:level]))}")
+    $channel.send_message("Current high scores: \n\t#{$current[:level].format_scores}")
 
     if Time.now > $next_episode_update
       $next_episode_update += EPISODE_UPDATE_FREQUENCY
+      sleep(15) # let discord catch up
 
-      $current[:episode] = random_element($episodes)
-      $completed["episodes"] |= [$current[:episode]]
+      $channel.send_message("It's also time for a new episode of the week!")
 
-      err("no more episodes") if $current[:episode].nil?
+      if $current[:episode]
+        diff = $current[:episode].format_difference($original_scores[:episode])
+        $channel.send_message("Score changes on #{$current[:episode].name} since last week:\n\t#{diff}")
+      end
 
-      $channel.send_message("It's also time for a new episode of the week! The episode for this week is #{$current[:episode]}.")
-      $channel.send_message("Current high scores: \n\t#{format_scores(episode_scores($current[:episode]))}")
+      $current[:episode] = get_next(Episode)
+      if !$current[:episode]
+        err("no more episodes")
+        break
+      end
+
+      $original_scores[:episode] = $current[:episode].scores.to_json(include: {player: {only: :name}})
+
+      $channel.send_message("The episode for this week is #{$current[:episode].name}.")
+      $channel.send_message("Current high scores: \n\t#{$current[:episode].format_scores}")
     end
   end
 end
 
 def startup
-  $highscores = JSON.parse(File.read(HIGHSCORES_FILE)) if File.exist?(HIGHSCORES_FILE)
-  $completed = JSON.parse(File.read(COMPLETED_FILE)) if File.exist?(COMPLETED_FILE)
-  $users = JSON.parse(File.read(USERS_FILE)) if File.exist?(USERS_FILE)
-
-  $highscores ||= {"levels" => {}, "episodes" => {}}
-  $completed ||= {"levels" => [], "episodes" => []}
-  $users ||= {}
-
-  $completed["levels"].each { |level| $levels.delete(level) }
-  $completed["episodes"].each { |episode| $episodes.delete(episode) }
-
   now = Time.now
   $next_score_update = now
 
@@ -577,27 +381,21 @@ def startup
   $next_level_update = $next_level_update.to_time
   $next_episode_update = $next_episode_update.to_time
 
+  # $next_level_update = $next_score_update + LEVEL_UPDATE_FREQUENCY
+  # $next_episode_update = $next_score_update + EPISODE_UPDATE_FREQUENCY
+
   log("initialized")
   log("next level update at #{$next_level_update.to_s}")
   log("next episode update at #{$next_episode_update.to_s}")
   log("next score update at #{$next_score_update}")
+
+  ActiveRecord::Base.establish_connection(YAML.load_file('db/config.yml')[DATABASE_ENV])
 end
 
 def shutdown
   log("shutting down")
 
   $bot.stop
-
-  # Make sure the high scores thread is done writing to $highscores before we
-  # kill it.
-  $score_lock.synchronize do
-    $threads.each { |t| t.kill }
-  end
-
-  # Now we can safely write $highscores to file without reading bad data.
-  File.open(HIGHSCORES_FILE, "w") { |f| f.write($highscores.to_json) }
-  File.open(COMPLETED_FILE, "w") { |f| f.write($completed.to_json) }
-  File.open(USERS_FILE, "w") { |f| f.write($users.to_json) }
 
   log("wrote data files")
 end
@@ -607,29 +405,8 @@ def watchdog
   shutdown
 end
 
-$bot = Discordrb::Bot.new token: TOKEN, client_id: CLIENT_ID
-$channel = nil
-$current = {level: nil, episode: nil}
-$completed = nil
-
-$score_lock = Mutex.new
-$threads = []
-$kill_threads = false
-
-$episodes = episodes
-$levels = levels($episodes)
-
-$highscores = {"levels" => {}, "episodes" => {}}
-$users = {}
-
-$next_score_update = nil
-$next_level_update = nil
-$next_episode_update = nil
-
-puts "the bot's URL is #{$bot.invite_url}"
-
 def respond(event)
-  hello(event) if event.content =~ /hello/i || event.content =~ /hi/i
+  hello(event) if event.content =~ /\bhello\b/i || event.content =~ /\bhi\b/i
   dump(event) if event.content =~ /dump/i
   send_episode_time(event) if event.content =~ /when.*next.*(episode|eotw)/i
   send_level_time(event) if  event.content =~ /when.*next.*(level|lotd)/i
@@ -644,7 +421,18 @@ def respond(event)
   send_suggestions(event) if event.content =~ /worst/i
   send_list(event) if event.content =~ /list/i
   identify(event) if event.content =~ /my name is/i
+rescue RuntimeError => e
+  event << e
 end
+
+$bot = Discordrb::Bot.new token: TOKEN, client_id: CLIENT_ID
+$channel = nil
+$current = {level: nil, episode: nil}
+$original_scores = {level: nil, episode: nil}
+
+$next_score_update = nil
+$next_level_update = nil
+$next_episode_update = nil
 
 $bot.mention do |event|
   respond(event)
@@ -656,12 +444,14 @@ $bot.private_message do |event|
   log("private message from #{event.user.name}: #{event.content}")
 end
 
+puts "the bot's URL is #{$bot.invite_url}"
+
 startup
 trap("INT") { $kill_threads = true }
 
 $threads = [
   Thread.new { start_level_of_the_day },
-  Thread.new { download_high_scores },
+  # Thread.new { download_high_scores },
 ]
 
 $bot.run(true)

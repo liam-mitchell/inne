@@ -1,0 +1,9 @@
+development:
+  adapter: sqlite3
+  database: inne-dev.db
+  host: localhost
+
+production:
+  adapter: sqlite3
+  database: inne.db
+  host: localhost
