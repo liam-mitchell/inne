@@ -49,7 +49,7 @@ def send_top_n_count(event)
   count = player.top_n_count(n, type, ties)
 
   header = (n == 1 ? "0th" : "top #{n}")
-  type = (type || 'overall').to_s
+  type = (type || 'overall').to_s.downcase
   event << "#{player.name} has #{count} #{type} #{header} scores#{ties ? " with ties" : ""}."
 end
 
@@ -88,7 +88,6 @@ def send_spreads(event)
     return
   end
 
-  byebug
   type = episode ? Episode : Level
   spreads = HighScore.spreads(n, type)
             .sort_by { |level, spread| (smallest ? spread : -spread) }
@@ -110,9 +109,9 @@ def send_scores(event)
   scores = []
 
   if level
-    scores = Level.find_by(name: level)
+    scores = Level.find_by(name: level.upcase)
   elsif episode
-    scores = Episode.find_by(name: episode)
+    scores = Episode.find_by(name: episode.upcase)
   else
     event << "Sorry, I couldn't figure out what scores you wanted :("
     event << "You need to send a message with a level that looks like 'SI-A-00-00', or an episode that looks like 'SI-A-00'."
@@ -120,7 +119,7 @@ def send_scores(event)
   end
 
   scores.download_scores
-  event << "Current high scores for #{level ? level : episode}:\n\t#{scores.format_scores}"
+  event << "Current high scores for #{level ? level : episode}:\n```#{scores.format_scores}```"
 end
 
 # Format of message:
@@ -199,7 +198,8 @@ def send_list(event)
   end
 
   event.attach_file(File::open(tmpfile))
-  # TODO we can't delete this for some reason?...
+  # TODO we can't delete this right here...
+  # File::delete(tmpfile)
 end
 
 def send_suggestions(event)
@@ -218,12 +218,13 @@ def send_suggestions(event)
                .sort_by { |level, gap| -gap }
                .take(n)
                .map { |level, gap| "#{level} (-#{"%.3f" % [gap]})" }
-               .join("\n\t")
+               .join("\n")
 
-  missing = player.missing_scores(type).sample(n).join("\n\t")
+  missing = player.missing_scores(type).sample(n).join("\n")
   type = type.to_s.downcase
 
-  event << "Your #{n} most improvable #{type}s are:\n\t#{improvable}.\nYou're not on the board for:\n\t#{missing}."
+  event << "Your #{n} most improvable #{type}s are:\n```#{improvable}```"
+  event << "You're not on the board for:\n```#{missing}```"
 end
 
 def identify(event)
@@ -306,7 +307,25 @@ def download_high_scores
   end
 end
 
+def send_channel_screenshot(name, caption)
+    screenshot = "screenshots/#{name}.jpg"
+    if File.exist? screenshot
+      $channel.send_file(File::open(screenshot), caption: caption)
+    else
+      $channel.send_message(caption + "\nI don't have a screenshot for this one... :(")
+    end
+end
+
+def send_channel_diff(level, old_scores, since)
+  return if level.nil? || old_scores.nil?
+
+  diff = level.format_difference(old_scores)
+  $channel.send_message("Score changes on #{level.name} since #{since}:\n```#{diff}```")
+end
+
 def start_level_of_the_day
+  saved_scores = {}
+
   while true
     sleep($next_level_update - Time.now)
     $next_level_update += LEVEL_UPDATE_FREQUENCY
@@ -316,43 +335,26 @@ def start_level_of_the_day
       next
     end
 
-    $channel.send_message("Time for a new level of the day!")
-
-    if $current[:level]
-      diff = $current[:level].format_difference($original_scores[:level])
-      $channel.send_message("Score changes on #{$current[:level].name} since yesterday:\n```#{diff}```")
-    end
-
+    last_level = $current[:level]
     $current[:level] = get_next(Level)
+
     if !$current[:level]
       err("no more levels")
       break
     end
 
-    $original_scores[:level] = $current[:level].scores.to_json(include: {player: {only: :name}})
+    caption = "Time for a new level of the day! The level for today is #{$current[:level].name}."
+    send_channel_screenshot($current[:level].name, caption)
+    $channel.send_message("Current high scores:\n```#{$current[:level].format_scores}```")
 
-    $channel.send_message("The level for today is #{$current[:level].name}.")
-
-    screenshot = "screenshots/#{$current[:level].name}.jpg"
-    if File.exist? screenshot
-      $channel.send_file(File::open(screenshot))
-    else
-      $channel.send_message("I don't have a screenshot for this one... :(")
-    end
-
-    $channel.send_message("Current high scores: \n\t#{$current[:level].format_scores}")
+    send_channel_diff(last_level, saved_scores[:level], "yesterday")
+    saved_scores[:level] = $current[:level].scores.to_json(include: {player: {only: :name}})
 
     if Time.now > $next_episode_update
       $next_episode_update += EPISODE_UPDATE_FREQUENCY
-      sleep(15) # let discord catch up
+      sleep(30) # let discord catch up
 
-      $channel.send_message("It's also time for a new episode of the week!")
-
-      if $current[:episode]
-        diff = $current[:episode].format_difference($original_scores[:episode])
-        $channel.send_message("Score changes on #{$current[:episode].name} since last week:\n\t#{diff}")
-      end
-
+      last_episode = $current[:episode]
       $current[:episode] = get_next(Episode)
       if !$current[:episode]
         err("no more episodes")
@@ -361,8 +363,12 @@ def start_level_of_the_day
 
       $original_scores[:episode] = $current[:episode].scores.to_json(include: {player: {only: :name}})
 
-      $channel.send_message("The episode for this week is #{$current[:episode].name}.")
-      $channel.send_message("Current high scores: \n\t#{$current[:episode].format_scores}")
+      caption = "It's also time for a new episode of the week! The episode for this week is #{$current[:episode].name}."
+      send_channel_screenshot($current[:episode].name, caption)
+      $channel.send_message("Current high scores:\n```#{$current[:episode].format_scores}```")
+
+      send_channel_diff(last_episode, saved_scores[:episode], "last week")
+      saved_scores[:episode] = $current[:episode].scores.to_json(include: {player: {only: :name}})
     end
   end
 end
@@ -434,6 +440,9 @@ $next_score_update = nil
 $next_level_update = nil
 $next_episode_update = nil
 
+$old = nil
+$old_level = nil
+
 $bot.mention do |event|
   respond(event)
   log("mentioned by #{event.user.name}: #{event.content}")
@@ -451,7 +460,7 @@ trap("INT") { $kill_threads = true }
 
 $threads = [
   Thread.new { start_level_of_the_day },
-  # Thread.new { download_high_scores },
+  Thread.new { download_high_scores },
 ]
 
 $bot.run(true)

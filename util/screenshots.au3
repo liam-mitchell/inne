@@ -70,6 +70,56 @@ Func Screenshots($prefix, $rows, $columns)
    Next
 EndFunc
 
+Func EpisodeScreenshots($prefix, $rows, $columns)
+   $window = WinGetHandle("NPP")
+   $left = 3
+   $top = 553
+   $right = 1078
+   $bottom = 783
+
+   For $row = 0 To $rows - 1
+	  $rowname = "A"
+	  If $row == 1 Then
+		 $rowname = "B"
+	  ElseIf $row == 2 Then
+		 $rowname = "C"
+	  ElseIf $row == 3 Then
+		 $rowname = "D"
+	  ElseIf $row == 4 Then
+ 		 $rowname = "E"
+	  ElseIf $row == 5 Then
+		 $rowname = "X"
+	  EndIf
+
+	  For $col = 0 To $columns - 1
+ 		 $colname = "00"
+		 If $col < 10 Then
+			$colname = "0" & $col
+		 Else
+			$colname = "" & $col
+		 EndIf
+
+		 Sleep(500)
+
+		 $filename = "C:\Users\Liam\workspace\inne++\screenshots\" & $prefix & "-" & $rowname & "-" & $colname & ".jpg"
+		 _ScreenCapture_CaptureWnd($filename, $window, $left, $top, $right, $bottom, False)
+
+		 ;Send("{ESCAPE}")
+
+		 If $col < $columns - 1 Then
+			Send("{RIGHT}")
+		 EndIf
+	  Next
+
+	  Send("{DOWN}")
+
+	  For $col = 0 To $columns - 2
+		 Sleep(50)
+		 Send("{LEFT}")
+	  Next
+   Next
+EndFunc
+
 WinWaitActive("NPP")
 Send("{ENTER}")
 Sleep(1)
@@ -78,14 +128,14 @@ Sleep(1)
 
 Send("{PGUP}")
 Sleep(500)
-Screenshots("SI", 5, 5)
+EpisodeScreenshots("SI", 5, 5)
 Sleep(500)
 Send("{PGDN}")
 
 Sleep(500)
-Screenshots("S", 6, 20)
+EpisodeScreenshots("S", 6, 20)
 
-;Sleep(500)
-;Send("{PGDN}")
-;Sleep(500)
-;Screenshots("SL", 6, 20)
+Sleep(500)
+Send("{PGDN}")
+Sleep(500)
+EpisodeScreenshots("SL", 6, 20)

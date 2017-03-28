@@ -52,25 +52,25 @@ module HighScore
   end
 
   def format_scores
-    scores.map(&:format).join("\n\t")
+    scores.map(&:format).join("\n")
   end
 
   def format_difference(old)
     old = JSON.parse(old)
     scores.map do |score|
       oldscore = old.find { |orig| orig["player"]["name"] == score.player.name }
-      change = "--"
-      scorechange = "--"
+      diff = "new"
 
       if oldscore
         change = oldscore["rank"] - score.rank
         change = "#{"++-"[change <=> 0]}#{change.abs}"
         scorechange = oldscore["score"] - score.score
         scorechange = "#{"++-"[scorechange <=> 0]}#{"%.3f" % [scorechange.abs]}"
+        diff = "#{change}, #{scorechange}"
       end
 
-      "#{score.format} (#{change}, #{scorechange})"
-    end.join("\n\t")
+      "#{score.format} (#{diff})"
+    end.join("\n")
   end
 end
 
