@@ -8,9 +8,6 @@ require_relative 'models.rb'
 
 require 'byebug'
 
-TOKEN = 'Mjg5MTQxNzc2MjA2MjY2MzY5.C6IDyQ.1B1a2x_k7CF4UfaGWvhbGFVqdqM'
-CLIENT_ID = 289141776206266369
-
 HIGHSCORE_UPDATE_FREQUENCY = 30 * 60 # every 30 minutes
 LEVEL_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY = 7 * 24 * 60 * 60 # weekly
@@ -19,6 +16,7 @@ LEVEL_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]-[0-9][0-9]/i
 EPISODE_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]/i
 
 DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
+CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
@@ -202,6 +200,20 @@ def send_list(event)
   # File::delete(tmpfile)
 end
 
+def send_missing(event)
+  player = Player.parse(event.content, event.user.name)
+  missing = (player.missing_scores(Level) + player.missing_scores(Episode))
+            .join("\n")
+
+  tmpfile = "missing-#{player.name}.txt"
+  File::open(tmpfile, "w") do |f|
+    f.write(missing)
+  end
+
+  event.attach_file(File::open(tmpfile))
+  # TODO deleting again lol
+end
+
 def send_suggestions(event)
   msg = event.content
   player = Player.parse(msg, event.user.name)
@@ -291,7 +303,7 @@ def dump(event)
 end
 
 def download_high_scores
-  ActiveRecord::Base.establish_connection(YAML.load_file('db/config.yml')[DATABASE_ENV])
+  ActiveRecord::Base.establish_connection
 
   while true
     log("updating high scores...")
@@ -395,7 +407,7 @@ def startup
   log("next episode update at #{$next_episode_update.to_s}")
   log("next score update at #{$next_score_update}")
 
-  ActiveRecord::Base.establish_connection(YAML.load_file('db/config.yml')[DATABASE_ENV])
+  ActiveRecord::Base.establish_connection(CONFIG)
 end
 
 def shutdown
@@ -426,12 +438,13 @@ def respond(event)
   send_scores(event) if event.content =~ /scores/i
   send_suggestions(event) if event.content =~ /worst/i
   send_list(event) if event.content =~ /list/i
+  send_missing(event) if event.content =~ /missing/i
   identify(event) if event.content =~ /my name is/i
 rescue RuntimeError => e
   event << e
 end
 
-$bot = Discordrb::Bot.new token: TOKEN, client_id: CLIENT_ID
+$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
 $channel = nil
 $current = {level: nil, episode: nil}
 $original_scores = {level: nil, episode: nil}
@@ -459,8 +472,8 @@ startup
 trap("INT") { $kill_threads = true }
 
 $threads = [
-  Thread.new { start_level_of_the_day },
-  Thread.new { download_high_scores },
+  # Thread.new { start_level_of_the_day },
+  # Thread.new { download_high_scores },
 ]
 
 $bot.run(true)

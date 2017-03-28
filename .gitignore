@@ -2,3 +2,9 @@
 *.json
 *.pem
 *.log
+\.byebug_history
+*.db
+missing*
+scores*
+missing*.txt
+scores*.txt

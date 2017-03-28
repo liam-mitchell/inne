@@ -2,8 +2,12 @@ development:
   adapter: sqlite3
   database: inne-dev.db
   host: localhost
+  token: Mjk2MjE3NTkyODA3NDI0MDAw.C7vBqA.2N95P6C0RMnYkdPobKvao4thJ3g
+  client_id: 296217592807424000
 
 production:
   adapter: sqlite3
   database: inne.db
   host: localhost
+  token: Mjg5MTQxNzc2MjA2MjY2MzY5.C6IDyQ.1B1a2x_k7CF4UfaGWvhbGFVqdqM
+  client_id: 289141776206266369

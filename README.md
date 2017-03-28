@@ -64,7 +64,7 @@ inne++ will display the number of top-N scores you have.
 
 If no rank is specified, defaults to 0ths.
 
-If no username is specified, uses the one specified for the user earlier.
+If no username is specified, uses the one you specified earlier.
 
 ### Display scores with the largest or smallest spread between 0th and Nth
 - *spread*
@@ -89,7 +89,7 @@ If 'episode' or 'level' is not specified, inne++ defaults to 'level'.
 
 inne++ will display the total number of level and episode high scores for the specified user, broken down by rank, and also a histogram of the player's scores.
 
-If a username isn't specified, inne++ will use the one the user specified earlier with the 'my name is' command.
+If a username isn't specified, inne++ will use the one you specified earlier with the 'my name is' command.
 
 ### Display your most improvable scores
 - *worst for \<username\>*
@@ -104,9 +104,17 @@ inne++ will display a list of your N most improvable level or episode scores (eg
 
 If a number isn't specified, inne++ defaults to 10.
 
-If a username isn't specified, inne++ will use the one the user specified earlier with the 'my name is' command.
+If a username isn't specified, inne++ will use the one you specified earlier with the 'my name is' command.
 
 If neither 'levels' or 'episodes' is specified, inne++ defaults to level scores.
+
+### Display a list of levels you haven't high scored
+- *missing for \<username\>*
+- *missing*
+
+inne++ will send you a text file containing all levels and episodes you doesn't have high scores on.
+
+If a username isn't specified, inne++ will use the one you specified earlier.
 
 ### Display a list of all your high scores
 - *list*
@@ -114,7 +122,7 @@ If neither 'levels' or 'episodes' is specified, inne++ defaults to level scores.
 
 inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank.
 
-If a username isn't specified, inne++ will use the one the user specified earlier.
+If a username isn't specified, inne++ will use the one you specified earlier.
 
 ### Initialize inne++
 - *hello*
