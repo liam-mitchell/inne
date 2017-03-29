@@ -14,6 +14,7 @@ EPISODE_UPDATE_FREQUENCY = 7 * 24 * 60 * 60 # weekly
 
 LEVEL_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]-[0-9][0-9]/i
 EPISODE_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]/i
+NAME_PATTERN = /for (.*)[\.\?]?/i
 
 DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
@@ -26,8 +27,33 @@ def err(msg)
   STDERR.puts "[ERROR] [#{Time.now}] #{msg}"
 end
 
+# TODO do all this parsing here
+# it doesn't make sense to do it in models
+# and throw exceptions in all of them consistently
 def parse_type(msg)
   (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : nil))
+end
+
+def parse_level_or_episode(msg)
+  level = msg[LEVEL_PATTERN]
+  episode = msg[EPISODE_PATTERN]
+  name = msg[NAME_PATTERN, 1]
+  ret = nil
+
+  if level
+    ret = Level.find_by(name: level.upcase)
+  elsif episode
+    ret = Episode.find_by(name: episode.upcase)
+  elsif name
+    ret = Level.find_by(longname: name)
+  else
+    msg = "I couldn't figure out which level or episode you wanted scores for! You need to send either a level " +
+          "or episode ID that looks like SI-A-00-00 or SI-A-00, or a level name, using 'for <name>.'"
+    raise msg
+  end
+
+  raise "I couldn't find anything by that name :(" if ret.nil?
+  ret
 end
 
 def get_next(type)
@@ -102,44 +128,25 @@ end
 # '@inne++.*scores.*<<episode>|<level>>'
 def send_scores(event)
   msg = event.content
-  level = msg[LEVEL_PATTERN]
-  episode = msg[EPISODE_PATTERN]
-  scores = []
-
-  if level
-    scores = Level.find_by(name: level.upcase)
-  elsif episode
-    scores = Episode.find_by(name: episode.upcase)
-  else
-    event << "Sorry, I couldn't figure out what scores you wanted :("
-    event << "You need to send a message with a level that looks like 'SI-A-00-00', or an episode that looks like 'SI-A-00'."
-    return
-  end
-
+  scores = parse_level_or_episode(msg)
   scores.download_scores
-  event << "Current high scores for #{level ? level : episode}:\n```#{scores.format_scores}```"
+
+  event << "Current high scores for #{scores.format_name}:\n```#{scores.format_scores}```"
 end
 
 # Format of message:
 # '@inne++.*screenshot.*<level>'
 def send_screenshot(event)
   msg = event.content
-  level = msg[LEVEL_PATTERN]
+  scores = parse_level_or_episode(msg)
+  name = scores.name.upcase
 
-  if !level
-    event << "Sorry, I couldn't figure out what level you were talking about :("
-    event << "You need to send a message with a level that looks like 'SI-A-00-00'."
-    return
-  end
-
-  level = level.upcase
-
-  screenshot = "screenshots/#{level}.jpg"
+  screenshot = "screenshots/#{name}.jpg"
 
   if File.exist? screenshot
     event.attach_file(File::open(screenshot))
   else
-    event << "I don't have a screenshot for #{level}... :("
+    event << "I don't have a screenshot for #{scores.format_name}... :("
   end
 end
 
@@ -147,11 +154,6 @@ end
 # '@inne++.*stat(s|istics).*for <username>[.?]'
 def send_stats(event)
   player = Player.parse(event.content, event.user.name)
-  if player.nil?
-    event << "I couldn't find a player with your username!"
-    return
-  end
-
   counts = player.score_counts
 
   histdata = counts[:levels].zip(counts[:episodes])
@@ -181,10 +183,9 @@ end
 
 def send_list(event)
   player = Player.parse(event.content, event.user.name)
-
   all = player.scores_by_rank
-  tmpfile = "scores-#{player.name}.txt"
 
+  tmpfile = "scores-#{player.name.delete(":")}.txt"
   File::open(tmpfile, "w") do |f|
     all.each_with_index do |scores, i|
       list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
@@ -205,7 +206,7 @@ def send_missing(event)
   missing = (player.missing_scores(Level) + player.missing_scores(Episode))
             .join("\n")
 
-  tmpfile = "missing-#{player.name}.txt"
+  tmpfile = "missing-#{player.name.delete(":")}.txt"
   File::open(tmpfile, "w") do |f|
     f.write(missing)
   end
@@ -221,11 +222,6 @@ def send_suggestions(event)
   type = ((msg[/level/] || !msg[/episode/]) ? Level : Episode)
   n = (msg[/\b[0-9][0-9]?\b/] || 10).to_i
 
-  if player.nil?
-    event << "I couldn't figure out who you were asking about :("
-    return
-  end
-
   improvable = player.improvable_scores(type)
                .sort_by { |level, gap| -gap }
                .take(n)
@@ -237,6 +233,40 @@ def send_suggestions(event)
 
   event << "Your #{n} most improvable #{type}s are:\n```#{improvable}```"
   event << "You're not on the board for:\n```#{missing}```"
+end
+
+def send_level_id(event)
+  level = parse_level_or_episode(event.content)
+  event << "#{level.longname} is level #{level.name}."
+end
+
+def send_level_name(event)
+  level = parse_level_or_episode(event.content)
+  raise "Episodes don't have a name!" if level.is_a?(Episode)
+  event << "#{level.name} is called #{level.longname}."
+end
+
+def send_points(event)
+  msg = event.content
+  player = Player.parse(msg, event.user.name)
+  type = parse_type(msg)
+  points = player.points(type)
+
+  type = (type || 'overall').to_s.downcase
+  event << "#{player.name} has #{points} #{type} points."
+end
+
+def send_point_rankings(event)
+  type = parse_type(event.content)
+
+  top = Player.all.sort_by { |p| -p.points(type) }
+        .take(20)
+        .each_with_index
+        .map{ |p, i| "#{HighScore.format_rank(i)}: #{p.name} (#{p.points(type)})" }
+        .join("\n")
+
+  type = (type || 'Overall').to_s
+  event << "#{type} point rankings at #{Time.now}:\n```#{top}```"
 end
 
 def identify(event)
@@ -287,12 +317,22 @@ def send_times(event)
   send_episode_time(event)
 end
 
+def send_help(event)
+  event << "The commands I understand are:"
+
+  File.open('README.md').read.each_line do |line|
+    line = line.gsub("\n", "")
+    event << "\n**#{line.gsub(/^### /, "")}**" if line =~ /^### /
+    event << " *#{line.gsub(/^- /, "").gsub(/\*/, "")}*" if line =~ /^- \*/
+  end
+end
+
 def send_level(event)
   event << "The current level of the day is #{$current[:level]}."
 end
 
 def send_episode(event)
-  event << "The current episode of the day is #{$current[:episode]}."
+  event << "The current episode of the week is #{$current[:episode]}."
 end
 
 def dump(event)
@@ -303,7 +343,7 @@ def dump(event)
 end
 
 def download_high_scores
-  ActiveRecord::Base.establish_connection
+  ActiveRecord::Base.establish_connection(CONFIG)
 
   while true
     log("updating high scores...")
@@ -338,6 +378,7 @@ end
 def start_level_of_the_day
   saved_scores = {}
 
+  log("starting level of the day...")
   while true
     sleep($next_level_update - Time.now)
     $next_level_update += LEVEL_UPDATE_FREQUENCY
@@ -399,9 +440,6 @@ def startup
   $next_level_update = $next_level_update.to_time
   $next_episode_update = $next_episode_update.to_time
 
-  # $next_level_update = $next_score_update + LEVEL_UPDATE_FREQUENCY
-  # $next_episode_update = $next_score_update + EPISODE_UPDATE_FREQUENCY
-
   log("initialized")
   log("next level update at #{$next_level_update.to_s}")
   log("next episode update at #{$next_episode_update.to_s}")
@@ -423,6 +461,9 @@ def watchdog
   shutdown
 end
 
+# TODO add help command
+# can probably just parse the README :D
+# TODO also set level of the day on startup
 def respond(event)
   hello(event) if event.content =~ /\bhello\b/i || event.content =~ /\bhi\b/i
   dump(event) if event.content =~ /dump/i
@@ -430,7 +471,8 @@ def respond(event)
   send_level_time(event) if  event.content =~ /when.*next.*(level|lotd)/i
   send_level(event) if event.content =~ /what.*(level|lotd)/i
   send_episode(event) if event.content =~ /what.*(episode|eotw)/i
-  send_top_n_rankings(event) if event.content =~ /rankings/i
+  send_top_n_rankings(event) if event.content =~ /rankings/i && event.content !~ /point/
+  send_point_rankings(event) if event.content =~ /\brankings\b/i && event.content =~ /\bpoint\b/
   send_top_n_count(event) if event.content =~ /how many/i
   send_stats(event) if event.content =~ /stat/i
   send_spreads(event) if event.content =~ /spread/i
@@ -439,11 +481,20 @@ def respond(event)
   send_suggestions(event) if event.content =~ /worst/i
   send_list(event) if event.content =~ /list/i
   send_missing(event) if event.content =~ /missing/i
+  send_level_name(event) if event.content =~ /\blevel name\b/i
+  send_level_id(event) if event.content =~ /\blevel id\b/i
+  send_points(event) if event.content =~ /\bpoints\b/i
+  send_help(event) if event.content =~ /\bhelp\b/i || event.content =~ /\bcommands\b/i
   identify(event) if event.content =~ /my name is/i
 rescue RuntimeError => e
   event << e
 end
 
+# TODO save all of this global stuff to the db
+# and read it back again when loading
+# then, get rid of all this watchdog thread shit,
+# and just replace it with killing the bot on ctrl-c
+# and letting all the threads die a horrible death
 $bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
 $channel = nil
 $current = {level: nil, episode: nil}
@@ -452,9 +503,6 @@ $original_scores = {level: nil, episode: nil}
 $next_score_update = nil
 $next_level_update = nil
 $next_episode_update = nil
-
-$old = nil
-$old_level = nil
 
 $bot.mention do |event|
   respond(event)
@@ -472,11 +520,13 @@ startup
 trap("INT") { $kill_threads = true }
 
 $threads = [
-  # Thread.new { start_level_of_the_day },
-  # Thread.new { download_high_scores },
+  Thread.new { start_level_of_the_day },
+  Thread.new { download_high_scores },
 ]
 
 $bot.run(true)
 
 wd = Thread.new { watchdog }
 wd.join
+
+# $threads.each { |t| t.join }

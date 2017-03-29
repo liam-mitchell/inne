@@ -16,16 +16,20 @@ Commands generally aren't case-sensitive, except for the usernames.
 
 inne++ will respond with the level of the day or the episode of the week.
 
-### Display a screenshot of a level
-- *screenshot of SI-A-00-00*
+### Display a screenshot of a level or episode
+- *screenshot of <level>*
 
-inne++ will respond with a picture of the requested level.
+inne++ will respond with a picture of the requested level or episode.
 
-### Display scores for a level
-- *scores for SI-A-00-00*
-- *scores for SI-A-00*
+'level' can be a level or episode ID (eg. SI-A-00, SI-A-00-00) or a level name (eg. supercomplexity).
+
+### Display scores for a level or episode
+- *scores for <level>*
 
 inne++ will respond with the high scores table for the given level or episode.
+
+'level' can be a level or episode ID (eg. SI-A-00, SI-A-00-00) or a level name (eg. supercomplexity).
+
 This will also force inne++ to update the scores with the latest results from N++ (rather than waiting for the default half-hour between updates).
 
 ### Display time until a new episode or level
@@ -52,6 +56,31 @@ For any command that requires a username, if you don't specify a username, inne+
 inne++ will compute the overall number of top-N scores for every player, and display the top 20.
 
 If 'with ties' is specified, inne++ will consider a tie for the score to count towards the rankings, even if that means taking more than N rankings for the level.
+
+### Display point rankings
+- *point rankings*
+
+inne++ will compute the total number of points for all players, and display the top 20.
+
+Points are computed by giving players 20 points for 0th rankings, 19 for 1st, etc.
+
+### Display your points
+- *points*
+- *points for <username>*
+
+inne++ will tell you how many points you have (see 'point rankings' above).
+
+If no username is specified, inne++ will use the one you specified earlier.
+
+### Find a level ID by level name
+- *level id for <level>*
+
+inne++ will tell you the level ID for the specified level (eg. S-D-15-04 for 'supercomplexity').
+
+### Find the name of a level by ID
+- *level name for <level>*
+
+inne++ will tell you the name of the specified level (eg. 'supercomplexity' for S-D-15-04)
 
 ### Display your top N count
 - *how many*
@@ -130,8 +159,11 @@ If a username isn't specified, inne++ will use the one you specified earlier.
 
 When inne++ first joins a channel, in order to start sending levels and episodes of the day, you have to say hi. Note that if you run this in a private message before you run it in the channel, inne++ will send the levels/episodes to your PMs instead of the channel, so don't do that ;)
 
+### Display help
+- *help*
+- *commands*
 
-
+inne++ will send you a short form of this README file.
 
 ## License and attributions
 This project is licensed under the terms of the MIT license (see LICENSE.txt in the root directory of the project).

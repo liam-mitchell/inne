@@ -1,6 +1,8 @@
 require 'active_record'
 require 'yaml'
 
+require_relative 'models.rb'
+
 namespace :db do
   task :environment do
     DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'

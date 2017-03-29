@@ -1,6 +1,5 @@
 require 'active_record'
 require 'net/http'
-require_relative 'log.rb'
 
 IGNORED_PLAYERS = [
   "Kronogenics",
@@ -32,7 +31,8 @@ module HighScore
     response = Net::HTTP.get(uri)
 
     if response == '-1337'
-      puts "failed to retrieve scores from #{uri}"
+      # TODO make this use err()
+      STDERR.puts "[ERROR] [#{Time.now}] failed to retrieve scores from #{uri}"
       return
     end
 
@@ -77,11 +77,19 @@ end
 class Level < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
+
+  def format_name
+    "#{longname} (#{name})"
+  end
 end
 
 class Episode < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
+
+  def format_name
+    "#{name}"
+  end
 end
 
 class Score < ActiveRecord::Base
@@ -122,8 +130,8 @@ class Player < ActiveRecord::Base
   end
 
   def top_n_count(n, type, ties)
-    scores_by_type(type).sort_by { |s| s.rank }.take_while do |s|
-      s.rank < n || (ties && s.highscoreable.scores.find_by(rank: n).score == s.score)
+    scores_by_type(type).all.select do |s|
+      s.rank < n || (ties && s.highscoreable.scores.find_by(rank: n - 1).score == s.score)
     end.count
   end
 
@@ -148,6 +156,10 @@ class Player < ActiveRecord::Base
     improvable = {}
     scores_by_type(type).each { |s| improvable[s.highscoreable.name] = s.spread }
     improvable
+  end
+
+  def points(type = nil)
+    scores_by_type(type).pluck(:rank).map { |rank| 20 - rank }.reduce(0, :+)
   end
 end
 
