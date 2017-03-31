@@ -4,6 +4,8 @@ development:
   host: localhost
   token: Mjk2MjE3NTkyODA3NDI0MDAw.C7vBqA.2N95P6C0RMnYkdPobKvao4thJ3g
   client_id: 296217592807424000
+  level_update_frequency: 60
+  episode_update_frequency: 460
 
 production:
   adapter: sqlite3

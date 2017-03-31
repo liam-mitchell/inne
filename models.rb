@@ -7,6 +7,8 @@ IGNORED_PLAYERS = [
   "fiordhraoi",
 ]
 
+$lock = Mutex.new
+
 module HighScore
   def self.format_rank(rank)
     "#{rank < 10 ? '0' : ''}#{rank}"
@@ -39,10 +41,16 @@ module HighScore
     updated = JSON.parse(response)['scores']
       .select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }
 
-    ActiveRecord::Base.transaction do
-      updated.each_with_index do |score, i|
-        scores.find_or_create_by(rank: i)
-          .update(score: score['score'] / 1000.0, player: Player.find_or_create_by(name: score['user_name']))
+    $lock.synchronize do
+      ActiveRecord::Base.transaction do
+        updated.each_with_index do |score, i|
+          scores.find_or_create_by(rank: i)
+            .update(
+              score: score['score'] / 1000.0,
+              player: Player.find_or_create_by(name: score['user_name']),
+              tied_rank: updated.find_index { |s| s['score'] == score['score'] }
+            )
+        end
       end
     end
   end
@@ -56,7 +64,6 @@ module HighScore
   end
 
   def format_difference(old)
-    old = JSON.parse(old)
     scores.map do |score|
       oldscore = old.find { |orig| orig["player"]["name"] == score.player.name }
       diff = "new"
@@ -64,7 +71,7 @@ module HighScore
       if oldscore
         change = oldscore["rank"] - score.rank
         change = "#{"++-"[change <=> 0]}#{change.abs}"
-        scorechange = oldscore["score"] - score.score
+        scorechange = score.score - oldscore["score"]
         scorechange = "#{"++-"[scorechange <=> 0]}#{"%.3f" % [scorechange.abs]}"
         diff = "#{change}, #{scorechange}"
       end
@@ -121,7 +128,7 @@ class Player < ActiveRecord::Base
   end
 
   def self.top_n_rankings(n, type, ties)
-    Player.all.map { |p| [p, p.top_n_count(n, type, ties)] }
+    Player.includes(:scores).all.map { |p| [p, p.top_n_count(n, type, ties)] }
       .sort_by { |a| -a[1] }
   end
 
@@ -129,10 +136,14 @@ class Player < ActiveRecord::Base
     type ? scores.where(highscoreable_type: type.to_s) : scores
   end
 
-  def top_n_count(n, type, ties)
+  def top_ns(n, type, ties)
     scores_by_type(type).all.select do |s|
-      s.rank < n || (ties && s.highscoreable.scores.find_by(rank: n - 1).score == s.score)
-    end.count
+      (ties ? s.tied_rank : s.rank) < n
+    end
+  end
+
+  def top_n_count(n, type, ties)
+    top_ns(n, type, ties).count
   end
 
   def scores_by_rank(type = nil)
@@ -148,8 +159,14 @@ class Player < ActiveRecord::Base
     }
   end
 
-  def missing_scores(type)
-    type.where.not(id: type.joins(:scores).where(scores: {player: self}).pluck(:id)).pluck(:name)
+  def missing_top_ns(n, type, ties)
+    levels = top_ns(n, type, ties).map { |s| s.highscoreable.name }
+
+    if type
+      type.where.not(name: levels).pluck(:name)
+    else
+      Level.where.not(name: levels).pluck(:name) + Episode.where.not(name: levels).pluck(:name)
+    end
   end
 
   def improvable_scores(type = nil)
@@ -165,4 +182,7 @@ end
 
 class User < ActiveRecord::Base
   belongs_to :player
+end
+
+class GlobalProperty < ActiveRecord::Base
 end

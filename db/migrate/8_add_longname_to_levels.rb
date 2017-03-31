@@ -1,5 +1,3 @@
-require 'byebug'
-
 class AddLongnameToLevels < ActiveRecord::Migration
   def get_names(file, starting_id)
     names = {}
@@ -21,7 +19,6 @@ class AddLongnameToLevels < ActiveRecord::Migration
     end
 
     names = get_names('names-SI.txt', 0).merge(get_names('names-S.txt', 600)).merge(get_names('names-SL.txt', 1200))
-    byebug
     ActiveRecord::Base.transaction do
       Level.update(names.keys, names.values)
     end

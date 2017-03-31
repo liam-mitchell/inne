@@ -8,16 +8,16 @@ require_relative 'models.rb'
 
 require 'byebug'
 
-HIGHSCORE_UPDATE_FREQUENCY = 30 * 60 # every 30 minutes
-LEVEL_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
-EPISODE_UPDATE_FREQUENCY = 7 * 24 * 60 * 60 # weekly
-
-LEVEL_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]-[0-9][0-9]/i
-EPISODE_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]/i
+LEVEL_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?/i
+EPISODE_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]?/i
 NAME_PATTERN = /for (.*)[\.\?]?/i
 
 DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
+
+HIGHSCORE_UPDATE_FREQUENCY = 30 * 60 # every 30 minutes
+LEVEL_UPDATE_FREQUENCY = CONFIG['level_update_frequency'] || 24 * 60 * 60 # daily
+EPISODE_UPDATE_FREQUENCY = CONFIG['episode_update_frequency'] || 7 * 24 * 60 * 60 # weekly
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
@@ -27,11 +27,44 @@ def err(msg)
   STDERR.puts "[ERROR] [#{Time.now}] #{msg}"
 end
 
+def get_current(type)
+  type.find_by(name: GlobalProperty.find_by(key: "current_#{type.to_s.downcase}").value)
+end
+
+def set_current(type, curr)
+  GlobalProperty.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
+end
+
+def get_next_update(type)
+  $lock.synchronize do
+    Time.parse(GlobalProperty.find_by(key: "next_#{type.to_s.downcase}_update").value)
+  end
+end
+
+def set_next_update(type, time)
+  $lock.synchronize do
+    GlobalProperty.find_or_create_by(key: "next_#{type.to_s.downcase}_update").update(value: time.to_s)
+  end
+end
+
+def get_saved_scores(type)
+  JSON.parse(GlobalProperty.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
+end
+
+def set_saved_scores(type, curr)
+  GlobalProperty.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
+    .update(value: curr.scores.to_json(include: {player: {only: :name}}))
+end
+
 # TODO do all this parsing here
 # it doesn't make sense to do it in models
 # and throw exceptions in all of them consistently
 def parse_type(msg)
   (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : nil))
+end
+
+def normalize_name(name)
+  name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-')
 end
 
 def parse_level_or_episode(msg)
@@ -41,9 +74,13 @@ def parse_level_or_episode(msg)
   ret = nil
 
   if level
-    ret = Level.find_by(name: level.upcase)
+    ret = Level.find_by(name: normalize_name(level).upcase)
   elsif episode
-    ret = Episode.find_by(name: episode.upcase)
+    ret = Episode.find_by(name: normalize_name(episode).upcase)
+  elsif !msg[/(level|lotd)/].nil?
+    ret = get_current(Level)
+  elsif !msg[/(episode|eotw)/].nil?
+    ret = get_current(Episode)
   elsif name
     ret = Level.find_by(longname: name)
   else
@@ -56,6 +93,10 @@ def parse_level_or_episode(msg)
   ret
 end
 
+def parse_rank(msg, dflt)
+  ((msg[/top\s*([0-9][0-9]?)/i, 1]) || dflt).to_i
+end
+
 def get_next(type)
   ret = type.where(completed: nil).sample
   ret.update(completed: true)
@@ -64,11 +105,10 @@ end
 
 def send_top_n_count(event)
   msg = event.content
-  player = Player.parse(event.content, event.user.name)
-
-  n = ((msg[/top ([0-9][0-9]?)/i, 1]) || 1).to_i
-  ties = !!(msg =~ /ties/i)
+  player = Player.parse(msg, event.user.name)
+  n = parse_rank(msg, 1)
   type = parse_type(msg)
+  ties = !!(msg =~ /ties/i)
 
   count = player.top_n_count(n, type, ties)
 
@@ -79,8 +119,7 @@ end
 
 def send_top_n_rankings(event)
   msg = event.content
-
-  n = ((msg[/top ([0-9][0-9]?)/i, 1]) || 1).to_i
+  n = parse_rank(msg, 1)
   type = parse_type(msg)
   ties = !!(msg =~ /ties/i)
 
@@ -88,11 +127,11 @@ def send_top_n_rankings(event)
         .take(20)
         .each_with_index
         .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{r[1]})" }
-        .join("\n\t")
+        .join("\n")
 
   header = (n == 1 ? "0th" : "top #{n}")
   type = (type || 'Overall').to_s
-  event << "#{type} #{header} rankings #{ties ? "with ties " : ""}at #{Time.now}:\n\t#{top}"
+  event << "#{type} #{header} rankings #{ties ? "with ties " : ""}on #{Time.now.strftime("%A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
 end
 
 # Message keyword: 'spread'
@@ -156,6 +195,8 @@ def send_stats(event)
   player = Player.parse(event.content, event.user.name)
   counts = player.score_counts
 
+  raise "#{player.name} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.scores.empty?
+
   histdata = counts[:levels].zip(counts[:episodes])
              .each_with_index
              .map { |a, i| [i, a[0] + a[1]]}
@@ -202,9 +243,13 @@ def send_list(event)
 end
 
 def send_missing(event)
-  player = Player.parse(event.content, event.user.name)
-  missing = (player.missing_scores(Level) + player.missing_scores(Episode))
-            .join("\n")
+  msg = event.content
+  player = Player.parse(msg, event.user.name)
+  type = parse_type(msg)
+  rank = parse_rank(msg, 20)
+  ties = !!(msg =~ /ties/i)
+
+  missing = player.missing_top_ns(rank, type, ties).join("\n")
 
   tmpfile = "missing-#{player.name.delete(":")}.txt"
   File::open(tmpfile, "w") do |f|
@@ -228,7 +273,7 @@ def send_suggestions(event)
                .map { |level, gap| "#{level} (-#{"%.3f" % [gap]})" }
                .join("\n")
 
-  missing = player.missing_scores(type).sample(n).join("\n")
+  missing = player.missing_top_ns(20, type, false).sample(n).join("\n")
   type = type.to_s.downcase
 
   event << "Your #{n} most improvable #{type}s are:\n```#{improvable}```"
@@ -266,7 +311,17 @@ def send_point_rankings(event)
         .join("\n")
 
   type = (type || 'Overall').to_s
-  event << "#{type} point rankings at #{Time.now}:\n```#{top}```"
+  event << "#{type} point rankings on #{Time.now.strftime("%A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
+end
+
+def send_diff(event)
+  type = parse_type(event.content) || Level
+  current = get_current(type)
+  old_scores = get_saved_scores(type)
+  since = type == Level ? "yesterday" : "last week"
+
+  diff = current.format_difference(old_scores)
+  $channel.send_message("Score changes on #{current.format_name} since #{since}:\n```#{diff}```")
 end
 
 def identify(event)
@@ -297,7 +352,7 @@ def hello(event)
 end
 
 def send_level_time(event)
-  next_level = $next_level_update - Time.now
+  next_level = get_next_update(Level) - Time.now
   next_level_hours = (next_level / (60 * 60)).to_i
   next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
 
@@ -305,7 +360,8 @@ def send_level_time(event)
 end
 
 def send_episode_time(event)
-  next_episode = $next_episode_update - Time.now
+  next_episode = get_next_update(Episode) - Time.now
+
   next_episode_days = (next_episode / (24 * 60 * 60)).to_i
   next_episode_hours = (next_episode / (60 * 60)).to_i - (next_episode / (24 * 60 * 60)).to_i * 24
 
@@ -328,16 +384,16 @@ def send_help(event)
 end
 
 def send_level(event)
-  event << "The current level of the day is #{$current[:level]}."
+  event << "The current level of the day is #{get_current(Level).format_name}."
 end
 
 def send_episode(event)
-  event << "The current episode of the week is #{$current[:episode]}."
+  event << "The current episode of the week is #{get_current(Episode).format_name}."
 end
 
 def dump(event)
-  log("current level/episode: #{$current}")
-  log("next updates: scores #{$next_score_update}, level #{$next_level_update}, episode #{$next_episode_update}")
+  log("current level/episode: #{get_current(Level).format_name}, #{get_current(Episode).format_name}") unless get_current(Level).nil?
+  log("next updates: scores #{$next_score_update}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}")
 
   event << "I dumped some things to the log for you to look at."
 end
@@ -360,100 +416,92 @@ def download_high_scores
 end
 
 def send_channel_screenshot(name, caption)
-    screenshot = "screenshots/#{name}.jpg"
-    if File.exist? screenshot
-      $channel.send_file(File::open(screenshot), caption: caption)
-    else
-      $channel.send_message(caption + "\nI don't have a screenshot for this one... :(")
-    end
+  screenshot = "screenshots/#{name}.jpg"
+  if File.exist? screenshot
+    $channel.send_file(File::open(screenshot), caption: caption)
+  else
+    $channel.send_message(caption + "\nI don't have a screenshot for this one... :(")
+  end
 end
 
 def send_channel_diff(level, old_scores, since)
   return if level.nil? || old_scores.nil?
 
   diff = level.format_difference(old_scores)
-  $channel.send_message("Score changes on #{level.name} since #{since}:\n```#{diff}```")
+  $channel.send_message("Score changes on #{level.format_name} since #{since}:\n```#{diff}```")
+end
+
+def send_channel_next(type)
+  $lock.synchronize do
+    log("sending next #{type.to_s.downcase}")
+    if $channel.nil?
+      err("not connected to a channel, not sending level of the day")
+      return false
+    end
+
+    last = get_current(type)
+    current = get_next(type)
+    set_current(type, current)
+
+    if current.nil?
+      err("no more #{type.to_s.downcase}")
+      return false
+    end
+
+    prefix = type == Level ? "Time" : "It's also time"
+    duration = type == Level ? "day" : "week"
+    time = type == Level ? "today" : "this week"
+    since = type == Level ? "yesterday" : "last week"
+    typename = type.to_s.downcase
+
+    caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
+    send_channel_screenshot(current.format_name, caption)
+    $channel.send_message("Current high scores:\n```#{current.format_scores}```")
+
+    send_channel_diff(last, get_saved_scores(type), since)
+    set_saved_scores(type, current)
+
+    return true
+  end
 end
 
 def start_level_of_the_day
-  saved_scores = {}
-
   log("starting level of the day...")
   while true
-    sleep($next_level_update - Time.now)
-    $next_level_update += LEVEL_UPDATE_FREQUENCY
+    next_level_update = get_next_update(Level)
+    sleep(next_level_update - Time.now) unless next_level_update - Time.now < 0
+    set_next_update(Level, next_level_update + LEVEL_UPDATE_FREQUENCY)
 
-    if $channel.nil?
-      err("not connected to a channel, not sending level of the day")
-      next
-    end
+    next if !send_channel_next(Level)
+    log("sent next level, next update at #{get_next_update(Level).to_s}")
 
-    last_level = $current[:level]
-    $current[:level] = get_next(Level)
+    next_episode_update = get_next_update(Episode)
+    if Time.now > next_episode_update
+      set_next_update(Episode, next_episode_update + EPISODE_UPDATE_FREQUENCY)
 
-    if !$current[:level]
-      err("no more levels")
-      break
-    end
-
-    caption = "Time for a new level of the day! The level for today is #{$current[:level].name}."
-    send_channel_screenshot($current[:level].name, caption)
-    $channel.send_message("Current high scores:\n```#{$current[:level].format_scores}```")
-
-    send_channel_diff(last_level, saved_scores[:level], "yesterday")
-    saved_scores[:level] = $current[:level].scores.to_json(include: {player: {only: :name}})
-
-    if Time.now > $next_episode_update
-      $next_episode_update += EPISODE_UPDATE_FREQUENCY
       sleep(30) # let discord catch up
 
-      last_episode = $current[:episode]
-      $current[:episode] = get_next(Episode)
-      if !$current[:episode]
-        err("no more episodes")
-        break
-      end
-
-      $original_scores[:episode] = $current[:episode].scores.to_json(include: {player: {only: :name}})
-
-      caption = "It's also time for a new episode of the week! The episode for this week is #{$current[:episode].name}."
-      send_channel_screenshot($current[:episode].name, caption)
-      $channel.send_message("Current high scores:\n```#{$current[:episode].format_scores}```")
-
-      send_channel_diff(last_episode, saved_scores[:episode], "last week")
-      saved_scores[:episode] = $current[:episode].scores.to_json(include: {player: {only: :name}})
+      send_channel_next(Episode)
+      log("sent next episode, next update at #{get_next_update(Episode).to_s}")
     end
   end
+rescue RuntimeError => e
+  err("error updating level of the day: #{e}")
 end
 
 def startup
-  now = Time.now
-  $next_score_update = now
-
-  $next_level_update = DateTime.new(now.year, now.month, now.day + 1, 0, 0, 0, now.zone)
-  $next_episode_update = $next_level_update
-
-  while !$next_episode_update.saturday?
-    $next_episode_update = $next_episode_update + 1
-  end
-
-  $next_level_update = $next_level_update.to_time
-  $next_episode_update = $next_episode_update.to_time
+  $next_score_update = Time.now
+  ActiveRecord::Base.establish_connection(CONFIG)
 
   log("initialized")
-  log("next level update at #{$next_level_update.to_s}")
-  log("next episode update at #{$next_episode_update.to_s}")
+  log("next level update at #{get_next_update(Level).to_s}")
+  log("next episode update at #{get_next_update(Episode).to_s}")
   log("next score update at #{$next_score_update}")
-
-  ActiveRecord::Base.establish_connection(CONFIG)
 end
 
 def shutdown
   log("shutting down")
-
   $bot.stop
-
-  log("wrote data files")
 end
 
 def watchdog
@@ -461,9 +509,7 @@ def watchdog
   shutdown
 end
 
-# TODO add help command
-# can probably just parse the README :D
-# TODO also set level of the day on startup
+# TODO set level of the day on startup
 def respond(event)
   hello(event) if event.content =~ /\bhello\b/i || event.content =~ /\bhi\b/i
   dump(event) if event.content =~ /dump/i
@@ -471,8 +517,9 @@ def respond(event)
   send_level_time(event) if  event.content =~ /when.*next.*(level|lotd)/i
   send_level(event) if event.content =~ /what.*(level|lotd)/i
   send_episode(event) if event.content =~ /what.*(episode|eotw)/i
-  send_top_n_rankings(event) if event.content =~ /rankings/i && event.content !~ /point/
-  send_point_rankings(event) if event.content =~ /\brankings\b/i && event.content =~ /\bpoint\b/
+  send_top_n_rankings(event) if event.content =~ /rank/i && event.content !~ /point/
+  send_point_rankings(event) if event.content =~ /rank/i && event.content =~ /point/
+  send_points(event) if event.content =~ /points/i && event.content !~ /rank/i
   send_top_n_count(event) if event.content =~ /how many/i
   send_stats(event) if event.content =~ /stat/i
   send_spreads(event) if event.content =~ /spread/i
@@ -483,26 +530,15 @@ def respond(event)
   send_missing(event) if event.content =~ /missing/i
   send_level_name(event) if event.content =~ /\blevel name\b/i
   send_level_id(event) if event.content =~ /\blevel id\b/i
-  send_points(event) if event.content =~ /\bpoints\b/i
+  send_diff(event) if event.content =~ /diff/i
   send_help(event) if event.content =~ /\bhelp\b/i || event.content =~ /\bcommands\b/i
   identify(event) if event.content =~ /my name is/i
 rescue RuntimeError => e
   event << e
 end
 
-# TODO save all of this global stuff to the db
-# and read it back again when loading
-# then, get rid of all this watchdog thread shit,
-# and just replace it with killing the bot on ctrl-c
-# and letting all the threads die a horrible death
 $bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
 $channel = nil
-$current = {level: nil, episode: nil}
-$original_scores = {level: nil, episode: nil}
-
-$next_score_update = nil
-$next_level_update = nil
-$next_episode_update = nil
 
 $bot.mention do |event|
   respond(event)
@@ -528,5 +564,3 @@ $bot.run(true)
 
 wd = Thread.new { watchdog }
 wd.join
-
-# $threads.each { |t| t.join }
