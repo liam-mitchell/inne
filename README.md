@@ -140,10 +140,14 @@ If neither 'levels' or 'episodes' is specified, inne++ defaults to level scores.
 ### Display a list of levels you haven't high scored
 - *missing for \<username\>*
 - *missing*
+- *missing 0ths*
+- *missing episode top 10s*
 
-inne++ will send you a text file containing all levels and episodes you doesn't have high scores on.
+inne++ will send you a text file containing all levels and episodes you're below the specified rank on.
 
 If a username isn't specified, inne++ will use the one you specified earlier.
+
+If a rank isn't specified, inne++ defaults to top 20.
 
 ### Display a list of all your high scores
 - *list*
