@@ -10,7 +10,7 @@ require 'byebug'
 
 LEVEL_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?/i
 EPISODE_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]?/i
-NAME_PATTERN = /for (.*)[\.\?]?/i
+NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
 
 DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
@@ -70,7 +70,7 @@ end
 def parse_level_or_episode(msg)
   level = msg[LEVEL_PATTERN]
   episode = msg[EPISODE_PATTERN]
-  name = msg[NAME_PATTERN, 1]
+  name = msg[NAME_PATTERN, 2]
   ret = nil
 
   if level
@@ -455,7 +455,7 @@ def send_channel_next(type)
     typename = type.to_s.downcase
 
     caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
-    send_channel_screenshot(current.format_name, caption)
+    send_channel_screenshot(current.name, caption)
     $channel.send_message("Current high scores:\n```#{current.format_scores}```")
 
     send_channel_diff(last, get_saved_scores(type), since)
