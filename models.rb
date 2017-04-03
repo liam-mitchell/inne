@@ -53,6 +53,8 @@ module HighScore
         end
       end
     end
+
+    puts "downloaded scores from #{uri}"
   end
 
   def spread(n)
@@ -116,19 +118,8 @@ class Player < ActiveRecord::Base
   has_many :scores
   has_one :user
 
-  def self.parse(msg, username)
-    p = msg[/for (.*)[\.\?]?/i, 1]
-
-    if p.nil?
-      raise "I couldn't find a player with your username! Have you identified yourself (with '@inne++ my name is <N++ display name>')?" unless User.exists?(username: username)
-      User.find_by(username: username).player
-    else
-      Player.find_or_create_by(name: p)
-    end
-  end
-
-  def self.top_n_rankings(n, type, ties)
-    Player.includes(:scores).all.map { |p| [p, p.top_n_count(n, type, ties)] }
+  def self.rankings(&block)
+    Player.includes(:scores).all.map { |p| [p, yield(p)] }
       .sort_by { |a| -a[1] }
   end
 
@@ -177,6 +168,10 @@ class Player < ActiveRecord::Base
 
   def points(type = nil)
     scores_by_type(type).pluck(:rank).map { |rank| 20 - rank }.reduce(0, :+)
+  end
+
+  def total_score(type = nil)
+    scores_by_type(type).pluck(:score).reduce(0, :+)
   end
 end
 

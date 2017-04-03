@@ -15,7 +15,7 @@ NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
 DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
-HIGHSCORE_UPDATE_FREQUENCY = 30 * 60 # every 30 minutes
+HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
 LEVEL_UPDATE_FREQUENCY = CONFIG['level_update_frequency'] || 24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY = CONFIG['episode_update_frequency'] || 7 * 24 * 60 * 60 # weekly
 
@@ -67,6 +67,18 @@ def normalize_name(name)
   name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-')
 end
 
+def parse_player(msg, username)
+  p = msg[/for (.*)[\.\?]?/i, 1]
+
+  if p.nil?
+    raise "I couldn't find a player with your username! Have you identified yourself (with '@inne++ my name is <N++ display name>')?" unless User.exists?(username: username)
+    User.find_by(username: username).player
+  else
+    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless Player.exists?(name: p)
+    Player.find_by(name: p)
+  end
+end
+
 def parse_level_or_episode(msg)
   level = msg[LEVEL_PATTERN]
   episode = msg[EPISODE_PATTERN]
@@ -82,7 +94,7 @@ def parse_level_or_episode(msg)
   elsif !msg[/(episode|eotw)/].nil?
     ret = get_current(Episode)
   elsif name
-    ret = Level.find_by(longname: name)
+    ret = Level.find_by("UPPER(longname) LIKE '#{name.upcase}'")
   else
     msg = "I couldn't figure out which level or episode you wanted scores for! You need to send either a level " +
           "or episode ID that looks like SI-A-00-00 or SI-A-00, or a level name, using 'for <name>.'"
@@ -105,7 +117,7 @@ end
 
 def send_top_n_count(event)
   msg = event.content
-  player = Player.parse(msg, event.user.name)
+  player = parse_player(msg, event.user.name)
   n = parse_rank(msg, 1)
   type = parse_type(msg)
   ties = !!(msg =~ /ties/i)
@@ -117,29 +129,45 @@ def send_top_n_count(event)
   event << "#{player.name} has #{count} #{type} #{header} scores#{ties ? " with ties" : ""}."
 end
 
-def send_top_n_rankings(event)
+def send_rankings(event)
   msg = event.content
-  n = parse_rank(msg, 1)
   type = parse_type(msg)
+  n = parse_rank(msg, 1)
   ties = !!(msg =~ /ties/i)
 
-  top = Player.top_n_rankings(n, type, ties)
-        .take(20)
-        .each_with_index
-        .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{r[1]})" }
+  if event.content =~ /point/
+    rankings = Player.rankings { |p| p.points(type) }
+    header = "point rankings"
+    format = "%d"
+  elsif event.content =~ /score/
+    rankings = Player.rankings { |p| p.total_score(type) }
+    header = "score rankings"
+    format = "%.3f"
+  else
+    rankings = Player.rankings { |p| p.top_n_count(n, type, ties) }
+
+    rank = (n == 1 ? "0th" : "top #{n}")
+    ties = (ties ? "with ties " : "")
+
+    header = "#{rank} rankings #{ties}"
+    format = "%d"
+  end
+
+  type = (type || "Overall").to_s
+
+  top = rankings.take(20).each_with_index.map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{format % r[1]})" }
         .join("\n")
 
-  header = (n == 1 ? "0th" : "top #{n}")
-  type = (type || 'Overall').to_s
-  event << "#{type} #{header} rankings #{ties ? "with ties " : ""}on #{Time.now.strftime("%A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
+  event << "#{type} #{header} #{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
 end
 
-# Message keyword: 'spread'
-#
-# Optional keywords:
-#   'smallest' (assumes biggest)
-#   '[rank]' (assumes 1st, options [0-9][0-9]?(st|nd|th))
-#   'episode' (assumes level)
+def send_total_score(event)
+  player = parse_player(event.content, event.user.name)
+  type = parse_type(event.content)
+
+  event << "#{player.name}'s total #{type.to_s.downcase} score is #{player.total_score(type)}."
+end
+
 def send_spreads(event)
   msg = event.content
   n = (msg[/([0-9][0-9]?)(st|nd|th)/, 1] || 1).to_i
@@ -163,18 +191,21 @@ def send_spreads(event)
   event << "#{type} with the #{spread} spread between 0th and #{rank}:\n\t#{spreads}"
 end
 
-# Format of message:
-# '@inne++.*scores.*<<episode>|<level>>'
 def send_scores(event)
   msg = event.content
   scores = parse_level_or_episode(msg)
   scores.download_scores
 
-  event << "Current high scores for #{scores.format_name}:\n```#{scores.format_scores}```"
+  # Send immediately here - using << delays sending until after the event has been processed,
+  # and we want to download the scores for the episode in the background after sending since it
+  # takes a few seconds
+  event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores}```")
+
+  if scores.is_a?(Episode)
+    Level.where("UPPER(name) LIKE '#{scores.name.upcase}%'").each(&:download_scores)
+  end
 end
 
-# Format of message:
-# '@inne++.*screenshot.*<level>'
 def send_screenshot(event)
   msg = event.content
   scores = parse_level_or_episode(msg)
@@ -189,13 +220,9 @@ def send_screenshot(event)
   end
 end
 
-# Format of message:
-# '@inne++.*stat(s|istics).*for <username>[.?]'
 def send_stats(event)
-  player = Player.parse(event.content, event.user.name)
+  player = parse_player(event.content, event.user.name)
   counts = player.score_counts
-
-  raise "#{player.name} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.scores.empty?
 
   histdata = counts[:levels].zip(counts[:episodes])
              .each_with_index
@@ -223,7 +250,7 @@ def send_stats(event)
 end
 
 def send_list(event)
-  player = Player.parse(event.content, event.user.name)
+  player = parse_player(event.content, event.user.name)
   all = player.scores_by_rank
 
   tmpfile = "scores-#{player.name.delete(":")}.txt"
@@ -244,7 +271,7 @@ end
 
 def send_missing(event)
   msg = event.content
-  player = Player.parse(msg, event.user.name)
+  player = parse_player(msg, event.user.name)
   type = parse_type(msg)
   rank = parse_rank(msg, 20)
   ties = !!(msg =~ /ties/i)
@@ -262,7 +289,7 @@ end
 
 def send_suggestions(event)
   msg = event.content
-  player = Player.parse(msg, event.user.name)
+  player = parse_player(msg, event.user.name)
 
   type = ((msg[/level/] || !msg[/episode/]) ? Level : Episode)
   n = (msg[/\b[0-9][0-9]?\b/] || 10).to_i
@@ -281,37 +308,24 @@ def send_suggestions(event)
 end
 
 def send_level_id(event)
-  level = parse_level_or_episode(event.content)
+  level = parse_level_or_episode(event.content.gsub(/level/, ""))
   event << "#{level.longname} is level #{level.name}."
 end
 
 def send_level_name(event)
-  level = parse_level_or_episode(event.content)
+  level = parse_level_or_episode(event.content.gsub(/level/, ""))
   raise "Episodes don't have a name!" if level.is_a?(Episode)
   event << "#{level.name} is called #{level.longname}."
 end
 
 def send_points(event)
   msg = event.content
-  player = Player.parse(msg, event.user.name)
+  player = parse_player(msg, event.user.name)
   type = parse_type(msg)
   points = player.points(type)
 
   type = (type || 'overall').to_s.downcase
   event << "#{player.name} has #{points} #{type} points."
-end
-
-def send_point_rankings(event)
-  type = parse_type(event.content)
-
-  top = Player.all.sort_by { |p| -p.points(type) }
-        .take(20)
-        .each_with_index
-        .map{ |p, i| "#{HighScore.format_rank(i)}: #{p.name} (#{p.points(type)})" }
-        .join("\n")
-
-  type = (type || 'Overall').to_s
-  event << "#{type} point rankings on #{Time.now.strftime("%A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
 end
 
 def send_diff(event)
@@ -329,10 +343,7 @@ def identify(event)
   user = event.user.name
   nick = msg[/my name is (.*)[\.]?$/i, 1]
 
-  if nick.nil?
-    event << "I couldn't figure out who you were! You have to send a message in the form 'my name is <username>.'"
-    return
-  end
+  raise "I couldn't figure out who you were! You have to send a message in the form 'my name is <username>.'" if nick.nil?
 
   player = Player.find_or_create_by(name: nick)
   user = User.create(username: user)
@@ -393,7 +404,7 @@ end
 
 def dump(event)
   log("current level/episode: #{get_current(Level).format_name}, #{get_current(Episode).format_name}") unless get_current(Level).nil?
-  log("next updates: scores #{$next_score_update}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}")
+  log("next updates: scores #{get_next_update('score')}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}")
 
   event << "I dumped some things to the log for you to look at."
 end
@@ -407,8 +418,10 @@ def download_high_scores
     Level.all.each(&:download_scores)
     Episode.all.each(&:download_scores)
 
-    $next_score_update += HIGHSCORE_UPDATE_FREQUENCY
-    delay = $next_score_update - Time.now
+    next_score_update = get_next_update('score')
+    next_score_update += HIGHSCORE_UPDATE_FREQUENCY
+    delay = next_score_update - Time.now
+    set_next_update('score', next_score_update)
 
     log("updated scores, next score update in #{delay} seconds")
     sleep(delay) unless delay < 0
@@ -490,13 +503,12 @@ rescue RuntimeError => e
 end
 
 def startup
-  $next_score_update = Time.now
   ActiveRecord::Base.establish_connection(CONFIG)
 
   log("initialized")
   log("next level update at #{get_next_update(Level).to_s}")
   log("next episode update at #{get_next_update(Episode).to_s}")
-  log("next score update at #{$next_score_update}")
+  log("next score update at #{get_next_update('score')}")
 end
 
 def shutdown
@@ -517,8 +529,7 @@ def respond(event)
   send_level_time(event) if  event.content =~ /when.*next.*(level|lotd)/i
   send_level(event) if event.content =~ /what.*(level|lotd)/i
   send_episode(event) if event.content =~ /what.*(episode|eotw)/i
-  send_top_n_rankings(event) if event.content =~ /rank/i && event.content !~ /point/
-  send_point_rankings(event) if event.content =~ /rank/i && event.content =~ /point/
+  send_rankings(event) if event.content =~ /rank/i
   send_points(event) if event.content =~ /points/i && event.content !~ /rank/i
   send_top_n_count(event) if event.content =~ /how many/i
   send_stats(event) if event.content =~ /stat/i
@@ -556,7 +567,7 @@ startup
 trap("INT") { $kill_threads = true }
 
 $threads = [
-  Thread.new { start_level_of_the_day },
+  # Thread.new { start_level_of_the_day },
   Thread.new { download_high_scores },
 ]
 
