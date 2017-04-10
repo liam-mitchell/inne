@@ -13,3 +13,10 @@ production:
   host: localhost
   token: Mjg5MTQxNzc2MjA2MjY2MzY5.C6IDyQ.1B1a2x_k7CF4UfaGWvhbGFVqdqM
   client_id: 289141776206266369
+
+test:
+  adapter: sqlite3
+  database: inne-test.db
+  host: localhost
+  level_update_frequency: 1
+  episode_update_frequency: 5

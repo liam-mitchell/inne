@@ -37,6 +37,20 @@ def all_episodes
   end
 end
 
+def get_names(file, starting_id)
+  names = {}
+  if File.exist?(file)
+    File.open(file).read.each_line.each_with_index do |l, i|
+      l = l.delete("\n")
+
+      if !l.empty?
+        names[i + starting_id] = {longname: l}
+      end
+    end
+  end
+  names
+end
+
 episodes = all_episodes
 levels = all_levels(episodes)
 
@@ -49,4 +63,26 @@ ActiveRecord::Base.transaction do
     Episode.where(name: completed['episodes']).update_all(completed: true)
     Level.where(name: completed['levels']).update_all(completed: true)
   end
+
+  names = get_names('names-SI.txt', 0).merge(get_names('names-S.txt', 600)).merge(get_names('names-SL.txt', 1200))
+  Level.update(names.keys, names.values)
+
+
+  now = Time.now
+  next_level_update = DateTime.new(now.year, now.month, now.day + 1, 0, 0, 0, now.zone)
+  next_episode_update = next_level_update
+
+  while !next_episode_update.saturday?
+    next_episode_update = next_episode_update + 1
+  end
+
+  next_level_update = next_level_update.to_time
+  next_episode_update = next_episode_update.to_time
+
+  GlobalProperty.create(key: 'current_level', value: 'SL-C-10-00')
+  GlobalProperty.create(key: 'current_episode', value: 'SL-C-00')
+  GlobalProperty.create(key: 'next_level_update', value: next_level_update.to_s)
+  GlobalProperty.create(key: 'next_episode_update', value: next_episode_update.to_s)
+  GlobalProperty.create(key: 'saved_level_scores', value: Level.find_by(name: 'SL-C-10-00').scores.to_json(include: {player: {only: :name}}))
+  GlobalProperty.create(key: 'saved_episode_scores', value: Episode.find_by(name: 'SL-C-00').scores.to_json(include: {player: {only: :name}}))
 end

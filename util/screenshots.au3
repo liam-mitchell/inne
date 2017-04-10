@@ -21,6 +21,7 @@ Func Screenshots($prefix, $rows, $columns)
 		 $rowname = "X"
 	  EndIf
 
+	  If $row == 5 Then
 	  For $col = 0 To $columns - 1
  		 $colname = "00"
 		 If $col < 10 Then
@@ -61,12 +62,14 @@ Func Screenshots($prefix, $rows, $columns)
 		 EndIf
 	  Next
 
-	  Send("{DOWN}")
-
 	  For $col = 0 To $columns - 2
 		 Sleep(50)
 		 Send("{LEFT}")
 	  Next
+
+	  EndIf
+	  Send("{DOWN}")
+	  Sleep(100)
    Next
 EndFunc
 
@@ -120,93 +123,6 @@ Func EpisodeScreenshots($prefix, $rows, $columns)
    Next
 EndFunc
 
-Func LevelNameScreenshots($prefix, $rows, $columns)
-   $window = WinGetHandle("NPP")
-   $left = 50
-   $top = 750
-   $right = 1000
-   $bottom = 850
-
-   Send("{SPACE}");
-   Sleep(1000);
-
-   For $col = 0 To $columns - 1
-	  $colname = "00"
-	  If $col < 10 Then
-		$colname = "0" & $col
-	  Else
-		$colname = "" & $col
-	  EndIf
-
-	  For $row = 0 To 4
-		 $rowname = "A"
-		 If $row == 1 Then
-			$rowname = "B"
-		 ElseIf $row == 2 Then
-			$rowname = "C"
-		 ElseIf $row == 3 Then
-			$rowname = "D"
-		 ElseIf $row == 4 Then
-			$rowname = "E"
-		 EndIf
-
-		 For $level = 0 to 4
-			$levelname = "0" & $level
-			$filename = "C:\Users\Liam\workspace\inne++\screenshots\names\" & $prefix & "-" & $rowname & "-" & $colname & "-" & $levelname & ".jpg"
-			_ScreenCapture_CaptureWnd($filename, $window, $left, $top, $right, $bottom, False)
-
-			If $level < 4 Then
-			   Send("{RIGHT}");
-			   Sleep(500);
-			EndIf
-		 Next
-
-		 Send("{DOWN}");
-
-		 For $i = 0 to 4
-			Sleep(50);
-			Send("{LEFT}");
-		 Next
-
-		 Sleep(500);
-	  Next
-   Next
-
-   If $rows == 6 Then
-	  For $col = 0 To $columns - 1
-		 $rowname = "X"
-		 $colname = "00"
-		 If $col < 10 Then
-			$colname = "0" & $col
-		 Else
-			$colname = "" & $col
-		 EndIf
-
-		 For $level = 0 to 4
-			$levelname = "0" & $level
-			$filename = "C:\Users\Liam\workspace\inne++\screenshots\names\" & $prefix & "-" & $rowname & "-" & $colname & ".jpg"
-			_ScreenCapture_CaptureWnd($filename, $window, $left, $top, $right, $bottom, False)
-
-			If $level < 4 Then
-			   Send("{RIGHT}");
-			   Sleep(500);
-			EndIf
-		 Next
-
-		 Send("{DOWN}");
-
-		 For $i = 0 to 4
-			Sleep(50);
-			Send("{LEFT}");
-		 Next
-
-		 Sleep(500);
-	  Next
-   EndIf
-
-   Send("{ESCAPE}");
-EndFunc
-
 WinWaitActive("NPP")
 Send("{ENTER}")
 Sleep(1)
@@ -219,10 +135,9 @@ Sleep(1)
 ;Sleep(500)
 ;Send("{PGDN}")
 
-Sleep(500)
-LevelNameScreenshots("S", 6, 20)
+;Sleep(500)
+;LevelNameScreenshots("S", 6, 20)
 
 Sleep(500)
 Send("{PGDN}")
-Sleep(500)
-LevelNameScreenshots("SL", 6, 20)
+Screenshots("SL", 6, 20)

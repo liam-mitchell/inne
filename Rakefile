@@ -37,4 +37,9 @@ namespace :db do
     require_relative 'Models.rb'
     require_relative 'db/seeds.rb'
   end
+
+  task :test => :configure_connection do
+    require 'test/unit'
+    require_relative 'test/test_models.rb'
+  end
 end
