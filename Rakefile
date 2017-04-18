@@ -40,6 +40,13 @@ namespace :db do
 
   task :test => :configure_connection do
     require 'test/unit'
+    require 'mocha/test_unit'
+    require 'support/factory_girl'
+
+    class Test::Unit::TestCase
+      include FactoryGirl::Syntax::Methods
+    end
+
     require_relative 'test/test_models.rb'
   end
 end

@@ -29,17 +29,14 @@ module HighScore
     URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=76561197992013087&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
   end
 
-  def download_scores
+  def get_scores
     response = Net::HTTP.get(uri)
+    return nil if response == '-1337'
+    return JSON.parse(response)['scores']
+  end
 
-    if response == '-1337'
-      # TODO make this use err()
-      STDERR.puts "[ERROR] [#{Time.now}] failed to retrieve scores from #{uri}"
-      return
-    end
-
-    updated = JSON.parse(response)['scores']
-      .select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }
+  def update_scores(updated)
+    updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }
 
     $lock.synchronize do
       ActiveRecord::Base.transaction do
@@ -53,6 +50,18 @@ module HighScore
         end
       end
     end
+  end
+
+  def download_scores
+    updated = get_scores
+
+    if updated.nil?
+      # TODO make this use err()
+      STDERR.puts "[ERROR] [#{Time.now}] failed to retrieve scores from #{uri}"
+      return
+    end
+
+    update_scores(updated)
 
     puts "downloaded scores from #{uri}"
   end
@@ -65,21 +74,25 @@ module HighScore
     scores.map(&:format).join("\n")
   end
 
-  def format_difference(old)
+  def difference(old)
     scores.map do |score|
-      oldscore = old.find { |orig| orig["player"]["name"] == score.player.name }
-      diff = "new"
+      oldscore = old.find { |o| o['player']['name'] == score.player.name }
+      change = nil
 
       if oldscore
-        change = oldscore["rank"] - score.rank
-        change = "#{"++-"[change <=> 0]}#{change.abs}"
-        scorechange = score.score - oldscore["score"]
-        scorechange = "#{"++-"[scorechange <=> 0]}#{"%.3f" % [scorechange.abs]}"
-        diff = "#{change}, #{scorechange}"
+        change = {rank: oldscore['rank'] - score.rank, score: score.score - oldscore['score']}
       end
 
-      "#{score.format} (#{diff})"
-    end.join("\n")
+      {score: score, change: change}
+    end
+  end
+
+  def format_difference(old)
+    difference(old).map { |o|
+      c = o[:change]
+      diff = "#{"++-"[c[:rank] <=> 0]}#{c[:rank].abs}, +#{".3f" % [o[:score]]}"
+      "#{s[:score].format} (#{s[:diff]})"
+    }
   end
 end
 
