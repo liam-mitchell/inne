@@ -1,4 +1,6 @@
 require 'active_record'
+require 'database_cleaner'
+require 'factory_girl'
 require 'yaml'
 
 require_relative 'models.rb'
@@ -40,13 +42,23 @@ namespace :db do
 
   task :test => :configure_connection do
     require 'test/unit'
+    require 'test/unit/ui/console/testrunner'
     require 'mocha/test_unit'
-    require 'support/factory_girl'
 
     class Test::Unit::TestCase
       include FactoryGirl::Syntax::Methods
     end
 
+    FactoryGirl.find_definitions
+
     require_relative 'test/test_models.rb'
+
+    DatabaseCleaner.strategy = :transaction
+
+    [TestScores, TestRankings].each do |suite|
+      DatabaseCleaner.cleaning do
+        Test::Unit::UI::Console::TestRunner.run(suite)
+      end
+    end
   end
 end

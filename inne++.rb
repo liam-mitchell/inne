@@ -480,6 +480,8 @@ end
 
 def start_level_of_the_day
   log("starting level of the day...")
+  ActiveRecord::Base.establish_connection(CONFIG)
+
   while true
     next_level_update = get_next_update(Level)
     sleep(next_level_update - Time.now) unless next_level_update - Time.now < 0
