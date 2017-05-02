@@ -1,6 +1,10 @@
 require 'ascii_charts'
 require_relative 'models.rb'
 
+LEVEL_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9]?/i
+EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
+NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
+
 # TODO do all this parsing here
 # it doesn't make sense to do it in models
 # and throw exceptions in all of them consistently
@@ -50,40 +54,58 @@ def parse_level_or_episode(msg)
   ret
 end
 
-def parse_rank(msg, dflt)
-  ((msg[/top\s*([0-9][0-9]?)/i, 1]) || dflt).to_i
+def parse_rank(msg)
+  rank = msg[/top\s*([0-9][0-9]?)/i, 1]
+  rank ? rank.to_i : nil
+end
+
+def parse_tab(msg)
+  ret = []
+
+  ret << 'SI' if msg =~ /\b(intro|SI|I)\b/i
+  ret << 'S' if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
+  ret << 'SU' if msg =~ /\b(SU|UE|U|ultimate)\b/i
+  ret << 'SL' if msg =~ /\b(legacy|SL|L)\b/i
+  ret << '!' if msg =~ /(\b|\A|\s)(ultimate secret|!)(\b|\Z|\s)/i
+  ret << '?' if msg =~ /(\b|\A|\s)(secret|\?)(\b|\Z|\s)/i
+
+  ret
 end
 
 def send_top_n_count(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-  n = parse_rank(msg, 1)
+  n = parse_rank(msg) || 1
   type = parse_type(msg)
+  tab = parse_tab(msg)
   ties = !!(msg =~ /ties/i)
 
-  count = player.top_n_count(n, type, ties)
+  count = player.top_n_count(n, type, tab, ties)
 
   header = (n == 1 ? "0th" : "top #{n}")
   type = (type || 'overall').to_s.downcase
-  event << "#{player.name} has #{count} #{type} #{header} scores#{ties ? " with ties" : ""}."
+  tab = tab.to_sentence + (tab.empty? ? "" : " ")
+
+  event << "#{player.name} has #{count} #{type} #{header} #{tab}scores#{ties ? " with ties" : ""}."
 end
 
 def send_rankings(event)
   msg = event.content
   type = parse_type(msg)
-  n = parse_rank(msg, 1)
+  tab = parse_tab(msg)
+  n = parse_rank(msg) || 1
   ties = !!(msg =~ /ties/i)
 
   if msg =~ /point/
-    rankings = Player.rankings { |p| p.points(type) }
-    header = "point rankings"
+    rankings = Player.rankings { |p| p.points(type, tab) }
+    header = "point rankings "
     format = "%d"
   elsif msg =~ /score/
-    rankings = Player.rankings { |p| p.total_score(type) }
-    header = "score rankings"
+    rankings = Player.rankings { |p| p.total_score(type, tab) }
+    header = "score rankings "
     format = "%.3f"
   else
-    rankings = Player.rankings { |p| p.top_n_count(n, type, ties) }
+    rankings = Player.rankings { |p| p.top_n_count(n, type, tab, ties) }
 
     rank = (n == 1 ? "0th" : "top #{n}")
     ties = (ties ? "with ties " : "")
@@ -93,24 +115,32 @@ def send_rankings(event)
   end
 
   type = (type || "Overall").to_s
+  tab = tab.to_sentence + (tab.empty? ? "" : " ")
 
   top = rankings.take(20).each_with_index.map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{format % r[1]})" }
         .join("\n")
 
-  event << "#{type} #{header} #{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
+  event << "#{type} #{tab}#{header}#{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
 end
 
 def send_total_score(event)
   player = parse_player(event.content, event.user.name)
   type = parse_type(event.content)
+  tab = parse_tab(event.content)
 
-  event << "#{player.name}'s total #{type.to_s.downcase} score is #{player.total_score(type)}."
+  score = player.total_score(type, tab)
+
+  type = (type || 'overall').to_s.downcase
+  tab = tab.to_sentence + (tab.empty? ? "" : " ")
+
+  event << "#{player.name}'s total #{tab}#{type.to_s.downcase} score is #{score}."
 end
 
 def send_spreads(event)
   msg = event.content
   n = (msg[/([0-9][0-9]?)(st|nd|th)/, 1] || 1).to_i
-  episode = !!(msg =~ /episode/)
+  type = parse_type(msg) || Level
+  tab = parse_tab(msg)
   smallest = !!(msg =~ /smallest/)
 
   if n == 0
@@ -118,8 +148,7 @@ def send_spreads(event)
     return
   end
 
-  type = episode ? Episode : Level
-  spreads = HighScore.spreads(n, type)
+  spreads = HighScore.spreads(n, type, tab)
             .sort_by { |level, spread| (smallest ? spread : -spread) }
             .take(20)
             .map { |s| "#{s[0]} (#{"%.3f" % [s[1]]})"}
@@ -127,7 +156,11 @@ def send_spreads(event)
 
   spread = smallest ? "smallest" : "largest"
   rank = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
-  event << "#{type}s with the #{spread} spread between 0th and #{rank}:\n\t#{spreads}"
+  tab = tab.to_sentence + (tab.empty? ? "" : " ")
+  type = type.to_s
+  type = tab.empty? ? tab : type.downcase
+
+  event << "#{tab}#{type}s with the #{spread} spread between 0th and #{rank}:\n\t#{spreads}"
 end
 
 def send_scores(event)
@@ -160,8 +193,10 @@ def send_screenshot(event)
 end
 
 def send_stats(event)
-  player = parse_player(event.content, event.user.name)
-  counts = player.score_counts
+  msg = event.content
+  player = parse_player(msg, event.user.name)
+  tab = parse_tab(msg)
+  counts = player.score_counts(tab)
 
   histdata = counts[:levels].zip(counts[:episodes])
              .each_with_index
@@ -184,15 +219,20 @@ def send_stats(event)
             .map { |a| [a[0] + a[1], a[0], a[1]] }
             .reduce([0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
 
-  event << "Player high score counts for #{player.name}:\n```\t    Overall:\tLevel:\tEpisode:\n\t#{totals}\n#{overall}"
+  tab = tab.empty? ? " in the #{tab.to_sentence} #{tab.length == 1 ? 'tab' : 'tabs'}" : ''
+
+  event << "Player high score counts for #{player.name}#{tab}:\n```\t    Overall:\tLevel:\tEpisode:\n\t#{totals}\n#{overall}"
   event << "#{histogram}```"
 end
 
 def send_list(event)
-  player = parse_player(event.content, event.user.name)
-  all = player.scores_by_rank
+  msg = event.content
+  player = parse_player(msg, event.user.name)
+  type = parse_type(msg)
+  tab = parse_tab(msg)
+  all = player.scores_by_rank(type, tab)
 
-  tmpfile = "scores-#{player.name.delete(":")}.txt"
+  tmpfile = File.join(Dir.tmpdir, "scores-#{player.name.delete(":")}.txt")
   File::open(tmpfile, "w") do |f|
     all.each_with_index do |scores, i|
       list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
@@ -204,45 +244,44 @@ def send_list(event)
   end
 
   event.attach_file(File::open(tmpfile))
-  # TODO we can't delete this right here...
-  # File::delete(tmpfile)
 end
 
 def send_missing(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
   type = parse_type(msg)
-  rank = parse_rank(msg, 20)
+  tab = parse_tab(msg)
+  rank = parse_rank(msg) || 20
   ties = !!(msg =~ /ties/i)
 
-  missing = player.missing_top_ns(rank, type, ties).join("\n")
+  missing = player.missing_top_ns(rank, type, tab, ties).join("\n")
 
-  tmpfile = "missing-#{player.name.delete(":")}.txt"
+  tmpfile = File.join(Dir.tmpdir, "missing-#{player.name.delete(":")}.txt")
   File::open(tmpfile, "w") do |f|
     f.write(missing)
   end
 
   event.attach_file(File::open(tmpfile))
-  # TODO deleting again lol
 end
 
 def send_suggestions(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-
-  type = ((msg[/level/] || !msg[/episode/]) ? Level : Episode)
+  type = parse_type(msg) || Level
+  tab = parse_tab(msg)
   n = (msg[/\b[0-9][0-9]?\b/] || 10).to_i
 
-  improvable = player.improvable_scores(type)
+  improvable = player.improvable_scores(type, tab)
                .sort_by { |level, gap| -gap }
                .take(n)
                .map { |level, gap| "#{level} (-#{"%.3f" % [gap]})" }
                .join("\n")
 
-  missing = player.missing_top_ns(20, type, false).sample(n).join("\n")
+  missing = player.missing_top_ns(20, type, tab, false).sample(n).join("\n")
   type = type.to_s.downcase
+  tab = tab.empty? ? " in the #{tab.to_sentence} #{tab.length == 1 ? 'tab' : 'tabs'}" : ''
 
-  event << "Your #{n} most improvable #{type}s are:\n```#{improvable}```"
+  event << "Your #{n} most improvable #{type}s#{tab} are:\n```#{improvable}```"
   event << "You're not on the board for:\n```#{missing}```"
 end
 
@@ -261,10 +300,12 @@ def send_points(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
   type = parse_type(msg)
-  points = player.points(type)
+  tab = parse_tab(msg)
+  points = player.points(type, tab)
 
   type = (type || 'overall').to_s.downcase
-  event << "#{player.name} has #{points} #{type} points."
+  tab = tab.to_sentence + (tab.empty? ? "" : " ")
+  event << "#{player.name} has #{points} #{type} #{tab}points."
 end
 
 def send_diff(event)
@@ -350,27 +391,29 @@ end
 
 # TODO set level of the day on startup
 def respond(event)
-  hello(event) if event.content =~ /\bhello\b/i || event.content =~ /\bhi\b/i
-  dump(event) if event.content =~ /dump/i
-  send_episode_time(event) if event.content =~ /when.*next.*(episode|eotw)/i
-  send_level_time(event) if  event.content =~ /when.*next.*(level|lotd)/i
-  send_level(event) if event.content =~ /what.*(level|lotd)/i
-  send_episode(event) if event.content =~ /what.*(episode|eotw)/i
-  send_rankings(event) if event.content =~ /rank/i
-  send_points(event) if event.content =~ /points/i && event.content !~ /rank/i
-  send_top_n_count(event) if event.content =~ /how many/i
-  send_stats(event) if event.content =~ /stat/i
-  send_spreads(event) if event.content =~ /spread/i
-  send_screenshot(event) if event.content =~ /screenshot/i
-  send_scores(event) if event.content =~ /scores/i
-  send_suggestions(event) if event.content =~ /worst/i
-  send_list(event) if event.content =~ /list/i
-  send_missing(event) if event.content =~ /missing/i
-  send_level_name(event) if event.content =~ /\blevel name\b/i
-  send_level_id(event) if event.content =~ /\blevel id\b/i
-  send_diff(event) if event.content =~ /diff/i
-  send_help(event) if event.content =~ /\bhelp\b/i || event.content =~ /\bcommands\b/i
-  identify(event) if event.content =~ /my name is/i
+  msg = event.content
+
+  hello(event) if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
+  dump(event) if msg =~ /dump/i
+  send_episode_time(event) if msg =~ /when.*next.*(episode|eotw)/i
+  send_level_time(event) if  msg =~ /when.*next.*(level|lotd)/i
+  send_level(event) if msg =~ /what.*(level|lotd)/i
+  send_episode(event) if msg =~ /what.*(episode|eotw)/i
+  send_rankings(event) if msg =~ /rank/i
+  send_points(event) if msg =~ /points/i && msg !~ /rank/i
+  send_top_n_count(event) if msg =~ /how many/i
+  send_stats(event) if msg =~ /stat/i
+  send_spreads(event) if msg =~ /spread/i
+  send_screenshot(event) if msg =~ /screenshot/i
+  send_scores(event) if msg =~ /scores/i
+  send_suggestions(event) if msg =~ /worst/i
+  send_list(event) if msg =~ /list/i
+  send_missing(event) if msg =~ /missing/i
+  send_level_name(event) if msg =~ /\blevel name\b/i
+  send_level_id(event) if msg =~ /\blevel id\b/i
+  send_diff(event) if msg =~ /diff/i
+  send_help(event) if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
+  identify(event) if msg =~ /my name is/i
 rescue RuntimeError => e
   event << e
 end

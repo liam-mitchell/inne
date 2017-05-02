@@ -28,7 +28,9 @@ def all_episodes
   intro = ["SI"].product(["A", "B", "C", "D", "E"])
           .product((0..4).to_a)
 
-  main = ["S", "SL"].product(["A", "B", "C", "D", "E", "X"])
+  # TODO FIX THIS
+  # but we never seed shit so whatevs
+  main = ["S", "SL", "SU"].product(["A", "B", "C", "D", "E", "X"])
          .product((0..19).to_a)
 
   (intro + main).map(&:flatten).map do |prefix, row, column|

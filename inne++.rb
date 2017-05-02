@@ -9,10 +9,6 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-LEVEL_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?/i
-EPISODE_PATTERN = /S[IL]?-[ABCDEX]-[0-9][0-9]?/i
-NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
-
 DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
@@ -36,6 +32,7 @@ def set_current(type, curr)
   GlobalProperty.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
 end
 
+# TODO make this not do secrets
 def get_next(type)
   ret = type.where(completed: nil).sample
   ret.update(completed: true)
@@ -197,7 +194,7 @@ trap("INT") { $kill_threads = true }
 
 $threads = [
   # Thread.new { start_level_of_the_day },
-  # Thread.new { download_high_scores },
+  Thread.new { download_high_scores },
 ]
 
 $bot.run(true)

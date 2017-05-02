@@ -62,8 +62,6 @@ module HighScore
     end
 
     update_scores(updated)
-
-    puts "downloaded scores from #{uri}"
   end
 
   def spread(n)
@@ -117,6 +115,8 @@ end
 class Score < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
+  belongs_to :level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: 'highscoreable_id'
+  belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
 
   def spread
     highscoreable.scores.find_by(rank: 0).score - score
@@ -136,60 +136,57 @@ class Player < ActiveRecord::Base
       .sort_by { |a| -a[1] }
   end
 
-  def scores_by_type(type)
-  # def scores_by_type_and_tab(type, tab)
-    # ret = type ? scores.where(highscoreable_type: type.to_s) : scores
-    # ret = tab ? ret.includes(:highscoreable).where("highscoreable.name like ?", "#{tab}%") : ret
-    # ret
-    type ? scores.where(highscoreable_type: type.to_s) : scores
+  def scores_by_type_and_tabs(type, tabs)
+    ret = type ? scores.where(highscoreable_type: type.to_s) : scores
+    ret = tabs.empty? ? ret : ret.includes(:level).where(levels: {tab: tabs}) + ret.includes(:episode).where(episodes: {tab: tabs})
+    ret
   end
 
-  def top_ns(n, type, tab, ties)
-    scores_by_type(type).all.select do |s|
-    # scores_by_type_and_tab(type, tab).all.select do |s|
+  def top_ns(n, type, tabs, ties)
+    scores_by_type_and_tabs(type, tabs).select do |s|
       (ties ? s.tied_rank : s.rank) < n
     end
   end
 
-  def top_n_count(n, type, ties)
-    top_ns(n, type, ties).count
+  def top_n_count(n, type, tabs, ties)
+    top_ns(n, type, tabs, ties).count
   end
 
-  def scores_by_rank(type = nil)
+  def scores_by_rank(type, tabs)
     ret = Array.new(20, [])
-    scores_by_type(type).group_by(&:rank).sort_by(&:first).each { |rank, scores| ret[rank] = scores }
+    scores_by_type_and_tabs(type, tabs).group_by(&:rank).sort_by(&:first).each { |rank, scores| ret[rank] = scores }
     ret
   end
 
-  def score_counts
+  def score_counts(tabs)
     {
-      levels: scores_by_rank(Level).map(&:length).map(&:to_i),
-      episodes: scores_by_rank(Episode).map(&:length).map(&:to_i)
+      levels: scores_by_rank(Level, tabs).map(&:length).map(&:to_i),
+      episodes: scores_by_rank(Episode, tabs).map(&:length).map(&:to_i)
     }
   end
 
-  def missing_top_ns(n, type, ties)
-    levels = top_ns(n, type, ties).map { |s| s.highscoreable.name }
+  def missing_top_ns(n, type, tabs, ties)
+    levels = top_ns(n, type, tabs, ties).map { |s| s.highscoreable.name }
 
     if type
-      type.where.not(name: levels).pluck(:name)
+      type.where(tab: tabs).where.not(name: levels).pluck(:name)
     else
-      Level.where.not(name: levels).pluck(:name) + Episode.where.not(name: levels).pluck(:name)
+      Level.where(tab: tabs).where.not(name: levels).pluck(:name) + Episode.where(tab: tabs).where.not(name: levels).pluck(:name)
     end
   end
 
-  def improvable_scores(type = nil)
+  def improvable_scores(type, tabs)
     improvable = {}
-    scores_by_type(type).each { |s| improvable[s.highscoreable.name] = s.spread }
+    scores_by_type_and_tabs(type, tabs).each { |s| improvable[s.highscoreable.name] = s.spread }
     improvable
   end
 
-  def points(type = nil)
-    scores_by_type(type).pluck(:rank).map { |rank| 20 - rank }.reduce(0, :+)
+  def points(type, tabs)
+    scores_by_type_and_tabs(type, tabs).pluck(:rank).map { |rank| 20 - rank }.reduce(0, :+)
   end
 
-  def total_score(type = nil)
-    scores_by_type(type).pluck(:score).reduce(0, :+)
+  def total_score(type, tabs)
+    scores_by_type_and_tabs(type, tabs).pluck(:score).reduce(0, :+)
   end
 end
 

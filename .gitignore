@@ -4,6 +4,8 @@
 *.log
 \.byebug_history
 *.db
+\#*
+\.\#*
 missing*
 scores*
 missing*.txt
