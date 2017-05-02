@@ -1,4 +1,4 @@
-class AddCompletedToLevelsAndEpisodes < ActiveRecord::Migration
+class AddCompletedToLevelsAndEpisodes < ActiveRecord::Migration[5.1]
   def change
     change_table :episodes do |t|
       t.boolean :completed

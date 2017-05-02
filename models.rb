@@ -137,11 +137,16 @@ class Player < ActiveRecord::Base
   end
 
   def scores_by_type(type)
+  # def scores_by_type_and_tab(type, tab)
+    # ret = type ? scores.where(highscoreable_type: type.to_s) : scores
+    # ret = tab ? ret.includes(:highscoreable).where("highscoreable.name like ?", "#{tab}%") : ret
+    # ret
     type ? scores.where(highscoreable_type: type.to_s) : scores
   end
 
-  def top_ns(n, type, ties)
+  def top_ns(n, type, tab, ties)
     scores_by_type(type).all.select do |s|
+    # scores_by_type_and_tab(type, tab).all.select do |s|
       (ties ? s.tied_rank : s.rank) < n
     end
   end

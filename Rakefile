@@ -4,6 +4,7 @@ require 'factory_girl'
 require 'yaml'
 
 require_relative 'models.rb'
+require_relative 'messages.rb'
 
 namespace :db do
   task :environment do
@@ -52,13 +53,12 @@ namespace :db do
     FactoryGirl.find_definitions
 
     require_relative 'test/test_models.rb'
+    require_relative 'test/test_messages.rb'
 
     DatabaseCleaner.strategy = :transaction
 
-    [TestScores, TestRankings].each do |suite|
-      DatabaseCleaner.cleaning do
-        Test::Unit::UI::Console::TestRunner.run(suite)
-      end
+    [TestScores, TestRankings, TestMessages].each do |suite|
+      Test::Unit::UI::Console::TestRunner.run(suite)
     end
   end
 end

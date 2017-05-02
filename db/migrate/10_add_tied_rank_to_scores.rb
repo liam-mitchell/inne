@@ -1,4 +1,4 @@
-class AddTiedRankToScores < ActiveRecord::Migration
+class AddTiedRankToScores < ActiveRecord::Migration[5.1]
   def change
     change_table :scores do |t|
       t.integer :tied_rank, index: true

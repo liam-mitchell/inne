@@ -1,4 +1,4 @@
-class AddScoresToPlayers < ActiveRecord::Migration
+class AddScoresToPlayers < ActiveRecord::Migration[5.1]
   def change
     change_table :scores do |t|
       t.references :player, index: true

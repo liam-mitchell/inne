@@ -1,4 +1,4 @@
-class CreateNextScoreUpdate < ActiveRecord::Migration
+class CreateNextScoreUpdate < ActiveRecord::Migration[5.1]
   def change
     # this is pretty greasy
     now = Time.now

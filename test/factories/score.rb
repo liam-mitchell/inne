@@ -1,21 +1,11 @@
 FactoryGirl.define do
   factory :score do
-    # transient do
-    #   r nil
-    #   s nil
-    #   u nil
-    # end
-
-    # sequence(:rank) { |n| n % 20 }
-    # sequence(:player) do |n|
-    #   players = ['xela', 'jp27ace', 'High Priest o the Righteous Feed', 'golfkid', 'TOAST BUSTERS', 'Muzgrob', 'Maaz :D', 'overlordlork', 'Squadxzo', 'EddyMataGallos', 'Borlin', 'Jirka', 'natesly', 'Personman', 'Squidclaw', 'ibcamwhobu', 'muratcantonta', 'Mole', 'natesly']
-    #   players[n % 20]
-    # end
-
     association :highscoreable, factory: :level
+    association :player, factory: :player
+
     rank 0
+    tied_rank { rank }
     score 90.000
-    player
 
     factory :xela do
       player { create(:player, name: 'xela') }
