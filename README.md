@@ -9,22 +9,20 @@ All commands can be sent to inne++ either via PM or in a public channel by menti
 Commands generally aren't case-sensitive, except for the usernames.
 
 ### Display the level of the day/episode of the week
-- *what is the level of the day?*
-- *what is the episode of the week?*
 - *what's the lotd*
 - *what's the eotw*
 
 inne++ will respond with the level of the day or the episode of the week.
 
 ### Display a screenshot of a level or episode
-- *screenshot of <level>*
+- *screenshot of \<level\>*
 
 inne++ will respond with a picture of the requested level or episode.
 
 'level' can be a level or episode ID (eg. SI-A-00, SI-A-00-00) or a level name (eg. supercomplexity).
 
 ### Display scores for a level or episode
-- *scores for <level>*
+- *scores for \<level\>*
 
 inne++ will respond with the high scores table for the given level or episode.
 
@@ -33,9 +31,7 @@ inne++ will respond with the high scores table for the given level or episode.
 This will also force inne++ to update the scores with the latest results from N++ (rather than waiting for the default half-hour between updates).
 
 ### Display time until a new episode or level
-- *when's the next level*
 - *when's the next lotd*
-- *when's the next episode*
 - *when's the next eotw*
 
 inne++ will respond with a rough estimate of how long until a new level or episode is posted.
@@ -46,63 +42,28 @@ inne++ will respond with a rough estimate of how long until a new level or episo
 inne++ will save your username, so you don't need to specify it when looking up high score data with the following commands.
 For any command that requires a username, if you don't specify a username, inne++ will use this one.
 
-### Display top N rankings
+### Display rankings
 - *rankings*
-- *0th rankings*
-- *top 10 rankings*
-- *0th rankings with ties*
-- *top 10 rankings with ties*
+- *level rankings*
+- *rankings with ties*
+- *point rankings*
+- *score rankings*
+- *\<tab\> rankings*
+- *top 10 intro level rankings with ties*
 
-inne++ will compute the overall number of top-N scores for every player, and display the top 20.
+inne++ will compute the overall number of top-N scores, total points or total score for every player, and display the top 20.
 
 If 'with ties' is specified, inne++ will consider a tie for the score to count towards the rankings, even if that means taking more than N rankings for the level.
 
-### Display point rankings
-- *point rankings*
-
-inne++ will compute the total number of points for all players, and display the top 20.
-
-Points are computed by giving players 20 points for 0th rankings, 19 for 1st, etc.
-
-### Display your points
-- *points*
-- *points for <username>*
-
-inne++ will tell you how many points you have (see 'point rankings' above).
-
-If no username is specified, inne++ will use the one you specified earlier.
-
-### Find a level ID by level name
-- *level id for <level>*
-
-inne++ will tell you the level ID for the specified level (eg. S-D-15-04 for 'supercomplexity').
-
-### Find the name of a level by ID
-- *level name for <level>*
-
-inne++ will tell you the name of the specified level (eg. 'supercomplexity' for S-D-15-04)
-
-### Display your top N count
-- *how many*
-- *how many 0ths*
-- *how many top 10s*
-- *how many top 10s with ties*
-- *how many top 10s for \<username\>*
-
-inne++ will display the number of top-N scores you have.
-
-If no rank is specified, defaults to 0ths.
-
-If no username is specified, uses the one you specified earlier.
+If neither 'point', 'score' or a rank is specified, inne++ defaults to 0th rankings, no ties.
 
 ### Display scores with the largest or smallest spread between 0th and Nth
 - *spread*
 - *spread 19th*
 - *smallest spread*
-- *biggest spread*
 - *level spread*
-- *episode spread*
-- *biggest level spread 19th*
+- *\<tab\> spread*
+- *biggest intro level spread 10th*
 
 inne++ will display the episodes or levels with smallest or largest spread between 0th and Nth.
 
@@ -112,50 +73,75 @@ If 'smallest' or 'biggest' is not specified, inne++ defaults to 'biggest'.
 
 If 'episode' or 'level' is not specified, inne++ defaults to 'level'.
 
-### Display high score stats
-- *stats for \<username\>*
+### Find a level ID by level name
+- *level id for \<level\>*
+
+inne++ will tell you the level ID for the specified level (eg. S-D-15-04 for 'supercomplexity').
+
+### Find the name of a level by ID
+- *level name for \<level\>*
+
+inne++ will tell you the name of the specified level (eg. 'supercomplexity' for S-D-15-04)
+
+### Display your points
+- *points*
+- *level points*
+- *\<tab\> points*
+- *intro level points*
+
+inne++ will tell you how many points you have. Points are computed by giving 20 for 0th, 19 for 2nd, etc.
+
+### Display your total score
+- *total*
+- *\<tab\> total*
+
+inne++ will tell you your total score (see 'total score rankings' above).
+
+### Display your top N count
+- *how many*
+- *how many 0ths*
+- *how many with ties*
+- *how many \<tab\>*
+- *how many intro top 10s with ties*
+
+inne++ will display the number of top-N scores you have.
+
+If no rank is specified, defaults to 0ths.
+
+### Display your high score stats
 - *stats*
+- *\<tab\> stats*
 
 inne++ will display the total number of level and episode high scores for the specified user, broken down by rank, and also a histogram of the player's scores.
 
-If a username isn't specified, inne++ will use the one you specified earlier with the 'my name is' command.
-
 ### Display your most improvable scores
-- *worst for \<username\>*
 - *worst*
 - *worst 20*
-- *worst 20 for \<username\>*
 - *worst 20 episodes*
-- *worst 20 episodes for \<username\>*
-- *worst 20 levels*
+- *worst 20 \<tab\>*
+- *worst 20 intro levels*
 
 inne++ will display a list of your N most improvable level or episode scores (eg. your scores which are furthest from 0th), along with the spread for each. inne++ will also display a list of N levels or episodes on which you do not have a high score.
 
 If a number isn't specified, inne++ defaults to 10.
 
-If a username isn't specified, inne++ will use the one you specified earlier with the 'my name is' command.
-
 If neither 'levels' or 'episodes' is specified, inne++ defaults to level scores.
 
 ### Display a list of levels you haven't high scored
-- *missing for \<username\>*
 - *missing*
 - *missing 0ths*
-- *missing episode top 10s*
+- *missing episodes*
+- *missing \<tab\>*
+- *missing intro level top 10s*
 
 inne++ will send you a text file containing all levels and episodes you're below the specified rank on.
-
-If a username isn't specified, inne++ will use the one you specified earlier.
 
 If a rank isn't specified, inne++ defaults to top 20.
 
 ### Display a list of all your high scores
 - *list*
-- *list for \<username\>*
 
 inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank.
-
-If a username isn't specified, inne++ will use the one you specified earlier.
 
 ### Initialize inne++
 - *hello*

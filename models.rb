@@ -14,14 +14,17 @@ module HighScore
     "#{rank < 10 ? '0' : ''}#{rank}"
   end
 
-  def self.spreads(n, type)
+  def self.spreads(n, type, tabs)
     spreads = {}
-    type.all.each do |elem|
+    scores = tabs.empty? ? type.all : type.where(tab: tabs)
+
+    scores.each do |elem|
       spread = elem.spread(n)
       if !spread.nil?
         spreads[elem.name] = spread
       end
     end
+
     spreads
   end
 
@@ -88,9 +91,9 @@ module HighScore
   def format_difference(old)
     difference(old).map { |o|
       c = o[:change]
-      diff = "#{"++-"[c[:rank] <=> 0]}#{c[:rank].abs}, +#{".3f" % [o[:score]]}"
-      "#{s[:score].format} (#{s[:diff]})"
-    }
+      diff = c ? "#{"++-"[c[:rank] <=> 0]}#{c[:rank].abs}, +#{"%.3f" % [c[:score]]}" : "new"
+      "#{o[:score].format} (#{diff})"
+    }.join("\n")
   end
 end
 
@@ -129,11 +132,54 @@ end
 
 class Player < ActiveRecord::Base
   has_many :scores
+  has_many :rank_histories
+  has_many :points_histories
+  has_many :total_score_histories
   has_one :user
 
   def self.rankings(&block)
-    Player.includes(:scores).all.map { |p| [p, yield(p)] }
-      .sort_by { |a| -a[1] }
+    $lock.synchronize do
+      Player.includes(:scores).all.map { |p| [p, yield(p)] }
+        .sort_by { |a| -a[1] }
+    end
+  end
+
+  def self.histories(type, attrs, column)
+    $lock.synchronize do
+      histories = type.where(attrs)
+
+      ret = Hash.new { |h, k| h[k] = Hash.new { |h, k| h[k] = 0 } }
+
+      histories.includes(:player).each do |h|
+        ret[h.player.name][h.timestamp] += h.send(column)
+      end
+
+      ret
+    end
+  end
+
+  def self.rank_histories(rank, type, tabs, ties)
+    attrs = {rank: rank, ties: ties}
+    attrs[:highscoreable_type] = type.to_s if type
+    attrs[:tab] = tabs if !tabs.empty?
+
+    self.histories(RankHistory, attrs, :count)
+  end
+
+  def self.score_histories(type, tabs)
+    attrs = {}
+    attrs[:highscoreable_type] = type.to_s if type
+    attrs[:tab] = tabs if !tabs.empty?
+
+    self.histories(TotalScoreHistory, attrs, :score)
+  end
+
+  def self.points_histories(type, tabs)
+    attrs = {}
+    attrs[:highscoreable_type] = type.to_s if type
+    attrs[:tab] = tabs if !tabs.empty?
+
+    self.histories(PointsHistory, attrs, :points)
   end
 
   def scores_by_type_and_tabs(type, tabs)
@@ -195,4 +241,16 @@ class User < ActiveRecord::Base
 end
 
 class GlobalProperty < ActiveRecord::Base
+end
+
+class RankHistory < ActiveRecord::Base
+  belongs_to :player
+end
+
+class PointsHistory < ActiveRecord::Base
+  belongs_to :player
+end
+
+class TotalScoreHistory < ActiveRecord::Base
+  belongs_to :player
 end

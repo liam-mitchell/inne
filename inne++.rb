@@ -1,4 +1,4 @@
-require 'ascii_charts'
+# require 'ascii_charts'
 require 'discordrb'
 require 'json'
 require 'net/http'
@@ -25,18 +25,23 @@ def err(msg)
 end
 
 def get_current(type)
-  type.find_by(name: GlobalProperty.find_by(key: "current_#{type.to_s.downcase}").value)
+  $lock.synchronize do
+    type.find_by(name: GlobalProperty.find_by(key: "current_#{type.to_s.downcase}").value)
+  end
 end
 
 def set_current(type, curr)
-  GlobalProperty.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
+  $lock.synchronize do
+    GlobalProperty.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
+  end
 end
 
-# TODO make this not do secrets
 def get_next(type)
-  ret = type.where(completed: nil).sample
-  ret.update(completed: true)
-  ret
+  $lock.synchronize do
+    ret = type.where(completed: nil).where.not(tab: ["?", "!"]).sample
+    ret.update(completed: true)
+    ret
+  end
 end
 
 def get_next_update(type)
@@ -52,12 +57,16 @@ def set_next_update(type, time)
 end
 
 def get_saved_scores(type)
-  JSON.parse(GlobalProperty.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
+  $lock.synchronize do
+    JSON.parse(GlobalProperty.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
+  end
 end
 
 def set_saved_scores(type, curr)
-  GlobalProperty.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
-    .update(value: curr.scores.to_json(include: {player: {only: :name}}))
+  $lock.synchronize do
+    GlobalProperty.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
+      .update(value: curr.scores.to_json(include: {player: {only: :name}}))
+  end
 end
 
 def download_high_scores
@@ -69,17 +78,85 @@ def download_high_scores
     Level.all.each(&:download_scores)
     Episode.all.each(&:download_scores)
 
+    log("updated high scores. updating rankings...")
+
+    now = Time.now
+    ["SI", "S", "SU", "SL", "?", "!"].each do |tab|
+      [Level, Episode].each do |type|
+        next if type == Episode && ["?", "!"].include?(tab)
+
+        [1, 5, 10, 20].each do |rank|
+          [true, false].each do |ties|
+            rankings = Player.rankings { |p| p.top_n_count(rank, type, tab, ties) }
+            attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+              {
+                highscoreable_type: type.to_s,
+                rank: rank,
+                ties: ties,
+                tab: tab,
+                player: r[0],
+                count: r[1],
+                timestamp: now
+              }
+            end
+
+            $lock.synchronize do
+              ActiveRecord::Base.transaction do
+                RankHistory.create(attrs)
+              end
+            end
+          end
+        end
+
+        rankings = Player.rankings { |p| p.points(type, tab) }
+        attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+          {
+            timestamp: now,
+            tab: tab,
+            highscoreable_type: type.to_s,
+            player: r[0],
+            points: r[1]
+          }
+        end
+
+        $lock.synchronize do
+          ActiveRecord::Base.transaction do
+            PointsHistory.create(attrs)
+          end
+        end
+
+        rankings = Player.rankings { |p| p.total_score(type, tab) }
+        attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+          {
+            timestamp: now,
+            tab: tab,
+            highscoreable_type: type.to_s,
+            player: r[0],
+            score: r[1]
+          }
+        end
+
+        $lock.synchronize do
+          ActiveRecord::Base.transaction do
+            TotalScoreHistory.create(attrs)
+          end
+        end
+      end
+    end
+
     next_score_update = get_next_update('score')
     next_score_update += HIGHSCORE_UPDATE_FREQUENCY
     delay = next_score_update - Time.now
     set_next_update('score', next_score_update)
 
-    log("updated scores, next score update in #{delay} seconds")
+    log("updated rankings, next score update in #{delay} seconds")
+
     sleep(delay) unless delay < 0
   end
 end
 
 def send_channel_screenshot(name, caption)
+  name = name.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
   screenshot = "screenshots/#{name}.jpg"
   if File.exist? screenshot
     $channel.send_file(File::open(screenshot), caption: caption)
@@ -96,7 +173,10 @@ def send_channel_diff(level, old_scores, since)
 end
 
 def send_channel_next(type)
-  $lock.synchronize do
+  # last = nil
+  # current = nil
+
+  # $lock.synchronize do
     log("sending next #{type.to_s.downcase}")
     if $channel.nil?
       err("not connected to a channel, not sending level of the day")
@@ -111,7 +191,12 @@ def send_channel_next(type)
       err("no more #{type.to_s.downcase}")
       return false
     end
+  # end
 
+  last.download_scores
+  current.download_scores
+
+  # $lock.synchronize do
     prefix = type == Level ? "Time" : "It's also time"
     duration = type == Level ? "day" : "week"
     time = type == Level ? "today" : "this week"
@@ -124,9 +209,9 @@ def send_channel_next(type)
 
     send_channel_diff(last, get_saved_scores(type), since)
     set_saved_scores(type, current)
+  # end
 
-    return true
-  end
+  return true
 end
 
 def start_level_of_the_day
@@ -193,7 +278,7 @@ startup
 trap("INT") { $kill_threads = true }
 
 $threads = [
-  # Thread.new { start_level_of_the_day },
+  Thread.new { start_level_of_the_day },
   Thread.new { download_high_scores },
 ]
 
