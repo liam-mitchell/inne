@@ -149,13 +149,13 @@ class Player < ActiveRecord::Base
   end
 
   def self.histories(type, attrs, column)
-    $lock.synchronize do
-      histories = type.where(attrs).includes(:players)
+    hist = $lock.synchronize do
+      type.where(attrs).includes(:player)
     end
 
     ret = Hash.new { |h, k| h[k] = Hash.new { |h, k| h[k] = 0 } }
 
-    histories.includes(:player).each do |h|
+    hist.each do |h|
       ret[h.player.name][h.timestamp] += h.send(column)
     end
 
@@ -249,12 +249,15 @@ end
 
 class RankHistory < ActiveRecord::Base
   belongs_to :player
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 end
 
 class PointsHistory < ActiveRecord::Base
   belongs_to :player
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 end
 
 class TotalScoreHistory < ActiveRecord::Base
   belongs_to :player
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 end

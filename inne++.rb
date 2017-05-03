@@ -81,7 +81,7 @@ def download_high_scores
     log("updated high scores. updating rankings...")
 
     now = Time.now
-    ["SI", "S", "SU", "SL", "?", "!"].each do |tab|
+    [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
       [Level, Episode].each do |type|
         next if type == Episode && ["?", "!"].include?(tab)
 
