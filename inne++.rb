@@ -38,7 +38,7 @@ end
 
 def get_next(type)
   $lock.synchronize do
-    ret = type.where(completed: nil).where.not(tab: ["?", "!"]).sample
+    ret = type.where(completed: nil).where.not(tab: [:SS, :SS2]).sample
     ret.update(completed: true)
     ret
   end
@@ -173,43 +173,36 @@ def send_channel_diff(level, old_scores, since)
 end
 
 def send_channel_next(type)
-  # last = nil
-  # current = nil
+  log("sending next #{type.to_s.downcase}")
+  if $channel.nil?
+    err("not connected to a channel, not sending level of the day")
+    return false
+  end
 
-  # $lock.synchronize do
-    log("sending next #{type.to_s.downcase}")
-    if $channel.nil?
-      err("not connected to a channel, not sending level of the day")
-      return false
-    end
+  last = get_current(type)
+  current = get_next(type)
+  set_current(type, current)
 
-    last = get_current(type)
-    current = get_next(type)
-    set_current(type, current)
-
-    if current.nil?
-      err("no more #{type.to_s.downcase}")
-      return false
-    end
-  # end
+  if current.nil?
+    err("no more #{type.to_s.downcase}")
+    return false
+  end
 
   last.download_scores
   current.download_scores
 
-  # $lock.synchronize do
-    prefix = type == Level ? "Time" : "It's also time"
-    duration = type == Level ? "day" : "week"
-    time = type == Level ? "today" : "this week"
-    since = type == Level ? "yesterday" : "last week"
-    typename = type.to_s.downcase
+  prefix = type == Level ? "Time" : "It's also time"
+  duration = type == Level ? "day" : "week"
+  time = type == Level ? "today" : "this week"
+  since = type == Level ? "yesterday" : "last week"
+  typename = type.to_s.downcase
 
-    caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
-    send_channel_screenshot(current.name, caption)
-    $channel.send_message("Current high scores:\n```#{current.format_scores}```")
+  caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
+  send_channel_screenshot(current.name, caption)
+  $channel.send_message("Current high scores:\n```#{current.format_scores}```")
 
-    send_channel_diff(last, get_saved_scores(type), since)
-    set_saved_scores(type, current)
-  # end
+  send_channel_diff(last, get_saved_scores(type), since)
+  set_saved_scores(type, current)
 
   return true
 end

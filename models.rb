@@ -100,6 +100,7 @@ end
 class Level < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def format_name
     "#{longname} (#{name})"
@@ -109,6 +110,7 @@ end
 class Episode < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def format_name
     "#{name}"
@@ -138,24 +140,26 @@ class Player < ActiveRecord::Base
   has_one :user
 
   def self.rankings(&block)
-    $lock.synchronize do
-      Player.includes(:scores).all.map { |p| [p, yield(p)] }
-        .sort_by { |a| -a[1] }
+    players = $lock.synchronize do
+      Player.includes(:scores).all
     end
+
+    players.map { |p| [p, yield(p)] }
+      .sort_by { |a| -a[1] }
   end
 
   def self.histories(type, attrs, column)
     $lock.synchronize do
-      histories = type.where(attrs)
-
-      ret = Hash.new { |h, k| h[k] = Hash.new { |h, k| h[k] = 0 } }
-
-      histories.includes(:player).each do |h|
-        ret[h.player.name][h.timestamp] += h.send(column)
-      end
-
-      ret
+      histories = type.where(attrs).includes(:players)
     end
+
+    ret = Hash.new { |h, k| h[k] = Hash.new { |h, k| h[k] = 0 } }
+
+    histories.includes(:player).each do |h|
+      ret[h.player.name][h.timestamp] += h.send(column)
+    end
+
+    ret
   end
 
   def self.rank_histories(rank, type, tabs, ties)

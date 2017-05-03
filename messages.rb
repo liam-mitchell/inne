@@ -60,12 +60,12 @@ end
 def parse_tabs(msg)
   ret = []
 
-  ret << 'SI' if msg =~ /\b(intro|SI|I)\b/i
-  ret << 'S' if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
-  ret << 'SU' if msg =~ /\b(SU|UE|U|ultimate)\b/i
-  ret << 'SL' if msg =~ /\b(legacy|SL|L)\b/i
-  ret << '!' if msg =~ /(\b|\A|\s)(ultimate secret|!)(\b|\Z|\s)/i
-  ret << '?' if msg =~ /(\b|\A|\s)(secret|\?)(\b|\Z|\s)/i
+  ret << :SI if msg =~ /\b(intro|SI|I)\b/i
+  ret << :S if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
+  ret << :SU if msg =~ /\b(SU|UE|U|ultimate)\b/i
+  ret << :SL if msg =~ /\b(legacy|SL|L)\b/i
+  ret << :SS if msg =~ /(\b|\A|\s)(ultimate secret|!)(\b|\Z|\s)/i
+  ret << :SS2 if msg =~ /(\b|\A|\s)(secret|\?)(\b|\Z|\s)/i
 
   ret
 end
@@ -82,8 +82,12 @@ def format_ties(ties)
   ties ? "with ties " : ""
 end
 
+def format_tab(tab)
+  (tab == :SS2 ? '!' : (tab == :SS ? '?' : tab.to_s))
+end
+
 def format_tabs(tabs)
-  tabs.to_sentence + (tabs.empty? ? "" : " ")
+  tabs.map { |t| format_tab(t) }.to_sentence + (tabs.empty? ? "" : " ")
 end
 
 def send_top_n_count(event)
