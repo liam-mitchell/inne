@@ -41,7 +41,7 @@ def parse_level_or_episode(msg)
   elsif !msg[/(episode|eotw)/].nil?
     ret = get_current(Episode)
   elsif name
-    ret = Level.find_by("UPPER(longname) LIKE '#{name.upcase}'")
+    ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
   else
     msg = "I couldn't figure out which level or episode you wanted scores for! You need to send either a level " +
           "or episode ID that looks like SI-A-00-00 or SI-A-00, or a level name, using 'for <name>.'"
@@ -192,7 +192,7 @@ def send_scores(event)
   event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores}```")
 
   if scores.is_a?(Episode)
-    Level.where("UPPER(name) LIKE '#{scores.name.upcase}%'").each(&:download_scores)
+    Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:download_scores)
   end
 end
 
