@@ -251,7 +251,7 @@ def send_list(event)
   all = player.scores_by_rank(type, tabs)
 
   tmpfile = File.join(Dir.tmpdir, "scores-#{player.name.delete(":")}.txt")
-  File::open(tmpfile, "w") do |f|
+  File::open(tmpfile, "w", crlf_newline: true) do |f|
     all.each_with_index do |scores, i|
       list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
              .join("\n  ")
@@ -275,7 +275,7 @@ def send_missing(event)
   missing = player.missing_top_ns(rank, type, tabs, ties).join("\n")
 
   tmpfile = File.join(Dir.tmpdir, "missing-#{player.name.delete(":")}.txt")
-  File::open(tmpfile, "w") do |f|
+  File::open(tmpfile, "w", crlf_newline: true) do |f|
     f.write(missing)
   end
 
