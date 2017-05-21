@@ -41,7 +41,7 @@ def parse_level_or_episode(msg)
   elsif !msg[/(episode|eotw)/].nil?
     ret = get_current(Episode)
   elsif name
-    ret = Level.find_by("UPPER(longname) LIKE '#{name.upcase}'")
+    ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
   else
     msg = "I couldn't figure out which level or episode you wanted scores for! You need to send either a level " +
           "or episode ID that looks like SI-A-00-00 or SI-A-00, or a level name, using 'for <name>.'"
@@ -64,8 +64,8 @@ def parse_tabs(msg)
   ret << :S if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
   ret << :SU if msg =~ /\b(SU|UE|U|ultimate)\b/i
   ret << :SL if msg =~ /\b(legacy|SL|L)\b/i
-  ret << :SS if msg =~ /(\b|\A|\s)(ultimate secret|!)(\b|\Z|\s)/i
-  ret << :SS2 if msg =~ /(\b|\A|\s)(secret|\?)(\b|\Z|\s)/i
+  ret << :SS if msg =~ /(\b|\A|\s)(secret|\?)(\b|\Z|\s)/i
+  ret << :SS2 if msg =~ /(\b|\A|\s)(ultimate secret|!)(\b|\Z|\s)/i
 
   ret
 end
@@ -136,7 +136,7 @@ def send_rankings(event)
   type = format_type(type)
   tabs = format_tabs(tabs)
 
-  top = rankings.take(20).each_with_index.map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{format % r[1]})" }
+  top = rankings.take(20).select { |r| r[1] > 0 }.each_with_index.map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{format % r[1]})" }
         .join("\n")
 
   event << "#{type} #{tabs}#{header}#{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{top}```"
@@ -192,7 +192,7 @@ def send_scores(event)
   event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores}```")
 
   if scores.is_a?(Episode)
-    Level.where("UPPER(name) LIKE '#{scores.name.upcase}%'").each(&:download_scores)
+    Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:download_scores)
   end
 end
 
@@ -237,7 +237,7 @@ def send_stats(event)
             .map { |a| [a[0] + a[1], a[0], a[1]] }
             .reduce([0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
 
-  tabs = tabs.empty? ? "" : " in the #{tabs.to_sentence} #{tabs.length == 1 ? 'tab' : 'tabs'}"
+  tabs = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
   event << "Player high score counts for #{player.name}#{tabs}:\n```\t    Overall:\tLevel:\tEpisode:\n\t#{totals}\n#{overall}"
   event << "#{histogram}```"
@@ -297,7 +297,7 @@ def send_suggestions(event)
 
   missing = player.missing_top_ns(20, type, tabs, false).sample(n).join("\n")
   type = type.to_s.downcase
-  tabs = tabs.empty? ? "" :  " in the #{tabs.to_sentence} #{tabs.length == 1 ? 'tab' : 'tabs'}"
+  tabs = tabs.empty? ? "" :  " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
   event << "Your #{n} most improvable #{type}s#{tabs} are:\n```#{improvable}```"
   event << "You're not on the board for:\n```#{missing}```"

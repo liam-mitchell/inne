@@ -83,7 +83,7 @@ def download_high_scores
     now = Time.now
     [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
       [Level, Episode].each do |type|
-        next if type == Episode && ["?", "!"].include?(tab)
+        next if type == Episode && [:SS, :SS2].include?(tab)
 
         [1, 5, 10, 20].each do |rank|
           [true, false].each do |ties|
