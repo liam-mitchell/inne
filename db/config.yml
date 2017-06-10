@@ -11,6 +11,7 @@ production:
   adapter: sqlite3
   database: inne.db
   host: localhost
+  pool: 25
   token: Mjg5MTQxNzc2MjA2MjY2MzY5.C6IDyQ.1B1a2x_k7CF4UfaGWvhbGFVqdqM
   client_id: 289141776206266369
 

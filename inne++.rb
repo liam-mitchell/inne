@@ -145,7 +145,7 @@ def download_high_scores
     end
 
     next_score_update = get_next_update('score')
-    next_score_update += HIGHSCORE_UPDATE_FREQUENCY
+    next_score_update += HIGHSCORE_UPDATE_FREQUENCY if next_score_update < Time.now
     delay = next_score_update - Time.now
     set_next_update('score', next_score_update)
 
