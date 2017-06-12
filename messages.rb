@@ -36,9 +36,9 @@ def parse_level_or_episode(msg)
     ret = Level.find_by(name: normalize_name(level).upcase)
   elsif episode
     ret = Episode.find_by(name: normalize_name(episode).upcase)
-  elsif !msg[/(level|lotd)/].nil?
+  elsif !msg[/(level of the day|lotd)/].nil?
     ret = get_current(Level)
-  elsif !msg[/(episode|eotw)/].nil?
+  elsif !msg[/(episode of the week|eotw)/].nil?
     ret = get_current(Episode)
   elsif name
     ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
