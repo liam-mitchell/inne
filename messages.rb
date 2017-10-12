@@ -477,6 +477,9 @@ end
 def respond(event)
   msg = event.content
   
+  # strip off the @inne++ mention, if present
+  msg.strip(/\A<@[0-9]*>/) 
+  
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
   if msg =~ /\A\s*lotd\s*\Z/i
     send_level(event)
