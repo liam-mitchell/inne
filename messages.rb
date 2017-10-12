@@ -476,6 +476,15 @@ end
 # TODO set level of the day on startup
 def respond(event)
   msg = event.content
+  
+  # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
+  if msg =~ /\A\s*lotd\s*\Z/i
+    send_level(event)
+    return
+  elsif msg =~ /\A\s*eotw\s*\Z/i
+    send_episode(event)
+    return
+  end
 
   hello(event) if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
   dump(event) if msg =~ /dump/i
