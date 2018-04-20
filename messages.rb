@@ -419,6 +419,10 @@ def hello(event)
   end
 end
 
+def thanks(event)
+  event << "You're welcome!"
+end
+
 def send_level_time(event)
   next_level = get_next_update(Level) - Time.now
   next_level_hours = (next_level / (60 * 60)).to_i
@@ -490,6 +494,7 @@ def respond(event)
   end
 
   hello(event) if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
+  thanks(event) if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
   dump(event) if msg =~ /dump/i
   send_episode_time(event) if msg =~ /when.*next.*(episode|eotw)/i
   send_level_time(event) if  msg =~ /when.*next.*(level|lotd)/i
