@@ -64,8 +64,8 @@ def parse_tabs(msg)
   ret << :S if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
   ret << :SU if msg =~ /\b(SU|UE|U|ultimate)\b/i
   ret << :SL if msg =~ /\b(legacy|SL|L)\b/i
-  ret << :SS if msg =~ /(\b|\A|\s)(secret|\?)(\b|\Z|\s)/i
-  ret << :SS2 if msg =~ /(\b|\A|\s)(ultimate secret|!)(\b|\Z|\s)/i
+  ret << :SS if msg =~ /(\A|\s)(secret|\?)(\Z|\s)/i
+  ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
 
   ret
 end
@@ -115,7 +115,12 @@ def send_rankings(event)
   rank = parse_rank(msg) || 1
   ties = !!(msg =~ /ties/i)
 
-  if msg =~ /point/
+  if msg =~ /average point/
+    players = Player.where(id: Player.joins(:scores).group('players.id').having('count(highscoreable_id) > 50').pluck(:id))
+    rankings = players.rankings { |p| p.average_points(type, tabs) }
+    header = "average point rankings "
+    format = "%.3f"
+  elsif msg =~ /point/
     rankings = Player.rankings { |p| p.points(type, tabs) }
     header = "point rankings "
     format = "%d"
@@ -326,6 +331,18 @@ def send_points(event)
   event << "#{player.name} has #{points} #{type} #{tabs}points."
 end
 
+def send_average_points(event)
+  msg = event.content
+  player = parse_player(msg, event.user.name)
+  type = parse_type(msg)
+  tabs = parse_tabs(msg)
+  average = player.average_points(type, tabs)
+
+  type = format_type(type).downcase
+  tabs = format_tabs(tabs)
+  event << "#{player.name} has #{"%.3f" % [average]} #{type} #{tabs}average points."
+end
+
 def send_diff(event)
   type = parse_type(event.content) || Level
   current = get_current(type)
@@ -363,7 +380,6 @@ def send_history(event)
   type = format_type(type)
   tabs = format_tabs(tabs)
 
-  # byebug
   graph = Gruff::Line.new(1280, 2000)
   graph.title = "#{type} #{tabs}#{header}history"
   graph.theme_pastel
@@ -485,7 +501,8 @@ def respond(event)
   send_episode(event) if msg =~ /what.*(episode|eotw)/i
   send_rankings(event) if msg =~ /rank/i && msg !~ /history/i
   send_history(event) if msg =~ /history/i && msg !~ /rank/i
-  send_points(event) if msg =~ /points/i && msg !~ /history/i && msg !~ /rank/i
+  send_points(event) if msg =~ /points/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i
+  send_average_points(event) if msg =~ /points/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i
   send_scores(event) if msg =~ /scores/i && msg !~ /history/i && msg !~ /rank/i
   send_total_score(event) if msg =~ /total/i && msg !~ /history/i && msg !~ /rank/i
   send_top_n_count(event) if msg =~ /how many/i

@@ -165,7 +165,7 @@ class TestMessages < Test::Unit::TestCase
     event = mock('object')
 
     event.expects(:content).returns('spread').at_least(1)
-    event.expects(:<<).with(regexp_matches(/Levels with the largest spread between 0th and 1st:..(S[IL]?-[A-E]-[0-9]{2} \([0-9]{1,3}.[0-9]{3}\)){5}/))
+    event.expects(:<<).with(regexp_matches(/All levels with the largest spread between 0th and 1st:.*/))
 
     respond(event)
   end

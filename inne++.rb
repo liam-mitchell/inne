@@ -25,133 +25,122 @@ def err(msg)
 end
 
 def get_current(type)
-  $lock.synchronize do
-    type.find_by(name: GlobalProperty.find_by(key: "current_#{type.to_s.downcase}").value)
-  end
+  type.find_by(name: GlobalProperty.find_by(key: "current_#{type.to_s.downcase}").value)
 end
 
 def set_current(type, curr)
-  $lock.synchronize do
-    GlobalProperty.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
-  end
+  GlobalProperty.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
 end
 
 def get_next(type)
-  $lock.synchronize do
-    ret = type.where(completed: nil).where.not(tab: [:SS, :SS2]).sample
-    ret.update(completed: true)
-    ret
+  ret = nil
+  while ret.nil?
+    t = type.where(completed: nil).where.not(tab: [:SS, :SS2]).sample
+    ret = t if t.scores[0].score != t.scores.last.score
   end
+  ret.update(completed: true)
+  ret
 end
 
 def get_next_update(type)
-  $lock.synchronize do
-    Time.parse(GlobalProperty.find_by(key: "next_#{type.to_s.downcase}_update").value)
-  end
+  Time.parse(GlobalProperty.find_by(key: "next_#{type.to_s.downcase}_update").value)
 end
 
 def set_next_update(type, time)
-  $lock.synchronize do
-    GlobalProperty.find_or_create_by(key: "next_#{type.to_s.downcase}_update").update(value: time.to_s)
-  end
+  GlobalProperty.find_or_create_by(key: "next_#{type.to_s.downcase}_update").update(value: time.to_s)
 end
 
 def get_saved_scores(type)
-  $lock.synchronize do
-    JSON.parse(GlobalProperty.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
-  end
+  JSON.parse(GlobalProperty.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
 end
 
 def set_saved_scores(type, curr)
-  $lock.synchronize do
-    GlobalProperty.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
-      .update(value: curr.scores.to_json(include: {player: {only: :name}}))
-  end
+  GlobalProperty.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
+    .update(value: curr.scores.to_json(include: {player: {only: :name}}))
 end
 
 def download_high_scores
   ActiveRecord::Base.establish_connection(CONFIG)
 
-  while true
-    log("updating high scores...")
-
-    Level.all.each(&:download_scores)
-    Episode.all.each(&:download_scores)
-
-    log("updated high scores. updating rankings...")
-
-    now = Time.now
-    [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
-      [Level, Episode].each do |type|
-        next if type == Episode && [:SS, :SS2].include?(tab)
-
-        [1, 5, 10, 20].each do |rank|
-          [true, false].each do |ties|
-            rankings = Player.rankings { |p| p.top_n_count(rank, type, tab, ties) }
-            attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-              {
-                highscoreable_type: type.to_s,
-                rank: rank,
-                ties: ties,
-                tab: tab,
-                player: r[0],
-                count: r[1],
-                timestamp: now
-              }
-            end
-
-            $lock.synchronize do
+  begin
+    while true
+      log("updating high scores...")
+  
+      Level.all.each(&:download_scores)
+      Episode.all.each(&:download_scores)
+  
+      log("updated high scores. updating rankings...")
+  
+      now = Time.now
+      [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
+        [Level, Episode].each do |type|
+          next if type == Episode && [:SS, :SS2].include?(tab)
+  
+          [1, 5, 10, 20].each do |rank|
+            [true, false].each do |ties|
+              rankings = Player.rankings { |p| p.top_n_count(rank, type, tab, ties) }
+              attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+                {
+                  highscoreable_type: type.to_s,
+                  rank: rank,
+                  ties: ties,
+                  tab: tab,
+                  player: r[0],
+                  count: r[1],
+                  timestamp: now
+                }
+              end
+  
               ActiveRecord::Base.transaction do
                 RankHistory.create(attrs)
               end
             end
           end
-        end
-
-        rankings = Player.rankings { |p| p.points(type, tab) }
-        attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-          {
-            timestamp: now,
-            tab: tab,
-            highscoreable_type: type.to_s,
-            player: r[0],
-            points: r[1]
-          }
-        end
-
-        $lock.synchronize do
+  
+          rankings = Player.rankings { |p| p.points(type, tab) }
+          attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+            {
+              timestamp: now,
+              tab: tab,
+              highscoreable_type: type.to_s,
+              player: r[0],
+              points: r[1]
+            }
+          end
+  
           ActiveRecord::Base.transaction do
             PointsHistory.create(attrs)
           end
-        end
-
-        rankings = Player.rankings { |p| p.total_score(type, tab) }
-        attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-          {
-            timestamp: now,
-            tab: tab,
-            highscoreable_type: type.to_s,
-            player: r[0],
-            score: r[1]
-          }
-        end
-
-        $lock.synchronize do
+  
+          rankings = Player.rankings { |p| p.total_score(type, tab) }
+          attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+            {
+              timestamp: now,
+              tab: tab,
+              highscoreable_type: type.to_s,
+              player: r[0],
+              score: r[1]
+            }
+          end
+  
           ActiveRecord::Base.transaction do
             TotalScoreHistory.create(attrs)
           end
         end
       end
+  
+      next_score_update = get_next_update('score')
+      next_score_update += HIGHSCORE_UPDATE_FREQUENCY if next_score_update < Time.now
+      delay = next_score_update - Time.now
+      set_next_update('score', next_score_update)
+  
+      log("updated rankings, next score update in #{delay} seconds")
+  
+      sleep(delay) unless delay < 0
     end
-
-    next_score_update = get_next_update('score')
-    next_score_update += HIGHSCORE_UPDATE_FREQUENCY if next_score_update < Time.now
-    delay = next_score_update - Time.now
-    set_next_update('score', next_score_update)
-
-    log("updated rankings, next score update in #{delay} seconds")
-
-    sleep(delay) unless delay < 0
+  rescue => e
+    err("error updating high scores: #{e}")
+    retry
   end
 end
 
@@ -211,26 +200,29 @@ def start_level_of_the_day
   log("starting level of the day...")
   ActiveRecord::Base.establish_connection(CONFIG)
 
-  while true
-    next_level_update = get_next_update(Level)
-    sleep(next_level_update - Time.now) unless next_level_update - Time.now < 0
-    set_next_update(Level, next_level_update + LEVEL_UPDATE_FREQUENCY)
+  begin
+    while true
+      next_level_update = get_next_update(Level)
+      sleep(next_level_update - Time.now) unless next_level_update - Time.now < 0
+      set_next_update(Level, next_level_update + LEVEL_UPDATE_FREQUENCY)
 
-    next if !send_channel_next(Level)
-    log("sent next level, next update at #{get_next_update(Level).to_s}")
+      next if !send_channel_next(Level)
+      log("sent next level, next update at #{get_next_update(Level).to_s}")
 
-    next_episode_update = get_next_update(Episode)
-    if Time.now > next_episode_update
-      set_next_update(Episode, next_episode_update + EPISODE_UPDATE_FREQUENCY)
+      next_episode_update = get_next_update(Episode)
+      if Time.now > next_episode_update
+        set_next_update(Episode, next_episode_update + EPISODE_UPDATE_FREQUENCY)
 
-      sleep(30) # let discord catch up
+        sleep(30) # let discord catch up
 
-      send_channel_next(Episode)
-      log("sent next episode, next update at #{get_next_update(Episode).to_s}")
+        send_channel_next(Episode)
+        log("sent next episode, next update at #{get_next_update(Episode).to_s}")
+      end
     end
+  rescue => e
+    err("error updating level of the day: #{e}")
+    retry
   end
-rescue RuntimeError => e
-  err("error updating level of the day: #{e}")
 end
 
 def startup

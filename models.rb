@@ -7,8 +7,6 @@ IGNORED_PLAYERS = [
   "fiordhraoi",
 ]
 
-$lock = Mutex.new
-
 module HighScore
   def self.format_rank(rank)
     "#{rank < 10 ? '0' : ''}#{rank}"
@@ -41,16 +39,14 @@ module HighScore
   def update_scores(updated)
     updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }
 
-    $lock.synchronize do
-      ActiveRecord::Base.transaction do
-        updated.each_with_index do |score, i|
-          scores.find_or_create_by(rank: i)
-            .update(
-              score: score['score'] / 1000.0,
-              player: Player.find_or_create_by(name: score['user_name']),
-              tied_rank: updated.find_index { |s| s['score'] == score['score'] }
-            )
-        end
+    ActiveRecord::Base.transaction do
+      updated.each_with_index do |score, i|
+        scores.find_or_create_by(rank: i)
+          .update(
+            score: score['score'] / 1000.0,
+            player: Player.find_or_create_by(name: score['user_name']),
+            tied_rank: updated.find_index { |s| s['score'] == score['score'] }
+          )
       end
     end
   end
@@ -60,7 +56,7 @@ module HighScore
 
     if updated.nil?
       # TODO make this use err()
-      STDERR.puts "[ERROR] [#{Time.now}] failed to retrieve scores from #{uri}"
+      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{uri}"
       return
     end
 
@@ -140,18 +136,14 @@ class Player < ActiveRecord::Base
   has_one :user
 
   def self.rankings(&block)
-    players = $lock.synchronize do
-      Player.includes(:scores).all
-    end
+    players = Player.includes(:scores).all
 
     players.map { |p| [p, yield(p)] }
       .sort_by { |a| -a[1] }
   end
 
   def self.histories(type, attrs, column)
-    hist = $lock.synchronize do
-      type.where(attrs).includes(:player)
-    end
+    hist = type.where(attrs).includes(:player)
 
     ret = Hash.new { |h, k| h[k] = Hash.new { |h, k| h[k] = 0 } }
 
@@ -233,6 +225,11 @@ class Player < ActiveRecord::Base
 
   def points(type, tabs)
     scores_by_type_and_tabs(type, tabs).pluck(:rank).map { |rank| 20 - rank }.reduce(0, :+)
+  end
+
+  def average_points(type, tabs)
+    scores = scores_by_type_and_tabs(type, tabs).pluck(:rank).map { |rank| 20 - rank }
+    scores.length == 0 ? 0 : scores.reduce(0, :+).to_f / scores.length
   end
 
   def total_score(type, tabs)
