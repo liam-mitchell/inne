@@ -435,6 +435,10 @@ def hello(event)
   end
 end
 
+def thanks(event)
+  event << "You're welcome!"
+end
+
 def send_level_time(event)
   next_level = get_next_update(Level) - Time.now
   next_level_hours = (next_level / (60 * 60)).to_i
@@ -492,8 +496,21 @@ end
 # TODO set level of the day on startup
 def respond(event)
   msg = event.content
+  
+  # strip off the @inne++ mention, if present
+  msg.strip!(/\A<@[0-9]*>/) 
+  
+  # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
+  if msg =~ /\A\s*lotd\s*\Z/i
+    send_level(event)
+    return
+  elsif msg =~ /\A\s*eotw\s*\Z/i
+    send_episode(event)
+    return
+  end
 
   hello(event) if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
+  thanks(event) if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
   dump(event) if msg =~ /dump/i
   send_episode_time(event) if msg =~ /when.*next.*(episode|eotw)/i
   send_level_time(event) if  msg =~ /when.*next.*(level|lotd)/i
