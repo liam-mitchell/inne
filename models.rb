@@ -5,9 +5,15 @@ IGNORED_PLAYERS = [
   "Kronogenics",
   "BlueIsTrue",
   "fiordhraoi",
+  "cheeseburgur101",
+  "Jey",
+  "jungletek",
+  "Hedgy",
+  "ᕈᘎᑕᒎᗩn ᙡiᗴᒪḰi",
+  "Venom",
+  "EpicGamer10075",
+  "Altii",
 ]
-
-$lock = Mutex.new
 
 module HighScore
   def self.format_rank(rank)
@@ -28,29 +34,43 @@ module HighScore
     spreads
   end
 
-  def uri
-    URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=76561197992013087&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
+  def uri(steam_id)
+    URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
+  end
+
+  def update_steam_id
+    User.where.not(steam_id: nil).each do |u|
+      response = Net::HTTP.get(uri(u.steam_id))
+      if response != '-1337'
+        set_last_steam_id(u.steam_id)
+        return response
+      end
+    end
+
+    return '-1337'
   end
 
   def get_scores
-    response = Net::HTTP.get(uri)
+    response = Net::HTTP.get(uri(get_last_steam_id))
+    if response == '-1337'
+      response = update_steam_id
+    end
+
     return nil if response == '-1337'
     return JSON.parse(response)['scores']
   end
 
   def update_scores(updated)
-    updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }
+    updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }
 
-    $lock.synchronize do
-      ActiveRecord::Base.transaction do
-        updated.each_with_index do |score, i|
-          scores.find_or_create_by(rank: i)
-            .update(
-              score: score['score'] / 1000.0,
-              player: Player.find_or_create_by(name: score['user_name']),
-              tied_rank: updated.find_index { |s| s['score'] == score['score'] }
-            )
-        end
+    ActiveRecord::Base.transaction do
+      updated.each_with_index do |score, i|
+        scores.find_or_create_by(rank: i)
+          .update(
+            score: score['score'] / 1000.0,
+            player: Player.find_or_create_by(name: score['user_name']),
+            tied_rank: updated.find_index { |s| s['score'] == score['score'] }
+          )
       end
     end
   end
@@ -60,7 +80,7 @@ module HighScore
 
     if updated.nil?
       # TODO make this use err()
-      STDERR.puts "[ERROR] [#{Time.now}] failed to retrieve scores from #{uri}"
+      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{uri(get_last_steam_id)}"
       return
     end
 
@@ -140,18 +160,14 @@ class Player < ActiveRecord::Base
   has_one :user
 
   def self.rankings(&block)
-    players = $lock.synchronize do
-      Player.includes(:scores).all
-    end
+    players = Player.includes(:scores).all
 
     players.map { |p| [p, yield(p)] }
       .sort_by { |a| -a[1] }
   end
 
   def self.histories(type, attrs, column)
-    hist = $lock.synchronize do
-      type.where(attrs).includes(:player)
-    end
+    hist = type.where(attrs).includes(:player)
 
     ret = Hash.new { |h, k| h[k] = Hash.new { |h, k| h[k] = 0 } }
 
@@ -233,6 +249,11 @@ class Player < ActiveRecord::Base
 
   def points(type, tabs)
     scores_by_type_and_tabs(type, tabs).pluck(:rank).map { |rank| 20 - rank }.reduce(0, :+)
+  end
+
+  def average_points(type, tabs)
+    scores = scores_by_type_and_tabs(type, tabs).pluck(:rank).map { |rank| 20 - rank }
+    scores.length == 0 ? 0 : scores.reduce(0, :+).to_f / scores.length
   end
 
   def total_score(type, tabs)

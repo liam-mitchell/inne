@@ -26,6 +26,13 @@ def parse_player(msg, username)
   end
 end
 
+def parse_steam_id(msg)
+  id = msg[/is (.*)[\.\?]?/i, 1]
+  raise "I couldn't figure out what your Steam ID was! You need to send a message in the format 'my steam id is <id>'." if id.nil?
+  raise "Your Steam ID needs to be numerical! #{id} is not valid." if id !~ /\A\d+\Z/
+  return id
+end
+
 def parse_level_or_episode(msg)
   level = msg[LEVEL_PATTERN]
   episode = msg[EPISODE_PATTERN]
@@ -36,9 +43,9 @@ def parse_level_or_episode(msg)
     ret = Level.find_by(name: normalize_name(level).upcase)
   elsif episode
     ret = Episode.find_by(name: normalize_name(episode).upcase)
-  elsif !msg[/(level|lotd)/].nil?
+  elsif !msg[/(level of the day|lotd)/].nil?
     ret = get_current(Level)
-  elsif !msg[/(episode|eotw)/].nil?
+  elsif !msg[/(episode of the week|eotw)/].nil?
     ret = get_current(Episode)
   elsif name
     ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
@@ -64,8 +71,8 @@ def parse_tabs(msg)
   ret << :S if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
   ret << :SU if msg =~ /\b(SU|UE|U|ultimate)\b/i
   ret << :SL if msg =~ /\b(legacy|SL|L)\b/i
-  ret << :SS if msg =~ /(\b|\A|\s)(secret|\?)(\b|\Z|\s)/i
-  ret << :SS2 if msg =~ /(\b|\A|\s)(ultimate secret|!)(\b|\Z|\s)/i
+  ret << :SS if msg =~ /(\A|\s)(secret|\?)(\Z|\s)/i
+  ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
 
   ret
 end
@@ -115,7 +122,12 @@ def send_rankings(event)
   rank = parse_rank(msg) || 1
   ties = !!(msg =~ /ties/i)
 
-  if msg =~ /point/
+  if msg =~ /average point/
+    players = Player.where(id: Player.joins(:scores).group('players.id').having('count(highscoreable_id) > 50').pluck(:id))
+    rankings = players.rankings { |p| p.average_points(type, tabs) }
+    header = "average point rankings "
+    format = "%.3f"
+  elsif msg =~ /point/
     rankings = Player.rankings { |p| p.points(type, tabs) }
     header = "point rankings "
     format = "%d"
@@ -251,7 +263,7 @@ def send_list(event)
   all = player.scores_by_rank(type, tabs)
 
   tmpfile = File.join(Dir.tmpdir, "scores-#{player.name.delete(":")}.txt")
-  File::open(tmpfile, "w") do |f|
+  File::open(tmpfile, "w", crlf_newline: true) do |f|
     all.each_with_index do |scores, i|
       list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
              .join("\n  ")
@@ -275,7 +287,7 @@ def send_missing(event)
   missing = player.missing_top_ns(rank, type, tabs, ties).join("\n")
 
   tmpfile = File.join(Dir.tmpdir, "missing-#{player.name.delete(":")}.txt")
-  File::open(tmpfile, "w") do |f|
+  File::open(tmpfile, "w", crlf_newline: true) do |f|
     f.write(missing)
   end
 
@@ -326,6 +338,18 @@ def send_points(event)
   event << "#{player.name} has #{points} #{type} #{tabs}points."
 end
 
+def send_average_points(event)
+  msg = event.content
+  player = parse_player(msg, event.user.name)
+  type = parse_type(msg)
+  tabs = parse_tabs(msg)
+  average = player.average_points(type, tabs)
+
+  type = format_type(type).downcase
+  tabs = format_tabs(tabs)
+  event << "#{player.name} has #{"%.3f" % [average]} #{type} #{tabs}average points."
+end
+
 def send_diff(event)
   type = parse_type(event.content) || Level
   current = get_current(type)
@@ -363,7 +387,6 @@ def send_history(event)
   type = format_type(type)
   tabs = format_tabs(tabs)
 
-  # byebug
   graph = Gruff::Line.new(1280, 2000)
   graph.title = "#{type} #{tabs}#{header}history"
   graph.theme_pastel
@@ -408,6 +431,14 @@ def identify(event)
   user.save
 
   event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
+end
+
+def add_steam_id(event)
+  msg = event.content
+  id = parse_steam_id(msg)
+  User.find_by(username: event.user.name)
+    .update(steam_id: id)
+  event << "Thanks! From now on I'll try to use your Steam ID to retrieve scores when I need to."
 end
 
 def hello(event)
@@ -482,7 +513,7 @@ def respond(event)
   msg = event.content
   
   # strip off the @inne++ mention, if present
-  msg.strip!(/\A<@[0-9]*>/) 
+  msg.sub!(/\A<@[0-9]*> */, '') 
   
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
   if msg =~ /\A\s*lotd\s*\Z/i
@@ -502,7 +533,8 @@ def respond(event)
   send_episode(event) if msg =~ /what.*(episode|eotw)/i
   send_rankings(event) if msg =~ /rank/i && msg !~ /history/i
   send_history(event) if msg =~ /history/i && msg !~ /rank/i
-  send_points(event) if msg =~ /points/i && msg !~ /history/i && msg !~ /rank/i
+  send_points(event) if msg =~ /points/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i
+  send_average_points(event) if msg =~ /points/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i
   send_scores(event) if msg =~ /scores/i && msg !~ /history/i && msg !~ /rank/i
   send_total_score(event) if msg =~ /total/i && msg !~ /history/i && msg !~ /rank/i
   send_top_n_count(event) if msg =~ /how many/i
@@ -517,6 +549,7 @@ def respond(event)
   send_diff(event) if msg =~ /diff/i
   send_help(event) if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
   identify(event) if msg =~ /my name is/i
+  add_steam_id(event) if msg =~ /my steam id is/i
 rescue RuntimeError => e
   event << e
 end

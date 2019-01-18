@@ -115,7 +115,7 @@ class TestRankings < Test::Unit::TestCase
   def teardown; DatabaseCleaner.clean; end
 
   test "0th rankings" do
-    rankings = Player.rankings { |p| p.top_n_count(1, Level, false) }
+    rankings = Player.rankings { |p| p.top_n_count(1, Level, [], false) }
 
     assert_equal 'Borlin', rankings[0][0].name
     assert_equal 3, rankings[0][1]
@@ -125,7 +125,7 @@ class TestRankings < Test::Unit::TestCase
   end
 
   test "tied rankings" do
-    rankings = Player.rankings { |p| p.top_n_count(1, Level, true) }
+    rankings = Player.rankings { |p| p.top_n_count(1, Level, [], true) }
 
     assert_equal 'Borlin', rankings[0][0].name
     assert_equal 3, rankings[0][1]
@@ -135,7 +135,7 @@ class TestRankings < Test::Unit::TestCase
   end
 
   test "point rankings" do
-    rankings = Player.rankings { |p| p.points }
+    rankings = Player.rankings { |p| p.points(nil, []) }
 
     assert_equal 'xela', rankings[0][0].name
     assert_equal 75, rankings[0][1]
@@ -144,8 +144,24 @@ class TestRankings < Test::Unit::TestCase
     assert_equal 73, rankings[1][1]
   end
 
+  test "average point rankings" do
+    rankings = Player.rankings { |p| p.average_points(nil, []) }
+
+    assert_equal 'Borlin', rankings[0][0].name
+    assert_equal 20.0, rankings[0][1]
+
+    assert_equal 'EddyMataGallos', rankings[1][0].name
+    assert_equal 20.0, rankings[1][1]
+
+    assert_equal 'xela', rankings[2][0].name
+    assert_equal 75.0 / 4, rankings[2][1]
+
+    assert_equal 'jp27ace', rankings[3][0].name
+    assert_equal 73.0 / 4, rankings[3][1]
+  end
+
   test "score rankings" do
-    rankings = Player.rankings { |p| p.total_score }
+    rankings = Player.rankings { |p| p.total_score(nil, []) }
 
     assert_equal 'xela', rankings[0][0].name
     assert_score_equal 357.0, rankings[0][1]
@@ -155,14 +171,14 @@ class TestRankings < Test::Unit::TestCase
   end
 
   test "list missing" do
-    missing = Player.find_by(name: 'Borlin').missing_top_ns(3, nil, false)
+    missing = Player.find_by(name: 'Borlin').missing_top_ns(3, nil, [], false)
 
     assert_equal @levels[3].name, missing[0]
     assert_equal 1, missing.length
   end
 
   test "list scores by rank" do
-    scores = Player.find_by(name: 'xela').scores_by_rank
+    scores = Player.find_by(name: 'xela').scores_by_rank(nil, [])
 
     assert_equal 0, scores[0].length
     assert_equal [@levels[1], @levels[2], @levels[3]].sort, scores[1].map { |s| s.highscoreable }.sort
@@ -170,7 +186,7 @@ class TestRankings < Test::Unit::TestCase
   end
 
   test "score counts" do
-    scores = Player.find_by(name: 'xela').score_counts
+    scores = Player.find_by(name: 'xela').score_counts([])
 
     assert_equal 0, scores[:levels][0]
     assert_equal 3, scores[:levels][1]
@@ -178,7 +194,7 @@ class TestRankings < Test::Unit::TestCase
   end
 
   test "list improvable" do
-    scores = Player.find_by(name: 'xela').improvable_scores
+    scores = Player.find_by(name: 'xela').improvable_scores(nil, [])
 
     assert_score_equal 2.0, scores[@levels[0].name]
     assert_score_equal 1.0, scores[@levels[1].name]
