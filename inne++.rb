@@ -9,7 +9,8 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
+#DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
+DATABASE_ENV = 'inne_eddy'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
