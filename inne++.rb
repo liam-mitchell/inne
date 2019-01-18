@@ -59,6 +59,15 @@ def set_saved_scores(type, curr)
     .update(value: curr.scores.to_json(include: {player: {only: :name}}))
 end
 
+def get_last_steam_id
+  GlobalProperty.find_or_create_by(key: "last_steam_id").value
+end
+
+def set_last_steam_id(id)
+  GlobalProperty.find_or_create_by(key: "last_steam_id")
+    .update(value: id)
+end
+
 def download_high_scores
   ActiveRecord::Base.establish_connection(CONFIG)
 

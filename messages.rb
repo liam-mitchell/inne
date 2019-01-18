@@ -26,6 +26,13 @@ def parse_player(msg, username)
   end
 end
 
+def parse_steam_id(msg)
+  id = msg[/is (.*)[\.\?]?/i, 1]
+  raise "I couldn't figure out what your Steam ID was! You need to send a message in the format 'my steam id is <id>'." if id.nil?
+  raise "Your Steam ID needs to be numerical! #{id} is not valid." if id !~ /\A\d+\Z/
+  return id
+end
+
 def parse_level_or_episode(msg)
   level = msg[LEVEL_PATTERN]
   episode = msg[EPISODE_PATTERN]
@@ -426,6 +433,14 @@ def identify(event)
   event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
 end
 
+def add_steam_id(event)
+  msg = event.content
+  id = parse_steam_id(msg)
+  User.find_by(username: event.user.name)
+    .update(steam_id: id)
+  event << "Thanks! From now on I'll try to use your Steam ID to retrieve scores when I need to."
+end
+
 def hello(event)
   event << "Hi!"
 
@@ -498,7 +513,7 @@ def respond(event)
   msg = event.content
   
   # strip off the @inne++ mention, if present
-  msg.strip!(/\A<@[0-9]*>/) 
+  msg.sub!(/\A<@[0-9]*> */, '') 
   
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
   if msg =~ /\A\s*lotd\s*\Z/i
@@ -534,6 +549,7 @@ def respond(event)
   send_diff(event) if msg =~ /diff/i
   send_help(event) if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
   identify(event) if msg =~ /my name is/i
+  add_steam_id(event) if msg =~ /my steam id is/i
 rescue RuntimeError => e
   event << e
 end

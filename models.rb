@@ -5,6 +5,14 @@ IGNORED_PLAYERS = [
   "Kronogenics",
   "BlueIsTrue",
   "fiordhraoi",
+  "cheeseburgur101",
+  "Jey",
+  "jungletek",
+  "Hedgy",
+  "ᕈᘎᑕᒎᗩn ᙡiᗴᒪḰi",
+  "Venom",
+  "EpicGamer10075",
+  "Altii",
 ]
 
 module HighScore
@@ -26,18 +34,34 @@ module HighScore
     spreads
   end
 
-  def uri
-    URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=76561197992013087&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
+  def uri(steam_id)
+    URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
+  end
+
+  def update_steam_id
+    User.where.not(steam_id: nil).each do |u|
+      response = Net::HTTP.get(uri(u.steam_id))
+      if response != '-1337'
+        set_last_steam_id(u.steam_id)
+        return response
+      end
+    end
+
+    return '-1337'
   end
 
   def get_scores
-    response = Net::HTTP.get(uri)
+    response = Net::HTTP.get(uri(get_last_steam_id))
+    if response == '-1337'
+      response = update_steam_id
+    end
+
     return nil if response == '-1337'
     return JSON.parse(response)['scores']
   end
 
   def update_scores(updated)
-    updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }
+    updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }
 
     ActiveRecord::Base.transaction do
       updated.each_with_index do |score, i|
@@ -56,7 +80,7 @@ module HighScore
 
     if updated.nil?
       # TODO make this use err()
-      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{uri}"
+      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{uri(get_last_steam_id)}"
       return
     end
 
