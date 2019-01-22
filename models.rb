@@ -163,10 +163,6 @@ class Episode < ActiveRecord::Base
   def format_name
     "#{name}"
   end
-
-  def cleanliness
-    
-  end
 end
 
 class Score < ActiveRecord::Base
