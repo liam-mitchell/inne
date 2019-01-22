@@ -44,7 +44,7 @@ namespace :db do
   end
 
   task :seed => :configure_connection do
-    require_relative 'Models.rb'
+    require_relative 'models.rb'
     require_relative 'db/seeds.rb'
   end
 

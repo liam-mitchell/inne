@@ -64,6 +64,11 @@ def parse_rank(msg)
   rank ? rank.to_i : nil
 end
 
+def parse_bottom_rank(msg)
+  rank = msg[/bottom\s*([0-9][0-9]?)/i, 1]
+  rank ? 20-rank.to_i : nil
+end
+
 def parse_tabs(msg)
   ret = []
 
@@ -164,7 +169,7 @@ def send_total_score(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
 
-  event << "#{player.name}'s total #{tabs}#{type.to_s.downcase} score is #{score}."
+  event << "#{player.name}'s total #{tabs}#{type.to_s.downcase} score is #{"%.3f" % [score]}."
 end
 
 def send_spreads(event)
@@ -260,20 +265,114 @@ def send_list(event)
   player = parse_player(msg, event.user.name)
   type = parse_type(msg)
   tabs = parse_tabs(msg)
+  rank = parse_rank(msg) || 20
+  bott = parse_bottom_rank(msg) || 0
+  ties = !!(msg =~ /ties/i)
   all = player.scores_by_rank(type, tabs)
+
+  if rank==20 && bott==0 && !!msg[/0th/i]
+    rank = 1
+    bott = 0
+  end
 
   tmpfile = File.join(Dir.tmpdir, "scores-#{player.name.delete(":")}.txt")
   File::open(tmpfile, "w", crlf_newline: true) do |f|
-    all.each_with_index do |scores, i|
+    all[bott..rank-1].each_with_index do |scores, i|
       list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
              .join("\n  ")
-      f.write("#{i}:\n  ")
+      f.write("#{bott+i}:\n  ")
       f.write(list)
       f.write("\n")
     end
   end
 
   event.attach_file(File::open(tmpfile))
+end
+
+def send_community(event)
+  msg = event.content
+  tabs = parse_tabs(msg)
+  tabs.empty? ? ftabs = "" : ftabs = format_tabs(tabs)
+  tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
+
+  levels = Score.where(rank: 0, highscoreable_type: "Level").includes(:level).where(levels: {tab: tabs})
+  episodes = Score.where(rank: 0, highscoreable_type: "Episode").includes(:episode).where(episodes: {tab: tabs})
+  lvls = levels.count
+  eps = episodes.count
+  tls = levels.map{|s| s.score}.sum
+  tes = episodes.map{|s| s.score}.sum
+  if !(tabs&[:SS, :SS2]).empty? # in order to compare lvls and eps we have to exclude secrets
+    tlsno = Score.where(rank: 0, highscoreable_type: "Level").includes(:level).where(levels: {tab: tabs}).where.not(levels: {tab: [:SS, :SS2]}).map{|s| s.score}.sum
+    ttlsno = "Total level score (w/o secrets): #{tlsno}\n"
+  else
+    tlsno = tls
+    ttlsno = ""
+  end
+  diff = tlsno-4*90*eps-tes
+  ttls = "Total level score: #{tls}\n"
+  ttes = "Total episode score: #{tes}\n"
+  tdiff = "Difference: #{"%.3f" % [diff]}\n"
+  ttlsavg = "Average level score: #{"%.3f" % [tls/lvls]}\n"
+  ttesavg = "Average episode score: #{"%.3f" % [tes/eps]}\n"
+  avgdiff = "Average difference: #{"%.3f" % [diff/eps]}\n"
+
+  event << "Community's total #{ftabs}scores #{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{ttls}#{ttlsno}#{ttes}#{tdiff}\n#{ttlsavg}#{ttesavg}#{avgdiff}```"
+end
+
+def send_maxable(event)
+  msg = event.content
+  type = parse_type(msg) || Level
+  tabs = parse_tabs(msg)
+
+  ties = HighScore.ties(type, tabs)
+            .select { |level, tie| tie < 20 }
+            .sort_by { |level, tie| -tie }
+            .take(20)
+            .map { |s| "#{s[0]} (#{s[1]})"}
+            .join("\n")
+
+  type = format_type(type).downcase
+  tabs = tabs.empty? ? "All " : format_tabs(tabs)
+
+  event << "#{tabs}#{type}s with the most ties for 0th #{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{ties}```"
+end
+
+def send_maxed(event)
+  msg = event.content
+  type = parse_type(msg) || Level
+  tabs = parse_tabs(msg)
+
+  ties = HighScore.ties(type, tabs)
+            .select { |level, tie| tie == 20 }
+            .map { |s| "#{s[0]}\n"}
+  ties_list = ties.join
+
+  type = format_type(type).downcase
+  tabs = tabs.empty? ? "All " : format_tabs(tabs)
+
+  event << "#{tabs}potentially maxed #{type}s (with at least 20 ties for 0th) #{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{ties_list}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
+end
+
+def cleanliness(ep)
+  [ep.name, Level.where("UPPER(name) LIKE ?", ep.name.upcase + '%').map{|l| l.scores[0].score}.sum - ep.scores[0].score - 360]
+end
+
+def send_cleanliness(event)
+  msg = event.content
+  tabs = parse_tabs(msg)
+  tabs.empty? ? ftabs = "All " : ftabs = format_tabs(tabs)
+  tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
+  cleanest = !!msg[/cleanest/i]
+
+  cleanliness = Episode.where(tab: tabs)
+                .map{|e| cleanliness(e)}
+                .sort_by{|e| (cleanest ? e[1] : -e[1])}
+                .map{|e| "#{e[0]}:#{e[0][1]=='-' ? "  " : " "}%.3f" % [e[1]]}
+                .take(20)
+                .join("\n")
+
+  tabs = tabs.empty? ? "All " : format_tabs(tabs)
+  event << "#{ftabs}#{cleanest ? "cleanest" : "dirtiest"} episodes #{Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")}:\n```#{cleanliness}```"
 end
 
 def send_missing(event)
@@ -547,6 +646,10 @@ def respond(event)
   send_level_name(event) if msg =~ /\blevel name\b/i
   send_level_id(event) if msg =~ /\blevel id\b/i
   send_diff(event) if msg =~ /diff/i
+  send_community(event) if msg =~ /community/i && msg !~ /retirement/i
+  send_maxable(event) if msg =~ /maxable/i
+  send_maxed(event) if msg =~ /maxed/i
+  send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
   send_help(event) if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
   identify(event) if msg =~ /my name is/i
   add_steam_id(event) if msg =~ /my steam id is/i

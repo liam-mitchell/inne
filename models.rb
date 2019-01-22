@@ -13,6 +13,8 @@ IGNORED_PLAYERS = [
   "Venom",
   "EpicGamer10075",
   "Altii",
+  "Puςe",
+  "Floof The Goof",
 ]
 
 module HighScore
@@ -32,6 +34,20 @@ module HighScore
     end
 
     spreads
+  end
+
+  def self.ties(type, tabs)
+    ties = {}
+    scores = tabs.empty? ? type.all : type.where(tab: tabs)
+    
+    scores.each do |elem|
+      tie = elem.tie
+      if !tie.nil? && tie>3
+        ties[elem.name] = tie
+      end
+    end
+
+    ties
   end
 
   def uri(steam_id)
@@ -91,6 +107,10 @@ module HighScore
     scores.find_by(rank: n).spread unless !scores.exists?(rank: n)
   end
 
+  def tie
+    scores.take_while{|s| s.tie}.count
+  end
+
   def format_scores
     scores.map(&:format).join("\n")
   end
@@ -122,6 +142,10 @@ class Level < ActiveRecord::Base
   has_many :scores, as: :highscoreable
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
+  def self.count
+    ObjectSpace.each_object(self).to_a.count
+  end
+
   def format_name
     "#{longname} (#{name})"
   end
@@ -132,8 +156,16 @@ class Episode < ActiveRecord::Base
   has_many :scores, as: :highscoreable
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
+  def self.count
+    ObjectSpace.each_object(self).to_a.count
+  end
+
   def format_name
     "#{name}"
+  end
+
+  def cleanliness
+    
   end
 end
 
@@ -145,6 +177,10 @@ class Score < ActiveRecord::Base
 
   def spread
     highscoreable.scores.find_by(rank: 0).score - score
+  end
+
+  def tie
+    highscoreable.scores.find_by(rank: 0).score == score
   end
 
   def format
