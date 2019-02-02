@@ -39,11 +39,11 @@ module HighScore
   def self.ties(type, tabs)
     ties = {}
     scores = tabs.empty? ? type.all : type.where(tab: tabs)
-    
+
     scores.each do |elem|
-      tie = elem.tie
-      if !tie.nil? && tie>3
-        ties[elem.name] = tie
+      tie_count = elem.tie_count
+      if !tie_count.nil? && tie_count > 3
+        ties[elem.name] = tie_count
       end
     end
 
@@ -107,8 +107,8 @@ module HighScore
     scores.find_by(rank: n).spread unless !scores.exists?(rank: n)
   end
 
-  def tie
-    scores.take_while{|s| s.tie}.count
+  def tie_count
+    scores.take_while{ |s| s.tie }.count
   end
 
   def format_scores
@@ -142,10 +142,6 @@ class Level < ActiveRecord::Base
   has_many :scores, as: :highscoreable
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
-  def self.count
-    ObjectSpace.each_object(self).to_a.count
-  end
-
   def format_name
     "#{longname} (#{name})"
   end
@@ -156,12 +152,17 @@ class Episode < ActiveRecord::Base
   has_many :scores, as: :highscoreable
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
-  def self.count
-    ObjectSpace.each_object(self).to_a.count
-  end
-
   def format_name
     "#{name}"
+  end
+
+  def cleanliness
+    [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].score }.sum - scores[0].score - 360]
+  end
+
+  def ownage
+    owner = scores[0].player.name
+    [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].player.name == owner }.count(true) == 5, owner]
   end
 end
 
@@ -170,6 +171,14 @@ class Score < ActiveRecord::Base
   belongs_to :highscoreable, polymorphic: true
   belongs_to :level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: 'highscoreable_id'
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
+
+  def self.total_scores(type, tabs, secrets)
+    tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
+    tabs = (secrets ? tabs : tabs - [:SS, :SS2])
+    query = self.where(rank: 0, highscoreable_type: type.to_s)
+    result = (query.includes(:level).where(levels: {tab: tabs}) + query.includes(:episode).where(episodes: {tab: tabs})).map{ |s| s.score }
+    [result.sum, result.count]
+  end
 
   def spread
     highscoreable.scores.find_by(rank: 0).score - score
