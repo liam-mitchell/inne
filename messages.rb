@@ -671,7 +671,7 @@ def respond(event)
   send_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
   send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
   send_scores(event) if msg =~ /scores/i && msg !~ /history/i && msg !~ /rank/i
-  send_total_score(event) if msg =~ /\btotal/i && msg !~ /history/i && msg !~ /rank/i
+  send_total_score(event) if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
   send_top_n_count(event) if msg =~ /how many/i
   send_stats(event) if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
   send_screenshot(event) if msg =~ /screenshot/i
