@@ -30,7 +30,7 @@ def all_episodes
 
   # TODO FIX THIS
   # but we never seed shit so whatevs
-  main = ["S", "SL", "SU"].product(["A", "B", "C", "D", "E", "X"])
+  main = ["S", "SL"].product(["A", "B", "C", "D", "E", "X"])
          .product((0..19).to_a)
 
   (intro + main).map(&:flatten).map do |prefix, row, column|
@@ -69,7 +69,6 @@ ActiveRecord::Base.transaction do
   names = get_names('names-SI.txt', 0).merge(get_names('names-S.txt', 600)).merge(get_names('names-SL.txt', 1200))
   Level.update(names.keys, names.values)
 
-
   now = Time.now
   next_level_update = DateTime.new(now.year, now.month, now.day + 1, 0, 0, 0, now.zone)
   next_episode_update = next_level_update
@@ -85,6 +84,7 @@ ActiveRecord::Base.transaction do
   GlobalProperty.create(key: 'current_episode', value: 'SL-C-00')
   GlobalProperty.create(key: 'next_level_update', value: next_level_update.to_s)
   GlobalProperty.create(key: 'next_episode_update', value: next_episode_update.to_s)
+  GlobalProperty.create(key: 'next_score_update', value: next_level_update.to_s)
   GlobalProperty.create(key: 'saved_level_scores', value: Level.find_by(name: 'SL-C-10-00').scores.to_json(include: {player: {only: :name}}))
   GlobalProperty.create(key: 'saved_episode_scores', value: Episode.find_by(name: 'SL-C-00').scores.to_json(include: {player: {only: :name}}))
 end
