@@ -35,7 +35,7 @@ end
 def get_next(type)
   ret = nil
   while ret.nil?
-    t = type.where(completed: nil).where.not(tab: [:SS, :SS2]).sample
+    t = type.where(completed: nil).sample
     ret = t if t.scores[0].score != t.scores.last.score
   end
   ret.update(completed: true)

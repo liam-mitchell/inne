@@ -86,7 +86,7 @@ def format_type(type)
 end
 
 def format_ties(ties)
-  ties ? "with ties " : ""
+  ties ? " with ties" : ""
 end
 
 def format_tab(tab)
@@ -376,7 +376,7 @@ def send_history(event)
     header = "score "
   else
     history = Player.rank_histories(rank, type, tabs, ties)
-    header = format_rank(rank) + " " + format_ties(ties)
+    header = format_rank(rank) + format_ties(ties)
   end
 
   history = history.sort_by { |player, data| data.max_by { |k, v| v }[1] }
