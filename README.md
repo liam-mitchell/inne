@@ -50,12 +50,14 @@ For any command that requires a username, if you don't specify a username, inne+
 - *score rankings*
 - *\<tab\> rankings*
 - *top 10 intro level rankings with ties*
+- *average points rankings*
+- *average rank rankings*
 
-inne++ will compute the overall number of top-N scores, total points or total score for every player, and display the top 20.
+inne++ will compute the overall number of top-N scores, total points, total score, average points, or average rank, for every player, and display the top 20.
 
 If 'with ties' is specified, inne++ will consider a tie for the score to count towards the rankings, even if that means taking more than N rankings for the level.
 
-If neither 'point', 'score' or a rank is specified, inne++ defaults to 0th rankings, no ties.
+If neither 'point', 'score', 'average' or a rank is specified, inne++ defaults to 0th rankings, no ties.
 
 ### Display scores with the largest or smallest spread between 0th and Nth
 - *spread*
@@ -73,6 +75,38 @@ If 'smallest' or 'biggest' is not specified, inne++ defaults to 'biggest'.
 
 If 'episode' or 'level' is not specified, inne++ defaults to 'level'.
 
+### Display maxed or maxable levels or episodes
+- *maxed*
+- *maxable*
+- *\<tab\> maxed*
+- *\<tab\> maxable*
+
+'Maxed' levels are levels with 20 or more ties for 0th. Often this levels can't be improved unless innovated, hence the name. inne++ will display a list of all such levels (or episodes, if asked).
+
+On the other hand, 'maxable' levels are levels with many ties for 0th, hence being potentially unimprovable. inne++ will display a list of the 20 levels with the most ties for 0th, in descending order.
+
+As usual, you can filter by tabs.
+
+### Display cleanest or dirtiest episodes
+- *cleanest*
+- *dirtiest*
+- *\<tab\> cleanest*
+- *\<tab\> dirtiest*
+
+inne++ will display a list of the 20 episodes with the least difference between the episode 0th and the sum of all of its 5 level 0ths (for 'cleanest'), or the ones with the most difference ('dirtiest'). As usual, you can filter by tabs.
+
+### Display episode ownages.
+- *ownages*
+- *\<tab\> ownages*
+
+An episode ownage occurs when the same player has the 0th for an episode and all of its 5 levels. inne++ will print a list of all ownages. As usual, you can filter by tab.
+
+### Display the community's total scores
+- *community*
+- *\<tab\> community*
+
+The community's total scores are the sum of all 0ths. inne++ will display some information regarding the community's total score, like the total level score, total episode score, the (adjusted) difference between both (to see, globally, how clean episodes are), and also, the averages per level of all of them. As usual, you can filter by tab.
+ 
 ### Find a level ID by level name
 - *level id for \<level\>*
 
@@ -140,8 +174,12 @@ If a rank isn't specified, inne++ defaults to top 20.
 
 ### Display a list of all your high scores
 - *list*
+- *0th list*
+- *top n list*
+- *bottom n list*
+- *top m bottom n list*
 
-inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank.
+inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank. You can filter only the 0ths, or only the top or bottom ones. You can use both options at the same time to obtain only the score between 2 ranks of your choice. As usual, you can filter by tabs.
 
 ### Initialize inne++
 - *hello*

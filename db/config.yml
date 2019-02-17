@@ -1,3 +1,12 @@
+inne_eddy:
+  adapter: sqlite3
+  database: inne_eddy.db
+  host: localhost
+  token: NTM1NjM0MTMwNDM2NjIwMjk4.DyVEpA.kqjJ7CyyArz60qYC01czT9fPGxE
+  client_id: 535634130436620298
+  #level_update_frequency: 60
+  #episode_update_frequency: 60
+
 development:
     adapter: mysql2
     database: inne_back

@@ -74,17 +74,17 @@ def download_high_scores
   begin
     while true
       log("updating high scores...")
-  
+
       Level.all.each(&:download_scores)
       Episode.all.each(&:download_scores)
-  
+
       log("updated high scores. updating rankings...")
-  
+
       now = Time.now
       [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
         [Level, Episode].each do |type|
           next if type == Episode && [:SS, :SS2].include?(tab)
-  
+
           [1, 5, 10, 20].each do |rank|
             [true, false].each do |ties|
               rankings = Player.rankings { |p| p.top_n_count(rank, type, tab, ties) }
@@ -99,13 +99,13 @@ def download_high_scores
                   timestamp: now
                 }
               end
-  
+
               ActiveRecord::Base.transaction do
                 RankHistory.create(attrs)
               end
             end
           end
-  
+
           rankings = Player.rankings { |p| p.points(type, tab) }
           attrs = rankings.select { |r| r[1] > 0 }.map do |r|
             {
@@ -116,11 +116,11 @@ def download_high_scores
               points: r[1]
             }
           end
-  
+
           ActiveRecord::Base.transaction do
             PointsHistory.create(attrs)
           end
-  
+
           rankings = Player.rankings { |p| p.total_score(type, tab) }
           attrs = rankings.select { |r| r[1] > 0 }.map do |r|
             {
@@ -131,20 +131,20 @@ def download_high_scores
               score: r[1]
             }
           end
-  
+
           ActiveRecord::Base.transaction do
             TotalScoreHistory.create(attrs)
           end
         end
       end
-  
+
       next_score_update = get_next_update('score')
       next_score_update += HIGHSCORE_UPDATE_FREQUENCY if next_score_update < Time.now
       delay = next_score_update - Time.now
       set_next_update('score', next_score_update)
-  
+
       log("updated rankings, next score update in #{delay} seconds")
-  
+
       sleep(delay) unless delay < 0
     end
   rescue => e

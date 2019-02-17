@@ -9,7 +9,7 @@ def tab(prefix)
   }[prefix]
 end
 
-def change_table(type, table)
+def modify_table(type, table)
     add_column table, :newtab, :integer, index: true
     type.all.each { |h| h.update(newtab: tab(h.tab)) }
 
@@ -21,8 +21,8 @@ end
 
 class ChangeTabToEnum < ActiveRecord::Migration[5.1]
   def change
-    change_table(TotalScoreHistory, :total_score_histories)
-    change_table(PointsHistory, :points_histories)
-    change_table(RankHistory, :rank_histories)
+    modify_table(TotalScoreHistory, :total_score_histories)
+    modify_table(PointsHistory, :points_histories)
+    modify_table(RankHistory, :rank_histories)
   end
 end
