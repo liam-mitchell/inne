@@ -197,3 +197,8 @@ inne++ will send you a short form of this README file.
 This project is licensed under the terms of the MIT license (see LICENSE.txt in the root directory of the project).
 
 Special thanks to jg9000, eru_bahagon and EddyMataGallos from the N forums for their work on NHigh (https://forum.droni.es/viewtopic.php?f=79&t=10472), which inspired most of the high-scoring features in inne++, and provided key guidance on using the N high scores API.
+
+And thanks to the following contributors:
+- EddyMataGallos (@edelkas)
+- Toasters (@andrewhuntsmith)
+- poober (@jseakle)
