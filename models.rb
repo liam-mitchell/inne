@@ -1,3 +1,4 @@
+# coding: utf-8
 require 'active_record'
 require 'net/http'
 
@@ -67,13 +68,18 @@ module HighScore
   end
 
   def get_scores
-    response = Net::HTTP.get(uri(get_last_steam_id))
-    if response == '-1337'
-      response = update_steam_id
-    end
+    begin
+      response = Net::HTTP.get(uri(get_last_steam_id))
+      if response == '-1337'
+        response = update_steam_id
+      end
 
-    return nil if response == '-1337'
-    return JSON.parse(response)['scores']
+      return nil if response == '-1337'
+      return JSON.parse(response)['scores']
+    rescue => e
+      err("error getting scores: #{e}")
+      retry
+    end 
   end
 
   def update_scores(updated)
