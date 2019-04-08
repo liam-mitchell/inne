@@ -146,6 +146,7 @@ end
 class Level < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
+  has_many :videos, as: :highscoreable
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def format_name
@@ -156,6 +157,7 @@ end
 class Episode < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
+  has_many :videos, as: :highscoreable
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def format_name
@@ -328,4 +330,20 @@ end
 class TotalScoreHistory < ActiveRecord::Base
   belongs_to :player
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+end
+
+class Video < ActiveRecord::Base
+  belongs_to :highscoreable, polymorphic: true
+
+  def format_challenge
+    return (challenge == "G++" || challenge == "?!") ? challenge : "#{challenge} (#{challenge_code})"
+  end
+
+  def format_author
+    return "#{author} (#{author_tag})"
+  end
+
+  def format_description
+    "#{format_challenge} by #{format_author}"
+  end
 end

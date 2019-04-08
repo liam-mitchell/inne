@@ -1,4 +1,3 @@
-# require 'ascii_charts'
 require 'discordrb'
 require 'json'
 require 'net/http'

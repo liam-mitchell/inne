@@ -26,6 +26,35 @@ def parse_player(msg, username)
   end
 end
 
+def parse_video_author(msg)
+  return msg[/by (.*)[\.\?]?\Z/i, 1]
+end
+
+def parse_challenge(msg)
+  return msg[/([GTOCE][+-][+-])+/]
+end
+
+def parse_challenge_code(msg)
+  return msg[/([!?]+)[^-]/, 1]
+end
+
+def parse_videos(msg)
+  author = parse_video_author(msg)
+  msg = msg.chomp(" by " + author.to_s)
+  highscoreable = parse_level_or_episode(msg)
+  challenge = parse_challenge(msg)
+  code = parse_challenge_code(msg)
+  videos = highscoreable.videos
+
+  videos = videos.where('lower(author) = ? or lower(author_tag) = ?', author.downcase, author.downcase) unless author.nil?
+  videos = videos.where(challenge: challenge) unless challenge.nil?
+  videos = videos.where(challenge_code: code) unless code.nil?
+
+  raise "That level doesn't have any videos!" if highscoreable.videos.empty?
+  raise "I couldn't find any videos matching that request! Are you looking for one of these videos?\n```#{highscoreable.videos.map(&:format_description).join("\n")}```" if videos.empty?
+  return videos
+end
+
 def parse_steam_id(msg)
   id = msg[/is (.*)[\.\?]?/i, 1]
   raise "I couldn't figure out what your Steam ID was! You need to send a message in the format 'my steam id is <id>'." if id.nil?
@@ -593,7 +622,6 @@ def send_times(event)
 end
 
 def send_help(event)
-  # event << "The commands I understand are:"
   msg = "The commands I understand are:\n"
 
   File.open('README.md').read.each_line do |line|
@@ -627,6 +655,31 @@ def dump(event)
   log("next updates: scores #{get_next_update('score')}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}")
 
   event << "I dumped some things to the log for you to look at."
+end
+
+def send_videos(event)
+  videos = parse_videos(event.content)
+
+  # If we have more than one video, we probably shouldn't spam the channel too hard...
+  # so we'll make people be more specific unless we can narrow it down.
+  if videos.length == 1
+    event << videos[0].url
+    return
+  end
+
+  descriptions = videos.map(&:format_description).join("\n")
+  default = videos.where(challenge: ["G++", "?!"])
+
+  # If we don't have a specific challenge to look up, we default to sending
+  # one without challenges
+  if default.length == 1
+    # Send immediately, so the video link shows above the additional videos
+    event.send_message(default[0].url)
+    event << "\nI have some challenge videos for this level as well! You can ask for them by being more specific about challenges and authors, by saying '<challenge> video for <level>' or 'video for <level> by <author>':\n```#{descriptions}```"
+    return
+  end
+
+  event << "You're going to have to be more specific! I know about the following videos for this level:\n```#{descriptions}```"
 end
 
 # TODO set level of the day on startup
@@ -682,7 +735,11 @@ def respond(event)
   send_level_id(event) if msg =~ /\blevel id\b/i
   identify(event) if msg =~ /my name is/i
   add_steam_id(event) if msg =~ /my steam id is/i
+  send_videos(event) if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
 
 rescue RuntimeError => e
+  # Exceptions raised in here are user error, indicating that we couldn't
+  # figure out what they were asking for, so send the error message out
+  # to the channel
   event << e
 end

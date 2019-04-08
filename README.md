@@ -181,6 +181,12 @@ If a rank isn't specified, inne++ defaults to top 20.
 
 inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank. You can filter only the 0ths, or only the top or bottom ones. You can use both options at the same time to obtain only the score between 2 ranks of your choice. As usual, you can filter by tabs.
 
+### Link a video of a level or episode
+- *video for \<level\>*
+- *video for \<level\> by \<user\>*
+- *\<challenge\> video for \<level\>*
+- *\<challenge\> video for \<level\> by \<user\>*
+
 ### Initialize inne++
 - *hello*
 - *hi*
