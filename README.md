@@ -181,6 +181,12 @@ If a rank isn't specified, inne++ defaults to top 20.
 
 inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank. You can filter only the 0ths, or only the top or bottom ones. You can use both options at the same time to obtain only the score between 2 ranks of your choice. As usual, you can filter by tabs.
 
+### Link a video of a level or episode
+- *video for \<level\>*
+- *video for \<level\> by \<user\>*
+- *\<challenge\> video for \<level\>*
+- *\<challenge\> video for \<level\> by \<user\>*
+
 ### Analyze replays
 - *analysis for \<level-name\> \<rank a\> \<rank b\> ...*
 
@@ -202,3 +208,9 @@ inne++ will send you a short form of this README file.
 This project is licensed under the terms of the MIT license (see LICENSE.txt in the root directory of the project).
 
 Special thanks to jg9000, eru_bahagon and EddyMataGallos from the N forums for their work on NHigh (https://forum.droni.es/viewtopic.php?f=79&t=10472), which inspired most of the high-scoring features in inne++, and provided key guidance on using the N high scores API.
+
+And thanks to the following contributors:
+- EddyMataGallos (@edelkas)
+- Toasters (@andrewhuntsmith)
+- poober (@jseakle)
+- systeminspired
