@@ -1,5 +1,6 @@
 require 'ascii_charts'
 require 'gruff'
+require 'zlib'
 require_relative 'models.rb'
 
 LEVEL_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9]?/i
@@ -476,6 +477,80 @@ def send_diff(event)
   event << "Score changes on #{current.format_name} since #{since}:\n```#{diff}```"
 end
 
+def do_analysis(scores, rank)
+  run = scores.download_scores(rank)
+  player = run['user_name']
+  ingame_rank = run['rank'].to_s
+  replay_id = run['replay_id'].to_s
+  score = "%.3f" % [run['score'].to_f / 1000]
+  analysis = scores.analyze_replay(replay_id)
+  gold = "%.0f" % [((run['score'].to_f / 1000) + (analysis.size.to_f / 60) - 90) / 2]
+  result = {'player' => player, 'scores' => scores.format_name, 'rank' => rank, 'ingame_rank' => ingame_rank, 'score' => score, 'analysis' => analysis, 'gold' => gold}
+end
+
+def send_analysis(event)
+  msg = event.content
+  scores = parse_level_or_episode(msg)
+  ranks = msg.scan(/\s+([0-9][0-9]?)/).map{ |r| r[0].to_i }.reject{ |r| r < 0 || r > 19 }
+  if ranks.empty? then ranks.push(0) end
+  analysis = ranks.map{ |rank| do_analysis(scores, rank) }
+  length = analysis.map{ |a| a['analysis'].size }.max
+  padding = Math.log(length, 10).to_i + 1
+  table_header = " " * padding + "|" + "JRL|" * analysis.size
+  separation = "-" * table_header.size
+
+  # 3 types of result formatting, only 2 being used.
+
+  raw_result = analysis.map{ |a|
+    a['analysis'].map{ |b|
+      [b % 2 == 1, b / 2 % 2 == 1, b / 4 % 2 == 1]
+    }.map{ |f|
+      frame = ""
+      if f[0] then frame.concat("j") end
+      if f[1] then frame.concat("r") end
+      if f[2] then frame.concat("l") end
+      frame
+    }.join(".")
+  }.join("\n\n")
+
+  table_result = analysis.map{ |a|
+    table = a['analysis'].map{ |b| [b % 2 == 1 ? "^" : " ", b / 2 % 2 == 1 ? ">" : " ", b / 4 % 2 == 1 ? "<" : " "].push("|") }
+    while table.size < length do table.push([" ", " ", " ", "|"]) end
+    table.transpose
+  }.flatten(1).transpose.each_with_index.map{ |l, i| "%0#{padding}d|#{l.join}" % [i + 1] }.insert(0,table_header).insert(1,separation).join("\n")
+
+  key_result = analysis.map{ |a|
+    a['analysis'].map{ |f|
+      case f
+      when 0 then "-"
+      when 1 then "^"
+      when 2 then ">"
+      when 3 then "/"
+      when 4 then "<"
+      when 5 then "\\"
+      when 6 then "≤"
+      when 7 then "o"
+      else "?"
+      end
+    }.join.scan(/.{,60}/).reject{ |f| f.empty? }.each_with_index.map{ |f, i| "%0#{padding}d #{f}" % [60*i] }.join("\n")
+  }.join("\n\n")
+
+  properties = analysis.map{ |a|
+    "[#{a['player']}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, in-game rank #{a['ingame_rank']}, gold #{a['gold']}]"
+  }.join("\n")
+  explanation = "[**-** Nothing,  **^** Jump,  **>** Right,  **<** Left,  **/** Right Jump,  **\\** Left Jump,  **≤** Left Right,  **o** Left Right Jump]"
+  header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
+
+  result = "#{header}\n```#{key_result}```"
+  if result.size > 2000 then result = result[0..1994] + "...```" end
+  event << "#{result}"
+  tmpfile = File.join(Dir.tmpdir, "analysis-#{scores.name}.txt")
+  File::open(tmpfile, "w", crlf_newline: true) do |f|
+    f.write(table_result)
+  end
+  event.attach_file(File::open(tmpfile))
+end
+
 def send_history(event)
   msg = event.content
 
@@ -670,7 +745,7 @@ def respond(event)
   send_level_time(event) if  msg =~ /when.*next.*(level|lotd)/i
   send_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
   send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
-  send_scores(event) if msg =~ /scores/i && msg !~ /history/i && msg !~ /rank/i
+  send_scores(event) if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
   send_total_score(event) if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
   send_top_n_count(event) if msg =~ /how many/i
   send_stats(event) if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
@@ -680,6 +755,7 @@ def respond(event)
   send_missing(event) if msg =~ /missing/i
   send_level_name(event) if msg =~ /\blevel name\b/i
   send_level_id(event) if msg =~ /\blevel id\b/i
+  send_analysis(event) if msg =~ /analysis/i
   identify(event) if msg =~ /my name is/i
   add_steam_id(event) if msg =~ /my steam id is/i
 

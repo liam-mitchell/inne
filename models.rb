@@ -50,13 +50,17 @@ module HighScore
     ties
   end
 
-  def uri(steam_id)
-    URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
+  def uri(steam_id, replay_id = nil)
+    if replay_id == nil
+      URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
+    else
+      URI("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}")
+    end
   end
 
-  def update_steam_id
+  def update_steam_id(replay_id = nil)
     User.where.not(steam_id: nil).each do |u|
-      response = Net::HTTP.get(uri(u.steam_id))
+      response = Net::HTTP.get(uri(u.steam_id, replay_id))
       if response != '-1337'
         set_last_steam_id(u.steam_id)
         return response
@@ -66,14 +70,19 @@ module HighScore
     return '-1337'
   end
 
-  def get_scores
-    response = Net::HTTP.get(uri(get_last_steam_id))
-    if response == '-1337'
-      response = update_steam_id
-    end
+  def get_scores(replay_id = nil)
+    begin
+      response = Net::HTTP.get(uri(get_last_steam_id, replay_id))
+      if response == '-1337'
+        response = update_steam_id(replay_id)
+      end
 
-    return nil if response == '-1337'
-    return JSON.parse(response)['scores']
+      return nil if response == '-1337'
+      return replay_id.nil? ? correct_ties(JSON.parse(response)['scores']) : response
+    rescue => e
+      err("error getting scores: #{e}")
+      retry
+    end
   end
 
   def update_scores(updated)
@@ -91,7 +100,7 @@ module HighScore
     end
   end
 
-  def download_scores
+  def download_scores(rank = nil)
     updated = get_scores
 
     if updated.nil?
@@ -100,7 +109,17 @@ module HighScore
       return
     end
 
-    update_scores(updated)
+    rank.nil? ? update_scores(updated) : updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }[rank]
+  end
+
+  def analyze_replay(replay_id)
+    replay = get_scores(replay_id)
+    demo = Zlib::Inflate.inflate(replay[16..-1])[30..-1]
+    analysis = demo.unpack('H*')[0].scan(/../).map{ |b| b.to_i }[1..-1]
+  end
+
+  def correct_ties(score_hash)
+    score_hash.group_by{ |s| s['score'] }.map{ |score, scores| scores.sort_by{ |s| s['replay_id'] } }.flatten
   end
 
   def spread(n)

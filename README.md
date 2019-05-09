@@ -181,6 +181,11 @@ If a rank isn't specified, inne++ defaults to top 20.
 
 inne++ will send you a text file containing all level and episode high scores for the specified user listed by rank. You can filter only the 0ths, or only the top or bottom ones. You can use both options at the same time to obtain only the score between 2 ranks of your choice. As usual, you can filter by tabs.
 
+### Analyze replays
+- *analysis for \<level-name\> \<rank a\> \<rank b\> ...*
+
+inne++ will download and analyze the inputs of a group of runs with ranks *\<rank a\>*, *\<rank b\>*... from level *\<level-name\>*. You can introduce as many ranks as you want, as long as they are separated by spaces. You need to introduce the level name in it's short form (e.g. S-A-15-03) rather than its long name (e.g. "neo tokyo") to avoid confusing inne with the also introduced ranks.
+
 ### Initialize inne++
 - *hello*
 - *hi*
