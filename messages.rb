@@ -571,7 +571,7 @@ def send_analysis(event)
   header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
 
   result = "#{header}\n```#{key_result}```"
-  if result.size > 2000 then result = result[0..1994] + "...```" end
+  if result.size > 2000 then result = result[0..1993] + "...```" end
   event << "#{result}"
   tmpfile = File.join(Dir.tmpdir, "analysis-#{scores.name}.txt")
   File::open(tmpfile, "w", crlf_newline: true) do |f|
