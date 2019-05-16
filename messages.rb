@@ -508,13 +508,17 @@ end
 
 def do_analysis(scores, rank)
   run = scores.download_scores(rank)
-  player = run['user_name']
-  ingame_rank = run['rank'].to_s
-  replay_id = run['replay_id'].to_s
-  score = "%.3f" % [run['score'].to_f / 1000]
-  analysis = scores.analyze_replay(replay_id)
-  gold = "%.0f" % [((run['score'].to_f / 1000) + (analysis.size.to_f / 60) - 90) / 2]
-  result = {'player' => player, 'scores' => scores.format_name, 'rank' => rank, 'ingame_rank' => ingame_rank, 'score' => score, 'analysis' => analysis, 'gold' => gold}
+  if !run.nil?
+    player = run['user_name']
+    replay_id = run['replay_id'].to_s
+    score = "%.3f" % [run['score'].to_f / 1000]
+    analysis = scores.analyze_replay(replay_id)
+    gold = "%.0f" % [((run['score'].to_f / 1000) + (analysis.size.to_f / 60) - 90) / 2]
+    result = {'player' => player, 'scores' => scores.format_name, 'rank' => rank, 'score' => score, 'analysis' => analysis, 'gold' => gold}
+    return result
+  else
+    return nil
+  end
 end
 
 def send_analysis(event)
@@ -522,7 +526,7 @@ def send_analysis(event)
   scores = parse_level_or_episode(msg)
   ranks = msg.scan(/\s+([0-9][0-9]?)/).map{ |r| r[0].to_i }.reject{ |r| r < 0 || r > 19 }
   if ranks.empty? then ranks.push(0) end
-  analysis = ranks.map{ |rank| do_analysis(scores, rank) }
+  analysis = ranks.map{ |rank| do_analysis(scores, rank) }.compact
   length = analysis.map{ |a| a['analysis'].size }.max
   padding = Math.log(length, 10).to_i + 1
   table_header = " " * padding + "|" + "JRL|" * analysis.size
@@ -558,16 +562,16 @@ def send_analysis(event)
       when 4 then "<"
       when 5 then "\\"
       when 6 then "≤"
-      when 7 then "o"
+      when 7 then "|"
       else "?"
       end
     }.join.scan(/.{,60}/).reject{ |f| f.empty? }.each_with_index.map{ |f, i| "%0#{padding}d #{f}" % [60*i] }.join("\n")
   }.join("\n\n")
 
   properties = analysis.map{ |a|
-    "[#{a['player']}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, in-game rank #{a['ingame_rank']}, gold #{a['gold']}]"
+    "[#{a['player']}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
   }.join("\n")
-  explanation = "[**-** Nothing,  **^** Jump,  **>** Right,  **<** Left,  **/** Right Jump,  **\\** Left Jump,  **≤** Left Right,  **o** Left Right Jump]"
+  explanation = "[**-** Nothing,  **^** Jump,  **>** Right,  **<** Left,  **/** Right Jump,  **|** Left Jump,  **≤** Left Right,  **o** Left Right Jump]"
   header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
 
   result = "#{header}\n```#{key_result}```"
