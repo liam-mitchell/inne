@@ -8,7 +8,7 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
+DATABASE_ENV = ENV['DATABASE_ENV'] || 'inne_eddy'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
@@ -65,6 +65,12 @@ end
 def set_last_steam_id(id)
   GlobalProperty.find_or_create_by(key: "last_steam_id")
     .update(value: id)
+end
+
+def update_last_steam_id
+  current = User.find_by(steam_id: get_last_steam_id).id
+  next_user = User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first
+  set_last_steam_id(next_user.steam_id) if !next_user.nil?
 end
 
 def download_high_scores
@@ -271,7 +277,7 @@ startup
 trap("INT") { $kill_threads = true }
 
 $threads = [
-  Thread.new { start_level_of_the_day },
+  #Thread.new { start_level_of_the_day },
   Thread.new { download_high_scores },
 ]
 

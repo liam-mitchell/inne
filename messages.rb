@@ -99,6 +99,11 @@ def parse_bottom_rank(msg)
   rank ? 20 - rank.to_i : nil
 end
 
+def parse_ranks(msg)
+  ranks = msg.scan(/\s+([0-9][0-9]?)/).map{ |r| r[0].to_i }.reject{ |r| r < 0 || r > 19 }
+  ranks.empty? ? [0] : ranks
+end
+
 def parse_tabs(msg)
   ret = []
 
@@ -372,7 +377,7 @@ def send_maxable(event)
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
 
-  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}:\n```#{ties}```"
+  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}:\n```\n#{ties}```"
 end
 
 def send_maxed(event)
@@ -388,7 +393,8 @@ def send_maxed(event)
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
 
-  event << "#{tabs}potentially maxed #{type}s (with at least 20 ties for 0th) #{format_time}:\n```#{ties_list}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
+  event << "#{tabs}potentially maxed #{type}s (with at least 20 ties for 0th) #{format_time}:\n" +
+  "```\n#{ties_list}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
 end
 
 def send_cleanliness(event)
@@ -419,7 +425,8 @@ def send_ownages(event)
   ownages_list = ownages.join("\n")
 
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  event << "#{tabs}episode ownages #{format_time}:\n```#{ownages_list}```There's a total of #{ownages.count} episode ownages."
+  list = "```#{ownages_list}```" unless ownages.count == 0
+  event << "#{tabs}episode ownages #{format_time}:\n#{list}There's a total of #{ownages.count} episode ownages."
 end
 
 def send_missing(event)
@@ -508,24 +515,20 @@ end
 
 def do_analysis(scores, rank)
   run = scores.download_scores(rank)
-  if !run.nil?
-    player = run['user_name']
-    replay_id = run['replay_id'].to_s
-    score = "%.3f" % [run['score'].to_f / 1000]
-    analysis = scores.analyze_replay(replay_id)
-    gold = "%.0f" % [((run['score'].to_f / 1000) + (analysis.size.to_f / 60) - 90) / 2]
-    result = {'player' => player, 'scores' => scores.format_name, 'rank' => rank, 'score' => score, 'analysis' => analysis, 'gold' => gold}
-    return result
-  else
-    return nil
-  end
+  return nil if run.nil?
+
+  player = run['user_name']
+  replay_id = run['replay_id'].to_s
+  score = "%.3f" % [run['score'].to_f / 1000]
+  analysis = scores.analyze_replay(replay_id)
+  gold = "%.0f" % [((run['score'].to_f / 1000) + (analysis.size.to_f / 60) - 90) / 2]
+  {'player' => player, 'scores' => scores.format_name, 'rank' => rank, 'score' => score, 'analysis' => analysis, 'gold' => gold}
 end
 
 def send_analysis(event)
   msg = event.content
   scores = parse_level_or_episode(msg)
-  ranks = msg.scan(/\s+([0-9][0-9]?)/).map{ |r| r[0].to_i }.reject{ |r| r < 0 || r > 19 }
-  if ranks.empty? then ranks.push(0) end
+  ranks = parse_ranks(msg)
   analysis = ranks.map{ |rank| do_analysis(scores, rank) }.compact
   length = analysis.map{ |a| a['analysis'].size }.max
   padding = Math.log(length, 10).to_i + 1
@@ -547,10 +550,13 @@ def send_analysis(event)
   }.join("\n\n")
 
   table_result = analysis.map{ |a|
-    table = a['analysis'].map{ |b| [b % 2 == 1 ? "^" : " ", b / 2 % 2 == 1 ? ">" : " ", b / 4 % 2 == 1 ? "<" : " "].push("|") }
+    table = a['analysis'].map{ |b|
+      [b % 2 == 1 ? "^" : " ", b / 2 % 2 == 1 ? ">" : " ", b / 4 % 2 == 1 ? "<" : " "].push("|")
+    }
     while table.size < length do table.push([" ", " ", " ", "|"]) end
     table.transpose
-  }.flatten(1).transpose.each_with_index.map{ |l, i| "%0#{padding}d|#{l.join}" % [i + 1] }.insert(0,table_header).insert(1,separation).join("\n")
+  }.flatten(1).transpose.each_with_index.map{ |l, i| "%0#{padding}d|#{l.join}" % [i + 1] }
+   .insert(0, table_header).insert(1, separation).join("\n")
 
   key_result = analysis.map{ |a|
     a['analysis'].map{ |f|
@@ -565,13 +571,14 @@ def send_analysis(event)
       when 7 then "|"
       else "?"
       end
-    }.join.scan(/.{,60}/).reject{ |f| f.empty? }.each_with_index.map{ |f, i| "%0#{padding}d #{f}" % [60*i] }.join("\n")
+    }.join.scan(/.{,60}/).reject{ |f| f.empty? }.each_with_index
+     .map{ |f, i| "%0#{padding}d #{f}" % [60*i] }.join("\n")
   }.join("\n\n")
 
   properties = analysis.map{ |a|
     "[#{a['player']}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
   }.join("\n")
-  explanation = "[**-** Nothing,  **^** Jump,  **>** Right,  **<** Left,  **/** Right Jump,  **|** Left Jump,  **≤** Left Right,  **o** Left Right Jump]"
+  explanation = "[**-** Nothing, **^** Jump, **>** Right, **<** Left, **/** Right Jump, **\\** Left Jump, **≤** Left Right, **|** Left Right Jump]"
   header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
 
   result = "#{header}\n```#{key_result}```"

@@ -51,39 +51,42 @@ module HighScore
     ties
   end
 
-  def uri(steam_id, replay_id = nil)
-    if replay_id == nil
-      URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
-    else
-      URI("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}")
-    end
+  def scores_uri(steam_id)
+    URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
   end
 
-  def update_steam_id(replay_id = nil)
-    User.where.not(steam_id: nil).each do |u|
-      response = Net::HTTP.get(uri(u.steam_id, replay_id))
-      if response != '-1337'
-        set_last_steam_id(u.steam_id)
-        return response
-      end
-    end
-
-    return '-1337'
+  def replay_uri(steam_id, replay_id)
+    URI("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}")
   end
 
-  def get_scores(replay_id = nil)
-    begin
-      response = Net::HTTP.get(uri(get_last_steam_id, replay_id))
-      if response == '-1337'
-        response = update_steam_id(replay_id)
-      end
-
-      return nil if response == '-1337'
-      return replay_id.nil? ? correct_ties(JSON.parse(response)['scores']) : response
-    rescue => e
-      err("error getting scores: #{e}")
-      retry
+  def get_scores
+    initial_id = get_last_steam_id
+    response = Net::HTTP.get(scores_uri(initial_id))
+    while response == '-1337'
+      update_last_steam_id
+      break if get_last_steam_id == initial_id
+      response = Net::HTTP.get(scores_uri(get_last_steam_id))
     end
+    return nil if response == '-1337'
+    correct_ties(JSON.parse(response)['scores'])
+  rescue => e
+    err("error getting scores: #{e}")
+    retry
+  end
+
+  def get_replay(replay_id)
+    initial_id = get_last_steam_id
+    response = Net::HTTP.get(replay_uri(initial_id, replay_id))
+    while response == '-1337'
+      update_last_steam_id
+      break if get_last_steam_id == initial_id
+      response = Net::HTTP.get(replay_uri(get_last_steam_id, replay_id))
+    end
+    return nil if response == '-1337'
+    response
+  rescue => e
+    err("error getting replay: #{e}")
+    retry
   end
 
   def update_scores(updated)
@@ -106,21 +109,25 @@ module HighScore
 
     if updated.nil?
       # TODO make this use err()
-      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{uri(get_last_steam_id)}"
+      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{scores_uri(get_last_steam_id)}"
       return
     end
 
     rank.nil? ? update_scores(updated) : updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }[rank]
   end
 
+  # Replay data format: Unknown (4b), replay ID (4b), level ID (4b), user ID (4b) and demo data compressed with Zlib.
+  # Demo data format: Unknown (1b), data length (4b), unknown (4b), frame count (4b), level ID (4b), unknown (13b) and actual demo.
+  # Demo format: Each byte is one frame, first bit is jump, second is right and third is left. Also, suicide is 0C.
+  # Note: The first frame is fictional and must be ignored.
   def analyze_replay(replay_id)
-    replay = get_scores(replay_id)
+    replay = get_replay(replay_id)
     demo = Zlib::Inflate.inflate(replay[16..-1])[30..-1]
     analysis = demo.unpack('H*')[0].scan(/../).map{ |b| b.to_i }[1..-1]
   end
 
   def correct_ties(score_hash)
-    score_hash.group_by{ |s| s['score'] }.map{ |score, scores| scores.sort_by{ |s| s['replay_id'] } }.flatten
+    score_hash.sort_by{ |s| [-s['score'], s['replay_id']] }
   end
 
   def spread(n)
