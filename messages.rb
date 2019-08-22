@@ -249,7 +249,7 @@ end
 def send_scores(event)
   msg = event.content
   scores = parse_level_or_episode(msg)
-  scores.download_scores
+  scores.update_scores
 
   # Send immediately here - using << delays sending until after the event has been processed,
   # and we want to download the scores for the episode in the background after sending since it
@@ -257,7 +257,7 @@ def send_scores(event)
   event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores}```")
 
   if scores.is_a?(Episode)
-    Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:download_scores)
+    Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores)
   end
 end
 
@@ -514,7 +514,7 @@ def send_diff(event)
 end
 
 def do_analysis(scores, rank)
-  run = scores.download_scores(rank)
+  run = scores.get_replay_info(rank)
   return nil if run.nil?
 
   player = run['user_name']
@@ -555,8 +555,13 @@ def send_analysis(event)
     }
     while table.size < length do table.push([" ", " ", " ", "|"]) end
     table.transpose
-  }.flatten(1).transpose.each_with_index.map{ |l, i| "%0#{padding}d|#{l.join}" % [i + 1] }
-   .insert(0, table_header).insert(1, separation).join("\n")
+  }.flatten(1)
+   .transpose
+   .each_with_index
+   .map{ |l, i| "%0#{padding}d|#{l.join}" % [i + 1] }
+   .insert(0, table_header)
+   .insert(1, separation)
+   .join("\n")
 
   key_result = analysis.map{ |a|
     a['analysis'].map{ |f|
@@ -571,14 +576,18 @@ def send_analysis(event)
       when 7 then "|"
       else "?"
       end
-    }.join.scan(/.{,60}/).reject{ |f| f.empty? }.each_with_index
-     .map{ |f, i| "%0#{padding}d #{f}" % [60*i] }.join("\n")
+    }.join
+     .scan(/.{,60}/)
+     .reject{ |f| f.empty? }
+     .each_with_index
+     .map{ |f, i| "%0#{padding}d #{f}" % [60*i] }
+     .join("\n")
   }.join("\n\n")
 
   properties = analysis.map{ |a|
     "[#{a['player']}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
   }.join("\n")
-  explanation = "[**-** Nothing, **^** Jump, **>** Right, **<** Left, **/** Right Jump, **\\** Left Jump, **≤** Left Right, **|** Left Right Jump]"
+  explanation = "[**-** Nothing, **^** Jump, **>** Right, **<** Left, **/** Right Jump, **\\\\** Left Jump, **≤** Left Right, **|** Left Right Jump]"
   header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
 
   result = "#{header}\n```#{key_result}```"

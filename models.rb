@@ -89,7 +89,7 @@ module HighScore
     retry
   end
 
-  def update_scores(updated)
+  def save_scores(updated)
     updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }
 
     ActiveRecord::Base.transaction do
@@ -104,7 +104,7 @@ module HighScore
     end
   end
 
-  def download_scores(rank = nil)
+  def update_scores
     updated = get_scores
 
     if updated.nil?
@@ -113,7 +113,19 @@ module HighScore
       return
     end
 
-    rank.nil? ? update_scores(updated) : updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }[rank]
+    save_scores(updated)
+  end
+
+  def get_replay_info(rank)
+    updated = get_scores
+
+    if updated.nil?
+      # TODO make this use err()
+      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve replay info from #{scores_uri(get_last_steam_id)}"
+      return
+    end
+
+    updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }[rank]
   end
 
   # Replay data format: Unknown (4b), replay ID (4b), level ID (4b), user ID (4b) and demo data compressed with Zlib.

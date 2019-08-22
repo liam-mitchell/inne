@@ -80,8 +80,8 @@ def download_high_scores
     while true
       log("updating high scores...")
 
-      Level.all.each(&:download_scores)
-      Episode.all.each(&:download_scores)
+      Level.all.each(&:update_scores)
+      Episode.all.each(&:update_scores)
 
       log("updated high scores. updating rankings...")
 
@@ -191,8 +191,8 @@ def send_channel_next(type)
     return false
   end
 
-  last.download_scores
-  current.download_scores
+  last.update_scores
+  current.update_scores
 
   prefix = type == Level ? "Time" : "It's also time"
   duration = type == Level ? "day" : "week"
@@ -277,7 +277,7 @@ startup
 trap("INT") { $kill_threads = true }
 
 $threads = [
-  #Thread.new { start_level_of_the_day },
+  Thread.new { start_level_of_the_day },
   Thread.new { download_high_scores },
 ]
 
