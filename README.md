@@ -187,6 +187,11 @@ inne++ will send you a text file containing all level and episode high scores fo
 - *\<challenge\> video for \<level\>*
 - *\<challenge\> video for \<level\> by \<user\>*
 
+### Analyze replays
+- *analysis for \<level-id\> \<rank a\> \<rank b\> ...*
+
+inne++ will download and analyze the inputs of a group of runs with ranks *\<rank a\>*, *\<rank b\>*... from level *\<level-id\>*. You can introduce as many ranks as you want, as long as they are separated by spaces. You need to introduce the level id (e.g. S-A-15-03) rather than its name (e.g. "neo tokyo") to avoid confusing inne with the also introduced ranks.
+
 ### Initialize inne++
 - *hello*
 - *hi*

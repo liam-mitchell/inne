@@ -8,24 +8,24 @@ inne_eddy:
   #episode_update_frequency: 60
 
 development:
-    adapter: mysql2
-    database: inne_back
-    host: localhost
-    username: inne
-    password: '#69inne#69'
-    level_update_frequency: 60
-    episode_update_frequency: 460
-    encoding: utf8mb4
-    collation: utf8mb4_unicode_ci
-    #host: localhost
-    #  username: inne
-    #  password: '#69inne#69'
-    #  encoding: utf8mb4
-    #  collation: utf8mb4_unicode_ci
-    token: Mjk2MjE3NTkyODA3NDI0MDAw.C7vBqA.2N95P6C0RMnYkdPobKvao4thJ3g
-    client_id: 296217592807424000
-    #  level_update_frequency: 60
-    #  episode_update_frequency: 460
+  adapter: mysql2
+  database: inne_back
+  host: localhost
+  username: inne
+  password: '#69inne#69'
+  level_update_frequency: 60
+  episode_update_frequency: 460
+  encoding: utf8mb4
+  collation: utf8mb4_unicode_ci
+  #host: localhost
+  #  username: inne
+  #  password: '#69inne#69'
+  #  encoding: utf8mb4
+  #  collation: utf8mb4_unicode_ci
+  token: Mjk2MjE3NTkyODA3NDI0MDAw.C7vBqA.2N95P6C0RMnYkdPobKvao4thJ3g
+  client_id: 296217592807424000
+  #  level_update_frequency: 60
+  #  episode_update_frequency: 460
 
 production:
   adapter: mysql2

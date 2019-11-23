@@ -67,6 +67,12 @@ def set_last_steam_id(id)
     .update(value: id)
 end
 
+def update_last_steam_id
+  current = User.find_by(steam_id: get_last_steam_id).id
+  next_user = User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first
+  set_last_steam_id(next_user.steam_id) if !next_user.nil?
+end
+
 def download_high_scores
   ActiveRecord::Base.establish_connection(CONFIG)
 
@@ -74,8 +80,8 @@ def download_high_scores
     while true
       log("updating high scores...")
 
-      Level.all.each(&:download_scores)
-      Episode.all.each(&:download_scores)
+      Level.all.each(&:update_scores)
+      Episode.all.each(&:update_scores)
 
       log("updated high scores. updating rankings...")
 
@@ -185,8 +191,8 @@ def send_channel_next(type)
     return false
   end
 
-  last.download_scores
-  current.download_scores
+  last.update_scores
+  current.update_scores
 
   prefix = type == Level ? "Time" : "It's also time"
   duration = type == Level ? "day" : "week"
