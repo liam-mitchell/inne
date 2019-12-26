@@ -175,6 +175,10 @@ def send_channel_diff(level, old_scores, since)
   $channel.send_message("Score changes on #{level.format_name} since #{since}:\n```#{diff}```")
 end
 
+def send_channel_reminder
+  $channel.send_message("Also, remember that the current episode of the week is #{get_current(Episode).format_name}.")
+end
+
 def send_channel_next(type)
   log("sending next #{type.to_s.downcase}")
   if $channel.nil?
@@ -202,7 +206,7 @@ def send_channel_next(type)
 
   caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
   send_channel_screenshot(current.name, caption)
-  $channel.send_message("Current high scores:\n```#{current.format_scores}```")
+  $channel.send_message("Current high scores:\n```#{current.format_scores(current.max_name_length)}```")
 
   send_channel_diff(last, get_saved_scores(type), since)
   set_saved_scores(type, current)
@@ -215,6 +219,7 @@ def start_level_of_the_day
   ActiveRecord::Base.establish_connection(CONFIG)
 
   begin
+    episode_day = false
     while true
       next_level_update = get_next_update(Level)
       sleep(next_level_update - Time.now) unless next_level_update - Time.now < 0
@@ -230,8 +235,12 @@ def start_level_of_the_day
         sleep(30) # let discord catch up
 
         send_channel_next(Episode)
+        episode_day = true
         log("sent next episode, next update at #{get_next_update(Episode).to_s}")
       end
+
+      if !episode_day then send_channel_reminder end
+      episode_day = false
     end
   rescue => e
     err("error updating level of the day: #{e}")

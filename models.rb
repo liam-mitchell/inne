@@ -2,6 +2,11 @@
 require 'active_record'
 require 'net/http'
 
+SCORE_PADDING =    0 #         fixed    padding, 0 for no fixed padding
+DEFAULT_PADDING = 15 # default variable padding, never make 0
+MAX_PADDING =     15 # max     variable padding, 0 for no maximum
+TRUNCATE_NAME = true # truncate name when it exceeds the maximum padding
+
 IGNORED_PLAYERS = [
   "Kronogenics",
   "BlueIsTrue",
@@ -16,6 +21,7 @@ IGNORED_PLAYERS = [
   "Altii",
   "Puςe",
   "Floof The Goof",
+  "Prismo"
 ]
 
 module HighScore
@@ -43,8 +49,8 @@ module HighScore
 
     scores.each do |elem|
       tie_count = elem.tie_count
-      if !tie_count.nil? && tie_count > 3
-        ties[elem.name] = tie_count
+      if !tie_count.nil? && tie_count >= 3
+        ties[elem] = tie_count
       end
     end
 
@@ -150,8 +156,13 @@ module HighScore
     scores.take_while{ |s| s.tie }.count
   end
 
-  def format_scores
-    scores.map(&:format).join("\n")
+  def max_name_length
+    scores.map{ |s| s.player.name.length }.max
+  end
+
+  def format_scores(padding = DEFAULT_PADDING)
+    max = scores.map(&:score).max.to_i.to_s.length + 4
+    scores.map{ |s| s.format(padding, max) }.join("\n")
   end
 
   def difference(old)
@@ -168,10 +179,17 @@ module HighScore
   end
 
   def format_difference(old)
+    diffs = difference(old)
+
+    name_padding = scores.map{ |s| s.player.name.length }.max
+    score_padding = scores.map{ |s| s.score.to_i }.max.to_s.length + 4
+    rank_padding = diffs.map{ |d| d[:change] }.compact.map{ |d| d[:rank].to_i }.max.to_s.length
+    change_padding = diffs.map{ |d| d[:change] }.compact.map{ |d| d[:score].to_i }.max.to_s.length + 4
+
     difference(old).map { |o|
       c = o[:change]
-      diff = c ? "#{"++-"[c[:rank] <=> 0]}#{c[:rank].abs}, +#{"%.3f" % [c[:score]]}" : "new"
-      "#{o[:score].format} (#{diff})"
+      diff = c ? "#{"++-"[c[:rank] <=> 0]}#{"%#{rank_padding}d" % [c[:rank].abs]}, +#{"%#{change_padding}.3f" % [c[:score]]}" : "new"
+      "#{o[:score].format(name_padding, score_padding)} (#{diff})"
     }.join("\n")
   end
 end
@@ -229,8 +247,8 @@ class Score < ActiveRecord::Base
     highscoreable.scores.find_by(rank: 0).score == score
   end
 
-  def format
-    "#{HighScore.format_rank(rank)}: #{player.name} (#{"%.3f" % [score]})"
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0)
+    "#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}"
   end
 end
 
@@ -284,6 +302,30 @@ class Player < ActiveRecord::Base
     self.histories(PointsHistory, attrs, :points)
   end
 
+  def format_name(padding = DEFAULT_PADDING)
+    if SCORE_PADDING > 0 # FIXED padding mode
+      "%-#{"%d" % [SCORE_PADDING]}s" % [name]
+    else                 # VARIABLE padding mode
+      if MAX_PADDING > 0   # maximum padding supplied
+        if padding > 0       # valid padding
+          if padding <= MAX_PADDING
+            "%-#{"%d" % [padding]}s" % [name]
+          else
+            "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? name.slice(0,MAX_PADDING) : name]
+          end
+        else                 # invalid padding
+          "%-#{"%d" % [DEFAULT_PADDING]}s" % [name]
+        end
+      else                 # maximum padding not supplied
+        if padding > 0       # valid padding
+          "%-#{"%d" % [padding]}s" % [name]
+        else                 # invalid padding
+          "%-#{"%d" % [DEFAULT_PADDING]}s" % [name]
+        end
+      end
+    end
+  end
+
   def scores_by_type_and_tabs(type, tabs)
     ret = type ? scores.where(highscoreable_type: type.to_s) : scores
     ret = tabs.empty? ? ret : ret.includes(:level).where(levels: {tab: tabs}) + ret.includes(:episode).where(episodes: {tab: tabs})
@@ -316,6 +358,7 @@ class Player < ActiveRecord::Base
   def missing_top_ns(n, type, tabs, ties)
     levels = top_ns(n, type, tabs, ties).map { |s| s.highscoreable.name }
 
+    tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
     if type
       type.where(tab: tabs).where.not(name: levels).pluck(:name)
     else
