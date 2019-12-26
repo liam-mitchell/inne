@@ -7,6 +7,10 @@ LEVEL_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9
 EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
 NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
 
+NUM_ENTRIES = 20 # number of entries to show on diverse methods
+MAX_ENTRIES = 20 # maximum number of entries on methods with user input, to avoid spam
+MIN_SCORES = 50  # minimum number of highscores to appear in average point rankings
+
 def parse_type(msg)
   (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : nil))
 end
@@ -168,41 +172,41 @@ def send_rankings(event)
 
   if msg =~ /average/i
     if msg =~ /point/i
-      players = Player.where(id: Player.joins(:scores).group('players.id').having('count(highscoreable_id) > 50').pluck(:id))
+      players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
       rankings = players.rankings { |p| p.average_points(type, tabs) }
       header = "average point rankings "
-      format = "%.3f"
     else
-      players = Player.where(id: Player.joins(:scores).group('players.id').having('count(highscoreable_id) > 50').pluck(:id))
-      rankings = players.rankings { |p| p.average_points(type, tabs) }.map{|p| [p[0], 20-p[1]] }
+      players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
+      rankings = players.rankings { |p| p.average_points(type, tabs) }.map{ |p| [p[0], 20 - p[1]] }
       header = "average rank rankings "
-      format = "%.3fth"
     end
   elsif msg =~ /point/i
     rankings = Player.rankings { |p| p.points(type, tabs) }
     header = "point rankings "
-    format = "%d"
   elsif msg =~ /score/i
     rankings = Player.rankings { |p| p.total_score(type, tabs) }
     header = "score rankings "
-    format = "%.3f"
   elsif msg =~ /tied/i
     rankings = Player.rankings { |p| p.top_n_count(1, type, tabs, true) - p.top_n_count(1, type, tabs, false) }
     header = "tied 0th rankings "
-    format = "%d"
   else
     rankings = Player.rankings { |p| p.top_n_count(rank, type, tabs, ties) }
     rank = format_rank(rank)
     ties = (ties ? "with ties " : "")
     header = "#{rank} rankings #{ties}"
-    format = "%d"
   end
 
   type = format_type(type)
   tabs = format_tabs(tabs)
 
-  top = rankings.take(20).select { |r| r[1] > 0 }.each_with_index.map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].name} (#{format % r[1]})" }
-        .join("\n")
+  top = rankings.take(NUM_ENTRIES).select { |r| r[1] > 0 }
+  score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
+  name_padding = top.map{ |r| r[0].name.length }.max
+  format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
+
+  top = top.each_with_index
+           .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
+           .join("\n")
 
   event << "#{type} #{tabs}#{header}#{format_time}:\n```#{top}```"
 end
@@ -233,17 +237,19 @@ def send_spreads(event)
   end
 
   spreads = HighScore.spreads(n, type, tabs)
-            .sort_by { |level, spread| (smallest ? spread : -spread) }
-            .take(20)
-            .map { |s| "#{s[0]} (#{"%.3f" % [s[1]]})"}
-            .join("\n\t")
+  padding = spreads.map{ |level, spread| spread }.max.to_i.to_s.length + 4
+
+  spreads = spreads.sort_by { |level, spread| (smallest ? spread : -spread) }
+            .take(NUM_ENTRIES)
+            .map { |s| "#{"%-10s" % s[0]} - #{"%#{padding}.3f" % [s[1]]}"}
+            .join("\n")
 
   spread = smallest ? "smallest" : "largest"
   rank = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
 
-  event << "#{tabs}#{type}s with the #{spread} spread between 0th and #{rank}:\n\t#{spreads}"
+  event << "#{tabs}#{type}s with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
 def send_scores(event)
@@ -254,9 +260,10 @@ def send_scores(event)
   # Send immediately here - using << delays sending until after the event has been processed,
   # and we want to download the scores for the episode in the background after sending since it
   # takes a few seconds
-  event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores}```")
+  event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores(scores.max_name_length)}```")
 
   if scores.is_a?(Episode)
+    event.send_message("The cleanliness of this episode 0th is %.3f." % [scores.cleanliness[1].to_s])
     Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores)
   end
 end
@@ -295,10 +302,10 @@ def send_stats(event)
 
   totals = counts[:levels].zip(counts[:episodes])
            .each_with_index
-           .map { |a, i| "#{HighScore.format_rank(i)}: #{"\t%3d   \t%3d\t\t %3d" % [a[0] + a[1], a[0], a[1]]}" }
+           .map { |a, i| "#{HighScore.format_rank(i)}: #{"\t%4d   \t%4d\t\t %4d" % [a[0] + a[1], a[0], a[1]]}" }
            .join("\n\t")
 
-  overall = "Totals: \t%3d   \t%3d\t\t %3d" % counts[:levels].zip(counts[:episodes])
+  overall = "Totals: \t%4d   \t%4d\t\t %4d" % counts[:levels].zip(counts[:episodes])
             .map { |a| [a[0] + a[1], a[0], a[1]] }
             .reduce([0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
 
@@ -364,20 +371,22 @@ end
 
 def send_maxable(event)
   msg = event.content
+  player = msg[/for (.*)[\.\?]?/i, 1]
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
 
   ties = HighScore.ties(type, tabs)
-            .select { |level, tie| tie < 20 }
+            .select { |level, tie| tie < 20 && !level.scores[0..tie].map{ |s| s.player.name }.include?(player) }
             .sort_by { |level, tie| -tie }
-            .take(20)
-            .map { |s| "#{s[0]} (#{s[1]})" }
+            .take(NUM_ENTRIES)
+            .map { |s| "#{"%-10s" % s[0].name} - #{"%2d" % s[1]}" }
             .join("\n")
 
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
+  player = player.nil? ? "" : " without " + player
 
-  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}:\n```\n#{ties}```"
+  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n```\n#{ties}```"
 end
 
 def send_maxed(event)
@@ -387,7 +396,7 @@ def send_maxed(event)
 
   ties = HighScore.ties(type, tabs)
             .select { |level, tie| tie == 20 }
-            .map { |s| "#{s[0]}\n" }
+            .map { |s| "#{s[0].name}\n" }
   ties_list = ties.join
 
   type = format_type(type).downcase
@@ -404,9 +413,11 @@ def send_cleanliness(event)
   episodes = tabs.empty? ? Episode.all : Episode.where(tab: tabs)
 
   cleanliness = episodes.map{ |e| e.cleanliness }
-                .sort_by{ |e| (cleanest ? e[1] : -e[1]) }
-                .map{ |e| "#{e[0]}:#{e[0][1] == '-' ? "  " : " "}%.3f" % [e[1]] }
-                .take(20)
+  padding = cleanliness.map{ |e| e[1] }.max.to_i.to_s.length + 4
+
+  cleanliness = cleanliness.sort_by{ |e| (cleanest ? e[1] : -e[1]) }
+                .map{ |e| "#{e[0]}:#{e[0][1] == '-' ? "  " : " "}%#{padding}.3f" % [e[1]] }
+                .take(NUM_ENTRIES)
                 .join("\n")
 
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
@@ -452,20 +463,23 @@ def send_suggestions(event)
   player = parse_player(msg, event.user.name)
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
-  n = (msg[/\b[0-9][0-9]?\b/] || 10).to_i
+  n = (msg[/\b[0-9][0-9]?\b/] || NUM_ENTRIES / 2).to_i
+  n = (n <= 0 || n > MAX_ENTRIES) ? NUM_ENTRIES / 2 : n
 
   improvable = player.improvable_scores(type, tabs)
-               .sort_by { |level, gap| -gap }
-               .take(n)
-               .map { |level, gap| "#{level} (-#{"%.3f" % [gap]})" }
-               .join("\n")
+  padding = improvable.map{ |level, gap| gap }.max.to_i.to_s.length + 4
+
+  improvable = improvable.sort_by { |level, gap| -gap }
+              .take(n)
+              .map { |level, gap| "#{'%-10s' % [level]} (-#{"%#{padding}.3f" % [gap]})" }
+              .join("\n")
 
   missing = player.missing_top_ns(20, type, tabs, false).sample(n).join("\n")
   type = type.to_s.downcase
   tabs = tabs.empty? ? "" :  " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
-  event << "Your #{n} most improvable #{type}s#{tabs} are:\n```#{improvable}```"
-  event << "You're not on the board for:\n```#{missing}```"
+  event << "#{n} most improvable #{type}s#{tabs} for #{player.name}:\n```#{improvable}```"
+  event << "#{player.name} is not on the board for:\n```#{missing}```"
 end
 
 def send_level_id(event)
@@ -503,6 +517,18 @@ def send_average_points(event)
   event << "#{player.name} has #{"%.3f" % [average]} #{type} #{tabs}average points."
 end
 
+def send_average_rank(event)
+  msg = event.content
+  player = parse_player(msg, event.user.name)
+  type = parse_type(msg)
+  tabs = parse_tabs(msg)
+  average = player.average_points(type, tabs)
+
+  type = format_type(type).downcase
+  tabs = format_tabs(tabs)
+  event << "#{player.name} has an average #{type} #{tabs}rank of #{"%.3f" % [20 - average]}."
+end
+
 def send_diff(event)
   type = parse_type(event.content) || Level
   current = get_current(type)
@@ -531,6 +557,7 @@ def send_analysis(event)
   ranks = parse_ranks(msg)
   analysis = ranks.map{ |rank| do_analysis(scores, rank) }.compact
   length = analysis.map{ |a| a['analysis'].size }.max
+  raise "Connection failed" if !length || length == 0
   padding = Math.log(length, 10).to_i + 1
   table_header = " " * padding + "|" + "JRL|" * analysis.size
   separation = "-" * table_header.size
@@ -717,7 +744,18 @@ def send_times(event)
 end
 
 def send_help(event)
-  msg = "The commands I understand are:\n"
+  if (event.channel.type != 1) then
+    event << "Hi! I'm **inne++**, the N++ Highscoring Bot. I can do many tasks, like:\n"
+    event << "- Fetching **scores** and **screenshots** for any level or episode."
+    event << "- Performing highscore **rankings** of many sorts."
+    event << "- Elaborating varied highscoring **stats**."
+    event << "- Displaying a diverse assortment of interesting highscore **lists**."
+    event << "- ... and many more things.\n"
+    event << "For more details and a list of commands, please DM me this question, so as to avoid spamming this channel."
+    return
+  end
+
+  msg = "Hi! I'm **inne++**, the N++ Highscoring Bot. The commands I understand are:\n"
 
   File.open('README.md').read.each_line do |line|
     line = line.gsub("\n", "")
@@ -800,8 +838,6 @@ def respond(event)
     send_spreads(event) if msg =~ /spread/i
     send_diff(event) if msg =~ /diff/i
     send_community(event) if msg =~ /community/i
-    send_maxable(event) if msg =~ /maxable/i
-    send_maxed(event) if msg =~ /maxed/i
     send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
     send_ownages(event) if msg =~ /ownage/i
     send_help(event) if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
@@ -814,10 +850,11 @@ def respond(event)
   dump(event) if msg =~ /dump/i
   send_level(event) if msg =~ /what.*(level|lotd)/i
   send_episode(event) if msg =~ /what.*(episode|eotw)/i
-  send_episode_time(event) if msg =~ /when.*next.*(episode|eotw)/i
-  send_level_time(event) if  msg =~ /when.*next.*(level|lotd)/i
+  send_episode_time(event) if msg =~ /(when|next).*(episode|eotw)/i
+  send_level_time(event) if  msg =~ /(when|next).*(level|lotd)/i
   send_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
   send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
+  send_average_rank(event) if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
   send_scores(event) if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
   send_total_score(event) if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
   send_top_n_count(event) if msg =~ /how many/i
@@ -826,6 +863,8 @@ def respond(event)
   send_suggestions(event) if msg =~ /worst/i && msg !~ /nightmare/i
   send_list(event) if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
   send_missing(event) if msg =~ /missing/i
+  send_maxable(event) if msg =~ /maxable/i
+  send_maxed(event) if msg =~ /maxed/i
   send_level_name(event) if msg =~ /\blevel name\b/i
   send_level_id(event) if msg =~ /\blevel id\b/i
   send_analysis(event) if msg =~ /analysis/i

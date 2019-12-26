@@ -76,14 +76,12 @@ If 'smallest' or 'biggest' is not specified, inne++ defaults to 'biggest'.
 If 'episode' or 'level' is not specified, inne++ defaults to 'level'.
 
 ### Display maxed or maxable levels or episodes
-- *maxed*
-- *maxable*
-- *\<tab\> maxed*
-- *\<tab\> maxable*
+- *(\<tab\>) maxed*
+- *(\<tab\>) maxable (for \<player\>)*
 
 'Maxed' levels are levels with 20 or more ties for 0th. Often this levels can't be improved unless innovated, hence the name. inne++ will display a list of all such levels (or episodes, if asked).
 
-On the other hand, 'maxable' levels are levels with many ties for 0th, hence being potentially unimprovable. inne++ will display a list of the 20 levels with the most ties for 0th, in descending order.
+On the other hand, 'maxable' levels are levels with many ties for 0th, hence being potentially unimprovable. inne++ will display a list of the 20 levels with the most ties for 0th, in descending order. If a player is also specified, then only those maxes not attained by said player will be displayed.
 
 As usual, you can filter by tabs.
 
