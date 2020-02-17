@@ -311,7 +311,7 @@ def send_stats(event)
 
   tabs = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
-  event << "Player high score counts for #{player.name}#{tabs}:\n```\t    Overall:\tLevel:\tEpisode:\n\t#{totals}\n#{overall}"
+  event << "Player high score counts for #{player.name}#{tabs}:\n```\t    Overall:\t Level:\t Episode:\n\t#{totals}\n#{overall}"
   event << "#{histogram}```"
 end
 
@@ -628,19 +628,26 @@ def send_analysis(event)
 end
 
 def send_history(event)
+  # Stylistic parameters
+  subdivisions = 20 # y axis subdivisions, roughly
+  min = 10          # minimum y axis max
+  players = 10      # amount of players to be plotted
+
   msg = event.content
 
   type = parse_type(msg)
   tabs = parse_tabs(msg)
   rank = parse_rank(msg) || 1
   ties = !!(msg =~ /ties/i)
+  max = msg[/\b\d+\b/].to_i
+  max = max > min ? max : Float::INFINITY
 
   if msg =~ /point/
     history = Player.points_histories(type, tabs)
-    header = "point "
+    header = "point"
   elsif msg =~ /score/
     history = Player.score_histories(type, tabs)
-    header = "score "
+    header = "score"
   else
     history = Player.rank_histories(rank, type, tabs, ties)
     header = format_rank(rank) + format_ties(ties)
@@ -648,14 +655,31 @@ def send_history(event)
 
   history = history.sort_by { |player, data| data.max_by { |k, v| v }[1] }
             .reverse
-            .take(30)
+            .select { |player, data| data.any? { |k, v| v <= max } } # remove players out of scope
+            .take(players)
+            .map { |player, data| [player, data.select{ |k, v| v <= max }] }.to_h # remove entries out of scope
             .select { |player, data| data.any? { |k, v| v > rank * 2 * tabs.length } }
+
+  # Find all dates being plotted, keep just the first one for each month, and format for x axis labels.
+  dates = history.map{ |player, data| data.keys }.flatten(1)
+                 .uniq.map{ |date| date.to_s[0..6] }.reverse
+  (0 .. dates.size - 2).each { |i| if dates[i] == dates[i + 1] then dates[i] = nil end }
+  dates = dates.reverse.each_with_index.map{ |date, i| [i, !date.nil? ? date[5..6] : nil] }
+               .to_h.select{ |i, date| !date.nil? }
+  log(dates)
+
+  # Calculate appropriate y axis increment and y axis max
+  max = [history.map { |player, data| data.max_by { |k, v| v }[1] }.max, max].min
+  nearest = 10 ** Math.log(max, 10).to_i / subdivisions
+  nearest = nearest > 0 ? nearest : 5
+  increment = (((max.to_f / subdivisions).to_i + 4) / nearest)
+  increment = increment > 0 ? nearest * increment : 1
 
   type = format_type(type)
   tabs = format_tabs(tabs)
 
   graph = Gruff::Line.new(1280, 2000)
-  graph.title = "#{type} #{tabs}#{header}history"
+  graph.title = "#{type} #{tabs}#{header} history"
   graph.theme_pastel
   graph.colors = []
   graph.legend_font_size = 10
@@ -663,6 +687,12 @@ def send_history(event)
   graph.legend_box_size = 10
   graph.line_width = 1
   graph.hide_dots = true
+  graph.y_axis_increment = increment
+  #graph.labels = {0 => '2017'} # we need to index by Time instead of Integer, fix!
+  graph.reference_line_default_width = 1
+  graph.reference_line_default_color = 'grey'
+  dates.each{ |i, date| if !date.nil? then graph.reference_lines[date] = { :index => i } end }
+  #graph.x_axis_label = "Date"
 
   step = Math.cbrt(history.count).ceil
   step.times do |i|
@@ -677,7 +707,12 @@ def send_history(event)
 
   graph.colors = graph.colors.shuffle
 
-  history.each { |player, data| graph.dataxy(player, data.keys, data.values) }
+  history.each { |player, data|
+    graph.dataxy(player, data.keys, data.values)
+  }
+
+  graph.minimum_value = 0
+  graph.maximum_value = max
 
   tmpfile = File.join(Dir.tmpdir, "history.png")
   graph.write(tmpfile)

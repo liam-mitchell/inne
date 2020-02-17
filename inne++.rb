@@ -8,7 +8,7 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
+DATABASE_ENV = ENV['DATABASE_ENV'] || 'inne_eddy'
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
@@ -144,7 +144,9 @@ def download_high_scores
       end
 
       next_score_update = get_next_update('score')
-      next_score_update += HIGHSCORE_UPDATE_FREQUENCY if next_score_update < Time.now
+      # this will ensure that no matter what it says on the database, the correct time of next update is computed
+      next_score_update -= HIGHSCORE_UPDATE_FREQUENCY while next_score_update > Time.now
+      next_score_update += HIGHSCORE_UPDATE_FREQUENCY while next_score_update < Time.now
       delay = next_score_update - Time.now
       set_next_update('score', next_score_update)
 
@@ -222,15 +224,19 @@ def start_level_of_the_day
     episode_day = false
     while true
       next_level_update = get_next_update(Level)
-      sleep(next_level_update - Time.now) unless next_level_update - Time.now < 0
-      set_next_update(Level, next_level_update + LEVEL_UPDATE_FREQUENCY)
+      next_level_update -= LEVEL_UPDATE_FREQUENCY while next_level_update > Time.now
+      next_level_update += LEVEL_UPDATE_FREQUENCY while next_level_update < Time.now
+      delay = next_level_update - Time.now
+      set_next_update(Level, next_level_update)
+      sleep(delay) unless delay < 0
 
       next if !send_channel_next(Level)
       log("sent next level, next update at #{get_next_update(Level).to_s}")
 
       next_episode_update = get_next_update(Episode)
       if Time.now > next_episode_update
-        set_next_update(Episode, next_episode_update + EPISODE_UPDATE_FREQUENCY)
+        next_episode_update += EPISODE_UPDATE_FREQUENCY while next_episode_update < Time.now
+        set_next_update(Episode, next_episode_update)
 
         sleep(30) # let discord catch up
 
