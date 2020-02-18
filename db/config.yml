@@ -35,9 +35,7 @@ production:
   password: '#69inne#69'
   encoding: utf8mb4
   collation: utf8mb4_unicode_ci
-  token: Mjk2MjE3NTkyODA3NDI0MDAw.C7vBqA.2N95P6C0RMnYkdPobKvao4thJ3g
-  client_id: 296217592807424000
-  token: Mjg5MTQxNzc2MjA2MjY2MzY5.C6IDyQ.1B1a2x_k7CF4UfaGWvhbGFVqdqM
+  token: Mjg5MTQxNzc2MjA2MjY2MzY5.XTfEcA.2er1iT0Tjiov1uXj0rimnHTAVcs
   client_id: 289141776206266369
 
 test:

@@ -16,6 +16,8 @@ IGNORED_PLAYERS = [
   "Altii",
   "Puςe",
   "Floof The Goof",
+  "Prismo",
+  "Mishu",
 ]
 
 module HighScore
@@ -369,7 +371,7 @@ class Video < ActiveRecord::Base
   belongs_to :highscoreable, polymorphic: true
 
   def format_challenge
-    return (challenge == "G++" || challenge == "?!") ? challenge : "#{challenge} (#{challenge_code})"
+    return (challenge == "G++" || challenge == "?!") ? challenge : "#{challenge} [#{challenge_code}]"
   end
 
   def format_author

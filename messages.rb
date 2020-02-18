@@ -32,7 +32,7 @@ def parse_video_author(msg)
 end
 
 def parse_challenge(msg)
-  return msg[/([GTOCE][+-][+-])+/]
+  return msg[/([GTOCE][+-][+-])+/i]
 end
 
 def parse_challenge_code(msg)
@@ -530,7 +530,9 @@ def send_analysis(event)
   scores = parse_level_or_episode(msg)
   ranks = parse_ranks(msg)
   analysis = ranks.map{ |rank| do_analysis(scores, rank) }.compact
+  log("analysis: " + analysis.join("\n"))
   length = analysis.map{ |a| a['analysis'].size }.max
+  log("length: " + length)
   padding = Math.log(length, 10).to_i + 1
   table_header = " " * padding + "|" + "JRL|" * analysis.size
   separation = "-" * table_header.size

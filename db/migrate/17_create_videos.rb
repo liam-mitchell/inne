@@ -6,7 +6,7 @@ def user(tag)
     "AWE" => "Awein",
     "CAM" => "ibcamwhobu",
     "CHB" => "Chebyshevrolet",
-    "EKI" => "ekisakic",
+    "EKI" => "ekisacik",
     "ES2" => "Alpha Espy's brother",
     "ESP" => "Alpha Espy",
     "FNY" => "Fnyt",
