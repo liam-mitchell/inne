@@ -211,6 +211,6 @@ Special thanks to jg9000, eru_bahagon and EddyMataGallos from the N forums for t
 
 And thanks to the following contributors:
 - EddyMataGallos (@edelkas)
-- Toasters (@andrewhuntsmith)
-- poober (@jseakle)
+- XandoToaster (@andrewhuntsmith)
+- personman (@jseakle)
 - systeminspired
