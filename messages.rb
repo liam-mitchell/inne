@@ -744,6 +744,7 @@ def add_steam_id(event)
 end
 
 def hello(event)
+  $bot.update_status("online", "inne for userlevels", nil, 0, false, 0)
   event << "Hi!"
 
   if $channel.nil?

@@ -273,7 +273,8 @@ def watchdog
   shutdown
 end
 
-$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
+#$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
+$bot = Discordrb::Bot.new token: ENV['TOKEN'], client_id: CONFIG['client_id']
 $channel = nil
 
 $bot.mention do |event|
