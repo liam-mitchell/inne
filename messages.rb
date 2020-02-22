@@ -11,7 +11,9 @@ NUM_ENTRIES = 20 # number of entries to show on diverse methods
 MAX_ENTRIES = 20 # maximum number of entries on methods with user input, to avoid spam
 MIN_SCORES = 50  # minimum number of highscores to appear in average point rankings
 
+# userlevel functions
 SHEET_LENGTH = 20
+PAGE_SIZE = 500
 
 def parse_type(msg)
   (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : nil))
@@ -752,23 +754,21 @@ def userlevel_browse(event)
   # Print header
   output = "Browsing **" + category.to_s.upcase + "**, page **" + page.to_s + "**, sheet **" + sheet.to_s + "**"
   output += ", at " + result[:header][:date] + ".\n"
-  output += "Total results in page: **" + result[:header][:count].to_s + "**. Use \"sheet <number>\" to switch between sheets.\n"
+  output += "Total results in page: **" + result[:header][:count].to_s + "**. Use \"sheet <number>\" to navigate the page.\n"
   output += "```\n"
   output += "%-#{padding[:n]}.#{padding[:n]}s " % "N"
   output += "%-#{padding[:map_id]}.#{padding[:map_id]}s " % "ID"
   output += "%-#{padding[:title]}.#{padding[:title]}s " % "Title"
   output += "%-#{padding[:author]}.#{padding[:author]}s " % "Author"
-  output += "%-#{padding[:date]}.#{padding[:date]}s " % "Date"
+  output += "%-#{padding[:date]}.#{padding[:date]}s " % "Date  yy/mm/dd"
   output += "%-#{padding[:favs]}.#{padding[:favs]}s" % "Fav"
   output += "\n"
   output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
 
   # Print levels
   levels.each_with_index{ |l, i|
-    log("------------------------------------- " + i.to_s)
-    line = "%#{padding[:n]}.#{padding[:n]}s " % (SHEET_LENGTH * sheet + i).to_s
+    line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * page + SHEET_LENGTH * sheet + i).to_s
     padding.reject{ |k, v| k == :n  }.each{ |k, v|
-      puts l[k].to_s
       if l[k].is_a?(Integer)
         line += "%#{padding[k]}.#{padding[k]}s " % l[k].to_s
       else

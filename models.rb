@@ -21,7 +21,8 @@ IGNORED_PLAYERS = [
   "Altii",
   "Puςe",
   "Floof The Goof",
-  "Prismo"
+  "Prismo",
+  "Mishu"
 ]
 
 # Turn a little endian binary array into an integer
@@ -192,16 +193,13 @@ module HighScore
       category: parse_int(levels[28..31]),
       mode: parse_int(levels[32..35])
     }
-    j = 0
     # the regex flag "m" is needed so that the global character "." matches the new line character
     # it was hell to debug this!
     maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
-      log("-------------------- " + j.to_s)#h[0..43].to_s)
-      j += 1
       {
         map_id: parse_int(h[0..3]),
         user_id: parse_int(h[4..7]),
-        author: h[8..23].join.each_byte.map{ |b| b > 127 ? "?".ord.chr : b.chr }.join.strip, # remove non-ASCII chars
+        author: h[8..23].join.each_byte.map{ |b| b > 127 ? " ".ord.chr : b.chr }.join.strip, # remove non-ASCII chars
         favs: parse_int(h[24..27]),
         date: format_date(h[28..-1].join)
       }
