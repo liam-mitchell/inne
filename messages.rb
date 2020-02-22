@@ -726,8 +726,73 @@ end
 
 # \\ <------ USERLEVEL METHODS ------>
 
-def userlevel_browse(event)
-  # Get query
+def format_userlevels(result, sheet, search = nil)
+  categories = {
+    7 => "Best",
+    8 => "Featured",
+    9 => "Top Weekly",
+    10 => "Newest",
+    11 => "Hardest",
+    36 => "Search"
+  }
+  category = categories[result[:header][:category]]
+  page = result[:header][:page]
+  sheets = (result[:header][:count].to_f / SHEET_LENGTH).ceil
+  sheet = sheets - 1 if sheet.to_i > sheets - 1 unless sheets == 0
+  range = (SHEET_LENGTH * sheet .. SHEET_LENGTH * (sheet + 1) - 1)
+  levels = result[:maps][range]
+
+  # Calculate required column padding
+  hard_padding = {n: 3, map_id: 6, title: 25, author: 16, date: 14, favs: 2 } # maximum allowed padding
+  min_padding = {n: 2, map_id: 2, title: 5, author: 6, date: 14, favs: 2 }    # minimum allowed padding
+  if !levels.nil?
+    n_padding =      [ [ range.to_a.max.to_s.length,                       hard_padding[:n]].min,      min_padding[:n]      ].max
+    map_id_padding = [ [ levels.map{ |map| map[:map_id] }.max.to_s.length, hard_padding[:map_id]].min, min_padding[:map_id] ].max
+    title_padding  = [ [ levels.map{ |map| map[:title].length }.max,       hard_padding[:title]].min,  min_padding[:title]  ].max
+    author_padding = [ [ levels.map{ |map| map[:author].length }.max,      hard_padding[:title]].min,  min_padding[:author] ].max
+    date_padding   = [ [ levels.map{ |map| map[:date].length }.max,        hard_padding[:date]].min,   min_padding[:date]   ].max
+    favs_padding   = [ [ levels.map{ |map| map[:favs] }.max.to_s.length,   hard_padding[:favs]].min,   min_padding[:favs]   ].max
+    padding = {n: n_padding, map_id: map_id_padding, title: title_padding, author: author_padding, date: date_padding, favs: favs_padding }
+  else
+    padding = hard_padding
+  end
+
+  # Print header
+  output = search.nil? ? ("Browsing **" + category.to_s.upcase + "**. ") : ("Searching for \"**" + search + "**\". ")
+  output += "Page **" + page.to_s + "**. Sheet **" + sheet.to_s + "/" + (sheets - 1).to_s + "**. "
+  output += "Database update at " + result[:header][:date] + ". "
+  output += "Times are " + Time.now.zone + " (UTC " + ("%+d" % ((Time.now.utc_offset).to_f / 3600)) + ").\n"
+  output += "Total results in page: **" + result[:header][:count].to_s + "**. Use \"sheet <number>\" to navigate the page.\n"
+  output += "```\n"
+  output += "%-#{padding[:n]}.#{padding[:n]}s " % "N"
+  output += "%-#{padding[:map_id]}.#{padding[:map_id]}s " % "ID"
+  output += "%-#{padding[:title]}.#{padding[:title]}s " % "Title"
+  output += "%-#{padding[:author]}.#{padding[:author]}s " % "Author"
+  output += "%-#{padding[:date]}.#{padding[:date]}s " % "Date"
+  output += "%-#{padding[:favs]}.#{padding[:favs]}s" % "++"
+  output += "\n"
+  output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
+
+  # Print levels
+  if levels.nil?
+    output += " " * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
+  else
+    levels.each_with_index{ |l, i|
+      line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * page + SHEET_LENGTH * sheet + i).to_s
+      padding.reject{ |k, v| k == :n  }.each{ |k, v|
+        if l[k].is_a?(Integer)
+          line += "%#{padding[k]}.#{padding[k]}s " % l[k].to_s
+        else
+          line += "%-#{padding[k]}.#{padding[k]}s " % l[k].to_s
+        end
+      }
+      output << line + "\n"
+    }
+  end
+  output
+end
+
+def browse_userlevels(event)
   msg = event.content
   user = event.user.name
   page = msg[/page\s*([0-9][0-9]?)/i, 1] || 0
@@ -742,42 +807,23 @@ def userlevel_browse(event)
   }
   categories.each{ |cat, id| qt = id if !!(msg =~ /#{cat}/i) }
 
-  # Make query and specify formatting parameters
   result = HighScore::browse_levels(qt, page)
-  category = categories.invert[result[:header][:category]]
-  page = result[:header][:page]
-  sheets = (result[:header][:count].to_f / SHEET_LENGTH).ceil
-  sheet = sheets - 1 if sheet.to_i > sheets - 1
-  padding = {n: 3, map_id: 6, title: 25, author: 16, date: 14, favs: 3 }
-  levels = result[:maps][SHEET_LENGTH * sheet .. SHEET_LENGTH * (sheet + 1) - 1]
+  event << format_userlevels(result, sheet) + "```"
+end
 
-  # Print header
-  output = "Browsing **" + category.to_s.upcase + "**, page **" + page.to_s + "**, sheet **" + sheet.to_s + "**"
-  output += ", at " + result[:header][:date] + ".\n"
-  output += "Total results in page: **" + result[:header][:count].to_s + "**. Use \"sheet <number>\" to navigate the page.\n"
-  output += "```\n"
-  output += "%-#{padding[:n]}.#{padding[:n]}s " % "N"
-  output += "%-#{padding[:map_id]}.#{padding[:map_id]}s " % "ID"
-  output += "%-#{padding[:title]}.#{padding[:title]}s " % "Title"
-  output += "%-#{padding[:author]}.#{padding[:author]}s " % "Author"
-  output += "%-#{padding[:date]}.#{padding[:date]}s " % "Date  yy/mm/dd"
-  output += "%-#{padding[:favs]}.#{padding[:favs]}s" % "Fav"
-  output += "\n"
-  output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
+def search_userlevels(event)
+  msg = event.content
+  user = event.user.name
+  search = msg[/search\s*(for)?\s*(.*)/i, 2]
+  page = msg[/page\s*([0-9][0-9]?)/i, 1] || 0
+  sheet = msg[/sheet\s*([0-9][0-9]?)/i, 1].to_i || 0
 
-  # Print levels
-  levels.each_with_index{ |l, i|
-    line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * page + SHEET_LENGTH * sheet + i).to_s
-    padding.reject{ |k, v| k == :n  }.each{ |k, v|
-      if l[k].is_a?(Integer)
-        line += "%#{padding[k]}.#{padding[k]}s " % l[k].to_s
-      else
-        line += "%-#{padding[k]}.#{padding[k]}s " % l[k].to_s
-      end
-    }
-    output << line + "\n"
-  }
-  event << output + "```"
+  if !search.ascii_only?
+    event << "Sorry! We can only perform ASCII-only searches."
+  else
+    result = HighScore::search_levels(search, page)
+    event << format_userlevels(result, sheet, search) + "```"
+  end
 end
 
 # \\ <------ END OF USERLEVEL METHODS ------>
@@ -931,7 +977,8 @@ def respond(event)
 
   # userlevel methods
   if !!msg[/userlevel/i]
-    userlevel_browse(event) if msg =~ /browse/i
+    browse_userlevels(event) if msg =~ /browse/i
+    search_userlevels(event) if msg =~ /search/i
     return
   end
 

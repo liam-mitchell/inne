@@ -35,7 +35,8 @@ end
 def format_date(date)
   date.gsub!(/-/,"/")
   date[-6] = " "
-  date[2..-1]
+  date = date[2..-1]
+  date[0..7].split("/").reverse.join("/") + date[-6..-1]
 end
 
 module HighScore
@@ -79,8 +80,12 @@ module HighScore
     URI("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}")
   end
 
-  def self.levels_uri(steam_id, qt = 10, page = 0)
-    URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&page=#{page}")
+  def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
+    URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
+  end
+
+  def self.search_uri(steam_id, search, page = 0, mode = 0)
+    URI("https://dojo.nplusplus.ninja/prod/steam/search/levels?steam_id=#{steam_id}&steam_auth=&search=#{search}&mode=#{mode}&page=#{page}")
   end
 
   def get_scores
@@ -113,13 +118,13 @@ module HighScore
     retry
   end
 
-  def self.get_levels(qt = 10, page = 0)
+  def self.get_levels(qt = 10, page = 0, mode = 0)
     initial_id = get_last_steam_id
-    response = Net::HTTP.get(levels_uri(initial_id, qt, page))
+    response = Net::HTTP.get(levels_uri(initial_id, qt, page, mode))
     while response == '-1337'
       update_last_steam_id
       break if get_last_steam_id == initial_id
-      response = Net::HTTP.get(levels_uri(get_last_steam_id, qt, page))
+      response = Net::HTTP.get(levels_uri(get_last_steam_id, qt, page, mode))
     end
     return nil if response == '-1337'
     response
@@ -127,6 +132,21 @@ module HighScore
     err("error querying page nº #{page} of userlevels from category #{qt}: #{e}")
     retry
   end
+
+    def self.get_search(search = "", page = 0, mode = 0)
+      initial_id = get_last_steam_id
+      response = Net::HTTP.get(search_uri(initial_id, search, page, mode))
+      while response == '-1337'
+        update_last_steam_id
+        break if get_last_steam_id == initial_id
+        response = Net::HTTP.get(search_uri(get_last_steam_id, search, page, mode))
+      end
+      return nil if response == '-1337'
+      response
+    rescue => e
+      err("error searching for userlevels containing \"#{search}\", page nº #{page}: #{e}")
+      retry
+    end
 
   def save_scores(updated)
     updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }
@@ -184,8 +204,7 @@ module HighScore
   # Uncompressed map data format: Header (30B) + title (128B) + null (18B) + map data (variable).
   # 1) Header format: Unknown (4B), game mode (4B), unknown (4B), user ID (4B), unknown (14B).
   # 2) Map format: Tile data (966B, 1B per tile), object counts (80B, 2B per object type), objects (variable, 5B per object).
-  def self.browse_levels(qt = 10, page = 0)
-    levels = get_levels(qt, page)
+  def self.parse_levels(levels)
     header = {
       date: format_date(levels[0..15].to_s),
       count: parse_int(levels[16..19]),
@@ -217,6 +236,16 @@ module HighScore
       i += 1
     end
     {header: header, maps: maps}
+  end
+
+  def self.browse_levels(qt = 10, page = 0, mode = 0)
+    levels = get_levels(qt, page, mode)
+    parse_levels(levels)
+  end
+
+  def self.search_levels(search = "", page = 0, mode = 0)
+    levels = get_search(search, page, mode)
+    parse_levels(levels)
   end
 
   def correct_ties(score_hash)
