@@ -24,6 +24,19 @@ IGNORED_PLAYERS = [
   "Prismo"
 ]
 
+# Turn a little endian binary array into an integer
+def parse_int(bytes)
+  if bytes.is_a?(Array) then bytes = bytes.join end
+  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+end
+
+# Reformat date strings received by queries to the server
+def format_date(date)
+  date.gsub!(/-/,"/")
+  date[-6] = " "
+  date[2..-1]
+end
+
 module HighScore
   def self.format_rank(rank)
     "#{rank < 10 ? '0' : ''}#{rank}"
@@ -65,6 +78,10 @@ module HighScore
     URI("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}")
   end
 
+  def self.levels_uri(steam_id, qt = 10, page = 0)
+    URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&page=#{page}")
+  end
+
   def get_scores
     initial_id = get_last_steam_id
     response = Net::HTTP.get(scores_uri(initial_id))
@@ -92,6 +109,21 @@ module HighScore
     response
   rescue => e
     err("error getting replay: #{e}")
+    retry
+  end
+
+  def self.get_levels(qt = 10, page = 0)
+    initial_id = get_last_steam_id
+    response = Net::HTTP.get(levels_uri(initial_id, qt, page))
+    while response == '-1337'
+      update_last_steam_id
+      break if get_last_steam_id == initial_id
+      response = Net::HTTP.get(levels_uri(get_last_steam_id, qt, page))
+    end
+    return nil if response == '-1337'
+    response
+  rescue => e
+    err("error querying page nº #{page} of userlevels from category #{qt}: #{e}")
     retry
   end
 
@@ -134,14 +166,59 @@ module HighScore
     updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }[rank]
   end
 
-  # Replay data format: Unknown (4b), replay ID (4b), level ID (4b), user ID (4b) and demo data compressed with Zlib.
-  # Demo data format: Unknown (1b), data length (4b), unknown (4b), frame count (4b), level ID (4b), unknown (13b) and actual demo.
+  # Replay data format: Unknown (4B), replay ID (4B), level ID (4B), user ID (4B) and demo data compressed with Zlib.
+  # Demo data format: Unknown (1B), data length (4B), unknown (4B), frame count (4B), level ID (4B), unknown (13B) and actual demo.
   # Demo format: Each byte is one frame, first bit is jump, second is right and third is left. Also, suicide is 0C.
   # Note: The first frame is fictional and must be ignored.
   def analyze_replay(replay_id)
     replay = get_replay(replay_id)
     demo = Zlib::Inflate.inflate(replay[16..-1])[30..-1]
     analysis = demo.unpack('H*')[0].scan(/../).map{ |b| b.to_i }[1..-1]
+  end
+
+  # Format of query result: Header (48B) + adjacent map headers (44B each) + adjacent map data blocks (variable length).
+  # 1) Header format: Date (16B), map count (4B), page (4B), unknown (4B), category (4B), game mode (4B), unknown (12B).
+  # 2) Map header format: Map ID (4B), user ID (4B), author name (16B), # of ++'s (4B), date of publishing (16B).
+  # 3) Map data block format: Size of block (4B), # of objects (2B), zlib-compressed map data.
+  # Uncompressed map data format: Header (30B) + title (128B) + null (18B) + map data (variable).
+  # 1) Header format: Unknown (4B), game mode (4B), unknown (4B), user ID (4B), unknown (14B).
+  # 2) Map format: Tile data (966B, 1B per tile), object counts (80B, 2B per object type), objects (variable, 5B per object).
+  def self.browse_levels(qt = 10, page = 0)
+    levels = get_levels(qt, page)
+    header = {
+      date: format_date(levels[0..15].to_s),
+      count: parse_int(levels[16..19]),
+      page: parse_int(levels[20..23]),
+      category: parse_int(levels[28..31]),
+      mode: parse_int(levels[32..35])
+    }
+    j = 0
+    # the regex flag "m" is needed so that the global character "." matches the new line character
+    # it was hell to debug this!
+    maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
+      log("-------------------- " + j.to_s)#h[0..43].to_s)
+      j += 1
+      {
+        map_id: parse_int(h[0..3]),
+        user_id: parse_int(h[4..7]),
+        author: h[8..23].join.each_byte.map{ |b| b > 127 ? "?".ord.chr : b.chr }.join.strip, # remove non-ASCII chars
+        favs: parse_int(h[24..27]),
+        date: format_date(h[28..-1].join)
+      }
+    }
+    i = 0
+    offset = 48 + header[:count] * 44
+    while i < header[:count]
+      len = parse_int(levels[offset..offset + 3])
+      maps[i][:object_count] = parse_int(levels[offset + 4..offset + 5])
+      map = Zlib::Inflate.inflate(levels[offset + 6..offset + len - 1])
+      maps[i][:title] = map[30..157].each_byte.map{ |b| b > 127 ? "?".ord.chr : b.chr }.join.strip
+      maps[i][:tiles] = map[176..1141].scan(/./).map{ |b| parse_int(b) }.each_slice(42).to_a
+      maps[i][:objects] = map[1222..-1].scan(/./).map{ |b| parse_int(b) }.each_slice(5).to_a
+      offset += len
+      i += 1
+    end
+    {header: header, maps: maps}
   end
 
   def correct_ties(score_hash)
