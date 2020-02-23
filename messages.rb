@@ -726,7 +726,8 @@ end
 
 # \\ <------ USERLEVEL METHODS ------>
 
-def format_userlevels(result, sheet, search = nil)
+def format_userlevels(result, sheet, order = nil, search = nil)
+  # Constants for different characteristics of a Browse
   categories = {
     7 => "Best",
     8 => "Featured",
@@ -735,31 +736,57 @@ def format_userlevels(result, sheet, search = nil)
     11 => "Hardest",
     36 => "Search"
   }
+  fields = { # possible spellings for each field, to be used for sorting or filtering
+    :n => ["n", "number"],
+    :id => ["id", "map id", "map_id", "level id", "level_id"],
+    :title => ["title", "name"],
+    :author => ["author", "player", "user"],
+    :date => ["date", "time"],
+    :favs => ["fav", "favs", "++", "++s", "++'s", "favourite", "favourites"]
+  }
+  reverse = [:id, :date, :favs] # the order of these fields will be reversed by default
+
+  # Determine parameters
   category = categories[result[:header][:category]]
   page = result[:header][:page]
   sheets = (result[:header][:count].to_f / SHEET_LENGTH).ceil
   sheet = sheets - 1 if sheet.to_i > sheets - 1 unless sheets == 0
   range = (SHEET_LENGTH * sheet .. SHEET_LENGTH * (sheet + 1) - 1)
-  levels = result[:maps][range]
+
+  # Apply order and filter, obtain levels
+  if !order.nil?
+    fields.each{ |k, v|
+      if v.include?(order.strip)
+        order = k
+        break
+      end
+    }
+  else
+    order = :n
+  end
+  if !order.is_a?(Symbol) then order = :n end
+  levels = result[:maps].sort_by{ |l| reverse.include?(order) ? -l[order] : l[order] }[range]
 
   # Calculate required column padding
-  hard_padding = {n: 3, map_id: 6, title: 25, author: 16, date: 14, favs: 2 } # maximum allowed padding
-  min_padding = {n: 2, map_id: 2, title: 5, author: 6, date: 14, favs: 2 }    # minimum allowed padding
+  max_padding = {n: 3, map_id: 6, title: 25, author: 16, date: 14, favs: 4 }
+  min_padding = {n: 2, map_id: 2, title:  5, author:  6, date: 14, favs: 2 }
+  def_padding = {n: 3, map_id: 6, title: 25, author: 16, date: 14, favs: 2 }
   if !levels.nil?
-    n_padding =      [ [ range.to_a.max.to_s.length,                       hard_padding[:n]].min,      min_padding[:n]      ].max
-    map_id_padding = [ [ levels.map{ |map| map[:map_id] }.max.to_s.length, hard_padding[:map_id]].min, min_padding[:map_id] ].max
-    title_padding  = [ [ levels.map{ |map| map[:title].length }.max,       hard_padding[:title]].min,  min_padding[:title]  ].max
-    author_padding = [ [ levels.map{ |map| map[:author].length }.max,      hard_padding[:title]].min,  min_padding[:author] ].max
-    date_padding   = [ [ levels.map{ |map| map[:date].length }.max,        hard_padding[:date]].min,   min_padding[:date]   ].max
-    favs_padding   = [ [ levels.map{ |map| map[:favs] }.max.to_s.length,   hard_padding[:favs]].min,   min_padding[:favs]   ].max
+    n_padding =      [ [ range.to_a.max.to_s.length,                       max_padding[:n]     ].min, min_padding[:n]      ].max
+    map_id_padding = [ [ levels.map{ |map| map[:map_id] }.max.to_s.length, max_padding[:map_id]].min, min_padding[:map_id] ].max
+    title_padding  = [ [ levels.map{ |map| map[:title].length }.max,       max_padding[:title] ].min, min_padding[:title]  ].max
+    author_padding = [ [ levels.map{ |map| map[:author].length }.max,      max_padding[:title] ].min, min_padding[:author] ].max
+    date_padding   = [ [ levels.map{ |map| map[:date].length }.max,        max_padding[:date]  ].min, min_padding[:date]   ].max
+    favs_padding   = [ [ levels.map{ |map| map[:favs] }.max.to_s.length,   max_padding[:favs]  ].min, min_padding[:favs]   ].max
     padding = {n: n_padding, map_id: map_id_padding, title: title_padding, author: author_padding, date: date_padding, favs: favs_padding }
   else
-    padding = hard_padding
+    padding = def_padding
   end
 
   # Print header
   output = search.nil? ? ("Browsing **" + category.to_s.upcase + "**. ") : ("Searching for \"**" + search + "**\". ")
-  output += "Page **" + page.to_s + "**. Sheet **" + sheet.to_s + "/" + (sheets - 1).to_s + "**. "
+  output += "Page **" + page.to_s + "**. Sheet **" + sheet.to_s + "/" + (sheets - 1).to_s + "**.\n"
+  output += "Order: **" + (order == :n ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
   output += "Database update at " + result[:header][:date] + ". "
   output += "Times are " + Time.now.zone + " (UTC " + ("%+d" % ((Time.now.utc_offset).to_f / 3600)) + ").\n"
   output += "Total results in page: **" + result[:header][:count].to_s + "**. Use \"sheet <number>\" to navigate the page.\n"
@@ -797,6 +824,7 @@ def browse_userlevels(event)
   user = event.user.name
   page = msg[/page\s*([0-9][0-9]?)/i, 1] || 0
   sheet = msg[/sheet\s*([0-9][0-9]?)/i, 1].to_i || 0
+  order = msg[/(order|sort)\s*(by)?\s*((\w|\+)*)/i, 3]
   qt = 10
   categories = {
     "best" => 7,
@@ -808,7 +836,7 @@ def browse_userlevels(event)
   categories.each{ |cat, id| qt = id if !!(msg =~ /#{cat}/i) }
 
   result = HighScore::browse_levels(qt, page)
-  event << format_userlevels(result, sheet) + "```"
+  event << format_userlevels(result, sheet, order) + "```"
 end
 
 def search_userlevels(event)
@@ -822,7 +850,7 @@ def search_userlevels(event)
     event << "Sorry! We can only perform ASCII-only searches."
   else
     result = HighScore::search_levels(search, page)
-    event << format_userlevels(result, sheet, search) + "```"
+    event << format_userlevels(result, sheet, order, search) + "```"
   end
 end
 
