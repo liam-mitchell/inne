@@ -15,7 +15,7 @@ end
 
 namespace :db do
   task :environment do
-    DATABASE_ENV = ENV['DATABASE_ENV'] || 'development'
+    DATABASE_ENV = ENV['DATABASE_ENV'] || 'inne_eddy'
     MIGRATIONS_DIR = ENV['MIGRATIONS_DIR'] || 'db/migrate'
   end
 
@@ -36,6 +36,7 @@ namespace :db do
   end
 
   task :migrate => :configure_connection do
+    require_relative 'models.rb'
     ActiveRecord::Migrator.migrate(MIGRATIONS_DIR, ENV['VERSION'] ? ENV['VERSION'].to_i : nil)
   end
 

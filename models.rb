@@ -80,14 +80,6 @@ module HighScore
     URI("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}")
   end
 
-  def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
-    URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
-  end
-
-  def self.search_uri(steam_id, search, page = 0, mode = 0)
-    URI("https://dojo.nplusplus.ninja/prod/steam/search/levels?steam_id=#{steam_id}&steam_auth=&search=#{search}&mode=#{mode}&page=#{page}")
-  end
-
   def get_scores
     initial_id = get_last_steam_id
     response = Net::HTTP.get(scores_uri(initial_id))
@@ -117,36 +109,6 @@ module HighScore
     err("error getting replay: #{e}")
     retry
   end
-
-  def self.get_levels(qt = 10, page = 0, mode = 0)
-    initial_id = get_last_steam_id
-    response = Net::HTTP.get(levels_uri(initial_id, qt, page, mode))
-    while response == '-1337'
-      update_last_steam_id
-      break if get_last_steam_id == initial_id
-      response = Net::HTTP.get(levels_uri(get_last_steam_id, qt, page, mode))
-    end
-    return nil if response == '-1337'
-    response
-  rescue => e
-    err("error querying page nº #{page} of userlevels from category #{qt}: #{e}")
-    retry
-  end
-
-    def self.get_search(search = "", page = 0, mode = 0)
-      initial_id = get_last_steam_id
-      response = Net::HTTP.get(search_uri(initial_id, search, page, mode))
-      while response == '-1337'
-        update_last_steam_id
-        break if get_last_steam_id == initial_id
-        response = Net::HTTP.get(search_uri(get_last_steam_id, search, page, mode))
-      end
-      return nil if response == '-1337'
-      response
-    rescue => e
-      err("error searching for userlevels containing \"#{search}\", page nº #{page}: #{e}")
-      retry
-    end
 
   def save_scores(updated)
     updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }
@@ -195,57 +157,6 @@ module HighScore
     replay = get_replay(replay_id)
     demo = Zlib::Inflate.inflate(replay[16..-1])[30..-1]
     analysis = demo.unpack('H*')[0].scan(/../).map{ |b| b.to_i }[1..-1]
-  end
-
-  # Format of query result: Header (48B) + adjacent map headers (44B each) + adjacent map data blocks (variable length).
-  # 1) Header format: Date (16B), map count (4B), page (4B), unknown (4B), category (4B), game mode (4B), unknown (12B).
-  # 2) Map header format: Map ID (4B), user ID (4B), author name (16B), # of ++'s (4B), date of publishing (16B).
-  # 3) Map data block format: Size of block (4B), # of objects (2B), zlib-compressed map data.
-  # Uncompressed map data format: Header (30B) + title (128B) + null (18B) + map data (variable).
-  # 1) Header format: Unknown (4B), game mode (4B), unknown (4B), user ID (4B), unknown (14B).
-  # 2) Map format: Tile data (966B, 1B per tile), object counts (80B, 2B per object type), objects (variable, 5B per object).
-  def self.parse_levels(levels)
-    header = {
-      date: format_date(levels[0..15].to_s),
-      count: parse_int(levels[16..19]),
-      page: parse_int(levels[20..23]),
-      category: parse_int(levels[28..31]),
-      mode: parse_int(levels[32..35])
-    }
-    # the regex flag "m" is needed so that the global character "." matches the new line character
-    # it was hell to debug this!
-    maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
-      {
-        map_id: parse_int(h[0..3]),
-        user_id: parse_int(h[4..7]),
-        author: h[8..23].join.each_byte.map{ |b| b > 127 ? " ".ord.chr : b.chr }.join.strip, # remove non-ASCII chars
-        favs: parse_int(h[24..27]),
-        date: format_date(h[28..-1].join)
-      }
-    }
-    i = 0
-    offset = 48 + header[:count] * 44
-    while i < header[:count]
-      len = parse_int(levels[offset..offset + 3])
-      maps[i][:object_count] = parse_int(levels[offset + 4..offset + 5])
-      map = Zlib::Inflate.inflate(levels[offset + 6..offset + len - 1])
-      maps[i][:title] = map[30..157].each_byte.map{ |b| b > 127 ? "?".ord.chr : b.chr }.join.strip
-      maps[i][:tiles] = map[176..1141].scan(/./).map{ |b| parse_int(b) }.each_slice(42).to_a
-      maps[i][:objects] = map[1222..-1].scan(/./).map{ |b| parse_int(b) }.each_slice(5).to_a
-      offset += len
-      i += 1
-    end
-    {header: header, maps: maps}
-  end
-
-  def self.browse_levels(qt = 10, page = 0, mode = 0)
-    levels = get_levels(qt, page, mode)
-    parse_levels(levels)
-  end
-
-  def self.search_levels(search = "", page = 0, mode = 0)
-    levels = get_search(search, page, mode)
-    parse_levels(levels)
   end
 
   def correct_ties(score_hash)
@@ -525,5 +436,155 @@ class Video < ActiveRecord::Base
 
   def format_description
     "#{format_challenge} by #{format_author}"
+  end
+end
+
+class Userlevel < ActiveRecord::Base
+
+  def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
+    URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
+  end
+
+  def self.search_uri(steam_id, search, page = 0, mode = 0)
+    URI("https://dojo.nplusplus.ninja/prod/steam/search/levels?steam_id=#{steam_id}&steam_auth=&search=#{search}&mode=#{mode}&page=#{page}")
+  end
+
+  def self.serial(maps)
+    maps.map(&:as_json).map(&:symbolize_keys)
+  end
+
+  def self.get_levels(qt = 10, page = 0, mode = 0)
+    initial_id = get_last_steam_id
+    response = Net::HTTP.get(levels_uri(initial_id, qt, page, mode))
+    while response == '-1337'
+      update_last_steam_id
+      break if get_last_steam_id == initial_id
+      response = Net::HTTP.get(levels_uri(get_last_steam_id, qt, page, mode))
+    end
+    return nil if response == '-1337'
+    response
+  rescue => e
+    err("error querying page nº #{page} of userlevels from category #{qt}: #{e}")
+    retry
+  end
+
+  def self.get_search(search = "", page = 0, mode = 0)
+    initial_id = get_last_steam_id
+    response = Net::HTTP.get(search_uri(initial_id, search, page, mode))
+    while response == '-1337'
+      update_last_steam_id
+      break if get_last_steam_id == initial_id
+      response = Net::HTTP.get(search_uri(get_last_steam_id, search, page, mode))
+    end
+    return nil if response == '-1337'
+    response
+  rescue => e
+    err("error searching for userlevels containing \"#{search}\", page nº #{page}: #{e}")
+    retry
+  end
+
+  # Format of query result: Header (48B) + adjacent map headers (44B each) + adjacent map data blocks (variable length).
+  # 1) Header format: Date (16B), map count (4B), page (4B), unknown (4B), category (4B), game mode (4B), unknown (12B).
+  # 2) Map header format: Map ID (4B), user ID (4B), author name (16B), # of ++'s (4B), date of publishing (16B).
+  # 3) Map data block format: Size of block (4B), # of objects (2B), zlib-compressed map data.
+  # Uncompressed map data format: Header (30B) + title (128B) + null (18B) + map data (variable).
+  # 1) Header format: Unknown (4B), game mode (4B), unknown (4B), user ID (4B), unknown (14B).
+  # 2) Map format: Tile data (966B, 1B per tile), object counts (80B, 2B per object type), objects (variable, 5B per object).
+  def self.parse(levels)
+    header = {
+      date: format_date(levels[0..15].to_s),
+      count: parse_int(levels[16..19]),
+      page: parse_int(levels[20..23]),
+      category: parse_int(levels[28..31]),
+      mode: parse_int(levels[32..35])
+    }
+    # the regex flag "m" is needed so that the global character "." matches the new line character
+    # it was hell to debug this!
+    maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
+      author = h[8..23].join.each_byte.map{ |b| (b < 32 || b > 127) ? " ".ord.chr : b.chr }.join.strip # remove non-ASCII chars
+      {
+        id: parse_int(h[0..3]),
+        author_id: author != "null" ? parse_int(h[4..7]) : -1,
+        author: author,
+        favs: parse_int(h[24..27]),
+        date: format_date(h[28..-1].join)
+      }
+    }
+    i = 0
+    offset = 48 + header[:count] * 44
+    while i < header[:count]
+      len = parse_int(levels[offset..offset + 3])
+      maps[i][:object_count] = parse_int(levels[offset + 4..offset + 5])
+      map = Zlib::Inflate.inflate(levels[offset + 6..offset + len - 1])
+      maps[i][:title] = map[30..157].each_byte.map{ |b| (b < 32 || b > 127) ? " ".ord.chr : b.chr }.join.strip
+      maps[i][:tiles] = map[176..1141].scan(/./).map{ |b| parse_int(b) }.each_slice(42).to_a
+      maps[i][:objects] = map[1222..-1].scan(/./).map{ |b| parse_int(b) }.each_slice(5).to_a
+      offset += len
+      i += 1
+    end
+    # Update database
+    result = []
+    ActiveRecord::Base.transaction do
+      maps.each{ |map|
+        entry = Userlevel.find_or_create_by(id: map[:id])
+        entry.update(
+          title: map[:title],
+          author: map[:author],
+          author_id: map[:author_id],
+          favs: map[:favs],
+          date: map[:date]
+        )
+        result << entry
+      }
+    end
+    result
+  end
+
+  def self.browse(qt = 10, page = 0, mode = 0)
+    levels = get_levels(qt, page, mode)
+    parse(levels)
+  end
+
+  def self.search(search = "", page = 0, mode = 0)
+    levels = get_search(search, page, mode)
+    parse(levels)
+  end
+
+  def self.sort(maps, order)
+    fields = { # possible spellings for each field, to be used for sorting or filtering
+      :n => ["n", "number"],
+      :id => ["id", "map id", "map_id", "level id", "level_id"],
+      :title => ["title", "name"],
+      :author => ["author", "player", "user"],
+      :date => ["date", "time"],
+      :favs => ["fav", "favs", "++", "++s", "++'s", "favourite", "favourites"]
+    }
+    reverse = [:id, :date, :favs] # the order of these fields will be reversed by default
+    if !order.nil?
+      fields.each{ |k, v|
+        if v.include?(order.strip)
+          order = k
+          break
+        end
+      }
+    else
+      order = :n
+    end
+    if !order.is_a?(Symbol) then order = :n end
+    if order != :n then maps = maps.sort_by(&order) end
+    if reverse.include?(order) then maps.reverse! end
+    maps
+  end
+
+  def serial
+    self.as_json.map(&:symbolize_keys)
+    {
+      id: id,
+      author: author,
+      author_id: author_id,
+      title: title,
+      favs: favs,
+      date: date
+    }
   end
 end

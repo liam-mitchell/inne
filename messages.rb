@@ -12,8 +12,7 @@ MAX_ENTRIES = 20 # maximum number of entries on methods with user input, to avoi
 MIN_SCORES = 50  # minimum number of highscores to appear in average point rankings
 
 # userlevel functions
-SHEET_LENGTH = 20
-PAGE_SIZE = 500
+PAGE_SIZE = 20
 
 def parse_type(msg)
   (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : nil))
@@ -726,73 +725,27 @@ end
 
 # \\ <------ USERLEVEL METHODS ------>
 
-def format_userlevels(result, sheet, order = nil, search = nil)
-  # Constants for different characteristics of a Browse
-  categories = {
-    7 => "Best",
-    8 => "Featured",
-    9 => "Top Weekly",
-    10 => "Newest",
-    11 => "Hardest",
-    36 => "Search"
-  }
-  fields = { # possible spellings for each field, to be used for sorting or filtering
-    :n => ["n", "number"],
-    :id => ["id", "map id", "map_id", "level id", "level_id"],
-    :title => ["title", "name"],
-    :author => ["author", "player", "user"],
-    :date => ["date", "time"],
-    :favs => ["fav", "favs", "++", "++s", "++'s", "favourite", "favourites"]
-  }
-  reverse = [:id, :date, :favs] # the order of these fields will be reversed by default
-
-  # Determine parameters
-  category = categories[result[:header][:category]]
-  page = result[:header][:page]
-  sheets = (result[:header][:count].to_f / SHEET_LENGTH).ceil
-  sheet = sheets - 1 if sheet.to_i > sheets - 1 unless sheets == 0
-  range = (SHEET_LENGTH * sheet .. SHEET_LENGTH * (sheet + 1) - 1)
-
-  # Apply order and filter, obtain levels
-  if !order.nil?
-    fields.each{ |k, v|
-      if v.include?(order.strip)
-        order = k
-        break
-      end
-    }
-  else
-    order = :n
-  end
-  if !order.is_a?(Symbol) then order = :n end
-  levels = result[:maps].sort_by{ |l| reverse.include?(order) ? -l[order] : l[order] }[range]
-
+def format_userlevels(maps, page, range)
   # Calculate required column padding
-  max_padding = {n: 3, map_id: 6, title: 25, author: 16, date: 14, favs: 4 }
-  min_padding = {n: 2, map_id: 2, title:  5, author:  6, date: 14, favs: 2 }
-  def_padding = {n: 3, map_id: 6, title: 25, author: 16, date: 14, favs: 2 }
-  if !levels.nil?
-    n_padding =      [ [ range.to_a.max.to_s.length,                       max_padding[:n]     ].min, min_padding[:n]      ].max
-    map_id_padding = [ [ levels.map{ |map| map[:map_id] }.max.to_s.length, max_padding[:map_id]].min, min_padding[:map_id] ].max
-    title_padding  = [ [ levels.map{ |map| map[:title].length }.max,       max_padding[:title] ].min, min_padding[:title]  ].max
-    author_padding = [ [ levels.map{ |map| map[:author].length }.max,      max_padding[:title] ].min, min_padding[:author] ].max
-    date_padding   = [ [ levels.map{ |map| map[:date].length }.max,        max_padding[:date]  ].min, min_padding[:date]   ].max
-    favs_padding   = [ [ levels.map{ |map| map[:favs] }.max.to_s.length,   max_padding[:favs]  ].min, min_padding[:favs]   ].max
-    padding = {n: n_padding, map_id: map_id_padding, title: title_padding, author: author_padding, date: date_padding, favs: favs_padding }
+  max_padding = {n: 3, id: 6, title: 25, author: 16, date: 14, favs: 4 }
+  min_padding = {n: 2, id: 2, title:  5, author:  6, date: 14, favs: 2 }
+  def_padding = {n: 3, id: 6, title: 25, author: 16, date: 14, favs: 2 }
+  if !maps.nil? && !maps.empty?
+    n_padding =      [ [ range.to_a.max.to_s.length,                   max_padding[:n]     ].min, min_padding[:n]      ].max
+    id_padding =     [ [ maps.map{ |map| map[:id] }.max.to_s.length,   max_padding[:id]    ].min, min_padding[:id]     ].max
+    title_padding  = [ [ maps.map{ |map| map[:title].length }.max,     max_padding[:title] ].min, min_padding[:title]  ].max
+    author_padding = [ [ maps.map{ |map| map[:author].length }.max,    max_padding[:title] ].min, min_padding[:author] ].max
+    date_padding   = [ [ maps.map{ |map| map[:date].length }.max,      max_padding[:date]  ].min, min_padding[:date]   ].max
+    favs_padding   = [ [ maps.map{ |map| map[:favs] }.max.to_s.length, max_padding[:favs]  ].min, min_padding[:favs]   ].max
+    padding = {n: n_padding, id: id_padding, title: title_padding, author: author_padding, date: date_padding, favs: favs_padding }
   else
     padding = def_padding
   end
 
   # Print header
-  output = search.nil? ? ("Browsing **" + category.to_s.upcase + "**. ") : ("Searching for \"**" + search + "**\". ")
-  output += "Page **" + page.to_s + "**. Sheet **" + sheet.to_s + "/" + (sheets - 1).to_s + "**.\n"
-  output += "Order: **" + (order == :n ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
-  output += "Database update at " + result[:header][:date] + ". "
-  output += "Times are " + Time.now.zone + " (UTC " + ("%+d" % ((Time.now.utc_offset).to_f / 3600)) + ").\n"
-  output += "Total results in page: **" + result[:header][:count].to_s + "**. Use \"sheet <number>\" to navigate the page.\n"
-  output += "```\n"
+  output = "```\n"
   output += "%-#{padding[:n]}.#{padding[:n]}s " % "N"
-  output += "%-#{padding[:map_id]}.#{padding[:map_id]}s " % "ID"
+  output += "%-#{padding[:id]}.#{padding[:id]}s " % "ID"
   output += "%-#{padding[:title]}.#{padding[:title]}s " % "Title"
   output += "%-#{padding[:author]}.#{padding[:author]}s " % "Author"
   output += "%-#{padding[:date]}.#{padding[:date]}s " % "Date"
@@ -801,57 +754,85 @@ def format_userlevels(result, sheet, order = nil, search = nil)
   output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
 
   # Print levels
-  if levels.nil?
+  if maps.nil? || maps.empty?
     output += " " * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
   else
-    levels.each_with_index{ |l, i|
-      line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * page + SHEET_LENGTH * sheet + i).to_s
+    maps.each_with_index{ |m, i|
+      line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * page + i).to_s
       padding.reject{ |k, v| k == :n  }.each{ |k, v|
-        if l[k].is_a?(Integer)
-          line += "%#{padding[k]}.#{padding[k]}s " % l[k].to_s
+        if m[k].is_a?(Integer)
+          line += "%#{padding[k]}.#{padding[k]}s " % m[k].to_s
         else
-          line += "%-#{padding[k]}.#{padding[k]}s " % l[k].to_s
+          line += "%-#{padding[k]}.#{padding[k]}s " % m[k].to_s
         end
       }
       output << line + "\n"
     }
   end
-  output
+  output + "```"
 end
 
 def browse_userlevels(event)
   msg = event.content
   user = event.user.name
-  page = msg[/page\s*([0-9][0-9]?)/i, 1] || 0
-  sheet = msg[/sheet\s*([0-9][0-9]?)/i, 1].to_i || 0
+  page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
   order = msg[/(order|sort)\s*(by)?\s*((\w|\+)*)/i, 3]
-  qt = 10
+  category = 10
   categories = {
-    "best" => 7,
-    "featured" => 8,
-    "top" => 9,
-    "newest" => 10,
-    "hardest" => 11
+     7 => ["Best",       "best"],
+     8 => ["Featured",   "featured"],
+     9 => ["Top Weekly", "top"],
+    10 => ["Newest",     "newest"],
+    11 => ["Hardest",    "hardest"],
+    36 => ["Search",     "search"]
   }
-  categories.each{ |cat, id| qt = id if !!(msg =~ /#{cat}/i) }
+  categories.each{ |id, cat| category = id if !!(msg =~ /#{cat[1]}/i) }
 
-  result = HighScore::browse_levels(qt, page)
-  event << format_userlevels(result, sheet, order) + "```"
+  maps = Userlevel::sort(Userlevel::browse(category, 0), order)
+  count = maps.size
+  pages = (maps.size.to_f / PAGE_SIZE).ceil
+  page = pages - 1 if page > pages - 1 unless pages == 0
+  range = (PAGE_SIZE * page .. PAGE_SIZE * (page + 1) - 1)
+  maps = maps[range]
+
+  output = "Browsing **" + categories[category][0].to_s.upcase + "**. "
+  output += "Page **" + page.to_s + "/" + (pages - 1).to_s + "**. "
+  output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
+  output += "Date: " + Time.now.to_s + ".\n"
+  output += "Total results in page: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
+  output += format_userlevels(Userlevel::serial(maps), page, range)
+
+  event << output
 end
 
 def search_userlevels(event)
   msg = event.content
   user = event.user.name
-  search = msg[/search\s*(for)?\s*(.*)/i, 2]
-  page = msg[/page\s*([0-9][0-9]?)/i, 1] || 0
-  sheet = msg[/sheet\s*([0-9][0-9]?)/i, 1].to_i || 0
+  search = msg[/search\s*(for)?\s*"([^"]*)"/i, 2] || ""
+  page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
+  author = msg[/made\s*by\s*"([^"]*)"/i, 1] || ""
+  order = msg[/(order|sort)\s*(by)?\s*((\w|\+)*)/i, 3]
 
   if !search.ascii_only?
     event << "Sorry! We can only perform ASCII-only searches."
   else
-    result = HighScore::search_levels(search, page)
-    event << format_userlevels(result, sheet, order, search) + "```"
+    maps = author.empty? ? Userlevel::search(search, page) : Userlevel.where(author: author)
+    maps = Userlevel::sort(maps, order)
+    count = maps.size
+    pages = (maps.size.to_f / PAGE_SIZE).ceil
+    page = pages - 1 if page > pages - 1 unless pages == 0
+    range = (PAGE_SIZE * page .. PAGE_SIZE * (page + 1) - 1)
+    maps = maps[range]
+
+    output = "Searching for \"" + (!search.empty? ? ("**" + search + "**") : "") + "\". "
+    output += "Page **" + page.to_s + "/" + (pages > 0 ? (pages - 1).to_s : "0") + "**. "
+    output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
+    output += "Date: " + Time.now.to_s + ".\n"
+    output += "Total results in page: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
+    output += format_userlevels(Userlevel::serial(maps), page, range)
   end
+
+  event << output
 end
 
 # \\ <------ END OF USERLEVEL METHODS ------>
@@ -1007,6 +988,7 @@ def respond(event)
   if !!msg[/userlevel/i]
     browse_userlevels(event) if msg =~ /browse/i
     search_userlevels(event) if msg =~ /search/i
+    author(event) if msg =~ /test/i
     return
   end
 
