@@ -440,6 +440,7 @@ class Video < ActiveRecord::Base
 end
 
 class Userlevel < ActiveRecord::Base
+  # available fields: id,  author, author_id, title, favs, date, tile_data (renamed as tiles), object_data (renamed as objects)
 
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
     URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
@@ -501,7 +502,7 @@ class Userlevel < ActiveRecord::Base
     # the regex flag "m" is needed so that the global character "." matches the new line character
     # it was hell to debug this!
     maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
-      author = h[8..23].join.each_byte.map{ |b| (b < 32 || b > 127) ? " ".ord.chr : b.chr }.join.strip # remove non-ASCII chars
+      author = h[8..23].join.each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip # remove non-ASCII chars
       {
         id: parse_int(h[0..3]),
         author_id: author != "null" ? parse_int(h[4..7]) : -1,
@@ -516,7 +517,7 @@ class Userlevel < ActiveRecord::Base
       len = parse_int(levels[offset..offset + 3])
       maps[i][:object_count] = parse_int(levels[offset + 4..offset + 5])
       map = Zlib::Inflate.inflate(levels[offset + 6..offset + len - 1])
-      maps[i][:title] = map[30..157].each_byte.map{ |b| (b < 32 || b > 127) ? " ".ord.chr : b.chr }.join.strip
+      maps[i][:title] = map[30..157].each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip
       maps[i][:tiles] = map[176..1141].scan(/./).map{ |b| parse_int(b) }.each_slice(42).to_a
       maps[i][:objects] = map[1222..-1].scan(/./).map{ |b| parse_int(b) }.each_slice(5).to_a
       offset += len
@@ -574,6 +575,14 @@ class Userlevel < ActiveRecord::Base
     if order != :n then maps = maps.sort_by(&order) end
     if reverse.include?(order) then maps.reverse! end
     maps
+  end
+
+  def tiles
+    YAML.load(self.tile_data)
+  end
+
+  def objects
+    YAML.load(self.object_data)
   end
 
   def serial

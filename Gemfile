@@ -4,7 +4,8 @@ source 'https://rubygems.org' do
   gem 'activerecord'
   gem 'yaml_db'
   gem 'gruff'
-  gem 'mysql2'
+  gem 'rails', '~> 5.1.5'
+  gem 'mysql2', '~> 0.3.18'
 
   group :debug, :test do
     gem 'byebug'
@@ -14,6 +15,6 @@ source 'https://rubygems.org' do
     gem 'test-unit'
     gem 'mocha'
     gem 'database_cleaner'
-    gem 'factory_girl'
+    gem 'factory_bot'
   end
 end

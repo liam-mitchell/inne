@@ -1,10 +1,18 @@
+#inne_eddy:
+#  adapter: mysql2
+#  encoding: utf8
+#  reconnect: false
+#  database: inne
+#  pool: 5
+#  username: root
+#  password: root
+#  host: localhost
+
 inne_eddy:
   adapter: sqlite3
   database: inne.db
   host: localhost
   client_id: 535634130436620298
-  #level_update_frequency: 60
-  #episode_update_frequency: 60
 
 development:
   adapter: mysql2

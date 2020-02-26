@@ -1,6 +1,6 @@
 require 'active_record'
 require 'database_cleaner'
-require 'factory_girl'
+require 'factory_bot'
 require 'yaml'
 require 'yaml_db'
 
@@ -55,10 +55,10 @@ namespace :db do
     require 'mocha/test_unit'
 
     class Test::Unit::TestCase
-      include FactoryGirl::Syntax::Methods
+      include FactoryBot::Syntax::Methods
     end
 
-    FactoryGirl.find_definitions
+    FactoryBot.find_definitions
 
     require_relative 'test/test_models.rb'
     require_relative 'test/test_messages.rb'

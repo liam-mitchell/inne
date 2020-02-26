@@ -1,4 +1,4 @@
-FactoryGirl.define do
+FactoryBot.define do
   factory :score do
     association :highscoreable, factory: :level
     association :player, factory: :player

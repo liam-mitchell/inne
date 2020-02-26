@@ -1,4 +1,4 @@
-FactoryGirl.define do
+FactoryBot.define do
   sequence(:name) { |n| "SI-A-00-#{n}" }
 
   factory :level do

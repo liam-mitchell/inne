@@ -835,6 +835,12 @@ def search_userlevels(event)
   event << output
 end
 
+def testa(event)
+  last_id = Userlevel.maximum(:id).to_i
+  element = Userlevel.where(id: last_id)[0]
+  log(element.tiles.class)
+end
+
 # \\ <------ END OF USERLEVEL METHODS ------>
 
 def identify(event)
@@ -988,7 +994,7 @@ def respond(event)
   if !!msg[/userlevel/i]
     browse_userlevels(event) if msg =~ /browse/i
     search_userlevels(event) if msg =~ /search/i
-    author(event) if msg =~ /test/i
+    testa(event) if msg =~ /test/i
     return
   end
 
