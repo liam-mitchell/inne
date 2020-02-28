@@ -148,7 +148,7 @@ def format_time
   Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")
 end
 
-def send_file(event, data, name, binary)
+def send_file(event, data, name, binary = false)
   tmpfile = File.join(Dir.tmpdir, name)
   File::open(tmpfile, "w", crlf_newline: !binary) do |f|
     f.write(data)
@@ -780,7 +780,7 @@ def format_userlevels(maps, page, range)
   output + "```"
 end
 
-def browse_userlevels(event)
+def send_userlevel_browse(event)
   msg = event.content
   user = event.user.name
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
@@ -815,13 +815,13 @@ def browse_userlevels(event)
   output += "Page **" + page.to_s + "/" + (pages - 1).to_s + "**. "
   output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
   output += "Date: " + Time.now.to_s + ".\n"
-  output += "Total results in page: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
+  output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
   output += format_userlevels(Userlevel::serial(maps), page, range)
 
   event << output
 end
 
-def search_userlevels(event)
+def send_userlevel_search(event)
   msg = event.content
   user = event.user.name
   search = msg[/search\s*(for)?\s*"([^"]*)"/i, 2] || ""
@@ -845,14 +845,14 @@ def search_userlevels(event)
     output += "Page **" + page.to_s + "/" + (pages > 0 ? (pages - 1).to_s : "0") + "**. "
     output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
     output += "Date: " + Time.now.to_s + ".\n"
-    output += "Total results in page: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
+    output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
     output += format_userlevels(Userlevel::serial(maps), page, range)
   end
 
   event << output
 end
 
-def download_userlevel(event)
+def send_userlevel_download(event)
   msg = event.content
   id = msg[/download\s*(\d+)/i, 1] || -1
 
@@ -867,6 +867,26 @@ def download_userlevel(event)
       file = map.convert
       event << "Downloading userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
       send_file(event, file, map.id.to_s, true)
+    end
+  end
+end
+
+def send_userlevel_screenshot(event)
+  msg = event.content
+  id = msg[/screenshot\s*(for)?\s*(\d+)/i, 2] || -1
+  palette = msg[/palette\s*"([^"]*)"/i, 1] || "vasquez"
+
+  if id == -1
+    event << "You need to specify the numerical ID of the map to download (e.g. `download userlevel 72807`)."
+  else
+    map = Userlevel::where(id: id)
+    if map.nil? || map.empty?
+      event << "The map with the specified ID is not present in the database."
+    else
+      map = map[0]
+      file = map.screenshot(palette)
+      event << "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      send_file(event, file, map.id.to_s + ".png", true)
     end
   end
 end
@@ -1022,9 +1042,10 @@ def respond(event)
 
   # userlevel methods
   if !!msg[/userlevel/i]
-    browse_userlevels(event) if msg =~ /browse/i
-    search_userlevels(event) if msg =~ /search/i
-    download_userlevel(event) if msg =~ /download/i
+    send_userlevel_browse(event) if msg =~ /browse/i
+    send_userlevel_search(event) if msg =~ /search/i
+    send_userlevel_download(event) if msg =~ /download/i
+    send_userlevel_screenshot(event) if msg =~ /screenshot/i
     return
   end
 

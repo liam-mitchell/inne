@@ -1,6 +1,8 @@
 # coding: utf-8
 require 'active_record'
 require 'net/http'
+require 'chunky_png' # for screenshot generation
+include ChunkyPNG::Color
 
 SCORE_PADDING =    0 #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15 # default variable padding, never make 0
@@ -477,6 +479,30 @@ class Userlevel < ActiveRecord::Base
     0x1B => {name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86},
     0x1C => {name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88}
   }
+  THEMES = ["acid", "airline", "argon", "autumn", "BASIC", "berry", "birthday cake",
+  "bloodmoon", "blueprint", "bordeaux", "brink", "cacao", "champagne", "chemical",
+  "chococherry", "classic", "clean", "concrete", "console", "cowboy", "dagobah",
+  "debugger", "delicate", "desert world", "disassembly", "dorado", "dusk", "elephant",
+  "epaper", "epaper invert CUT", "evening", "F7200", "florist", "formal", "galactic",
+  "gatecrasher", "gothmode", "grapefrukt", "grappa", "gunmetal", "hazard", "heirloom",
+  "holosphere", "hope", "hot", "hyperspace", "ice world", "incorporated", "infographic",
+  "invert", "jaune", "juicy", "kicks", "lab", "lava world", "lemonade", "lichen",
+  "lightcycle", "line CUT", "m", "machine", "metoro", "midnight", "minus", "mir",
+  "mono", "moonbase", "mustard", "mute", "nemk", "neptune", "neutrality", "noctis",
+  "oceanographer", "okinami", "orbit", "pale", "papier CUT", "papier invert", "party",
+  "petal", "PICO-8", "pinku", "plus", "porphyrous", "poseidon", "powder", "pulse",
+  "pumpkin", "QDUST", "quench", "regal", "replicant", "retro", "rust", "sakura",
+  "shift", "shock", "simulator", "sinister", "solarized dark", "solarized light",
+  "starfighter", "sunset", "supernavy", "synergy", "talisman", "toothpaste", "toxin",
+  "TR-808", "tycho CUT", "vasquez", "vectrex", "vintage", "virtual", "vivid", "void",
+  "waka", "witchy", "wizard", "wyvern", "xenon", "yeti"]
+  PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
+  BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
+  ROWS = 23
+  COLUMNS = 42
+  DIM = 44
+  WIDTH = DIM * (COLUMNS + 2)
+  HEIGHT = DIM * (ROWS + 2)
 
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
     URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
@@ -668,5 +694,104 @@ class Userlevel < ActiveRecord::Base
     }
     data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
     data
+  end
+
+  # <-------------------------------------------------------------------------->
+  #                           SCREENSHOT GENERATOR
+  # <-------------------------------------------------------------------------->
+
+  def coord(n) # transform N++ coordinates into pixel coordinates
+    DIM * n.to_f / 4
+  end
+
+  def check_dimensions(image, x, y) # ensure image is within limits
+    x >= 0 && y >= 0 && x <= WIDTH - image.width && y <= HEIGHT - image.height
+  end
+
+  # The following two methods are used for theme generation
+  def mask(image, before, after, bg = WHITE, tolerance = 0.5)
+    new_image = ChunkyPNG::Image.new(image.width, image.height, TRANSPARENT)
+    image.width.times{ |x|
+      image.height.times{ |y|
+        score = euclidean_distance_rgba(image[x,y], before).to_f / MAX_EUCLIDEAN_DISTANCE_RGBA
+        if score < tolerance then new_image[x,y] = ChunkyPNG::Color.compose(after, bg) end
+      }
+    }
+    new_image
+  end
+
+  def generate_object(object_id, palette_id, object = true)
+    parts = Dir.entries("images/#{object ? "object" : "tile"}_layers").select{ |file| file[0..2] == object_id.to_s(16).upcase.rjust(2, "0") + "-" }.sort
+    masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file("images/#{object ? "object" : "tile"}_layers/" + part)] }
+    images = masks.map{ |mask| mask(mask[1], BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id]) }
+    dims = [ [DIM, *images.map{ |i| i.width }].max, [DIM, *images.map{ |i| i.height }].max ]
+    output = ChunkyPNG::Image.new(*dims, TRANSPARENT)
+    images.each{ |image| output.compose!(image, 0, 0) }
+    output
+  end
+
+  # TODO: For diagonals, we can't rotate 45º, so get new pictures or new library
+  def screenshot(theme = "vasquez")
+    if !THEMES.include?(theme) then theme = "vasquez" end
+
+    # INITIALIZE IMAGES
+    tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, THEMES.index(theme), false)] }.to_h
+    object = OBJECTS.keys.map{ |o| [o, generate_object(o, THEMES.index(theme))] }.to_h
+    border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
+    image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, THEMES.index(theme)])
+
+    # PARSE MAP
+    tiles = self.tiles.map(&:dup)
+    objects = self.objects.sort_by{ |o| -OBJECTS[o[0]][:pref] }
+
+    # PAINT OBJECTS
+    objects.each do |o|
+      new_object = object[o[0]]
+      (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise }
+      if check_dimensions(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
+        image.compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
+      end
+    end
+
+    # PAINT TILES
+    tiles.each{ |row| row.unshift(1).push(1) }
+    tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2))
+    tiles.each_with_index do |slice, row|
+      slice.each_with_index do |t, column|
+        if t == 0 || t == 1 # empty and full tiles
+          new_tile = tile[t]
+        elsif t >= 2 && t <= 17 # half tiles and curved slopes
+          new_tile = tile[t - (t - 2) % 4]
+          (1 .. (t - 2) % 4).each{ |i| new_tile = new_tile.rotate_clockwise }
+        elsif t >= 18 && t <= 33 # small and big straight slopes
+          new_tile = tile[t - (t - 2) % 4]
+          if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
+          if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
+        end
+        image.compose!(new_tile, DIM * column, DIM * row)
+      end
+    end
+
+    # PAINT TILE BORDERS
+    edge = ChunkyPNG::Image.from_file('images/b.png')
+    edge = mask(edge, BLACK, PALETTE[1, THEMES.index(theme)])
+    (0 .. ROWS).each do |row| # horizontal
+      (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
+        tile_a = tiles[row][col / 2]
+        tile_b = tiles[row + 1][col / 2]
+        bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
+        if bool == 1 then image.compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) end
+      end
+    end
+    (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
+      (0 .. COLUMNS).each do |col|
+        tile_a = tiles[row / 2][col]
+        tile_b = tiles[row / 2][col + 1]
+        bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
+        if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
+      end
+    end
+
+    image.to_blob
   end
 end
