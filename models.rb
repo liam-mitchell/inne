@@ -91,7 +91,7 @@ module HighScore
     return nil if response == '-1337'
     correct_ties(JSON.parse(response)['scores'])
   rescue => e
-    err("error getting scores: #{e}")
+    err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
     retry
   end
 
@@ -106,7 +106,7 @@ module HighScore
     return nil if response == '-1337'
     response
   rescue => e
-    err("error getting replay: #{e}")
+    err("error getting replay with id #{replay_id}: #{e}")
     retry
   end
 
@@ -442,6 +442,42 @@ end
 class Userlevel < ActiveRecord::Base
   # available fields: id,  author, author_id, title, favs, date, tile_data (renamed as tiles), object_data (renamed as objects)
 
+  # 'pref' is the drawing preference when for overlaps, the lower the better
+  # 'att' is the number of attributes they have in the old format (in the new one it's always 5)
+  # 'old' is the ID in the old format, '-1' if it didn't exist
+  # 'pal' is the index at which the colors of the object start in the palette image
+  OBJECTS = {
+    0x00 => {name: 'ninja',              pref:  4, att: 2, old:  0, pal:  6},
+    0x01 => {name: 'mine',               pref: 22, att: 2, old:  1, pal: 10},
+    0x02 => {name: 'gold',               pref: 21, att: 2, old:  2, pal: 14},
+    0x03 => {name: 'exit',               pref: 25, att: 4, old:  3, pal: 17},
+    0x04 => {name: 'exit switch',        pref: 20, att: 0, old: -1, pal: 25},
+    0x05 => {name: 'regular door',       pref: 19, att: 3, old:  4, pal: 30},
+    0x06 => {name: 'locked door',        pref: 28, att: 5, old:  5, pal: 31},
+    0x07 => {name: 'locked door switch', pref: 27, att: 0, old: -1, pal: 33},
+    0x08 => {name: 'trap door',          pref: 29, att: 5, old:  6, pal: 39},
+    0x09 => {name: 'trap door switch',   pref: 26, att: 0, old: -1, pal: 41},
+    0x0A => {name: 'launch pad',         pref: 18, att: 3, old:  7, pal: 47},
+    0x0B => {name: 'one-way platform',   pref: 24, att: 3, old:  8, pal: 49},
+    0x0C => {name: 'chaingun drone',     pref: 16, att: 4, old:  9, pal: 51},
+    0x0D => {name: 'laser drone',        pref: 17, att: 4, old: 10, pal: 53},
+    0x0E => {name: 'zap drone',          pref: 15, att: 4, old: 11, pal: 57},
+    0x0F => {name: 'chase drone',        pref: 14, att: 4, old: 12, pal: 59},
+    0x10 => {name: 'floor guard',        pref: 13, att: 2, old: 13, pal: 61},
+    0x11 => {name: 'bounce block',       pref:  3, att: 2, old: 14, pal: 63},
+    0x12 => {name: 'rocket',             pref:  8, att: 2, old: 15, pal: 65},
+    0x13 => {name: 'gauss turret',       pref:  9, att: 2, old: 16, pal: 69},
+    0x14 => {name: 'thwump',             pref:  6, att: 3, old: 17, pal: 74},
+    0x15 => {name: 'toggle mine',        pref: 23, att: 2, old: 18, pal: 12},
+    0x16 => {name: 'evil ninja',         pref:  5, att: 2, old: 19, pal: 77},
+    0x17 => {name: 'laser turret',       pref:  7, att: 4, old: 20, pal: 79},
+    0x18 => {name: 'boost pad',          pref:  1, att: 2, old: 21, pal: 81},
+    0x19 => {name: 'deathball',          pref: 10, att: 2, old: 22, pal: 83},
+    0x1A => {name: 'micro drone',        pref: 12, att: 4, old: 23, pal: 57},
+    0x1B => {name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86},
+    0x1C => {name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88}
+  }
+
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
     URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
   end
@@ -491,7 +527,7 @@ class Userlevel < ActiveRecord::Base
   # Uncompressed map data format: Header (30B) + title (128B) + null (18B) + map data (variable).
   # 1) Header format: Unknown (4B), game mode (4B), unknown (4B), user ID (4B), unknown (14B).
   # 2) Map format: Tile data (966B, 1B per tile), object counts (80B, 2B per object type), objects (variable, 5B per object).
-  def self.parse(levels)
+  def self.parse(levels, update = true)
     header = {
       date: format_date(levels[0..15].to_s),
       count: parse_int(levels[16..19]),
@@ -501,8 +537,10 @@ class Userlevel < ActiveRecord::Base
     }
     # the regex flag "m" is needed so that the global character "." matches the new line character
     # it was hell to debug this!
+    # Note: When parsing user input (map titles and authors), we stop reading at the first null character,
+    # for everything after that is usually padding. Then, we remove non-ASCII characters.
     maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
-      author = h[8..23].join.each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip # remove non-ASCII chars
+      author = h[8..23].join.split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip
       {
         id: parse_int(h[0..3]),
         author_id: author != "null" ? parse_int(h[4..7]) : -1,
@@ -517,28 +555,37 @@ class Userlevel < ActiveRecord::Base
       len = parse_int(levels[offset..offset + 3])
       maps[i][:object_count] = parse_int(levels[offset + 4..offset + 5])
       map = Zlib::Inflate.inflate(levels[offset + 6..offset + len - 1])
-      maps[i][:title] = map[30..157].each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip
-      maps[i][:tiles] = map[176..1141].scan(/./).map{ |b| parse_int(b) }.each_slice(42).to_a
-      maps[i][:objects] = map[1222..-1].scan(/./).map{ |b| parse_int(b) }.each_slice(5).to_a
+      maps[i][:title] = map[30..157].split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip
+      maps[i][:tiles] = map[176..1141].scan(/./m).map{ |b| parse_int(b) }.each_slice(42).to_a
+      maps[i][:objects] = map[1222..-1].scan(/./m).map{ |b| parse_int(b) }.each_slice(5).to_a
       offset += len
       i += 1
     end
-    # Update database
     result = []
-    ActiveRecord::Base.transaction do
-      maps.each{ |map|
-        entry = Userlevel.find_or_create_by(id: map[:id])
-        entry.update(
-          title: map[:title],
-          author: map[:author],
-          author_id: map[:author_id],
-          favs: map[:favs],
-          date: map[:date]
-        )
-        result << entry
-      }
+    # Update database
+    if update
+      ActiveRecord::Base.transaction do
+        maps.each{ |map|
+          entry = Userlevel.find_or_create_by(id: map[:id])
+          entry.update(
+            title: map[:title],
+            author: map[:author],
+            author_id: map[:author_id],
+            favs: map[:favs],
+            date: map[:date],
+            mode: header[:mode],
+            tile_data: map[:tiles],
+            object_data: map[:objects]
+          )
+          result << entry
+        }
+      end
+    else
+      result = maps
     end
     result
+  rescue => e
+    nil
   end
 
   def self.browse(qt = 10, page = 0, mode = 0)
@@ -585,15 +632,41 @@ class Userlevel < ActiveRecord::Base
     YAML.load(self.object_data)
   end
 
-  def serial
-    self.as_json.map(&:symbolize_keys)
-    {
-      id: id,
-      author: author,
-      author_id: author_id,
-      title: title,
-      favs: favs,
-      date: date
+  # Convert an integer into a little endian binary string of 'size' bytes
+  def _pack(n, size)
+    n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join.force_encoding("ascii-8bit")
+  end
+
+  # Generate a file with the usual userlevel format
+  def convert
+    # HEADER
+    data = ("\x00" * 4).force_encoding("ascii-8bit")   # magic number ?
+    data << _pack(1230 + 5 * self.objects.size, 4)     # filesize
+    data << ("\xFF" * 4).force_encoding("ascii-8bit")  # static data
+    data << _pack(self.mode, 4)                        # game mode
+    data << ("\x25" + "\x00" * 3 + "\xFF" * 4 + "\x00" * 14).force_encoding("ascii-8bit") # static data
+    data << self.title[0..126].ljust(128,"\x00").force_encoding("ascii-8bit") # map title
+    data << ("\x00" * 18).force_encoding("ascii-8bit") # static data
+
+    # MAP DATA
+    tile_data = self.tiles.flatten.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join
+    object_counts = ""
+    object_data = ""
+    OBJECTS.sort_by{ |id, entity| id }.each{ |id, entity|
+      if ![7,9].include?(id) # ignore door switches for counting
+        object_counts << self.objects.select{ |o| o[0] == id }.size.to_s(16).rjust(4,"0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join
+      else
+        object_counts << "\x00\x00"
+      end
+      if ![6,7,8,9].include?(id) # doors must once again be treated differently
+        object_data << self.objects.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
+      elsif [6,8].include?(id)
+        doors = self.objects.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
+        switches = self.objects.select{ |o| o[0] == id + 1 }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
+        object_data << doors.zip(switches).flatten.join
+      end
     }
+    data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
+    data
   end
 end

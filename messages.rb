@@ -148,6 +148,14 @@ def format_time
   Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")
 end
 
+def send_file(event, data, name, binary)
+  tmpfile = File.join(Dir.tmpdir, name)
+  File::open(tmpfile, "w", crlf_newline: !binary) do |f|
+    f.write(data)
+  end
+  event.attach_file(File::open(tmpfile))
+end
+
 def send_top_n_count(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
@@ -776,9 +784,12 @@ def browse_userlevels(event)
   msg = event.content
   user = event.user.name
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
+  part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
   order = msg[/(order|sort)\s*(by)?\s*((\w|\+)*)/i, 3]
   category = 10
   categories = {
+     0 => ["All",        "all"],
+     1 => ["Oldest",     "oldest"],
      7 => ["Best",       "best"],
      8 => ["Featured",   "featured"],
      9 => ["Top Weekly", "top"],
@@ -788,7 +799,12 @@ def browse_userlevels(event)
   }
   categories.each{ |id, cat| category = id if !!(msg =~ /#{cat[1]}/i) }
 
-  maps = Userlevel::sort(Userlevel::browse(category, 0), order)
+  maps = [0, 1].include?(category) ? Userlevel.all : Userlevel::browse(category, part)
+  if maps.nil?
+    event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
+    return
+  end
+  maps = Userlevel::sort(maps, order)
   count = maps.size
   pages = (maps.size.to_f / PAGE_SIZE).ceil
   page = pages - 1 if page > pages - 1 unless pages == 0
@@ -810,13 +826,14 @@ def search_userlevels(event)
   user = event.user.name
   search = msg[/search\s*(for)?\s*"([^"]*)"/i, 2] || ""
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
+  part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
   author = msg[/made\s*by\s*"([^"]*)"/i, 1] || ""
   order = msg[/(order|sort)\s*(by)?\s*((\w|\+)*)/i, 3]
 
   if !search.ascii_only?
     event << "Sorry! We can only perform ASCII-only searches."
   else
-    maps = author.empty? ? Userlevel::search(search, page) : Userlevel.where(author: author)
+    maps = author.empty? ? Userlevel::search(search, part) : Userlevel.where(author: author)
     maps = Userlevel::sort(maps, order)
     count = maps.size
     pages = (maps.size.to_f / PAGE_SIZE).ceil
@@ -835,10 +852,23 @@ def search_userlevels(event)
   event << output
 end
 
-def testa(event)
-  last_id = Userlevel.maximum(:id).to_i
-  element = Userlevel.where(id: last_id)[0]
-  log(element.tiles.class)
+def download_userlevel(event)
+  msg = event.content
+  id = msg[/download\s*(\d+)/i, 1] || -1
+
+  if id == -1
+    event << "You need to specify the numerical ID of the map to download (e.g. `download userlevel 72807`)."
+  else
+    map = Userlevel::where(id: id)
+    if map.nil? || map.empty?
+      event << "The map with the specified ID is not present in the database."
+    else
+      map = map[0]
+      file = map.convert
+      event << "Downloading userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      send_file(event, file, map.id.to_s, true)
+    end
+  end
 end
 
 # \\ <------ END OF USERLEVEL METHODS ------>
@@ -994,7 +1024,7 @@ def respond(event)
   if !!msg[/userlevel/i]
     browse_userlevels(event) if msg =~ /browse/i
     search_userlevels(event) if msg =~ /search/i
-    testa(event) if msg =~ /test/i
+    download_userlevel(event) if msg =~ /download/i
     return
   end
 
