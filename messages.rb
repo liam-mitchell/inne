@@ -819,6 +819,8 @@ def send_userlevel_browse(event)
   output += format_userlevels(Userlevel::serial(maps), page, range)
 
   event << output
+rescue
+  event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
 end
 
 def send_userlevel_search(event)
@@ -850,6 +852,8 @@ def send_userlevel_search(event)
   end
 
   event << output
+rescue
+  event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
 end
 
 def send_userlevel_download(event)
@@ -873,7 +877,7 @@ end
 
 def send_userlevel_screenshot(event)
   msg = event.content
-  id = msg[/screenshot\s*(for)?\s*(\d+)/i, 2] || -1
+  id = msg[/screenshot\s*(for|of)?\s*(\d+)/i, 2] || -1
   palette = msg[/palette\s*"([^"]*)"/i, 1] || "vasquez"
 
   if id == -1
@@ -917,7 +921,7 @@ def add_steam_id(event)
 end
 
 def hello(event)
-  $bot.update_status("online", "inne for userlevels", nil, 0, false, 0)
+  $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
   event << "Hi!"
 
   if $channel.nil?
@@ -954,7 +958,7 @@ end
 
 def send_help(event)
   if (event.channel.type != 1) then
-    event << "Hi! I'm **inne++**, the N++ Highscoring Bot. I can do many tasks, like:\n"
+    event << "Hi! I'm **outte++**, the N++ Highscoring Bot and inne++'s evil cousin. I can do many tasks, like:\n"
     event << "- Fetching **scores** and **screenshots** for any level or episode."
     event << "- Performing highscore **rankings** of many sorts."
     event << "- Elaborating varied highscoring **stats**."
@@ -1046,6 +1050,7 @@ def respond(event)
     send_userlevel_search(event) if msg =~ /search/i
     send_userlevel_download(event) if msg =~ /download/i
     send_userlevel_screenshot(event) if msg =~ /screenshot/i
+    testa(event) if msg =~ /test/i
     return
   end
 

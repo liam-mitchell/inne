@@ -1,0 +1,100 @@
+Eddy's TODO list for inne:
+
+- ADD NEW COMMANDS TO HELP / README
+- Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
+
+\\ ------------------------ Userlevels ------------------------
+- Browse (DONE)
+- Search (DONE)
+- Leaderboards
+- Screenshots
+- Download (DONE)
+- Rankings
+
+Less priority:
+- When an ID is not in the database, if it's close (or always), download newest, but without printing it.
+- When requiring an ID (download, screenshot, etc), we could also support a name, and then we perform a search in the database. If there's one result, we show it, otherwise, we show the list.
+- Map Steam ID's to player names by looking it up in the database, so that they can be used when searching the server / database.
+- Browse user dependant categories
+- Browse other (made up but interesting) categories
+- Download maps (plural), like, all maps by an author or something.
+- Upload maps to accounts (need to figure out request by using proxy first)
+- Map editor with slots for each user
+
+Database:
+- Change format of stored dates to be UNIX time, or something consistent.
+- Code versions of already made queries (browse, search) to use the local database.
+- Make option to switch between an online search to N++ server, and an offline search in the local database. Make local default, since it faster, but have a parameter to switch to online mode.
+
+Others:
+- Sort results by any field (DOING, date sorting needs implementing, and also reverse sorting)
+- Filter results by any field.
+- Cache previous searches to avoid redownloading. (Note: To avoid memory leaks, limit the cache, order caches chronologically, and once the limit is reached start overwritting the oldest ones). (Note 2: We also don't want to keep old searches, since we might want to deliberately update the search. To avoid this, put a limit on how long a cache can stay and just delete the old ones after the limit has been surpassed. Also, maybe add a specific parameter to force redownload even if it's cached).
+- Add the possibility of making secondary orders (to break ties).
+- Every 24h download newest to update database.
+
+\\ ------------------------ Scores ------------------------
+
+- A function to compare new scores (when they are updated) to the stored ones, and that way produce a change report.
+- Ping players who lost 0ths, using the previous function.
+
+\\ ------------------------ Screenshots ------------------------
+
+Default palettes:
+- 2 votes for classic, 5 for vasquez, 5 for random
+- Add an option to set default palette for each user
+- Add a note when screenshots are published, that indicates the commands to specify the palette, so that new users know about it. Also, the command to set default palette.
+- Add custom palettes, but not in the randomized
+- Generate a gif with one palette per frame
+
+\\ ------------------------ Total Scores ------------------------
+- Create 2 tables: Levels and Episodes. One row per player, one column per level/episode. The idea is to keep the bot running 24/7, cycling through Steam ID's until an active one is found, and then latch onto that player and start downloading his scores. First, download those which have not yet been downloaded, and after that's done, keep downloading them, but not willy nilly, instead, also save the date at which each score was downloaded, and always update the scores in chronological order of last updated. Eventually, the goal is to have all scores by all players (in the list), and have them as updated as possible (even if they haven't completed the level).
+
+\\ ------------------------ Replay analysis ------------------------
+- Prettify format (aligment).
+- Error checking before using Zlib, in case of erroneous download.
+- Don't break the whole function if one download failed: retry, or skip to the next one.
+- Compare inputs of two runs like github does, also maybe do this comparison by just specifying changes (*read below*)
+
+\\ ------------------------ History ------------------------
+-- Fix the doubling through code, by halving the older scores.
+-- Add the possibility of limiting the scope of graphs (upper bound of y axis), using an additional parameters to the user command (e.g. "intro history 100"). In this case, if some player doesn't even appear in the graph because he's above it, maybe delete him from the legend and add new players. This adds an aditional difficulty since it's not just changing the y axis, but also changing the players to be plotted. To do so, the maximum would have to be computed first, and then decide which players are to be plotted.
+-- Medium priority: Another solution for the above problem: Use logarithmic scale.
+-- Manually join players that changed username (e.g. Maelstrom=drunk driver=asleep at the wheel).
+-- Add some chronological marks in the x axis (at least years, if not months). Maybe more and better marks in the y axis too.
+-- Retroactively delete (in the code, not the database) ignored players, like Mishu.
+-- Medium priority: Figure out what causes the sudden drops in the graphs, and fix it.
+-- Low priotity: Select the number of players to be plotted, or the minimum number of 0ths to select such players, using user input. This would have to be limited with some hardcoded constants to prevent spam or a computation overload).
+-- Low priotity: Improve legend (align players and put on the side instead of top, maybe put maxes next to them).
+-- Low priotity: Overall improvements to style (frame graph, and other decorations).
+
+\\ ------------------------ Cheaters ------------------------
+- Deal with empty spots due to ignored cheaters, this produces side effects like: some people having 2 top20's in the same level, maxed levels not appearing in the list of maxed levels because of old scores at the bottom, and permanent scores at the bottom of the boards.
+- Automatically ignore players and scores which surpass a certain credibility threshold (i.e. scores over 3000, scores which surpass the others by a certain percentage (like 300%), etc).
+
+\\ ------------------------ General ------------------------
+- SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
+- Interesting: Analyze how do coop demos work. Then, to compare individual demos on the same level, download 2 of them and build an attrac file to run the replay in N++'s menu.
+* Customize "list" even further.
+- 0th/Top20 changes (new ones, and per player).
+- Comparison between players.
+- Charts with colors.
+- Option to select quantity (instead of 20).
+- One should relate levels to their episodes with has_many and belongs_to => Rebuild database, maybe by creating more indices. We could use this to create a "cleanliness" and an "ownage?" method for episodes.
+- Some methods are duplicated in messages and inne++ files, like 'send_screenshot' or 'send_diff', ¿what to do here, delete the one in inne++ (which is not being used)?
+
+- Retrieve scores from other modes (coop, race, HS) and userlevels.
+- Implement "missing" in the "list" function, so that we could get "bottom 5 list for jirka that I don't already have".
+- Unique 0th holders.
+- 0th rankings ignoring certain players.
+- Refactor 0th rankings by using the Score class, should be much faster.
+- Add relaxed episode ownages (without episode), and ownages with ties.
+- Change threshold of 50 for a player to appear to depend on the amount of levels/eps per tab (maybe 0% episodes, 2.5% levels?).
+- Add hardcore mode, maybe the rest too.
+- Fix download so that it doesn't start over when it fails.
+
+\\ ------------------------ Notes ------------------------
+
+*below*
+
+"holds jump for 1 less frame, switches right for 2 frames then left until end", or in oter words, "as long as the difference between two inputs is the same as in the previous frame, discard it, as you said"

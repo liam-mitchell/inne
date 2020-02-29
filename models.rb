@@ -93,7 +93,8 @@ module HighScore
     return nil if response == '-1337'
     correct_ties(JSON.parse(response)['scores'])
   rescue => e
-    err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
+    # im getting tired of seeing this error, will uncomment if needed
+    #err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
     retry
   end
 
@@ -479,6 +480,7 @@ class Userlevel < ActiveRecord::Base
     0x1B => {name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86},
     0x1C => {name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88}
   }
+  FIXED_OBJECTS = [0, 1, 2, 3, 4, 7, 9, 16, 17, 18, 19, 21, 22, 24, 25, 28]
   THEMES = ["acid", "airline", "argon", "autumn", "BASIC", "berry", "birthday cake",
   "bloodmoon", "blueprint", "bordeaux", "brink", "cacao", "champagne", "chemical",
   "chococherry", "classic", "clean", "concrete", "console", "cowboy", "dagobah",
@@ -720,8 +722,18 @@ class Userlevel < ActiveRecord::Base
     new_image
   end
 
-  def generate_object(object_id, palette_id, object = true)
-    parts = Dir.entries("images/#{object ? "object" : "tile"}_layers").select{ |file| file[0..2] == object_id.to_s(16).upcase.rjust(2, "0") + "-" }.sort
+  # Generate the image of an object in the specified palette, by painting and combining each layer.
+  # Note: "special" indicates that we take the special version of the layers. In practice,
+  # this is used because we can't rotate images 45 degrees with this library, so we have a
+  # different image for that, which we call special.
+  def generate_object(object_id, palette_id, object = true, special = false)
+    # Select necessary layers
+    parts = Dir.entries("images/#{object ? "object" : "tile"}_layers").select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
+    parts_normal = parts.select{ |file| file[-6] == "-" }
+    parts_special = parts.select{ |file| file[-6] == "s" }
+    parts = (!special ? parts_normal : (parts_special.empty? ? parts_normal : parts_special))
+
+    # Paint and combine the layers
     masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file("images/#{object ? "object" : "tile"}_layers/" + part)] }
     images = masks.map{ |mask| mask(mask[1], BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id]) }
     dims = [ [DIM, *images.map{ |i| i.width }].max, [DIM, *images.map{ |i| i.height }].max ]
@@ -730,24 +742,26 @@ class Userlevel < ActiveRecord::Base
     output
   end
 
-  # TODO: For diagonals, we can't rotate 45º, so get new pictures or new library
   def screenshot(theme = "vasquez")
     if !THEMES.include?(theme) then theme = "vasquez" end
 
     # INITIALIZE IMAGES
     tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, THEMES.index(theme), false)] }.to_h
     object = OBJECTS.keys.map{ |o| [o, generate_object(o, THEMES.index(theme))] }.to_h
+    object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, THEMES.index(theme), true, true)] }.to_h
+    object.merge!(object_special)
     border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
     image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, THEMES.index(theme)])
 
     # PARSE MAP
     tiles = self.tiles.map(&:dup)
-    objects = self.objects.sort_by{ |o| -OBJECTS[o[0]][:pref] }
+    objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
+    objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
 
     # PAINT OBJECTS
     objects.each do |o|
-      new_object = object[o[0]]
-      (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise }
+      new_object = !(o[3] % 2 == 1 && [10, 11].include?(o[0])) ? object[o[0]] : object[o[0] + 29]
+      if !FIXED_OBJECTS.include?(o[0]) then (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } end
       if check_dimensions(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
         image.compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
       end
@@ -767,6 +781,8 @@ class Userlevel < ActiveRecord::Base
           new_tile = tile[t - (t - 2) % 4]
           if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
           if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
+        else
+          new_tile = tile[0]
         end
         image.compose!(new_tile, DIM * column, DIM * row)
       end
@@ -777,16 +793,16 @@ class Userlevel < ActiveRecord::Base
     edge = mask(edge, BLACK, PALETTE[1, THEMES.index(theme)])
     (0 .. ROWS).each do |row| # horizontal
       (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
-        tile_a = tiles[row][col / 2]
-        tile_b = tiles[row + 1][col / 2]
+        tile_a = tiles[row][col / 2] > 33 ? 0 : tiles[row][col / 2] # these comparisons with 33 are to remove glitched tiles
+        tile_b = tiles[row + 1][col / 2] > 33 ? 0 : tiles[row + 1][col / 2]
         bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
         if bool == 1 then image.compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) end
       end
     end
     (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
       (0 .. COLUMNS).each do |col|
-        tile_a = tiles[row / 2][col]
-        tile_b = tiles[row / 2][col + 1]
+        tile_a = tiles[row / 2][col] > 33 ? 0 : tiles[row / 2][col]
+        tile_b = tiles[row / 2][col + 1] > 33 ? 0 : tiles[row / 2][col + 1]
         bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
         if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
       end
