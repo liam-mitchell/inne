@@ -8,7 +8,8 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-DATABASE_ENV = ENV['DATABASE_ENV'] || 'inne_eddy'
+TEST = false
+DATABASE_ENV = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
@@ -276,7 +277,7 @@ def watchdog
 end
 
 #$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
-$bot = Discordrb::Bot.new token: ENV['TOKEN'], client_id: CONFIG['client_id']
+$bot = Discordrb::Bot.new token: (TEST ? ENV['TOKEN_TEST'] : ENV['TOKEN']), client_id: CONFIG['client_id']
 $channel = nil
 
 $bot.mention do |event|
@@ -294,10 +295,12 @@ puts "the bot's URL is #{$bot.invite_url}"
 startup
 trap("INT") { $kill_threads = true }
 
-$threads = [
-  Thread.new { start_level_of_the_day },
-  Thread.new { download_high_scores },
-]
+if !TEST
+  $threads = [
+    Thread.new { start_level_of_the_day },
+    Thread.new { download_high_scores },
+  ]
+end
 
 $bot.run(true)
 

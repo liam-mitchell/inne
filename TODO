@@ -2,6 +2,7 @@ Eddy's TODO list for inne:
 
 - ADD NEW COMMANDS TO HELP / README
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
+- Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour.
 
 \\ ------------------------ Userlevels ------------------------
 - Browse (DONE)
@@ -18,6 +19,7 @@ Less priority:
 - Browse user dependant categories
 - Browse other (made up but interesting) categories
 - Download maps (plural), like, all maps by an author or something.
+- Add a command to the browse/search function, that formats level names with underscores instead of spaces, so that they can be readily copied and pasted to N++.
 - Upload maps to accounts (need to figure out request by using proxy first)
 - Map editor with slots for each user
 
@@ -40,12 +42,18 @@ Others:
 
 \\ ------------------------ Screenshots ------------------------
 
+- Regular doors aren't being placed correctly, sometimes at least, see e.g. 42069, in which horizontal doors are shifted half a tile up, and vertical doos are shifted half a tile to the left. There have been more examples.
+
 Default palettes:
 - 2 votes for classic, 5 for vasquez, 5 for random
 - Add an option to set default palette for each user
 - Add a note when screenshots are published, that indicates the commands to specify the palette, so that new users know about it. Also, the command to set default palette.
 - Add custom palettes, but not in the randomized
 - Generate a gif with one palette per frame
+
+Avatar:
+- Ensure the random avatar can't repeat when faceswapping. In order to do so, we could save the current filename of the avatar in the GlobalProperties table of the database, and reject the current one before sampling the files in the avatar folder.
+- Maybe also store the date of the avatar change to avoid the cooldown.
 
 \\ ------------------------ Total Scores ------------------------
 - Create 2 tables: Levels and Episodes. One row per player, one column per level/episode. The idea is to keep the bot running 24/7, cycling through Steam ID's until an active one is found, and then latch onto that player and start downloading his scores. First, download those which have not yet been downloaded, and after that's done, keep downloading them, but not willy nilly, instead, also save the date at which each score was downloaded, and always update the scores in chronological order of last updated. Eventually, the goal is to have all scores by all players (in the list), and have them as updated as possible (even if they haven't completed the level).
@@ -92,6 +100,8 @@ Default palettes:
 - Change threshold of 50 for a player to appear to depend on the amount of levels/eps per tab (maybe 0% episodes, 2.5% levels?).
 - Add hardcore mode, maybe the rest too.
 - Fix download so that it doesn't start over when it fails.
+
+- Add some more easter eggs, like a command that shows (or links) eddysipw.
 
 \\ ------------------------ Notes ------------------------
 

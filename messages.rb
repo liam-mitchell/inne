@@ -2,6 +2,7 @@ require 'ascii_charts'
 require 'gruff'
 require 'zlib'
 require_relative 'models.rb'
+require_relative 'userlevels.rb'
 
 LEVEL_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9]?/i
 EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
@@ -26,7 +27,7 @@ def parse_player(msg, username)
   p = msg[/for (.*)[\.\?]?/i, 1]
 
   if p.nil?
-    raise "I couldn't find a player with your username! Have you identified yourself (with '@inne++ my name is <N++ display name>')?" unless User.exists?(username: username)
+    raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" unless User.exists?(username: username)
     User.find_by(username: username).player
   else
     raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless Player.exists?(name: p)
@@ -448,7 +449,7 @@ def send_ownages(event)
 
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
   list = "```#{ownages_list}```" unless ownages.count == 0
-  event << "#{tabs}episode ownages #{format_time}:\n#{list}There's a total of #{ownages.count} episode ownages."
+  event << "#{tabs}episode ownages #{format_time}:\n#{list}There're a total of #{ownages.count} episode ownages."
 end
 
 def send_missing(event)
@@ -731,172 +732,6 @@ def send_history(event)
   event.attach_file(File.open(tmpfile))
 end
 
-# \\ <------ USERLEVEL METHODS ------>
-
-def format_userlevels(maps, page, range)
-  # Calculate required column padding
-  max_padding = {n: 3, id: 6, title: 25, author: 16, date: 14, favs: 4 }
-  min_padding = {n: 2, id: 2, title:  5, author:  6, date: 14, favs: 2 }
-  def_padding = {n: 3, id: 6, title: 25, author: 16, date: 14, favs: 2 }
-  if !maps.nil? && !maps.empty?
-    n_padding =      [ [ range.to_a.max.to_s.length,                   max_padding[:n]     ].min, min_padding[:n]      ].max
-    id_padding =     [ [ maps.map{ |map| map[:id] }.max.to_s.length,   max_padding[:id]    ].min, min_padding[:id]     ].max
-    title_padding  = [ [ maps.map{ |map| map[:title].length }.max,     max_padding[:title] ].min, min_padding[:title]  ].max
-    author_padding = [ [ maps.map{ |map| map[:author].length }.max,    max_padding[:title] ].min, min_padding[:author] ].max
-    date_padding   = [ [ maps.map{ |map| map[:date].length }.max,      max_padding[:date]  ].min, min_padding[:date]   ].max
-    favs_padding   = [ [ maps.map{ |map| map[:favs] }.max.to_s.length, max_padding[:favs]  ].min, min_padding[:favs]   ].max
-    padding = {n: n_padding, id: id_padding, title: title_padding, author: author_padding, date: date_padding, favs: favs_padding }
-  else
-    padding = def_padding
-  end
-
-  # Print header
-  output = "```\n"
-  output += "%-#{padding[:n]}.#{padding[:n]}s " % "N"
-  output += "%-#{padding[:id]}.#{padding[:id]}s " % "ID"
-  output += "%-#{padding[:title]}.#{padding[:title]}s " % "Title"
-  output += "%-#{padding[:author]}.#{padding[:author]}s " % "Author"
-  output += "%-#{padding[:date]}.#{padding[:date]}s " % "Date"
-  output += "%-#{padding[:favs]}.#{padding[:favs]}s" % "++"
-  output += "\n"
-  output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
-
-  # Print levels
-  if maps.nil? || maps.empty?
-    output += " " * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
-  else
-    maps.each_with_index{ |m, i|
-      line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * page + i).to_s
-      padding.reject{ |k, v| k == :n  }.each{ |k, v|
-        if m[k].is_a?(Integer)
-          line += "%#{padding[k]}.#{padding[k]}s " % m[k].to_s
-        else
-          line += "%-#{padding[k]}.#{padding[k]}s " % m[k].to_s
-        end
-      }
-      output << line + "\n"
-    }
-  end
-  output + "```"
-end
-
-def send_userlevel_browse(event)
-  msg = event.content
-  user = event.user.name
-  page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
-  part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
-  order = msg[/(order|sort)\s*(by)?\s*((\w|\+)*)/i, 3]
-  category = 10
-  categories = {
-     0 => ["All",        "all"],
-     1 => ["Oldest",     "oldest"],
-     7 => ["Best",       "best"],
-     8 => ["Featured",   "featured"],
-     9 => ["Top Weekly", "top"],
-    10 => ["Newest",     "newest"],
-    11 => ["Hardest",    "hardest"],
-    36 => ["Search",     "search"]
-  }
-  categories.each{ |id, cat| category = id if !!(msg =~ /#{cat[1]}/i) }
-
-  maps = [0, 1].include?(category) ? Userlevel.all : Userlevel::browse(category, part)
-  if maps.nil?
-    event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
-    return
-  end
-  maps = Userlevel::sort(maps, order)
-  count = maps.size
-  pages = (maps.size.to_f / PAGE_SIZE).ceil
-  page = pages - 1 if page > pages - 1 unless pages == 0
-  range = (PAGE_SIZE * page .. PAGE_SIZE * (page + 1) - 1)
-  maps = maps[range]
-
-  output = "Browsing **" + categories[category][0].to_s.upcase + "**. "
-  output += "Page **" + page.to_s + "/" + (pages - 1).to_s + "**. "
-  output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
-  output += "Date: " + Time.now.to_s + ".\n"
-  output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
-  output += format_userlevels(Userlevel::serial(maps), page, range)
-
-  event << output
-rescue
-  event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
-end
-
-def send_userlevel_search(event)
-  msg = event.content
-  user = event.user.name
-  search = msg[/search\s*(for)?\s*"([^"]*)"/i, 2] || ""
-  page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
-  part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
-  author = msg[/made\s*by\s*"([^"]*)"/i, 1] || ""
-  order = msg[/(order|sort)\s*(by)?\s*((\w|\+)*)/i, 3]
-
-  if !search.ascii_only?
-    event << "Sorry! We can only perform ASCII-only searches."
-  else
-    maps = author.empty? ? Userlevel::search(search, part) : Userlevel.where(author: author)
-    maps = Userlevel::sort(maps, order)
-    count = maps.size
-    pages = (maps.size.to_f / PAGE_SIZE).ceil
-    page = pages - 1 if page > pages - 1 unless pages == 0
-    range = (PAGE_SIZE * page .. PAGE_SIZE * (page + 1) - 1)
-    maps = maps[range]
-
-    output = "Searching for \"" + (!search.empty? ? ("**" + search + "**") : "") + "\". "
-    output += "Page **" + page.to_s + "/" + (pages > 0 ? (pages - 1).to_s : "0") + "**. "
-    output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
-    output += "Date: " + Time.now.to_s + ".\n"
-    output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
-    output += format_userlevels(Userlevel::serial(maps), page, range)
-  end
-
-  event << output
-rescue
-  event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
-end
-
-def send_userlevel_download(event)
-  msg = event.content
-  id = msg[/download\s*(\d+)/i, 1] || -1
-
-  if id == -1
-    event << "You need to specify the numerical ID of the map to download (e.g. `download userlevel 72807`)."
-  else
-    map = Userlevel::where(id: id)
-    if map.nil? || map.empty?
-      event << "The map with the specified ID is not present in the database."
-    else
-      map = map[0]
-      file = map.convert
-      event << "Downloading userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
-      send_file(event, file, map.id.to_s, true)
-    end
-  end
-end
-
-def send_userlevel_screenshot(event)
-  msg = event.content
-  id = msg[/screenshot\s*(for|of)?\s*(\d+)/i, 2] || -1
-  palette = msg[/palette\s*"([^"]*)"/i, 1] || "vasquez"
-
-  if id == -1
-    event << "You need to specify the numerical ID of the map to download (e.g. `download userlevel 72807`)."
-  else
-    map = Userlevel::where(id: id)
-    if map.nil? || map.empty?
-      event << "The map with the specified ID is not present in the database."
-    else
-      map = map[0]
-      file = map.screenshot(palette)
-      event << "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
-      send_file(event, file, map.id.to_s + ".png", true)
-    end
-  end
-end
-
-# \\ <------ END OF USERLEVEL METHODS ------>
-
 def identify(event)
   msg = event.content
   user = event.user.name
@@ -934,6 +769,14 @@ def thanks(event)
   event << "You're welcome!"
 end
 
+def faceswap(event)
+  filename = Dir.entries("images/avatars").select { |f| File.file?("images/avatars/" + f) }.sample
+  file = File.open("images/avatars/" + filename)
+  $bot.profile.avatar = file
+  file.close
+  event << "Remember changing the avatar has a 10 minute cooldown!"
+end
+
 def send_level_time(event)
   next_level = get_next_update(Level) - Time.now
   next_level_hours = (next_level / (60 * 60)).to_i
@@ -968,7 +811,7 @@ def send_help(event)
     return
   end
 
-  msg = "Hi! I'm **inne++**, the N++ Highscoring Bot. The commands I understand are:\n"
+  msg = "Hi! I'm **outte++**, the N++ Highscoring Bot and inne++'s evil cousin. The commands I understand are:\n"
 
   File.open('README.md').read.each_line do |line|
     line = line.gsub("\n", "")
@@ -1046,11 +889,7 @@ def respond(event)
 
   # userlevel methods
   if !!msg[/userlevel/i]
-    send_userlevel_browse(event) if msg =~ /browse/i
-    send_userlevel_search(event) if msg =~ /search/i
-    send_userlevel_download(event) if msg =~ /download/i
-    send_userlevel_screenshot(event) if msg =~ /screenshot/i
-    testa(event) if msg =~ /test/i
+    respond_userlevels(event)
     return
   end
 
@@ -1094,6 +933,7 @@ def respond(event)
   identify(event) if msg =~ /my name is/i
   add_steam_id(event) if msg =~ /my steam id is/i
   send_videos(event) if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
+  faceswap(event) if msg =~ /faceswap/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
