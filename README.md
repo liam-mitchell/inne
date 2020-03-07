@@ -190,6 +190,20 @@ inne++ will send you a text file containing all level and episode high scores fo
 
 inne++ will download and analyze the inputs of a group of runs with ranks *\<rank a\>*, *\<rank b\>*... from level *\<level-id\>*. You can introduce as many ranks as you want, as long as they are separated by spaces. You need to introduce the level id (e.g. S-A-15-03) rather than its name (e.g. "neo tokyo") to avoid confusing inne with the also introduced ranks.
 
+### Userlevels
+- *userlevels browse all*
+- *userlevels browse oldest*
+- *userlevels browse best*
+- *userlevels browse featured*
+- *userlevels browse top*
+- *userlevels browse newest*
+- *userlevels browse hardest*
+- *userlevels search for "\<level\>"*
+- *userlevels search for "\<level\>" made by "\<author\>"*
+- *userlevel screenshot for \<levelid\>*
+- *userlevel screenshot for \<levelid\> palette "\<palette\>"*
+- *userlevel download \<levelid\>*
+
 ### Initialize inne++
 - *hello*
 - *hi*
