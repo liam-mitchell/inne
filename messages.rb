@@ -806,6 +806,7 @@ def send_help(event)
     event << "- Performing highscore **rankings** of many sorts."
     event << "- Elaborating varied highscoring **stats**."
     event << "- Displaying a diverse assortment of interesting highscore **lists**."
+    event << "- Searching and downloading **userlevels**."
     event << "- ... and many more things.\n"
     event << "For more details and a list of commands, please DM me this question, so as to avoid spamming this channel."
     return
