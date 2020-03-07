@@ -531,7 +531,7 @@ def send_userlevel_download(event)
   id = msg[/download\s*(\d+)/i, 1] || -1
 
   if id == -1
-    event << "You need to specify the numerical ID of the map to download (e.g. `download userlevel 72807`)."
+    event << "You need to specify the numerical ID of the map to download (e.g. `userlevel download 72807`)."
   else
     map = Userlevel::where(id: id)
     if map.nil? || map.empty?
