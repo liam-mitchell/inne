@@ -57,6 +57,7 @@ class Userlevel < ActiveRecord::Base
   "starfighter", "sunset", "supernavy", "synergy", "talisman", "toothpaste", "toxin",
   "TR-808", "tycho CUT", "vasquez", "vectrex", "vintage", "virtual", "vivid", "void",
   "waka", "witchy", "wizard", "wyvern", "xenon", "yeti"]
+  DEFAULT_PALETTE = "vasquez"
   PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
   BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
   ROWS = 23
@@ -64,6 +65,7 @@ class Userlevel < ActiveRecord::Base
   DIM = 44
   WIDTH = DIM * (COLUMNS + 2)
   HEIGHT = DIM * (ROWS + 2)
+  INVALID_NAMES = [nil, "null", ""]
 
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
     URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
@@ -154,16 +156,18 @@ class Userlevel < ActiveRecord::Base
       ActiveRecord::Base.transaction do
         maps.each{ |map|
           entry = Userlevel.find_or_create_by(id: map[:id])
-          entry.update(
-            title: map[:title],
-            author: map[:author],
-            author_id: map[:author_id],
-            favs: map[:favs],
-            date: map[:date],
-            mode: header[:mode],
-            tile_data: map[:tiles],
-            object_data: map[:objects]
-          )
+          values = {
+                    title: map[:title],
+                    author: map[:author],
+                    author_id: map[:author_id],
+                    favs: map[:favs],
+                    date: map[:date],
+                    mode: header[:mode],
+                    tile_data: map[:tiles],
+                    object_data: map[:objects]
+                   }
+          if INVALID_NAMES.include?(map[:author]) then values.delete(:author) end
+          entry.update(values)
           result << entry
         }
       end
@@ -172,6 +176,7 @@ class Userlevel < ActiveRecord::Base
     end
     result
   rescue => e
+    err(e)
     nil
   end
 
@@ -307,8 +312,8 @@ class Userlevel < ActiveRecord::Base
     output
   end
 
-  def screenshot(theme = "vasquez")
-    if !THEMES.include?(theme) then theme = "vasquez" end
+  def screenshot(theme = DEFAULT_PALETTE)
+    if !THEMES.include?(theme) then theme = DEFAULT_PALETTE end
 
     # INITIALIZE IMAGES
     tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, THEMES.index(theme), false)] }.to_h
@@ -406,9 +411,9 @@ def format_userlevels(maps, page, range)
   if !maps.nil? && !maps.empty?
     n_padding =      [ [ range.to_a.max.to_s.length,                   max_padding[:n]     ].min, min_padding[:n]      ].max
     id_padding =     [ [ maps.map{ |map| map[:id] }.max.to_s.length,   max_padding[:id]    ].min, min_padding[:id]     ].max
-    title_padding  = [ [ maps.map{ |map| map[:title].length }.max,     max_padding[:title] ].min, min_padding[:title]  ].max
-    author_padding = [ [ maps.map{ |map| map[:author].length }.max,    max_padding[:title] ].min, min_padding[:author] ].max
-    date_padding   = [ [ maps.map{ |map| map[:date].length }.max,      max_padding[:date]  ].min, min_padding[:date]   ].max
+    title_padding  = [ [ maps.map{ |map| map[:title].to_s.length }.max,     max_padding[:title] ].min, min_padding[:title]  ].max
+    author_padding = [ [ maps.map{ |map| map[:author].to_s.length }.max,    max_padding[:title] ].min, min_padding[:author] ].max
+    date_padding   = [ [ maps.map{ |map| map[:date].to_s.length }.max,      max_padding[:date]  ].min, min_padding[:date]   ].max
     favs_padding   = [ [ maps.map{ |map| map[:favs] }.max.to_s.length, max_padding[:favs]  ].min, min_padding[:favs]   ].max
     padding = {n: n_padding, id: id_padding, title: title_padding, author: author_padding, date: date_padding, favs: favs_padding }
   else
@@ -450,10 +455,10 @@ def send_userlevel_browse(event)
   user = event.user.name
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
   part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
-  order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3]
+  order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
   reverse = order.strip[/\A-*/i].length % 2 == 1
   order.delete!("-")
-  category = 10
+  category = nil
   categories = {
      0 => ["All",        "all"],
      1 => ["Oldest",     "oldest"],
@@ -464,13 +469,19 @@ def send_userlevel_browse(event)
     11 => ["Hardest",    "hardest"],
     36 => ["Search",     "search"]
   }
+
   categories.each{ |id, cat| category = id if !!(msg =~ /#{cat[1]}/i) }
+  if categories.nil?
+    event << "Error browsing userlevels: You need to specify a tab to browse (best, featured, top, newest, hardest, all)."
+    return
+  end
 
   maps = [0, 1].include?(category) ? Userlevel.all : Userlevel::browse(category, part)
   if maps.nil?
     event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
     return
   end
+
   maps = Userlevel::sort(maps, order, reverse)
   count = maps.size
   pages = (maps.size.to_f / PAGE_SIZE).ceil
@@ -480,14 +491,15 @@ def send_userlevel_browse(event)
 
   output = "Browsing **" + categories[category][0].to_s.upcase + "**. "
   output += "Page **" + page.to_s + "/" + (pages - 1).to_s + "**. "
-  output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
+  output += "Order: **" + (order == "" ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
   output += "Date: " + Time.now.to_s + ".\n"
   output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
   output += format_userlevels(Userlevel::serial(maps), page, range)
 
   event << output
 rescue => e
-  event << e
+  err(e)
+  event << "Error downloading maps (server is not responding)."
 end
 
 def send_userlevel_search(event)
@@ -497,7 +509,7 @@ def send_userlevel_search(event)
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
   part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
   author = msg[/made\s*by\s*("|“|”)([^"“”]*)("|“|”)/i, 2] || ""
-  order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3]
+  order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
   reverse = order.strip[/\A-*/i].length % 2 == 1
   order.delete!("-")
 
@@ -506,6 +518,10 @@ def send_userlevel_search(event)
   else
     search = search[0..63] # truncate search query to fit under the character limit
     maps = author.empty? ? Userlevel::search(search, part) : Userlevel.where(author: author)
+    if maps.nil?
+      event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
+      return
+    end
     maps = Userlevel::sort(maps, order, reverse)
     count = maps.size
     pages = (maps.size.to_f / PAGE_SIZE).ceil
@@ -515,23 +531,27 @@ def send_userlevel_search(event)
 
     output = "Searching for \"" + (!search.empty? ? ("**" + search + "**") : "") + "\". "
     output += "Page **" + page.to_s + "/" + (pages > 0 ? (pages - 1).to_s : "0") + "**. "
-    output += "Order: **" + (order == nil ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
+    output += "Order: **" + (order == "" ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
     output += "Date: " + Time.now.to_s + ".\n"
     output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
     output += format_userlevels(Userlevel::serial(maps), page, range)
   end
 
   event << output
-rescue
+rescue => e
+  err(e)
   event << "Error downloading maps (server is not responding)."
 end
 
+# TODO: When downloading by name is implemented, the way to get the ID in the
+#       following methods must be adapted as well because it's too greedy now.
 def send_userlevel_download(event)
   msg = event.content
-  id = msg[/download\s*(\d+)/i, 1] || -1
+  # id = msg[/download\s*(\d+)/i, 1] || -1
+  id = msg[/\d+/i] || -1
 
   if id == -1
-    event << "You need to specify the numerical ID of the map to download (e.g. `userlevel download 72807`)."
+    event << "You need to specify the numerical ID of the map to download (e.g. `download userlevel 72807`)."
   else
     map = Userlevel::where(id: id)
     if map.nil? || map.empty?
@@ -547,20 +567,29 @@ end
 
 def send_userlevel_screenshot(event)
   msg = event.content
-  id = msg[/screenshot\s*(for|of)?\s*(\d+)/i, 2] || -1
-  palette = msg[/palette\s*("|“|”)([^"“”]*)("|“|”)/i, 2] || "vasquez"
+  # id = msg[/screenshot\s*(for|of)?\s*(\d+)/i, 2] || -1
+  id = msg[/\d+/i] || -1
+  #palette = msg[/(using|with|in)?\s*(palette)?\s*("|“|”)([^"“”]*)("|“|”)/i, 4] || Userlevel::DEFAULT_PALETTE
+  palette = msg[/("|“|”)([^"“”]*)("|“|”)/i, 2] || Userlevel::DEFAULT_PALETTE
 
   if id == -1
-    event << "You need to specify the name or the numerical ID of the map (e.g. `userlevel screenshot of 78414`).\n"
+    event << "You need to specify the name or the numerical ID of the map (e.g. `screenshot of userlevel 78414`).\n"
     event << "If you don't know it, you can **search** it (e.g. `userlevel search for \"the end\"`)."
   else
     map = Userlevel::where(id: id)
     if map.nil? || map.empty?
       event << "The map with the specified ID is not present in the database."
     else
+      if !Userlevel::THEMES.include?(palette)
+        event << "The palette `" + palette + "` doesn't exit. Using default: `" + Userlevel::DEFAULT_PALETTE + "`."
+        palette = Userlevel::DEFAULT_PALETTE
+      end
       map = map[0]
       file = map.screenshot(palette)
-      event << "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      output = "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s
+      output += "` by `" + (map.author.empty? ? " " : map.author) + "` using palette `"
+      output += palette + "` on " + Time.now.to_s + ".\n"
+      event << output
       send_file(event, file, map.id.to_s + ".png", true)
     end
   end
@@ -568,7 +597,8 @@ end
 
 def send_userlevel_scores(event)
   msg = event.content
-  id = msg[/scores\s*(for|of)?\s*(\d+)/i, 2] || -1
+  # id = msg[/scores\s*(for|of)?\s*(\d+)/i, 2] || -1
+  id = msg[/\d+/i] || -1
 
   if id == -1
     event << "You need to specify the name or the numerical ID of the map (e.g. `userlevel scores for 78414`).\n"
@@ -587,11 +617,11 @@ end
 
 def respond_userlevels(event)
   msg = event.content
-  msg.sub!(/\A<@[0-9]*> */, '') # strip off the @inne++ mention, if present
+  msg.sub!(/\A<@!?[0-9]*> */, '') # strip off the @inne++ mention, if present
 
-  send_userlevel_browse(event) if msg =~ /browse/i
-  send_userlevel_search(event) if msg =~ /search/i
-  send_userlevel_download(event) if msg =~ /download/i
-  send_userlevel_screenshot(event) if msg =~ /screenshot/i
-  send_userlevel_scores(event) if msg =~ /scores/i
+  send_userlevel_browse(event) if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
+  send_userlevel_search(event) if msg =~ /\bsearch\b/i
+  send_userlevel_download(event) if msg =~ /\bdownload\b/i
+  send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
+  send_userlevel_scores(event) if msg =~ /scores\b/i # matches 'highscores'
 end

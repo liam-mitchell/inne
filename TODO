@@ -2,19 +2,20 @@ Eddy's TODO list for inne:
 
 - ADD NEW COMMANDS TO HELP / README
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
-- Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour.
+- Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.
 
 \\ ------------------------ Userlevels ------------------------
 - Browse (DONE)
 - Search (DONE)
 - Leaderboards
-- Screenshots
+- Screenshots (DONE)
 - Download (DONE)
 - Rankings
 
 Less priority:
+- Simplify author search by having a separate query for it: "userlevel from/by/made by <username>".
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
-- When requiring an ID (download, screenshot, etc), we could also support a name, and then we perform a search in the database. If there's one result, we show it, otherwise, we show the list.
+- When requiring an ID (download, screenshot, etc), we could also support a name, and then we perform a search in the database. If there's one result, we show it, otherwise, we show the list. (Note: When this is done, we'll have to update the way IDs are matched, since it's currently too general and could result in collisions).
 - Map Steam ID's to player names by looking it up in the database, so that they can be used when searching the server / database.
 - Browse user dependant categories
 - Browse other (made up but interesting) categories
@@ -29,7 +30,6 @@ Database:
 - Make option to switch between an online search to N++ server, and an offline search in the local database. Make local default, since it faster, but have a parameter to switch to online mode.
 
 Others:
-- Sort results by any field (DOING, date sorting needs implementing, and also reverse sorting)
 - Filter results by any field.
 - Cache previous searches to avoid redownloading. (Note: To avoid memory leaks, limit the cache, order caches chronologically, and once the limit is reached start overwritting the oldest ones). (Note 2: We also don't want to keep old searches, since we might want to deliberately update the search. To avoid this, put a limit on how long a cache can stay and just delete the old ones after the limit has been surpassed. Also, maybe add a specific parameter to force redownload even if it's cached).
 - Add the possibility of making secondary orders (to break ties).
@@ -50,10 +50,6 @@ Default palettes:
 - Add a note when screenshots are published, that indicates the commands to specify the palette, so that new users know about it. Also, the command to set default palette.
 - Add custom palettes, but not in the randomized
 - Generate a gif with one palette per frame
-
-Avatar:
-- Ensure the random avatar can't repeat when faceswapping. In order to do so, we could save the current filename of the avatar in the GlobalProperties table of the database, and reject the current one before sampling the files in the avatar folder.
-- Maybe also store the date of the avatar change to avoid the cooldown.
 
 \\ ------------------------ Total Scores ------------------------
 - Create 2 tables: Levels and Episodes. One row per player, one column per level/episode. The idea is to keep the bot running 24/7, cycling through Steam ID's until an active one is found, and then latch onto that player and start downloading his scores. First, download those which have not yet been downloaded, and after that's done, keep downloading them, but not willy nilly, instead, also save the date at which each score was downloaded, and always update the scores in chronological order of last updated. Eventually, the goal is to have all scores by all players (in the list), and have them as updated as possible (even if they haven't completed the level).
@@ -80,6 +76,15 @@ Avatar:
 - Deal with empty spots due to ignored cheaters, this produces side effects like: some people having 2 top20's in the same level, maxed levels not appearing in the list of maxed levels because of old scores at the bottom, and permanent scores at the bottom of the boards.
 - Automatically ignore players and scores which surpass a certain credibility threshold (i.e. scores over 3000, scores which surpass the others by a certain percentage (like 300%), etc).
 
+\\ ------------------------ Humanlike features ------------------------
+
+- Add some backstory, like what happens when outte is asked about inne (murder?)
+- Add some more easter eggs, like a command that shows (or links) eddysipw.
+
+Avatar:
+- Ensure the random avatar can't repeat when faceswapping. In order to do so, we could save the current filename of the avatar in the GlobalProperties table of the database, and reject the current one before sampling the files in the avatar folder.
+- Maybe also store the date of the avatar change to avoid the cooldown.
+
 \\ ------------------------ General ------------------------
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
 - Interesting: Analyze how do coop demos work. Then, to compare individual demos on the same level, download 2 of them and build an attrac file to run the replay in N++'s menu.
@@ -101,7 +106,6 @@ Avatar:
 - Add hardcore mode, maybe the rest too.
 - Fix download so that it doesn't start over when it fails.
 
-- Add some more easter eggs, like a command that shows (or links) eddysipw.
 
 \\ ------------------------ Notes ------------------------
 
