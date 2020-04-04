@@ -15,6 +15,7 @@ CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
 LEVEL_UPDATE_FREQUENCY = CONFIG['level_update_frequency'] || 24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY = CONFIG['episode_update_frequency'] || 7 * 24 * 60 * 60 # weekly
+STORY_UPDATE_FREQUENCY = CONFIG['story_update_frequency'] || 30 * 24 * 60 * 60 # monthly (roughly)
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
@@ -83,13 +84,14 @@ def download_high_scores
 
       Level.all.each(&:update_scores)
       Episode.all.each(&:update_scores)
+      Story.all.each(&:update_scores)
 
       log("updated high scores. updating rankings...")
 
       now = Time.now
       [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
-        [Level, Episode].each do |type|
-          next if type == Episode && [:SS, :SS2].include?(tab)
+        [Level, Episode, Story].each do |type|
+          next if (type == Episode || type == Story) && [:SS, :SS2].include?(tab)
 
           [1, 5, 10, 20].each do |rank|
             [true, false].each do |ties|
@@ -182,6 +184,10 @@ def send_channel_reminder
   $channel.send_message("Also, remember that the current episode of the week is #{get_current(Episode).format_name}.")
 end
 
+def send_channel_story_reminder
+  $channel.send_message("Also, remember that the current column of the month is #{get_current(Story).format_name}.")
+end
+
 def send_channel_next(type)
   log("sending next #{type.to_s.downcase}")
   if $channel.nil?
@@ -198,14 +204,16 @@ def send_channel_next(type)
     return false
   end
 
-  last.update_scores
+  if !last.nil?
+    last.update_scores
+  end
   current.update_scores
 
-  prefix = type == Level ? "Time" : "It's also time"
-  duration = type == Level ? "day" : "week"
-  time = type == Level ? "today" : "this week"
-  since = type == Level ? "yesterday" : "last week"
-  typename = type.to_s.downcase
+  prefix = (type == Level ? "Time" : "It's also time")
+  duration = (type == Level ? "day" : (type == Episode ? "week" : "month"))
+  time = (type == Level ? "today" : (type == Episode ? "this week" : "this month"))
+  since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
+  typename = type != Story ? type.to_s.downcase : "column"
 
   caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
   send_channel_screenshot(current.name, caption)
@@ -223,6 +231,7 @@ def start_level_of_the_day
 
   begin
     episode_day = false
+    story_day = false
     while true
       # Autocorrect bad update times
       next_level_update = get_next_update(Level)
@@ -231,25 +240,35 @@ def start_level_of_the_day
       next_episode_update = get_next_update(Episode)
       next_episode_update -= EPISODE_UPDATE_FREQUENCY while next_episode_update > Time.now
       next_episode_update += EPISODE_UPDATE_FREQUENCY while next_episode_update < Time.now
+      next_story_update = get_next_update(Story)
+      next_story_update -= STORY_UPDATE_FREQUENCY while next_story_update > Time.now
+      next_story_update += STORY_UPDATE_FREQUENCY while next_story_update < Time.now
       set_next_update(Level, next_level_update)
       set_next_update(Episode, next_episode_update)
+      set_next_update(Story, next_story_update)
 
       delay = next_level_update - Time.now
       sleep(delay) unless delay < 0
-
       next if !send_channel_next(Level)
       log("sent next level, next update at #{get_next_update(Level).to_s}")
 
       if Time.now > next_episode_update
         sleep(30) # let discord catch up
-
         send_channel_next(Episode)
         episode_day = true
         log("sent next episode, next update at #{get_next_update(Episode).to_s}")
       end
+      if Time.now > next_story_update
+        sleep(30) # let discord catch up
+        send_channel_next(Story)
+        story_day = true
+        log("sent next story, next update at #{get_next_update(Story).to_s}")
+      end
 
       if !episode_day then send_channel_reminder end
+      if !story_day then send_channel_story_reminder end
       episode_day = false
+      story_day = false
     end
   rescue => e
     err("error updating level of the day: #{e}")
@@ -263,6 +282,7 @@ def startup
   log("initialized")
   log("next level update at #{get_next_update(Level).to_s}")
   log("next episode update at #{get_next_update(Episode).to_s}")
+  log("next story update at #{get_next_update(Story).to_s}")
   log("next score update at #{get_next_update('score')}")
 end
 
@@ -301,6 +321,7 @@ if !TEST
     Thread.new { download_high_scores },
   ]
 end
+
 
 $bot.run(true)
 

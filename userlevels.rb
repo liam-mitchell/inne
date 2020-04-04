@@ -44,18 +44,18 @@ class Userlevel < ActiveRecord::Base
   "bloodmoon", "blueprint", "bordeaux", "brink", "cacao", "champagne", "chemical",
   "chococherry", "classic", "clean", "concrete", "console", "cowboy", "dagobah",
   "debugger", "delicate", "desert world", "disassembly", "dorado", "dusk", "elephant",
-  "epaper", "epaper invert CUT", "evening", "F7200", "florist", "formal", "galactic",
+  "epaper", "epaper invert", "evening", "F7200", "florist", "formal", "galactic",
   "gatecrasher", "gothmode", "grapefrukt", "grappa", "gunmetal", "hazard", "heirloom",
   "holosphere", "hope", "hot", "hyperspace", "ice world", "incorporated", "infographic",
   "invert", "jaune", "juicy", "kicks", "lab", "lava world", "lemonade", "lichen",
-  "lightcycle", "line CUT", "m", "machine", "metoro", "midnight", "minus", "mir",
+  "lightcycle", "line", "m", "machine", "metoro", "midnight", "minus", "mir",
   "mono", "moonbase", "mustard", "mute", "nemk", "neptune", "neutrality", "noctis",
-  "oceanographer", "okinami", "orbit", "pale", "papier CUT", "papier invert", "party",
+  "oceanographer", "okinami", "orbit", "pale", "papier", "papier invert", "party",
   "petal", "PICO-8", "pinku", "plus", "porphyrous", "poseidon", "powder", "pulse",
   "pumpkin", "QDUST", "quench", "regal", "replicant", "retro", "rust", "sakura",
   "shift", "shock", "simulator", "sinister", "solarized dark", "solarized light",
   "starfighter", "sunset", "supernavy", "synergy", "talisman", "toothpaste", "toxin",
-  "TR-808", "tycho CUT", "vasquez", "vectrex", "vintage", "virtual", "vivid", "void",
+  "TR-808", "tycho", "vasquez", "vectrex", "vintage", "virtual", "vivid", "void",
   "waka", "witchy", "wizard", "wyvern", "xenon", "yeti"]
   DEFAULT_PALETTE = "vasquez"
   PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
@@ -508,7 +508,7 @@ def send_userlevel_search(event)
   search = msg[/search\s*(for)?\s*#{parse_term}/i, 3] || ""
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
   part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
-  author = msg[/made\s*by\s*("|“|”)([^"“”]*)("|“|”)/i, 2] || ""
+  author = msg[/((made\s*by)|(author))\s*("|“|”)([^"“”]*)("|“|”)/i, 5] || ""
   order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
   reverse = order.strip[/\A-*/i].length % 2 == 1
   order.delete!("-")
@@ -587,7 +587,7 @@ def send_userlevel_screenshot(event)
       map = map[0]
       file = map.screenshot(palette)
       output = "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s
-      output += "` by `" + (map.author.empty? ? " " : map.author) + "` using palette `"
+      output += "` by `" + ((map.author.nil? || map.author.empty?) ? " " : map.author) + "` using palette `"
       output += palette + "` on " + Time.now.to_s + ".\n"
       event << output
       send_file(event, file, map.id.to_s + ".png", true)

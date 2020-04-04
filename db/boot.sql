@@ -14,13 +14,17 @@
  */
 
 UPDATE global_properties
-SET value = '2020-02-18 21:00:00 +0100'
-WHERE key = 'next_level_update';
-
-UPDATE global_properties
-SET value = '2020-02-18 21:00:00 +0100'
+SET value = '2020-04-05 21:00:00 +0200'
 WHERE key = 'next_score_update';
 
 UPDATE global_properties
-SET value = '2020-02-23 21:00:00 +0100'
+SET value = '2020-04-05 21:00:00 +0200'
+WHERE key = 'next_level_update';
+
+UPDATE global_properties
+SET value = '2020-04-05 21:00:00 +0200'
 WHERE key = 'next_episode_update';
+
+UPDATE global_properties
+SET value = '2020-04-05 21:00:00 +0200'
+WHERE key = 'next_story_update';

@@ -12,7 +12,7 @@ outte:
   adapter: sqlite3
   database: inne.db
   host: localhost
-  #pool: 5
+  pool: 50
   client_id: 535634130436620298
 
 outte_test:

@@ -6,6 +6,7 @@ require_relative 'userlevels.rb'
 
 LEVEL_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9]?/i
 EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
+STORY_PATTERN = /S[ILU]?-[0-9][0-9]?/i
 NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
 
 NUM_ENTRIES = 20 # number of entries to show on diverse methods
@@ -16,11 +17,11 @@ MIN_SCORES = 50  # minimum number of highscores to appear in average point ranki
 PAGE_SIZE = 20
 
 def parse_type(msg)
-  (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : nil))
+  (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : ((msg[/\bstory\b/i] || msg[/\bcolumn/i] || msg[/hard\s*core/i] || msg[/\bhc\b/i]) ? Story : nil)))
 end
 
 def normalize_name(name)
-  name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-')
+  name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
 end
 
 def parse_player(msg, username)
@@ -74,6 +75,7 @@ end
 def parse_level_or_episode(msg)
   level = msg[LEVEL_PATTERN]
   episode = msg[EPISODE_PATTERN]
+  story = msg[STORY_PATTERN]
   name = msg[NAME_PATTERN, 2]
   ret = nil
 
@@ -81,6 +83,8 @@ def parse_level_or_episode(msg)
     ret = Level.find_by(name: normalize_name(level).upcase)
   elsif episode
     ret = Episode.find_by(name: normalize_name(episode).upcase)
+  elsif story
+    ret = Story.find_by(name: normalize_name(story).upcase)
   elsif !msg[/(level of the day|lotd)/].nil?
     ret = get_current(Level)
   elsif !msg[/(episode of the week|eotw)/].nil?
@@ -88,8 +92,8 @@ def parse_level_or_episode(msg)
   elsif name
     ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
   else
-    msg = "I couldn't figure out which level or episode you wanted scores for! You need to send either a level " +
-          "or episode ID that looks like SI-A-00-00 or SI-A-00, or a level name, using 'for <name>.'"
+    msg = "I couldn't figure out which level, episode or column you wanted scores for! You need to send either a level, " +
+          "an episode or a column ID that looks like SI-A-00-00, SI-A-00 or SI-00; or a level name, using 'for <name>.'"
     raise msg
   end
 
@@ -267,7 +271,9 @@ end
 def send_scores(event)
   msg = event.content
   scores = parse_level_or_episode(msg)
-  scores.update_scores
+  if scores.update_scores == -1
+    event.send_message("Connection to the server failed, sending local cached scores.\n")
+  end
 
   # Send immediately here - using << delays sending until after the event has been processed,
   # and we want to download the scores for the episode in the background after sending since it
@@ -312,18 +318,18 @@ def send_stats(event)
     title: 'Score histogram'
   ).draw
 
-  totals = counts[:levels].zip(counts[:episodes])
+  totals = counts[:levels].zip(counts[:episodes]).zip(counts[:stories]).map(&:flatten)
            .each_with_index
-           .map { |a, i| "#{HighScore.format_rank(i)}: #{"\t%4d   \t%4d\t\t %4d" % [a[0] + a[1], a[0], a[1]]}" }
+           .map { |a, i| "#{HighScore.format_rank(i)}: #{"   %4d  %4d    %4d   %4d" % [a[0] + a[1], a[0], a[1], a[2]]}" }
            .join("\n\t")
 
-  overall = "Totals: \t%4d   \t%4d\t\t %4d" % counts[:levels].zip(counts[:episodes])
-            .map { |a| [a[0] + a[1], a[0], a[1]] }
-            .reduce([0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
+  overall = "Totals:    %4d  %4d    %4d   %4d" % counts[:levels].zip(counts[:episodes]).zip(counts[:stories]).map(&:flatten)
+            .map { |a| [a[0] + a[1], a[0], a[1], a[2]] }
+            .reduce([0, 0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
 
   tabs = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
-  event << "Player high score counts for #{player.name}#{tabs}:\n```\t    Overall:\t Level:\t Episode:\n\t#{totals}\n#{overall}"
+  event << "Player high score counts for #{player.name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}"
   event << "#{histogram}```"
 end
 
@@ -495,13 +501,14 @@ def send_suggestions(event)
 end
 
 def send_level_id(event)
-  level = parse_level_or_episode(event.content.gsub(/level/, ""))
+  level = parse_level_or_episode(event.content)
+  raise "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.longname} is level #{level.name}."
 end
 
 def send_level_name(event)
   level = parse_level_or_episode(event.content.gsub(/level/, ""))
-  raise "Episodes don't have a name!" if level.is_a?(Episode)
+  raise "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.name} is called #{level.longname}."
 end
 
@@ -541,11 +548,27 @@ def send_average_rank(event)
   event << "#{player.name} has an average #{type} #{tabs}rank of #{"%.3f" % [20 - average]}."
 end
 
+def send_splits(event)
+  ep = parse_level_or_episode(event.content)
+  ep = Episode.find_by(name: ep.name[0..-4]) if ep.class == Level
+  raise "Columns can't be analyzed yet" if ep.class == Level
+  r = (parse_rank(event.content) || 1) - 1
+  splits = ep.splits(r)
+  if splits.nil?
+    event << "Sorry, that rank doesn't seem to exist for at least some of the levels."
+    return
+  end
+
+  rank = (r == 1 ? "1st" : (r == 2 ? "2nd" : (r == 3 ? "3rd" : "#{r}th")))
+  event << "#{rank} splits for episode #{ep.name}: `#{splits.map{ |s| "%.3f, " % s }.join[0..-3]}`."
+  event << "#{rank} time: `#{"%.3f" % ep.scores[r].score}`. #{rank} cleanliness: `#{"%.3f" % ep.cleanliness(r)[1].to_s}`."
+end
+
 def send_diff(event)
   type = parse_type(event.content) || Level
   current = get_current(type)
   old_scores = get_saved_scores(type)
-  since = type == Level ? "yesterday" : "last week"
+  since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
 
   diff = current.format_difference(old_scores)
   event << "Score changes on #{current.format_name} since #{since}:\n```#{diff}```"
@@ -566,6 +589,7 @@ end
 def send_analysis(event)
   msg = event.content
   scores = parse_level_or_episode(msg)
+  raise "Episodes and columns can't be analyzed (yet)" if scores.is_a?(Episode) || scores.is_a?(Story)
   ranks = parse_ranks(msg)
   analysis = ranks.map{ |rank| do_analysis(scores, rank) }.compact
   length = analysis.map{ |a| a['analysis'].size }.max
@@ -794,9 +818,19 @@ def send_episode_time(event)
   event << "I'll post a new episode of the week in #{next_episode_days} days and #{next_episode_hours} hours."
 end
 
+def send_story_time(event)
+  next_story = get_next_update(Story) - Time.now
+
+  next_story_days = (next_story / (24 * 60 * 60)).to_i
+  next_story_hours = (next_story / (60 * 60)).to_i - (next_story / (24 * 60 * 60)).to_i * 24
+
+  event << "I'll post a new column of the month in #{next_story_days} days and #{next_story_hours} hours."
+end
+
 def send_times(event)
   send_level_time(event)
   send_episode_time(event)
+  send_story_time(event)
 end
 
 def send_help(event)
@@ -840,6 +874,10 @@ def send_episode(event)
   event << "The current episode of the week is #{get_current(Episode).format_name}."
 end
 
+def send_story(event)
+  event << "The current column of the month is #{get_current(Story).format_name}."
+end
+
 def dump(event)
   log("current level/episode: #{get_current(Level).format_name}, #{get_current(Episode).format_name}") unless get_current(Level).nil?
   log("next updates: scores #{get_next_update('score')}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}")
@@ -877,7 +915,7 @@ def respond(event)
   msg = event.content
 
   # strip off the @inne++ mention, if present
-  msg.sub!(/\A<@[0-9]*> */, '')
+  msg.sub!(/\A<@!?[0-9]*> */, '') # IDs might have an exclamation mark
 
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
   if msg =~ /\A\s*lotd\s*\Z/i
@@ -913,8 +951,10 @@ def respond(event)
   dump(event) if msg =~ /dump/i
   send_level(event) if msg =~ /what.*(level|lotd)/i
   send_episode(event) if msg =~ /what.*(episode|eotw)/i
-  send_episode_time(event) if msg =~ /(when|next).*(episode|eotw)/i
+  send_story(event) if msg =~ /what.*(story|column|cotm)/i
   send_level_time(event) if  msg =~ /(when|next).*(level|lotd)/i
+  send_episode_time(event) if msg =~ /(when|next).*(episode|eotw)/i
+  send_story_time(event) if msg =~ /(when|next).*(story|column|cotm)/i
   send_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
   send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
   send_average_rank(event) if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
@@ -931,6 +971,7 @@ def respond(event)
   send_level_name(event) if msg =~ /\blevel name\b/i
   send_level_id(event) if msg =~ /\blevel id\b/i
   send_analysis(event) if msg =~ /analysis/i
+  send_splits(event) if msg =~ /\bsplits\b/i
   identify(event) if msg =~ /my name is/i
   add_steam_id(event) if msg =~ /my steam id is/i
   send_videos(event) if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i

@@ -3,6 +3,7 @@ Eddy's TODO list for inne:
 - ADD NEW COMMANDS TO HELP / README
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
 - Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.
+- "nevermind": delete last inne message prompted by that user.
 
 \\ ------------------------ Userlevels ------------------------
 - Browse (DONE)
@@ -13,8 +14,10 @@ Eddy's TODO list for inne:
 - Rankings
 
 Less priority:
+- Another browse type: "random" (returns a random selection of maps)
 - Simplify author search by having a separate query for it: "userlevel from/by/made by <username>".
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
+- Store a daily list of all top 50 userlevels (just ID's for instance), so we can see how the hardest levels evolve.
 - When requiring an ID (download, screenshot, etc), we could also support a name, and then we perform a search in the database. If there's one result, we show it, otherwise, we show the list. (Note: When this is done, we'll have to update the way IDs are matched, since it's currently too general and could result in collisions).
 - Map Steam ID's to player names by looking it up in the database, so that they can be used when searching the server / database.
 - Browse user dependant categories
@@ -54,7 +57,13 @@ Default palettes:
 \\ ------------------------ Total Scores ------------------------
 - Create 2 tables: Levels and Episodes. One row per player, one column per level/episode. The idea is to keep the bot running 24/7, cycling through Steam ID's until an active one is found, and then latch onto that player and start downloading his scores. First, download those which have not yet been downloaded, and after that's done, keep downloading them, but not willy nilly, instead, also save the date at which each score was downloaded, and always update the scores in chronological order of last updated. Eventually, the goal is to have all scores by all players (in the list), and have them as updated as possible (even if they haven't completed the level).
 
-\\ ------------------------ Replay analysis ------------------------
+\\ ------------------------ Replays ------------------------
+
+- Generate attract files from Metanet level & userlevel replays, as a way to keep demos.
+- Implement demo analysis to attract files, which requires to find a way for the bot to download files uploaded by people.
+
+Analysis:
+
 - Prettify format (aligment).
 - Error checking before using Zlib, in case of erroneous download.
 - Don't break the whole function if one download failed: retry, or skip to the next one.
@@ -64,7 +73,7 @@ Default palettes:
 -- Fix the doubling through code, by halving the older scores.
 -- Add the possibility of limiting the scope of graphs (upper bound of y axis), using an additional parameters to the user command (e.g. "intro history 100"). In this case, if some player doesn't even appear in the graph because he's above it, maybe delete him from the legend and add new players. This adds an aditional difficulty since it's not just changing the y axis, but also changing the players to be plotted. To do so, the maximum would have to be computed first, and then decide which players are to be plotted.
 -- Medium priority: Another solution for the above problem: Use logarithmic scale.
--- Manually join players that changed username (e.g. Maelstrom=drunk driver=asleep at the wheel).
+-- Manually join players that changed username (e.g. Maelstrom=drunk driver=asleep at the wheel=coronavirus).
 -- Add some chronological marks in the x axis (at least years, if not months). Maybe more and better marks in the y axis too.
 -- Retroactively delete (in the code, not the database) ignored players, like Mishu.
 -- Medium priority: Figure out what causes the sudden drops in the graphs, and fix it.
@@ -75,6 +84,7 @@ Default palettes:
 \\ ------------------------ Cheaters ------------------------
 - Deal with empty spots due to ignored cheaters, this produces side effects like: some people having 2 top20's in the same level, maxed levels not appearing in the list of maxed levels because of old scores at the bottom, and permanent scores at the bottom of the boards.
 - Automatically ignore players and scores which surpass a certain credibility threshold (i.e. scores over 3000, scores which surpass the others by a certain percentage (like 300%), etc).
+- Properly ignore Puce.
 
 \\ ------------------------ Humanlike features ------------------------
 
@@ -86,6 +96,7 @@ Avatar:
 - Maybe also store the date of the avatar change to avoid the cooldown.
 
 \\ ------------------------ General ------------------------
+- Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
 - Interesting: Analyze how do coop demos work. Then, to compare individual demos on the same level, download 2 of them and build an attrac file to run the replay in N++'s menu.
 * Customize "list" even further.
@@ -96,7 +107,8 @@ Avatar:
 - One should relate levels to their episodes with has_many and belongs_to => Rebuild database, maybe by creating more indices. We could use this to create a "cleanliness" and an "ownage?" method for episodes.
 - Some methods are duplicated in messages and inne++ files, like 'send_screenshot' or 'send_diff', ¿what to do here, delete the one in inne++ (which is not being used)?
 
-- Retrieve scores from other modes (coop, race, HS) and userlevels.
+- Possibility to return lists in order of level and not rank.
+- For "splits", also download episode 0th replay and parse it to get the actual 0th splits, so that we can compare the 0th splits with the ideal splits we are currently producing by adding up the level 0ths.
 - Implement "missing" in the "list" function, so that we could get "bottom 5 list for jirka that I don't already have".
 - Unique 0th holders.
 - 0th rankings ignoring certain players.

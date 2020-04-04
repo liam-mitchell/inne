@@ -4,10 +4,37 @@ require 'net/http'
 require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
-SCORE_PADDING =    0 #         fixed    padding, 0 for no fixed padding
-DEFAULT_PADDING = 15 # default variable padding, never make 0
-MAX_PADDING =     15 # max     variable padding, 0 for no maximum
-TRUNCATE_NAME = true # truncate name when it exceeds the maximum padding
+ATTEMPT_LIMIT   = 10    # redownload retries until we move on to the next level
+SHOW_ERRORS     = false # log common error messages
+
+SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
+DEFAULT_PADDING = 15    # default variable padding, never make 0
+MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
+TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
+
+# ID ranges for levels and episodes, and score limits to filter new hacked scores
+TABS = {
+  "Episode" => {
+    :SI => [ (  0.. 24).to_a, 400],
+    :S  => [ (120..239).to_a, 950],
+    :SL => [ (240..359).to_a, 650],
+    :SU => [ (480..599).to_a, 650]
+  },
+  "Level" => {
+    :SI  => [ (  0..  124).to_a,  298],
+    :S   => [ ( 600..1199).to_a,  874],
+    :SL  => [ (1200..1799).to_a,  400],
+    :SS  => [ (1800..1919).to_a, 2462],
+    :SU  => [ (2400..2999).to_a,  530],
+    :SS2 => [ (3000..3119).to_a,  322]
+  },
+  "Story" => {
+    :SI => [ ( 0..  4).to_a, 1000],
+    :S  => [ (24.. 43).to_a, 2000],
+    :SL => [ (48.. 67).to_a, 2000],
+    :SU => [ (96..115).to_a, 1500]
+  }
+}
 
 IGNORED_PLAYERS = [
   "Kronogenics",
@@ -21,10 +48,22 @@ IGNORED_PLAYERS = [
   "Venom",
   "EpicGamer10075",
   "Altii",
-  "Puςe",
+  "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
   "Floof The Goof",
   "Prismo",
-  "Mishu"
+  "Mishu",
+  "dimitry008",
+  "Chara",
+  "test8378"
+]
+
+# Problematic hackers? We get rid of them by banning their user IDs
+IGNORED_IDS = [
+  115572, # Mishu
+  201322, # dimitry008
+  146275, # Puce
+  253161, # Chara
+  253072 # test8378
 ]
 
 # Turn a little endian binary array into an integer
@@ -42,6 +81,7 @@ def format_date(date)
 end
 
 module HighScore
+
   def self.format_rank(rank)
     "#{rank < 10 ? '0' : ''}#{rank}"
   end
@@ -84,6 +124,7 @@ module HighScore
 
   def get_scores
     initial_id = get_last_steam_id
+    attempts ||= 0
     response = Net::HTTP.get(scores_uri(initial_id))
     while response == '-1337'
       update_last_steam_id
@@ -93,9 +134,12 @@ module HighScore
     return nil if response == '-1337'
     correct_ties(JSON.parse(response)['scores'])
   rescue => e
-    # im getting tired of seeing this error, will uncomment if needed
-    #err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
-    retry
+    if (attempts += 1) < ATTEMPT_LIMIT
+      if SHOW_ERRORS
+        err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
+      end
+      retry
+    end
   end
 
   def get_replay(replay_id)
@@ -109,12 +153,18 @@ module HighScore
     return nil if response == '-1337'
     response
   rescue => e
-    err("error getting replay with id #{replay_id}: #{e}")
+    if SHOW_ERRORS
+      err("error getting replay with id #{replay_id}: #{e}")
+    end
     retry
   end
 
   def save_scores(updated)
-    updated = updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }
+    updated = updated.select { |score|
+      limit = TABS[self.class.to_s].map{ |k, v| v[1] }.max
+      TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
+      !IGNORED_PLAYERS.include?(score['user_name']) && !IGNORED_IDS.include?(score['user_id']) && score['score'] / 1000.0 < limit
+    }.uniq { |score| score['user_name'] }
 
     ActiveRecord::Base.transaction do
       updated.each_with_index do |score, i|
@@ -132,9 +182,11 @@ module HighScore
     updated = get_scores
 
     if updated.nil?
-      # TODO make this use err()
-      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{scores_uri(get_last_steam_id)}"
-      return
+      if SHOW_ERRORS
+        # TODO make this use err()
+        STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{scores_uri(get_last_steam_id)}"
+      end
+      return -1
     end
 
     save_scores(updated)
@@ -144,8 +196,10 @@ module HighScore
     updated = get_scores
 
     if updated.nil?
-      # TODO make this use err()
-      STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve replay info from #{scores_uri(get_last_steam_id)}"
+      if SHOW_ERRORS
+        # TODO make this use err()
+        STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve replay info from #{scores_uri(get_last_steam_id)}"
+      end
       return
     end
 
@@ -233,13 +287,31 @@ class Episode < ActiveRecord::Base
     "#{name}"
   end
 
-  def cleanliness
-    [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].score }.sum - scores[0].score - 360]
+  def cleanliness(rank = 0)
+    [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].score }.sum - scores[rank].score - 360]
   end
 
   def ownage
     owner = scores[0].player.name
     [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].player.name == owner }.count(true) == 5, owner]
+  end
+
+  def splits(rank = 0)
+    acc = 90
+    Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| acc += l.scores[rank].score - 90 }
+  rescue
+    nil
+  end
+end
+
+class Story < ActiveRecord::Base
+  include HighScore
+  has_many :scores, as: :highscoreable
+  has_many :videos, as: :highscoreable
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+
+  def format_name
+    "#{name}"
   end
 end
 
@@ -248,12 +320,17 @@ class Score < ActiveRecord::Base
   belongs_to :highscoreable, polymorphic: true
   belongs_to :level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: 'highscoreable_id'
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
+  belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
 
   def self.total_scores(type, tabs, secrets)
     tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
     tabs = (secrets ? tabs : tabs - [:SS, :SS2])
     query = self.where(rank: 0, highscoreable_type: type.to_s)
-    result = (query.includes(:level).where(levels: {tab: tabs}) + query.includes(:episode).where(episodes: {tab: tabs})).map{ |s| s.score }
+    result = (
+      query.includes(:level).where(levels: {tab: tabs}) +
+      query.includes(:episode).where(episodes: {tab: tabs}) +
+      query.includes(:story).where(stories: {tab: tabs})
+    ).map{ |s| s.score }
     [result.sum, result.count]
   end
 
@@ -278,13 +355,14 @@ class Player < ActiveRecord::Base
   has_one :user
 
   def self.rankings(&block)
-    players = Player.includes(:scores).all
+    players = Player.all
 
     players.map { |p| [p, yield(p)] }
       .sort_by { |a| -a[1] }
   end
 
   def self.histories(type, attrs, column)
+    attrs[:highscoreable_type] ||= ['Level', 'Episode'] # Don't include stories
     hist = type.where(attrs).includes(:player)
 
     ret = Hash.new { |h, k| h[k] = Hash.new { |h, k| h[k] = 0 } }
@@ -345,8 +423,8 @@ class Player < ActiveRecord::Base
   end
 
   def scores_by_type_and_tabs(type, tabs)
-    ret = type ? scores.where(highscoreable_type: type.to_s) : scores
-    ret = tabs.empty? ? ret : ret.includes(:level).where(levels: {tab: tabs}) + ret.includes(:episode).where(episodes: {tab: tabs})
+    ret = type ? scores.where(highscoreable_type: type.to_s) : scores.where(highscoreable_type: ["Level", "Episode"])
+    ret = tabs.empty? ? ret : ret.includes(:level).where(levels: {tab: tabs}) + ret.includes(:episode).where(episodes: {tab: tabs}) + ret.includes(:story).where(stories: {tab: tabs})
     ret
   end
 
@@ -369,7 +447,8 @@ class Player < ActiveRecord::Base
   def score_counts(tabs)
     {
       levels: scores_by_rank(Level, tabs).map(&:length).map(&:to_i),
-      episodes: scores_by_rank(Episode, tabs).map(&:length).map(&:to_i)
+      episodes: scores_by_rank(Episode, tabs).map(&:length).map(&:to_i),
+      stories: scores_by_rank(Story, tabs).map(&:length).map(&:to_i)
     }
   end
 
