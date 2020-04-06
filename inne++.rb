@@ -240,17 +240,14 @@ def start_level_of_the_day
       next_episode_update = get_next_update(Episode)
       next_episode_update -= EPISODE_UPDATE_FREQUENCY while next_episode_update > Time.now
       next_episode_update += EPISODE_UPDATE_FREQUENCY while next_episode_update < Time.now
-      next_story_update = get_next_update(Story)
-      next_story_update -= STORY_UPDATE_FREQUENCY while next_story_update > Time.now
-      next_story_update += STORY_UPDATE_FREQUENCY while next_story_update < Time.now
       set_next_update(Level, next_level_update)
       set_next_update(Episode, next_episode_update)
-      set_next_update(Story, next_story_update)
 
       delay = next_level_update - Time.now
       sleep(delay) unless delay < 0
       next if !send_channel_next(Level)
       log("sent next level, next update at #{get_next_update(Level).to_s}")
+      is_story_time = get_next_update(Story) < Time.now
 
       if Time.now > next_episode_update
         sleep(30) # let discord catch up
@@ -258,7 +255,12 @@ def start_level_of_the_day
         episode_day = true
         log("sent next episode, next update at #{get_next_update(Episode).to_s}")
       end
-      if Time.now > next_story_update
+      if is_story_time
+        # we add days until we get to the first day of the next month
+        next_story_update = get_next_update(Story)
+        month = next_story_update.month
+        next_story_update += LEVEL_UPDATE_FREQUENCY while next_story_update.month == month
+        set_next_update(Story, next_story_update)
         sleep(30) # let discord catch up
         send_channel_next(Story)
         story_day = true
@@ -321,7 +323,6 @@ if !TEST
     Thread.new { download_high_scores },
   ]
 end
-
 
 $bot.run(true)
 

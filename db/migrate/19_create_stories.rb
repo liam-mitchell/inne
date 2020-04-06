@@ -35,8 +35,8 @@ class CreateStories < ActiveRecord::Migration[5.1]
         }
       }
       GlobalProperty.create(key: 'next_story_update', value: (Time.now + 86400).to_s)
-      #GlobalProperty.create(key: 'current_story', value: 'S-15')
-      #GlobalProperty.create(key: 'saved_story_scores', value: [])
+      GlobalProperty.create(key: 'current_story', value: 'S-15')
+      GlobalProperty.create(key: 'saved_story_scores', value: [])
     end
   end
 end
