@@ -12,6 +12,7 @@ TEST = false
 DATABASE_ENV = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
+LOTD_UPDATE_FREQUENCY = 5 * 60 # Redownload scores every 5 minutes
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
 LEVEL_UPDATE_FREQUENCY = CONFIG['level_update_frequency'] || 24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY = CONFIG['episode_update_frequency'] || 7 * 24 * 60 * 60 # weekly
@@ -73,6 +74,18 @@ def update_last_steam_id
   current = User.find_by(steam_id: get_last_steam_id).id
   next_user = User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first
   set_last_steam_id(next_user.steam_id) if !next_user.nil?
+end
+
+def update_lotd_scores
+  while(true)
+    get_current(Level).update_scores
+    get_current(Episode).update_scores
+    get_current(Story).update_scores
+    log("Updated scores")
+    sleep(LOTD_UPDATE_FREQUENCY)
+  end
+rescue
+  retry
 end
 
 def download_high_scores
@@ -321,6 +334,7 @@ if !TEST
   $threads = [
     Thread.new { start_level_of_the_day },
     Thread.new { download_high_scores },
+    Thread.new { update_lotd_scores }
   ]
 end
 
