@@ -14,6 +14,7 @@ Eddy's TODO list for inne:
 - Rankings
 
 Less priority:
+- Demo analysis.
 - Another browse type: "random" (returns a random selection of maps)
 - Simplify author search by having a separate query for it: "userlevel from/by/made by <username>".
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
@@ -83,8 +84,6 @@ Analysis:
 
 \\ ------------------------ Cheaters ------------------------
 - Deal with empty spots due to ignored cheaters, this produces side effects like: some people having 2 top20's in the same level, maxed levels not appearing in the list of maxed levels because of old scores at the bottom, and permanent scores at the bottom of the boards.
-- Automatically ignore players and scores which surpass a certain credibility threshold (i.e. scores over 3000, scores which surpass the others by a certain percentage (like 300%), etc).
-- Properly ignore Puce.
 
 \\ ------------------------ Humanlike features ------------------------
 
@@ -107,6 +106,7 @@ Avatar:
 - One should relate levels to their episodes with has_many and belongs_to => Rebuild database, maybe by creating more indices. We could use this to create a "cleanliness" and an "ownage?" method for episodes.
 - Some methods are duplicated in messages and inne++ files, like 'send_screenshot' or 'send_diff', ¿what to do here, delete the one in inne++ (which is not being used)?
 
+- Change level names of secret levels (they've been fixed, ?-X-14 is unlocked by X-14).
 - Possibility to return lists in order of level and not rank.
 - For "splits", also download episode 0th replay and parse it to get the actual 0th splits, so that we can compare the 0th splits with the ideal splits we are currently producing by adding up the level 0ths.
 - Implement "missing" in the "list" function, so that we could get "bottom 5 list for jirka that I don't already have".
@@ -115,8 +115,6 @@ Avatar:
 - Refactor 0th rankings by using the Score class, should be much faster.
 - Add relaxed episode ownages (without episode), and ownages with ties.
 - Change threshold of 50 for a player to appear to depend on the amount of levels/eps per tab (maybe 0% episodes, 2.5% levels?).
-- Add hardcore mode, maybe the rest too.
-- Fix download so that it doesn't start over when it fails.
 
 
 \\ ------------------------ Notes ------------------------

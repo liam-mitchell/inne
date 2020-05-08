@@ -141,6 +141,10 @@ def format_ties(ties)
   ties ? " with ties" : ""
 end
 
+def format_tied(tied)
+  tied ? " tied " : " "
+end
+
 def format_tab(tab)
   (tab == :SS2 ? '!' : (tab == :SS ? '?' : tab.to_s))
 end
@@ -168,15 +172,21 @@ def send_top_n_count(event)
   type = parse_type(msg)
   tabs = parse_tabs(msg)
   ties = !!(msg =~ /ties/i)
+  tied = !!(msg =~ /\btied\b/i)
 
-  count = player.top_n_count(rank, type, tabs, ties)
+  if tied
+    count = player.top_n_count(rank, type, tabs, true) - player.top_n_count(rank, type, tabs, false)
+  else
+    count = player.top_n_count(rank, type, tabs, ties)
+  end
 
   header = format_rank(rank)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
   ties = format_ties(ties)
+  tied = format_tied(tied)
 
-  event << "#{player.name} has #{count} #{tabs}#{type} #{header} scores#{ties}."
+  event << "#{player.name} has #{count}#{tied}#{tabs}#{type} #{header} scores#{ties}."
 end
 
 def send_rankings(event)
@@ -394,8 +404,8 @@ def send_maxable(event)
   tabs = parse_tabs(msg)
 
   ties = HighScore.ties(type, tabs)
-            .select { |level, tie| tie < 20 && !level.scores[0..tie].map{ |s| s.player.name }.include?(player) }
-            .sort_by { |level, tie| -tie }
+            .select { |s| s[1] < s[2] && !s[0].scores[0..s[1] - 1].map{ |s| s.player.name }.include?(player) }
+            .sort_by { |s| -s[1] }
             .take(NUM_ENTRIES)
             .map { |s| "#{"%-10s" % s[0].name} - #{"%2d" % s[1]}" }
             .join("\n")
@@ -413,7 +423,7 @@ def send_maxed(event)
   tabs = parse_tabs(msg)
 
   ties = HighScore.ties(type, tabs)
-            .select { |level, tie| tie == 20 }
+            .select { |s| s[1] == s[2] }
             .map { |s| "#{s[0].name}\n" }
   ties_list = ties.join
 
@@ -879,8 +889,8 @@ def send_story(event)
 end
 
 def dump(event)
-  log("current level/episode: #{get_current(Level).format_name}, #{get_current(Episode).format_name}") unless get_current(Level).nil?
-  log("next updates: scores #{get_next_update('score')}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}")
+  log("current level/episode/story: #{get_current(Level).format_name}, #{get_current(Episode).format_name}, #{get_current(Story).format_name}") unless get_current(Level).nil?
+  log("next updates: scores #{get_next_update('score')}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}, story #{get_next_update(Story)}")
 
   event << "I dumped some things to the log for you to look at."
 end
@@ -923,6 +933,9 @@ def respond(event)
     return
   elsif msg =~ /\A\s*eotw\s*\Z/i
     send_episode(event)
+    return
+  elsif msg =~ /\A\s*cotm\s*\Z/i
+    send_story(event)
     return
   end
 

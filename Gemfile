@@ -6,6 +6,7 @@ source 'https://rubygems.org' do
   gem 'gruff'
   gem 'rails', '~> 5.1.5'
   gem 'mysql2', '~> 0.3.18'
+  gem 'chunky_png'
 
   group :debug, :test do
     gem 'byebug'

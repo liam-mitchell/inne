@@ -101,13 +101,13 @@ module HighScore
   end
 
   def self.ties(type, tabs)
-    ties = {}
+    ties = []
     scores = tabs.empty? ? type.all : type.where(tab: tabs)
 
     scores.each do |elem|
       tie_count = elem.tie_count
       if !tie_count.nil? && tie_count >= 3
-        ties[elem] = tie_count
+        ties << [elem, tie_count, elem.scores.size]
       end
     end
 
@@ -175,6 +175,8 @@ module HighScore
             tied_rank: updated.find_index { |s| s['score'] == score['score'] }
           )
       end
+      # Remove scores stuck at the bottom after ignoring cheaters
+      scores.where(rank: (updated.size..19).to_a).delete_all
     end
   end
 
