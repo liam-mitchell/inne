@@ -13,7 +13,7 @@ outte:
   database: inne.db
   host: localhost
   pool: 50
-  timeout: 1000
+  timeout: 5000
   client_id: 535634130436620298
 
 outte_test:

@@ -8,7 +8,7 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-TEST = true
+TEST = false
 DATABASE_ENV = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
@@ -332,13 +332,13 @@ puts "the bot's URL is #{$bot.invite_url}"
 startup
 trap("INT") { $kill_threads = true }
 
-
+if !TEST
   $threads = [
     Thread.new { start_level_of_the_day },
     Thread.new { download_high_scores },
     Thread.new { update_lotd_scores }
   ]
-
+end
 
 $bot.run(true)
 
