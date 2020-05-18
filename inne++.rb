@@ -8,7 +8,7 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-TEST = false
+TEST = true
 DATABASE_ENV = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
@@ -81,7 +81,9 @@ def update_lotd_scores
     get_current(Level).update_scores
     get_current(Episode).update_scores
     get_current(Story).update_scores
-    log("Updated scores")
+    Userlevel.browse
+    $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
+    print "Donzo\n"
     sleep(LOTD_UPDATE_FREQUENCY)
   end
 rescue
@@ -330,13 +332,13 @@ puts "the bot's URL is #{$bot.invite_url}"
 startup
 trap("INT") { $kill_threads = true }
 
-if !TEST
+
   $threads = [
     Thread.new { start_level_of_the_day },
     Thread.new { download_high_scores },
     Thread.new { update_lotd_scores }
   ]
-end
+
 
 $bot.run(true)
 

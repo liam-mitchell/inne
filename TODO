@@ -89,6 +89,7 @@ Analysis:
 
 - Add some backstory, like what happens when outte is asked about inne (murder?)
 - Add some more easter eggs, like a command that shows (or links) eddysipw.
+- Resend status at least every 24h so it doesn't get reset, maybe do it when we redownload lotd.
 
 Avatar:
 - Ensure the random avatar can't repeat when faceswapping. In order to do so, we could save the current filename of the avatar in the GlobalProperties table of the database, and reject the current one before sampling the files in the avatar folder.
@@ -106,6 +107,7 @@ Avatar:
 - One should relate levels to their episodes with has_many and belongs_to => Rebuild database, maybe by creating more indices. We could use this to create a "cleanliness" and an "ownage?" method for episodes.
 - Some methods are duplicated in messages and inne++ files, like 'send_screenshot' or 'send_diff', ¿what to do here, delete the one in inne++ (which is not being used)?
 
+- Add "download for <level>" using the files we already have.
 - Change level names of secret levels (they've been fixed, ?-X-14 is unlocked by X-14).
 - Possibility to return lists in order of level and not rank.
 - For "splits", also download episode 0th replay and parse it to get the actual 0th splits, so that we can compare the 0th splits with the ideal splits we are currently producing by adding up the level 0ths.
