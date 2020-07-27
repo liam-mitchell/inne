@@ -8,15 +8,16 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-TEST = false
+TEST         = true # If set to true the bot will swith to the test one.
+DOWNLOAD     = true # If set to false scores the score download threads won't fire up.
 DATABASE_ENV = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
-CONFIG = YAML.load_file('db/config.yml')[DATABASE_ENV]
+CONFIG       = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
-LOTD_UPDATE_FREQUENCY = 5 * 60 # Redownload scores every 5 minutes
+STATUS_UPDATE_FREQUENCY    = 5 * 60 # Redownload lotd scores, update bots status, etc, every 5 mins.
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY = CONFIG['level_update_frequency'] || 24 * 60 * 60 # daily
-EPISODE_UPDATE_FREQUENCY = CONFIG['episode_update_frequency'] || 7 * 24 * 60 * 60 # weekly
-STORY_UPDATE_FREQUENCY = CONFIG['story_update_frequency'] || 30 * 24 * 60 * 60 # monthly (roughly)
+LEVEL_UPDATE_FREQUENCY     = CONFIG['level_update_frequency'] || 24 * 60 * 60 # daily
+EPISODE_UPDATE_FREQUENCY   = CONFIG['episode_update_frequency'] || 7 * 24 * 60 * 60 # weekly
+STORY_UPDATE_FREQUENCY     = CONFIG['story_update_frequency'] || 30 * 24 * 60 * 60 # monthly (roughly)
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
@@ -66,8 +67,7 @@ def get_last_steam_id
 end
 
 def set_last_steam_id(id)
-  GlobalProperty.find_or_create_by(key: "last_steam_id")
-    .update(value: id)
+  GlobalProperty.find_or_create_by(key: "last_steam_id").update(value: id)
 end
 
 def update_last_steam_id
@@ -76,15 +76,20 @@ def update_last_steam_id
   set_last_steam_id(next_user.steam_id) if !next_user.nil?
 end
 
-def update_lotd_scores
+# Periodically perform several useful tasks:
+# - Update scores for lotd, eotw and cotm.
+# - Update database with newest userlevels from all playing modes.
+# - Update bot's status (it only lasts so much).
+def update_status
+  ActiveRecord::Base.establish_connection(CONFIG)
+
   while(true)
     get_current(Level).update_scores
     get_current(Episode).update_scores
     get_current(Story).update_scores
-    Userlevel.browse
+    (0..2).each{ |mode| Userlevel.browse(10, 0, mode) }
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
-    print "Donzo\n"
-    sleep(LOTD_UPDATE_FREQUENCY)
+    sleep(STATUS_UPDATE_FREQUENCY)
   end
 rescue
   retry
@@ -97,9 +102,21 @@ def download_high_scores
     while true
       log("updating high scores...")
 
-      Level.all.each(&:update_scores)
-      Episode.all.each(&:update_scores)
-      Story.all.each(&:update_scores)
+      #Level.all.each(&:update_scores)
+      #Episode.all.each(&:update_scores)
+      #Story.all.each(&:update_scores)
+
+      # We handle exceptions within each instance so that they don't force
+      # a retry of the whole function.
+      # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
+      [Level, Episode, Story].each do |type|
+        type.all.each do |o|
+          o.update_scores
+        rescue => e
+          err("error updating high scores for #{o.class.to_s.downcase} #{o.id.to_s}: #{e}")
+          next
+        end
+      end
 
       log("updated high scores. updating rankings...")
 
@@ -301,6 +318,17 @@ def startup
   log("next episode update at #{get_next_update(Episode).to_s}")
   log("next story update at #{get_next_update(Story).to_s}")
   log("next score update at #{get_next_update('score')}")
+
+  players = [
+    ["Reyjanae", "Tanavael"]
+  ]
+
+  players.each{ |username, playername|
+    player = Player.find_or_create_by(name: playername)
+    user = User.find_or_create_by(username: username)
+    user.player = player
+    user.save
+  }
 end
 
 def shutdown
@@ -332,13 +360,14 @@ puts "the bot's URL is #{$bot.invite_url}"
 startup
 trap("INT") { $kill_threads = true }
 
-if !TEST
+if DOWNLOAD
   $threads = [
     Thread.new { start_level_of_the_day },
     Thread.new { download_high_scores },
-    Thread.new { update_lotd_scores }
+    Thread.new { update_status }
   ]
 end
+
 
 $bot.run(true)
 

@@ -80,11 +80,13 @@ ActiveRecord::Base.transaction do
   next_level_update = next_level_update.to_time
   next_episode_update = next_episode_update.to_time
 
-  GlobalProperty.create(key: 'current_level', value: 'SL-C-10-00')
-  GlobalProperty.create(key: 'current_episode', value: 'SL-C-00')
-  GlobalProperty.create(key: 'next_level_update', value: next_level_update.to_s)
-  GlobalProperty.create(key: 'next_episode_update', value: next_episode_update.to_s)
-  GlobalProperty.create(key: 'next_score_update', value: next_level_update.to_s)
-  GlobalProperty.create(key: 'saved_level_scores', value: Level.find_by(name: 'SL-C-10-00').scores.to_json(include: {player: {only: :name}}))
-  GlobalProperty.create(key: 'saved_episode_scores', value: Episode.find_by(name: 'SL-C-00').scores.to_json(include: {player: {only: :name}}))
+  GlobalProperty.find_or_create_by(key: 'current_level', value: 'SL-C-10-00')
+  GlobalProperty.find_or_create_by(key: 'current_episode', value: 'SL-C-00')
+  GlobalProperty.find_or_create_by(key: 'next_level_update', value: next_level_update.to_s)
+  GlobalProperty.find_or_create_by(key: 'next_episode_update', value: next_episode_update.to_s)
+  GlobalProperty.find_or_create_by(key: 'next_score_update', value: next_level_update.to_s)
+  GlobalProperty.find_or_create_by(key: 'saved_level_scores', value: Level.find_by(name: 'SL-C-10-00').scores.to_json(include: {player: {only: :name}}))
+  GlobalProperty.find_or_create_by(key: 'saved_episode_scores', value: Episode.find_by(name: 'SL-C-00').scores.to_json(include: {player: {only: :name}}))
+  GlobalProperty.find_or_create_by(key: "last_steam_id").update(value: '76561198031272062')
+
 end

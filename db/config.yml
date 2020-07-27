@@ -9,18 +9,27 @@
 #  host: localhost
 
 outte:
-  adapter: sqlite3
-  database: inne.db
+  adapter: mysql2
+  encoding: utf8mb4
+  collation: utf8mb4_unicode_ci
+  database: inne
   host: localhost
+  username: root
+  password: root
   pool: 50
   timeout: 5000
   client_id: 535634130436620298
 
 outte_test:
-  adapter: sqlite3
-  database: inne.db
+  adapter: mysql2
+  encoding: utf8mb4
+  collation: utf8mb4_unicode_ci
+  database: inne
   host: localhost
-  #pool: 5
+  username: root
+  password: root
+  pool: 50
+  timeout: 5000
   client_id: 684546320962158670
 
 development:

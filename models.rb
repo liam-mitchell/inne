@@ -171,7 +171,7 @@ module HighScore
         scores.find_or_create_by(rank: i)
           .update(
             score: score['score'] / 1000.0,
-            player: Player.find_or_create_by(name: score['user_name']),
+            player: Player.find_or_create_by(name: score['user_name'].force_encoding('UTF-8')),
             tied_rank: updated.find_index { |s| s['score'] == score['score'] }
           )
       end
@@ -192,6 +192,10 @@ module HighScore
     end
 
     save_scores(updated)
+  rescue => e
+    if SHOW_ERRORS
+      err("error updating database with level #{self.id.to_s}: #{e}")
+    end
   end
 
   def get_replay_info(rank)

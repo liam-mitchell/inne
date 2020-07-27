@@ -1,6 +1,7 @@
 require 'active_record'
 require 'database_cleaner'
 require 'factory_bot'
+require 'rails'
 require 'yaml'
 require 'yaml_db'
 

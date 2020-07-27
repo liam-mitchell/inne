@@ -2,10 +2,10 @@
  * Use this script when inne has been down for a long time (over a day) so
  * that the dates are updated correctly.
  *
- * Usage: sqlite3 inne.db < db/boot.sql
+ * Usage (for Linux): mysql -uroot -proot inne < db/boot.sql
  * Date format: 2020-02-18 21:00:00 +0100
  *
- * My (Eddy) .sqliterc file (SQLite booting file):
+ * My (Eddy) old .sqliterc file (SQLite booting file):
  * .header on
  * .mode column
  * .timer on
@@ -14,17 +14,17 @@
  */
 
 UPDATE global_properties
-SET value = '2020-04-27 23:00:00 +0200'
-WHERE key = 'next_score_update';
+SET `value` = '2020-04-27 23:00:00 +0200'
+WHERE `key` = 'next_score_update';
 
 UPDATE global_properties
-SET value = '2020-04-27 23:00:00 +0200'
-WHERE key = 'next_level_update';
+SET `value` = '2020-04-27 23:00:00 +0200'
+WHERE `key` = 'next_level_update';
 
 UPDATE global_properties
-SET value = '2020-05-03 23:00:00 +0200'
-WHERE key = 'next_episode_update';
+SET `value` = '2020-05-03 23:00:00 +0200'
+WHERE `key` = 'next_episode_update';
 
 UPDATE global_properties
-SET value = '2020-05-01 23:00:00 +0200'
-WHERE key = 'next_story_update';
+SET `value` = '2020-05-01 23:00:00 +0200'
+WHERE `key` = 'next_story_update';

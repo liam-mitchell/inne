@@ -559,7 +559,9 @@ def send_userlevel_download(event)
     else
       map = map[0]
       file = map.convert
-      event << "Downloading userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      output = "Downloading userlevel `" + map.title + "` with ID `" + map.id.to_s
+      output += "` by `" + (map.author.to_s.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      event << output
       send_file(event, file, map.id.to_s, true)
     end
   end
@@ -587,7 +589,7 @@ def send_userlevel_screenshot(event)
       map = map[0]
       file = map.screenshot(palette)
       output = "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s
-      output += "` by `" + ((map.author.nil? || map.author.empty?) ? " " : map.author) + "` using palette `"
+      output += "` by `" + (map.author.to_s.empty? ? " " : map.author) + "` using palette `"
       output += palette + "` on " + Time.now.to_s + ".\n"
       event << output
       send_file(event, file, map.id.to_s + ".png", true)
@@ -615,6 +617,16 @@ def send_userlevel_scores(event)
   end
 end
 
+# Exports userlevel database (bar level data) to CSV, for testing purposes.
+def csv(event)
+  s = "id,author_id,author,title,favs,date,mode\n"
+  Userlevel.all.each{ |m|
+    s << m[:id].to_s + "," + m[:author_id].to_s + "," + m[:author].to_s.tr(',\'"','') + "," + m[:title].to_s.tr(',\'"','') + "," + m[:favs].to_s + "," + m[:date].to_s + "," + m[:mode].to_s + "\n"
+  }
+  File.write("userlevels.csv", s)
+  event << "CSV exported."
+end
+
 def respond_userlevels(event)
   msg = event.content
   msg.sub!(/\A<@!?[0-9]*> */, '') # strip off the @inne++ mention, if present
@@ -624,4 +636,5 @@ def respond_userlevels(event)
   send_userlevel_download(event) if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event) if msg =~ /scores\b/i # matches 'highscores'
+  #csv(event) if msg =~ /csv/i
 end

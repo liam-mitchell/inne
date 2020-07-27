@@ -5,7 +5,7 @@ source 'https://rubygems.org' do
   gem 'yaml_db'
   gem 'gruff'
   gem 'rails', '~> 5.1.5'
-  gem 'sqlite3'
+  gem 'mysql2'
   gem 'chunky_png'
 
   group :debug, :test do

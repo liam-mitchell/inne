@@ -13,6 +13,8 @@ Eddy's TODO list for inne:
 - Download (DONE)
 - Rankings
 
+General idea: Update newest userlevels from all play modes on the background every 5 mins (already being done), and then whenever a command is issued, use the local database instead of asking Metanet. This can be done for browsing newest/oldest, and also for searching (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
+
 Less priority:
 - Demo analysis.
 - Another browse type: "random" (returns a random selection of maps)
@@ -84,6 +86,10 @@ Analysis:
 
 \\ ------------------------ Cheaters ------------------------
 - Deal with empty spots due to ignored cheaters, this produces side effects like: some people having 2 top20's in the same level, maxed levels not appearing in the list of maxed levels because of old scores at the bottom, and permanent scores at the bottom of the boards.
+
+\\ ------------------------ Hardcore ------------------------
+
+- Cleanliness, and other functions.
 
 \\ ------------------------ Humanlike features ------------------------
 
