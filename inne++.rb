@@ -318,17 +318,6 @@ def startup
   log("next episode update at #{get_next_update(Episode).to_s}")
   log("next story update at #{get_next_update(Story).to_s}")
   log("next score update at #{get_next_update('score')}")
-
-  players = [
-    ["Reyjanae", "Tanavael"]
-  ]
-
-  players.each{ |username, playername|
-    player = Player.find_or_create_by(name: playername)
-    user = User.find_or_create_by(username: username)
-    user.player = player
-    user.save
-  }
 end
 
 def shutdown
