@@ -4,7 +4,7 @@ require 'net/http'
 require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
-ATTEMPT_LIMIT   = 10    # redownload retries until we move on to the next level
+ATTEMPT_LIMIT   = 20    # redownload retries until we move on to the next level
 SHOW_ERRORS     = false # log common error messages
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
@@ -139,6 +139,8 @@ module HighScore
         err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
       end
       retry
+    else
+      return nil
     end
   end
 
@@ -196,6 +198,7 @@ module HighScore
     if SHOW_ERRORS
       err("error updating database with level #{self.id.to_s}: #{e}")
     end
+    return -1
   end
 
   def get_replay_info(rank)

@@ -8,10 +8,11 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-TEST         = true # If set to true the bot will swith to the test one.
-DOWNLOAD     = true # If set to false scores the score download threads won't fire up.
-DATABASE_ENV = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
-CONFIG       = YAML.load_file('db/config.yml')[DATABASE_ENV]
+TEST          = false # If set to true the bot will swith to the test one.
+DOWNLOAD      = true  # If set to false scores the score download threads won't fire up.
+ATTEMPT_LIMIT = 5     # Attempts to redownload each leaderboard before skipping it.
+DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
+CONFIG        = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 STATUS_UPDATE_FREQUENCY    = 5 * 60 # Redownload lotd scores, update bots status, etc, every 5 mins.
 HIGHSCORE_UPDATE_FREQUENCY = 24 * 60 * 60 # daily
@@ -117,10 +118,11 @@ def download_high_scores
       # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
       [Level, Episode, Story].each do |type|
         type.all.each do |o|
+          attempts ||= 0
           o.update_scores
         rescue => e
           err("error updating high scores for #{o.class.to_s.downcase} #{o.id.to_s}: #{e}")
-          next
+          ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
         end
       end
 
@@ -319,6 +321,7 @@ end
 def startup
   ActiveRecord::Base.establish_connection(CONFIG)
 
+  sleep(1) # Let the connection catch up
   log("initialized")
   log("next level update at #{get_next_update(Level).to_s}")
   log("next episode update at #{get_next_update(Episode).to_s}")

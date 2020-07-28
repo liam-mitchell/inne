@@ -14,17 +14,17 @@
  */
 
 UPDATE global_properties
-SET `value` = '2020-04-27 23:00:00 +0200'
+SET `value` = '2020-07-27 23:00:00 +0200'
 WHERE `key` = 'next_score_update';
 
 UPDATE global_properties
-SET `value` = '2020-04-27 23:00:00 +0200'
+SET `value` = '2020-07-27 23:00:00 +0200'
 WHERE `key` = 'next_level_update';
 
 UPDATE global_properties
-SET `value` = '2020-05-03 23:00:00 +0200'
+SET `value` = '2020-08-02 23:00:00 +0200'
 WHERE `key` = 'next_episode_update';
 
 UPDATE global_properties
-SET `value` = '2020-05-01 23:00:00 +0200'
+SET `value` = '2020-08-01 23:00:00 +0200'
 WHERE `key` = 'next_story_update';
