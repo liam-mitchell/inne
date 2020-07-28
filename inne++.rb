@@ -21,10 +21,16 @@ STORY_UPDATE_FREQUENCY     = CONFIG['story_update_frequency'] || 30 * 24 * 60 * 
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
+  open('LOG', 'a') { |f|
+    f.puts "[INFO] [#{Time.now}] #{msg}"
+  }
 end
 
 def err(msg)
   STDERR.puts "[ERROR] [#{Time.now}] #{msg}"
+  open('LOG', 'a') { |f|
+    f.puts "[ERROR] [#{Time.now}] #{msg}"
+  }
 end
 
 def get_current(type)
@@ -87,7 +93,7 @@ def update_status
     get_current(Level).update_scores
     get_current(Episode).update_scores
     get_current(Story).update_scores
-    (0..2).each{ |mode| Userlevel.browse(10, 0, mode) }
+    (0..2).each{ |mode| Userlevel.browse(10, 0, mode, true) }
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
     sleep(STATUS_UPDATE_FREQUENCY)
   end

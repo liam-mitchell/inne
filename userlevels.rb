@@ -116,7 +116,7 @@ class Userlevel < ActiveRecord::Base
   # Uncompressed map data format: Header (30B) + title (128B) + null (18B) + map data (variable).
   # 1) Header format: Unknown (4B), game mode (4B), unknown (4B), user ID (4B), unknown (14B).
   # 2) Map format: Tile data (966B, 1B per tile), object counts (80B, 2B per object type), objects (variable, 5B per object).
-  def self.parse(levels, update = true)
+  def self.parse(levels, update = false)
     header = {
       date: format_date(levels[0..15].to_s),
       count: parse_int(levels[16..19]),
@@ -152,9 +152,9 @@ class Userlevel < ActiveRecord::Base
     end
     result = []
     # Update database
-    if update
-      ActiveRecord::Base.transaction do
-        maps.each{ |map|
+    ActiveRecord::Base.transaction do
+      maps.each{ |map|
+        if update
           entry = Userlevel.find_or_create_by(id: map[:id])
           values = {
                     title: map[:title],
@@ -168,29 +168,29 @@ class Userlevel < ActiveRecord::Base
                    }
           if INVALID_NAMES.include?(map[:author]) then values.delete(:author) end
           entry.update(values)
-          result << entry
-        }
-      end
-    else
-      result = maps
+        else
+          entry = Userlevel.find_by(id: map[:id])
+        end
+        result << entry
+      }
     end
-    result
+    result.compact
   rescue => e
     err(e)
     nil
   end
 
-  def self.browse(qt = 10, page = 0, mode = 0)
+  def self.browse(qt = 10, page = 0, mode = 0, update = false)
     levels = get_levels(qt, page, mode)
-    parse(levels)
+    parse(levels, update)
   end
 
-  def self.search(search = "", page = 0, mode = 0)
+  def self.search(search = "", page = 0, mode = 0, update = false)
     levels = get_search(search, page, mode)
-    parse(levels)
+    parse(levels, update)
   end
 
-  def self.sort(maps, order, reverse = false)
+  def self.sort(maps, order, invert = false)
     fields = { # possible spellings for each field, to be used for sorting or filtering
       :n => ["n", "number"],
       :id => ["id", "map id", "map_id", "level id", "level_id"],
@@ -199,7 +199,7 @@ class Userlevel < ActiveRecord::Base
       :date => ["date", "time", "moment", "day", "period"],
       :favs => ["fav", "favs", "++", "++s", "++'s", "favourite", "favourites"]
     }
-    reversed = [:id, :date, :favs] # the order of these fields will be reversed by default
+    inverted = [:id, :date, :favs] # the order of these fields will be reversed by default
     if !order.nil?
       fields.each{ |k, v|
         if v.include?(order.strip)
@@ -213,8 +213,8 @@ class Userlevel < ActiveRecord::Base
     if !order.is_a?(Symbol) then order = :n end
     if order == :date then order = :id end
     if order != :n then maps = maps.sort_by(&order) end
-    if reversed.include?(order) then maps.reverse! end
-    if reverse then maps.reverse! end
+    if inverted.include?(order) then maps = maps.reverse end
+    if invert then maps = maps.reverse end
     maps
   end
 
@@ -409,12 +409,12 @@ def format_userlevels(maps, page, range)
   min_padding = {n: 2, id: 2, title:  5, author:  6, date: 14, favs: 2 }
   def_padding = {n: 3, id: 6, title: 25, author: 16, date: 14, favs: 2 }
   if !maps.nil? && !maps.empty?
-    n_padding =      [ [ range.to_a.max.to_s.length,                   max_padding[:n]     ].min, min_padding[:n]      ].max
-    id_padding =     [ [ maps.map{ |map| map[:id] }.max.to_s.length,   max_padding[:id]    ].min, min_padding[:id]     ].max
+    n_padding =      [ [ range.to_a.max.to_s.length,                        max_padding[:n]     ].min, min_padding[:n]      ].max
+    id_padding =     [ [ maps.map{ |map| map[:id].to_i }.max.to_s.length,   max_padding[:id]    ].min, min_padding[:id]     ].max
     title_padding  = [ [ maps.map{ |map| map[:title].to_s.length }.max,     max_padding[:title] ].min, min_padding[:title]  ].max
     author_padding = [ [ maps.map{ |map| map[:author].to_s.length }.max,    max_padding[:title] ].min, min_padding[:author] ].max
     date_padding   = [ [ maps.map{ |map| map[:date].to_s.length }.max,      max_padding[:date]  ].min, min_padding[:date]   ].max
-    favs_padding   = [ [ maps.map{ |map| map[:favs] }.max.to_s.length, max_padding[:favs]  ].min, min_padding[:favs]   ].max
+    favs_padding   = [ [ maps.map{ |map| map[:favs].to_i }.max.to_s.length, max_padding[:favs]  ].min, min_padding[:favs]   ].max
     padding = {n: n_padding, id: id_padding, title: title_padding, author: author_padding, date: date_padding, favs: favs_padding }
   else
     padding = def_padding
@@ -456,9 +456,9 @@ def send_userlevel_browse(event)
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
   part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
   order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
-  reverse = order.strip[/\A-*/i].length % 2 == 1
+  invert = order.strip[/\A-*/i].length % 2 == 1 || false
   order.delete!("-")
-  category = nil
+  category = 10
   categories = {
      0 => ["All",        "all"],
      1 => ["Oldest",     "oldest"],
@@ -466,23 +466,23 @@ def send_userlevel_browse(event)
      8 => ["Featured",   "featured"],
      9 => ["Top Weekly", "top"],
     10 => ["Newest",     "newest"],
-    11 => ["Hardest",    "hardest"],
-    36 => ["Search",     "search"]
+    11 => ["Hardest",    "hardest"]
   }
 
   categories.each{ |id, cat| category = id if !!(msg =~ /#{cat[1]}/i) }
-  if categories.nil?
+  if category.nil?
     event << "Error browsing userlevels: You need to specify a tab to browse (best, featured, top, newest, hardest, all)."
     return
   end
 
-  maps = [0, 1].include?(category) ? Userlevel.all : Userlevel::browse(category, part)
+  maps = [0, 1, 10].include?(category) ? Userlevel.all : Userlevel::browse(category, part, 0, false)
   if maps.nil?
     event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
     return
   end
 
-  maps = Userlevel::sort(maps, order, reverse)
+  if order.empty? && category == 10 then invert = !invert end
+  maps = Userlevel::sort(maps, order, invert)
   count = maps.size
   pages = (maps.size.to_f / PAGE_SIZE).ceil
   page = pages - 1 if page > pages - 1 unless pages == 0
@@ -510,19 +510,19 @@ def send_userlevel_search(event)
   part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
   author = msg[/((made\s*by)|(author))\s*("|“|”)([^"“”]*)("|“|”)/i, 5] || ""
   order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
-  reverse = order.strip[/\A-*/i].length % 2 == 1
+  invert = order.strip[/\A-*/i].length % 2 == 1
   order.delete!("-")
 
   if !search.ascii_only?
     event << "Sorry! We can only perform ASCII-only searches."
   else
     search = search[0..63] # truncate search query to fit under the character limit
-    maps = author.empty? ? Userlevel::search(search, part) : Userlevel.where(author: author)
+    maps = author.empty? ? Userlevel::search(search, part, 0, false) : Userlevel.where(author: author)
     if maps.nil?
       event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
       return
     end
-    maps = Userlevel::sort(maps, order, reverse)
+    maps = Userlevel::sort(maps, order, invert)
     count = maps.size
     pages = (maps.size.to_f / PAGE_SIZE).ceil
     page = pages - 1 if page > pages - 1 unless pages == 0
@@ -538,9 +538,9 @@ def send_userlevel_search(event)
   end
 
   event << output
-rescue => e
-  err(e)
-  event << "Error downloading maps (server is not responding)."
+#rescue => e
+#  err(e)
+#  event << "Error downloading maps (server is not responding)."
 end
 
 # TODO: When downloading by name is implemented, the way to get the ID in the
