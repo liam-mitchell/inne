@@ -54,7 +54,8 @@ IGNORED_PLAYERS = [
   "Mishu",
   "dimitry008",
   "Chara",
-  "test8378"
+  "test8378",
+  "VexatiousCheff"
 ]
 
 # Problematic hackers? We get rid of them by banning their user IDs
@@ -63,7 +64,8 @@ IGNORED_IDS = [
   201322, # dimitry008
   146275, # Puce
   253161, # Chara
-  253072 # test8378
+  253072, # test8378
+  221472  # VexatiousCheff
 ]
 
 # Turn a little endian binary array into an integer
@@ -330,6 +332,7 @@ class Score < ActiveRecord::Base
   belongs_to :level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: 'highscoreable_id'
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
   belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
+  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
 
   def self.total_scores(type, tabs, secrets)
     tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)

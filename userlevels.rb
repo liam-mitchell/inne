@@ -475,7 +475,7 @@ def send_userlevel_browse(event)
     return
   end
 
-  maps = [0, 1, 10].include?(category) ? Userlevel.all : Userlevel::browse(category, part, 0, false)
+  maps = [0, 1, 10].include?(category) ? Userlevel.all[0..499] : Userlevel::browse(category, part, 0, false)
   if maps.nil?
     event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
     return
@@ -631,7 +631,7 @@ def respond_userlevels(event)
   msg = event.content
   msg.sub!(/\A<@!?[0-9]*> */, '') # strip off the @inne++ mention, if present
 
-  send_userlevel_browse(event) if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
+  #send_userlevel_browse(event) if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
   send_userlevel_search(event) if msg =~ /\bsearch\b/i
   send_userlevel_download(event) if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i

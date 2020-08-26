@@ -89,6 +89,7 @@ end
 # - Update bot's status (it only lasts so much).
 def update_status
   ActiveRecord::Base.establish_connection(CONFIG)
+  sleep(5) # Letting the database catch up
 
   while(true)
     get_current(Level).update_scores
@@ -104,6 +105,7 @@ end
 
 def download_high_scores
   ActiveRecord::Base.establish_connection(CONFIG)
+  sleep(5) # Letting the database catch up
 
   begin
     while true
@@ -266,13 +268,14 @@ def send_channel_next(type)
 end
 
 def start_level_of_the_day
-  log("starting level of the day...")
   ActiveRecord::Base.establish_connection(CONFIG)
+  sleep(5) # Letting the database catch up
 
   begin
     episode_day = false
     story_day = false
     while true
+      log("starting level of the day...")
       # Autocorrect bad update times
       next_level_update = get_next_update(Level)
       next_level_update -= LEVEL_UPDATE_FREQUENCY while next_level_update > Time.now
