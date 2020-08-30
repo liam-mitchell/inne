@@ -124,12 +124,10 @@ class Userlevel < ActiveRecord::Base
       category: parse_int(levels[28..31]),
       mode: parse_int(levels[32..35])
     }
-    # the regex flag "m" is needed so that the global character "." matches the new line character
-    # it was hell to debug this!
     # Note: When parsing user input (map titles and authors), we stop reading at the first null character,
-    # for everything after that is usually padding. Then, we remove non-ASCII characters.
+    # everything after that is (should be) padding. Then, we remove non-ASCII characters.
     maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
-      author = h[8..23].join.split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip
+      author = h[8..23].join.split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 126) ? nil : b.chr }.compact.join.strip
       {
         id: parse_int(h[0..3]),
         author_id: author != "null" ? parse_int(h[4..7]) : -1,
@@ -144,28 +142,29 @@ class Userlevel < ActiveRecord::Base
       len = parse_int(levels[offset..offset + 3])
       maps[i][:object_count] = parse_int(levels[offset + 4..offset + 5])
       map = Zlib::Inflate.inflate(levels[offset + 6..offset + len - 1])
-      maps[i][:title] = map[30..157].split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 127) ? nil : b.chr }.compact.join.strip
+      maps[i][:title] = map[30..157].split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 126) ? nil : b.chr }.compact.join.strip
       maps[i][:tiles] = map[176..1141].scan(/./m).map{ |b| parse_int(b) }.each_slice(42).to_a
       maps[i][:objects] = map[1222..-1].scan(/./m).map{ |b| parse_int(b) }.each_slice(5).to_a
       offset += len
       i += 1
     end
     result = []
-    # Update database
+    # Update database. We pack the tile data into a binary string and compress it using zlib.
+    # We do the same for object data, except we transpose it first (usually getting better compression).
     ActiveRecord::Base.transaction do
       maps.each{ |map|
         if update
           entry = Userlevel.find_or_create_by(id: map[:id])
           values = {
-                    title: map[:title],
-                    author: map[:author],
-                    author_id: map[:author_id],
-                    favs: map[:favs],
-                    date: map[:date],
-                    mode: header[:mode],
-                    tile_data: map[:tiles],
-                    object_data: map[:objects]
-                   }
+            title: map[:title],
+            author: map[:author],
+            author_id: map[:author_id],
+            favs: map[:favs],
+            date: map[:date],
+            mode: header[:mode],
+            tile_data: encode_tiles(map[:tiles]),
+            object_data: encode_objects(map[:objects])
+          }
           if INVALID_NAMES.include?(map[:author]) then values.delete(:author) end
           entry.update(values)
         else
@@ -218,21 +217,42 @@ class Userlevel < ActiveRecord::Base
     maps
   end
 
+  def self.encode_tiles(tiles)
+    Zlib::Deflate.deflate(tiles.flatten.map{ |t| _pack(t, 1) }.join, 9)
+  end
+
+  def self.encode_objects(objects)
+    Zlib::Deflate.deflate(objects.transpose.flatten.map{ |t| _pack(t, 1) }.join, 9)
+  end
+
+  def self.decode_tiles(tile_data)
+    Zlib::Inflate.inflate(tile_data).scan(/./m).map{ |b| _unpack(b) }.each_slice(42).to_a
+  end
+
+  def self.decode_objects(object_data)
+    dec = Zlib::Inflate.inflate(object_data)
+    dec.scan(/./m).map{ |b| _unpack(b) }.each_slice((dec.size / 5).round).to_a.transpose
+  end
+
+  # This method compresses the level data from databases using the old system
+  def self.migrate
+    self.all.each{ |u|
+      print("Migrating userlevel #{u.id}...".ljust(80, " ") + "\r")
+      u.migrate
+    }
+    puts "Done"
+  end
+
   def tiles
-    YAML.load(self.tile_data)
+    Userlevel.decode_tiles(self.tile_data)
   end
 
   def objects
-    YAML.load(self.object_data)
+    Userlevel.decode_objects(self.object_data)
   end
 
   def scores
     self.get_scores.map{ |score| {score: score['score'] / 1000.0, player: score['user_name']} }
-  end
-
-  # Convert an integer into a little endian binary string of 'size' bytes
-  def _pack(n, size)
-    n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join.force_encoding("ascii-8bit")
   end
 
   # Generate a file with the usual userlevel format
@@ -266,6 +286,17 @@ class Userlevel < ActiveRecord::Base
     }
     data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
     data
+  end
+
+  # Encode tile and object data if it wasn't already
+  def migrate
+    t = tiles
+    o = objects
+  rescue
+    self.update(
+      tile_data: Userlevel.encode_tiles(YAML.load(self.tile_data)),
+      object_data: Userlevel.encode_objects(YAML.load(self.object_data))
+    ) unless self.tile_data.nil? || self.object_data.nil?
   end
 
   # <-------------------------------------------------------------------------->
@@ -637,4 +668,5 @@ def respond_userlevels(event)
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event) if msg =~ /scores\b/i # matches 'highscores'
   #csv(event) if msg =~ /csv/i
+  #Userlevel.migrate if msg =~ /migrate/
 end

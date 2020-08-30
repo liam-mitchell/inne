@@ -43,7 +43,7 @@ Others:
 
 \\ ------------------------ Scores ------------------------
 
-- A function to compare new scores (when they are updated) to the stored ones, and that way produce a change report.
+- A function to compare new scores (when they are updated) to the stored ones, and that way produce a daily change report, maybe with new 0ths and new/improved top20s.
 - Ping players who lost 0ths, using the previous function.
 
 \\ ------------------------ Screenshots ------------------------
@@ -85,7 +85,7 @@ Analysis:
 -- Low priotity: Overall improvements to style (frame graph, and other decorations).
 
 \\ ------------------------ Cheaters ------------------------
-- Deal with empty spots due to ignored cheaters, this produces side effects like: some people having 2 top20's in the same level, maxed levels not appearing in the list of maxed levels because of old scores at the bottom, and permanent scores at the bottom of the boards.
+
 
 \\ ------------------------ Hardcore ------------------------
 
@@ -95,13 +95,13 @@ Analysis:
 
 - Add some backstory, like what happens when outte is asked about inne (murder?)
 - Add some more easter eggs, like a command that shows (or links) eddysipw.
-- Resend status at least every 24h so it doesn't get reset, maybe do it when we redownload lotd.
 
 Avatar:
 - Ensure the random avatar can't repeat when faceswapping. In order to do so, we could save the current filename of the avatar in the GlobalProperties table of the database, and reject the current one before sampling the files in the avatar folder.
 - Maybe also store the date of the avatar change to avoid the cooldown.
 
 \\ ------------------------ General ------------------------
+- Optimize some functions (e.g. rankings) to use more Rails functions (which directly translate to specific queries on the db, which is faster than doing that with Ruby objects).
 - Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
 - Interesting: Analyze how do coop demos work. Then, to compare individual demos on the same level, download 2 of them and build an attrac file to run the replay in N++'s menu.

@@ -24,16 +24,17 @@ class CreateUserlevels < ActiveRecord::Migration[5.1]
       files.each_with_index{ |f, i|
         levels = Userlevel::parse(File.binread(folder + f), false)
         levels.each{ |map|
+          author = Userlevel::INVALID_NAMES.include?(map[:author]) ? nil : map[:author]
           Userlevel.create(
             id: map[:id],
             author_id: map[:author_id],
-            author: map[:author],
+            author: author,
             title: map[:title],
             favs: map[:favs],
             date: map[:date],
             mode: i,
-            tile_data: map[:tiles],
-            object_data: map[:objects]
+            tile_data: Userlevel::encode_tiles(map[:tiles]),
+            object_data: Userlevel::encode_objects(map[:objects])
             # Add reference to author (from the player table, find or create by name)
           )
         }

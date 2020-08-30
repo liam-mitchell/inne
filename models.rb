@@ -82,6 +82,18 @@ def format_date(date)
   date[0..7].split("/").reverse.join("/") + date[-6..-1]
 end
 
+# Convert an integer into a little endian binary string of 'size' bytes and back
+def _pack(n, size)
+  n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
+    [b].pack('H*')[0]
+  }.join.force_encoding("ascii-8bit")
+end
+
+def _unpack(bytes)
+  if bytes.is_a?(Array) then bytes = bytes.join end
+  bytes.unpack('H*')[0].scan(/../).join.to_i(16)
+end
+
 module HighScore
 
   def self.format_rank(rank)
