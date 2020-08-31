@@ -263,6 +263,28 @@ class Userlevel < ActiveRecord::Base
     puts "Done"
   end
 
+  def self.migrate3
+    self.where('id < 22715').each{ |u| u.destroy }
+    UserlevelData.where('id < 22715').each{ |u| u.destroy }
+  end
+
+  def self.fix_modes
+    ['solo', 'coop', 'race'].each_with_index{ |mode, i|
+      folder = "maps/#{mode}/"
+      # We select all files which name is a number (possibly with padding 0s)
+      files = Dir.entries(folder).select{ |f| File.file?(folder + f) && (f.to_i.to_s == f[/[^0].*/] || f.tr("0","").empty?) }.sort
+      files.each_with_index{ |f, j|
+        print("Parsing #{mode} page #{j} of #{files.size}.".ljust(80, " ") + "\r")
+        levels = File.binread(folder + f)
+        count = parse_int(levels[16..19])
+        mod = parse_int(levels[32..35])
+        maps = levels[48 .. 48 + 44 * count - 1].scan(/./m).each_slice(44).to_a.each{ |h|
+          Userlevel.find(parse_int(h[0..3])).update(mode: mod)
+        }
+      }
+    }
+  end
+
   def tiles
     Userlevel.decode_tiles(UserlevelData.find(self.id).tile_data)
   end
@@ -533,7 +555,7 @@ def send_userlevel_browse(event)
     return
   end
 
-  maps = [0, 1, 10].include?(category) ? Userlevel.all[0..499] : Userlevel::browse(category, part, 0, false)
+  maps = [0, 1, 10].include?(category) ? Userlevel.all : Userlevel::browse(category, part, 0, false)
   if maps.nil?
     event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
     return
@@ -689,11 +711,11 @@ def respond_userlevels(event)
   msg = event.content
   msg.sub!(/\A<@!?[0-9]*> */, '') # strip off the @inne++ mention, if present
 
-  #send_userlevel_browse(event) if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
+  send_userlevel_browse(event) if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
   send_userlevel_search(event) if msg =~ /\bsearch\b/i
   send_userlevel_download(event) if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event) if msg =~ /scores\b/i # matches 'highscores'
   #csv(event) if msg =~ /csv/i
-  Userlevel.migrate1 if msg =~ /migrate/
+  Userlevel.migrate3 if msg =~ /migrate/
 end
