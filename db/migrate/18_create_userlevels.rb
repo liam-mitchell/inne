@@ -8,7 +8,9 @@ class CreateUserlevels < ActiveRecord::Migration[5.1]
       t.integer :favs
       t.string :date
       t.integer :mode
+    end
 
+    create_table :userlevel_data do |t|
       # We limit object data to 1MB to force MySQL to create a MEDIUMBLOB,
       # which can hold up to 16MB, otherwise a BLOB is created, which can only
       # hold 64KB and is thus not sufficient for the theoretical biggest
@@ -22,23 +24,8 @@ class CreateUserlevels < ActiveRecord::Migration[5.1]
       # We select all files which name is a number (possibly with padding 0s)
       files = Dir.entries(folder).select{ |f| File.file?(folder + f) && (f.to_i.to_s == f[/[^0].*/] || f.tr("0","").empty?) }.sort
       files.each_with_index{ |f, i|
-        levels = Userlevel::parse(File.binread(folder + f), false)
-        levels.each{ |map|
-          author = Userlevel::INVALID_NAMES.include?(map[:author]) ? nil : map[:author]
-          Userlevel.create(
-            id: map[:id],
-            author_id: map[:author_id],
-            author: author,
-            title: map[:title],
-            favs: map[:favs],
-            date: map[:date],
-            mode: i,
-            tile_data: Userlevel::encode_tiles(map[:tiles]),
-            object_data: Userlevel::encode_objects(map[:objects])
-            # Add reference to author (from the player table, find or create by name)
-          )
-        }
         puts "Parsing #{mode} page #{i} of #{files.size}."
+        levels = Userlevel::parse(File.binread(folder + f), true)
       }
     }
   end

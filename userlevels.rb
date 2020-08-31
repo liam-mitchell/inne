@@ -1,5 +1,9 @@
 require_relative 'models.rb'
 
+# Contains map data (tiles and objects) in a different table for performance reasons.
+class UserlevelData < ActiveRecord::Base
+end
+
 class Userlevel < ActiveRecord::Base
   include HighScore
   # available fields: id,  author, author_id, title, favs, date, tile_data (renamed as tiles), object_data (renamed as objects)
@@ -161,12 +165,14 @@ class Userlevel < ActiveRecord::Base
             author_id: map[:author_id],
             favs: map[:favs],
             date: map[:date],
-            mode: header[:mode],
-            tile_data: encode_tiles(map[:tiles]),
-            object_data: encode_objects(map[:objects])
+            mode: header[:mode]
           }
           if INVALID_NAMES.include?(map[:author]) then values.delete(:author) end
           entry.update(values)
+          UserlevelData.find_or_create_by(id: map[:id]).update(
+            tile_data: encode_tiles(map[:tiles]),
+            object_data: encode_objects(map[:objects])
+          )
         else
           entry = Userlevel.find_by(id: map[:id])
         end
@@ -235,20 +241,34 @@ class Userlevel < ActiveRecord::Base
   end
 
   # This method compresses the level data from databases using the old system
-  def self.migrate
+  def self.migrate1
     self.all.each{ |u|
       print("Migrating userlevel #{u.id}...".ljust(80, " ") + "\r")
-      u.migrate
+      u.migrate1
     }
     puts "Done"
   end
 
+  def self.migrate2
+    ActiveRecord::Base.connection.create_table :userlevel_data do |t|
+      t.binary :tile_data
+      t.binary :object_data, limit: 1024 ** 2
+    end
+    self.all.each{ |u|
+      print("Migrating userlevel #{u.id}...".ljust(80, " ") + "\r")
+      u.migrate2
+    }
+    ActiveRecord::Base.connection.remove_column(:userlevels, :tile_data)
+    ActiveRecord::Base.connection.remove_column(:userlevels, :object_data)
+    puts "Done"
+  end
+
   def tiles
-    Userlevel.decode_tiles(self.tile_data)
+    Userlevel.decode_tiles(UserlevelData.find(self.id).tile_data)
   end
 
   def objects
-    Userlevel.decode_objects(self.object_data)
+    Userlevel.decode_objects(UserlevelData.find(self.id).object_data)
   end
 
   def scores
@@ -289,7 +309,7 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Encode tile and object data if it wasn't already
-  def migrate
+  def migrate1
     t = tiles
     o = objects
   rescue
@@ -297,6 +317,13 @@ class Userlevel < ActiveRecord::Base
       tile_data: Userlevel.encode_tiles(YAML.load(self.tile_data)),
       object_data: Userlevel.encode_objects(YAML.load(self.object_data))
     ) unless self.tile_data.nil? || self.object_data.nil?
+  end
+
+  def migrate2
+    UserlevelData.find_or_create_by(id: self.id).update(
+      tile_data: self.tile_data,
+      object_data: self.object_data
+    )
   end
 
   # <-------------------------------------------------------------------------->
@@ -668,5 +695,5 @@ def respond_userlevels(event)
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event) if msg =~ /scores\b/i # matches 'highscores'
   #csv(event) if msg =~ /csv/i
-  #Userlevel.migrate if msg =~ /migrate/
+  Userlevel.migrate1 if msg =~ /migrate/
 end
