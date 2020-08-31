@@ -240,51 +240,6 @@ class Userlevel < ActiveRecord::Base
     dec.scan(/./m).map{ |b| _unpack(b) }.each_slice((dec.size / 5).round).to_a.transpose
   end
 
-  # This method compresses the level data from databases using the old system
-  def self.migrate1
-    self.all.each{ |u|
-      print("Migrating userlevel #{u.id}...".ljust(80, " ") + "\r")
-      u.migrate1
-    }
-    puts "Done"
-  end
-
-  def self.migrate2
-    ActiveRecord::Base.connection.create_table :userlevel_data do |t|
-      t.binary :tile_data
-      t.binary :object_data, limit: 1024 ** 2
-    end
-    self.all.each{ |u|
-      print("Migrating userlevel #{u.id}...".ljust(80, " ") + "\r")
-      u.migrate2
-    }
-    ActiveRecord::Base.connection.remove_column(:userlevels, :tile_data)
-    ActiveRecord::Base.connection.remove_column(:userlevels, :object_data)
-    puts "Done"
-  end
-
-  def self.migrate3
-    self.where('id < 22715').each{ |u| u.destroy }
-    UserlevelData.where('id < 22715').each{ |u| u.destroy }
-  end
-
-  def self.fix_modes
-    ['solo', 'coop', 'race'].each_with_index{ |mode, i|
-      folder = "maps/#{mode}/"
-      # We select all files which name is a number (possibly with padding 0s)
-      files = Dir.entries(folder).select{ |f| File.file?(folder + f) && (f.to_i.to_s == f[/[^0].*/] || f.tr("0","").empty?) }.sort
-      files.each_with_index{ |f, j|
-        print("Parsing #{mode} page #{j} of #{files.size}.".ljust(80, " ") + "\r")
-        levels = File.binread(folder + f)
-        count = parse_int(levels[16..19])
-        mod = parse_int(levels[32..35])
-        maps = levels[48 .. 48 + 44 * count - 1].scan(/./m).each_slice(44).to_a.each{ |h|
-          Userlevel.find(parse_int(h[0..3])).update(mode: mod)
-        }
-      }
-    }
-  end
-
   def tiles
     Userlevel.decode_tiles(UserlevelData.find(self.id).tile_data)
   end
@@ -328,24 +283,6 @@ class Userlevel < ActiveRecord::Base
     }
     data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
     data
-  end
-
-  # Encode tile and object data if it wasn't already
-  def migrate1
-    t = tiles
-    o = objects
-  rescue
-    self.update(
-      tile_data: Userlevel.encode_tiles(YAML.load(self.tile_data)),
-      object_data: Userlevel.encode_objects(YAML.load(self.object_data))
-    ) unless self.tile_data.nil? || self.object_data.nil?
-  end
-
-  def migrate2
-    UserlevelData.find_or_create_by(id: self.id).update(
-      tile_data: self.tile_data,
-      object_data: self.object_data
-    )
   end
 
   # <-------------------------------------------------------------------------->
@@ -717,5 +654,4 @@ def respond_userlevels(event)
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event) if msg =~ /scores\b/i # matches 'highscores'
   #csv(event) if msg =~ /csv/i
-  Userlevel.migrate3 if msg =~ /migrate/
 end
