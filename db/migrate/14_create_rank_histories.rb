@@ -9,6 +9,7 @@ class CreateRankHistories < ActiveRecord::Migration[5.1]
       t.boolean :ties
 
       t.references :player
+      t.integer :metanet_id
       t.integer :count
     end
 
@@ -19,6 +20,7 @@ class CreateRankHistories < ActiveRecord::Migration[5.1]
       t.string :highscoreable_type, index: true
 
       t.references :player
+      t.integer :metanet_id
       t.integer :points
     end
 
@@ -29,6 +31,7 @@ class CreateRankHistories < ActiveRecord::Migration[5.1]
       t.string :highscoreable_type, index: true
 
       t.references :player
+      t.integer :metanet_id
       t.float :score
     end
   end

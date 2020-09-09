@@ -4,14 +4,14 @@ require 'zlib'
 require_relative 'models.rb'
 require_relative 'userlevels.rb'
 
-LEVEL_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9]?/i
+LEVEL_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9]?/i
 EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
-STORY_PATTERN = /S[ILU]?-[0-9][0-9]?/i
-NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
+STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
+NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
 
 NUM_ENTRIES = 20 # number of entries to show on diverse methods
 MAX_ENTRIES = 20 # maximum number of entries on methods with user input, to avoid spam
-MIN_SCORES = 50  # minimum number of highscores to appear in average point rankings
+MIN_SCORES  = 50  # minimum number of highscores to appear in average point rankings
 
 # userlevel functions
 PAGE_SIZE = 20
@@ -27,12 +27,16 @@ end
 def parse_player(msg, username)
   p = msg[/for (.*)[\.\?]?/i, 1]
 
+  # We make sure to only return players with metanet_ids, ie., with highscores.
   if p.nil?
     raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" unless User.exists?(username: username)
-    User.find_by(username: username).player
+    player = Player.where.not(metanet_id: nil).find_by(name: User.find_by(username: username).player.name)
+    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
+    player
   else
-    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless Player.exists?(name: p)
-    Player.find_by(name: p)
+    player = Player.where.not(metanet_id: nil).find_by(name: p)
+    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
+    player
   end
 end
 
@@ -288,7 +292,7 @@ def send_scores(event)
   # Send immediately here - using << delays sending until after the event has been processed,
   # and we want to download the scores for the episode in the background after sending since it
   # takes a few seconds
-  event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores(scores.max_name_length)}```")
+  event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores(scores.max_name_length) rescue ""}```")
 
   if scores.is_a?(Episode)
     event.send_message("The cleanliness of this episode 0th is %.3f." % [scores.cleanliness[1].to_s])
@@ -773,9 +777,8 @@ def identify(event)
 
   raise "I couldn't figure out who you were! You have to send a message in the form 'my name is <username>.'" if nick.nil?
 
-  player = Player.find_or_create_by(name: nick)
   user = User.find_or_create_by(username: user)
-  user.player = player
+  user.player = nick
   user.save
 
   event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
@@ -895,6 +898,62 @@ def dump(event)
   event << "I dumped some things to the log for you to look at."
 end
 
+def test(event)
+  base = Time.new(2020, 9, 3, 0, 0, 0, "+00:00").to_i # when archiving begun
+  time = [Time.now.to_i - 7 * 24 * 60 * 60, base].max
+  now  = Time.now.to_i
+  pad  = [2, DEFAULT_PADDING, 6, 6, 6, 5, 4]
+
+  changes = Archive.where("unix_timestamp(date) > #{time}")
+                   .order('date desc')
+                   .map{ |ar| [ar.metanet_id, ar.find_rank(time), ar.find_rank(now), ar.highscoreable, ar.score] }
+                   .group_by{ |s| s[0] }
+                   .map{ |id, scores|
+                         [
+                           id,
+                           scores.group_by{ |s| s[3] }
+                                 .map{ |highscoreable, versions|
+                                       max = versions.map{ |v| v[4] }.max
+                                       versions.select{ |v| v[4] == max }.first
+                                     }
+                         ]
+                       }
+                   .map{ |id, scores|
+                         {
+                           player: Player.find_by(metanet_id: id).name,
+                           points: scores.map{ |s| s[1] - s[2] }.sum,
+                           top20s: scores.select{ |s| s[1] == 20 }.size,
+                           top10s: scores.select{ |s| s[1] > 9 && s[2] <= 9 }.size,
+                           top05s: scores.select{ |s| s[1] > 4 && s[2] <= 4 }.size,
+                           zeroes: scores.select{ |s| s[2] == 0 }.size
+                         }
+                       }
+                   .sort_by{ |p| -p[:points] }
+                   .each_with_index
+                   .map{ |p, i|
+                         values = p.values.prepend(i)
+                         values.each_with_index.map{ |v, j|
+                           s = v.to_s.rjust(pad[j], " ")
+                           s += " |" if [0, 1, 2].include?(j)
+                           s
+                         }.join(" ")
+                       }
+                   .take(20)
+                   .join("\n")
+
+  header = ["", "Player", "Points", "Top20s", "Top10s", "Top5s", "0ths"]
+             .each_with_index
+             .map{ |h, i|
+                   s = h.ljust(pad[i], " ")
+                   s += " |" if [0, 1, 2].include?(i)
+                   s
+                 }
+             .join(" ")
+  sep = "-" * (pad.sum + pad.size + 5)
+  event << "**The highscoring report!** [Last 7 days]"
+  event << "```#{header}\n#{sep}\n#{changes}```"
+end
+
 def send_videos(event)
   videos = parse_videos(event.content)
 
@@ -989,6 +1048,7 @@ def respond(event)
   add_steam_id(event) if msg =~ /my steam id is/i
   send_videos(event) if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   faceswap(event) if msg =~ /faceswap/i
+  test(event) if msg =~ /filipination/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't

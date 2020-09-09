@@ -91,7 +91,7 @@ end
 
 def _unpack(bytes)
   if bytes.is_a?(Array) then bytes = bytes.join end
-  bytes.unpack('H*')[0].scan(/../).join.to_i(16)
+  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
 end
 
 module HighScore
@@ -184,12 +184,27 @@ module HighScore
 
     ActiveRecord::Base.transaction do
       updated.each_with_index do |score, i|
-        scores.find_or_create_by(rank: i)
-          .update(
-            score: score['score'] / 1000.0,
-            player: Player.find_or_create_by(name: score['user_name'].force_encoding('UTF-8')),
-            tied_rank: updated.find_index { |s| s['score'] == score['score'] }
+        player = Player.find_or_create_by(metanet_id: score['user_id'])
+        player.update(name: score['user_name'].force_encoding('UTF-8'))
+        scores.find_or_create_by(rank: i).update(
+          score: score['score'] / 1000.0,
+          replay_id: score['replay_id'].to_i,
+          player: player,
+          tied_rank: updated.find_index { |s| s['score'] == score['score'] }
+        )
+        if Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
+          ar = Archive.create(
+            replay_id: score['replay_id'].to_i,
+            player: Player.find_by(metanet_id: score['user_id']),
+            highscoreable: self,
+            score: (score['score'] * 60.0 / 1000.0).round,
+            metanet_id: score['user_id'].to_i, # future-proof the db
+            date: Time.now
           )
+          demo = Demo.find_or_create_by(replay_id: ar.replay_id)
+          demo.update(id: ar.id)
+          demo.update_demo
+        end
       end
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
@@ -229,10 +244,6 @@ module HighScore
     updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }[rank]
   end
 
-  # Replay data format: Unknown (4B), replay ID (4B), level ID (4B), user ID (4B) and demo data compressed with Zlib.
-  # Demo data format: Unknown (1B), data length (4B), unknown (4B), frame count (4B), level ID (4B), unknown (13B) and actual demo.
-  # Demo format: Each byte is one frame, first bit is jump, second is right and third is left. Also, suicide is 0C.
-  # Note: The first frame is fictional and must be ignored.
   def analyze_replay(replay_id)
     replay = get_replay(replay_id)
     demo = Zlib::Inflate.inflate(replay[16..-1])[30..-1]
@@ -371,12 +382,13 @@ class Score < ActiveRecord::Base
   end
 end
 
+# Note: Players used to be referenced by Users, not anymore. Everything has been
+# structured to better deal with multiple players and/or users with the same name.
 class Player < ActiveRecord::Base
   has_many :scores
   has_many :rank_histories
   has_many :points_histories
   has_many :total_score_histories
-  has_one :user
 
   def self.rankings(&block)
     players = Player.all
@@ -508,7 +520,14 @@ class Player < ActiveRecord::Base
 end
 
 class User < ActiveRecord::Base
-  belongs_to :player
+  def player
+    Player.find_by(name: playername)
+  end
+  def player=(person)
+    name = person.class == Player ? person.name : person.to_s
+    self.playername = name
+    self.save
+  end
 end
 
 class GlobalProperty < ActiveRecord::Base
@@ -542,5 +561,174 @@ class Video < ActiveRecord::Base
 
   def format_description
     "#{format_challenge} by #{format_author}"
+  end
+end
+
+class Archive < ActiveRecord::Base
+  belongs_to :player
+  belongs_to :highscoreable, polymorphic: true
+
+  # Returns the leaderboards at a particular point in time
+  def self.scores(highscoreable, date)
+    self.select('metanet_id', 'max(score)')
+        .where(highscoreable: highscoreable)
+        .where("unix_timestamp(date) <= #{date}")
+        .group('metanet_id')
+        .order('max(score) desc')
+        .take(20)
+        .map{ |s|
+          [s.metanet_id.to_i, s['max(score)'].to_i]
+        }
+  end
+
+  def find_rank(time)
+    old_score = Archive.scores(self.highscoreable, time)
+                       .each_with_index
+                       .map{ |s, i| [i, s[0], s[1]] }
+                       .select{ |s| s[1] == self.metanet_id }
+    old_score.empty? ? 20 : old_score.first[0]
+  end
+
+  def format_score
+    "%.3f" % self.score.to_f / 60.0
+  end
+
+  def demo
+    Demo.find_by(replay_id: self.replay_id).demo
+  end
+
+end
+
+class Demo < ActiveRecord::Base
+  #----------------------------------------------------------------------------#
+  #                    METANET REPLAY FORMAT DOCUMENTATION                     |
+  #----------------------------------------------------------------------------#
+  # REPLAY DATA:                                                               |
+  #    4B  - Query type                                                        |
+  #    4B  - Replay ID                                                         |
+  #    4B  - Level ID                                                          |
+  #    4B  - User ID                                                           |
+  #   Rest - Demo data compressed with zlib                                    |
+  #----------------------------------------------------------------------------#
+  # LEVEL DEMO DATA FORMAT:                                                    |
+  #     1B - Unknown                                                           |
+  #     4B - Data length                                                       |
+  #     4B - Unknown                                                           |
+  #     4B - Frame count                                                       |
+  #     4B - Level ID                                                          |
+  #    13B - Unknown                                                           |
+  #   Rest - Demo                                                              |
+  #----------------------------------------------------------------------------#
+  # EPISODE DEMO DATA FORMAT:                                                  |
+  #     4B - Unknown                                                           |
+  #    20B - Block length for each level demo (5 * 4B)                         |
+  #   Rest - Demo data (5 consecutive blocks, see above)                       |
+  #----------------------------------------------------------------------------#
+  # STORY DEMO DATA FORMAT:                                                    |
+  #     4B - Unknown                                                           |
+  #     4B - Demo data block size                                              |
+  #   100B - Block length for each level demo (25 * 4B)                        |
+  #   Rest - Demo data (25 consecutive blocks, see above)                      |
+  #----------------------------------------------------------------------------#
+  # DEMO FORMAT:                                                               |
+  #   * One byte per frame.                                                    |
+  #   * First bit for jump, second for right and third for left.               |
+  #   * Suicide is 12 (0C).                                                    |
+  #   * The first frame is fictional and must be ignored.                      |
+  #----------------------------------------------------------------------------#
+
+  def score
+    Archive.find_by(replay_id: self.replay_id)
+  end
+
+  def type
+    score.highscoreable_type
+  end
+
+  def qt
+    case type
+    when "Level"
+      0
+    when "Episode"
+      1
+    when "Story"
+      4
+    else
+      -1 # error checking
+    end
+  end
+
+  def demo_uri(steam_id)
+    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
+  end
+
+  def get_demo
+    attempts ||= 0
+    initial_id = get_last_steam_id
+    response = Net::HTTP.get_response(demo_uri(initial_id))
+    while response.body == '-1337'
+      update_last_steam_id
+      break if get_last_steam_id == initial_id
+      response = Net::HTTP.get_response(demo_uri(get_last_steam_id))
+    end
+    return -1 if response.code.to_i == 200 && response.body.empty? # replay does not exist
+    return nil if response.body == '-1337'
+    raise "502 Bad Gateway" if response.code.to_i == 502
+    response.body
+  rescue => e
+    if (attempts += 1) < ATTEMPT_LIMIT
+      if SHOW_ERRORS
+        err("error getting demo with id #{replay_id}: #{e}")
+      end
+      retry
+    else
+      return nil
+    end
+  end
+
+  def parse_demo(replay)
+    data   = Zlib::Inflate.inflate(replay[16..-1])
+    header = {level: 0, episode:  4, story:   8}[type.downcase.to_sym]
+    offset = {level: 0, episode: 24, story: 108}[type.downcase.to_sym]
+    count  = {level: 1, episode:  5, story:  25}[type.downcase.to_sym]
+
+    lengths = (0..count - 1).map{ |d| _unpack(data[header + 4 * d..header + 4 * (d + 1) - 1]) }
+    lengths = [_unpack(data[1..4])] if type == "Level"
+    (0..count - 1).map{ |d|
+      offset += lengths[d - 1] unless d == 0
+      data[offset..offset + lengths[d] - 1][30..-1]
+    }
+  end
+
+  def encode_demo(replay)
+    replay = [replay] if replay.class == String
+    Zlib::Deflate.deflate(replay.join('&'), 9)
+  end
+
+  def decode_demo(data)
+    demos = Zlib::Inflate.inflate(data).split('&')
+    return (demos.size == 1 ? demos.first : demos)
+  end
+
+  def update_demo
+    replay = get_demo
+    return nil if replay.nil? # replay was not fetched successfully
+    if replay == -1 # replay does not exist
+      ActiveRecord::Base.transaction do
+        self.update(expired: true)
+      end
+      return nil
+    end
+    ActiveRecord::Base.transaction do
+      self.update(
+        demo: encode_demo(parse_demo(replay)),
+        expired: false
+      )
+    end
+  rescue => e
+    if SHOW_ERRORS
+      err("error parsing demo with id #{replay_id}: #{e}")
+    end
+    return nil
   end
 end
