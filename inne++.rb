@@ -217,14 +217,13 @@ def download_demos
     while true
       log("updating demos...")
       ids = Demo.where.not(demo: nil).or(Demo.where(expired: true)).pluck(:id)
-      archives = Archive.where.not(id: ids).pluck(:id, :replay_id)
+      archives = Archive.where.not(id: ids).pluck(:id, :replay_id, :highscoreable_type)
       count = archives.size
       archives.each_with_index do |ar, i|
-        print("Updating demo #{i} / #{count}...".ljust(80, " ") + "\r")
         attempts ||= 0
         ActiveRecord::Base.transaction do
-          demo = Demo.find_or_create_by(replay_id: ar[1])
-          demo.update(id: ar[0])
+          demo = Demo.find_or_create_by(id: ar[0])
+          demo.update(replay_id: ar[1], htype: Demo.htypes[ar[2].downcase])
           demo.update_demo
         end
       rescue => e
@@ -453,7 +452,6 @@ def startup
   log("next score update at #{get_next_update('score')}")
 
   sleep(2) # Let the connection catch up 
-  download_demos
 end
 
 def shutdown

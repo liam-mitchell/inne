@@ -5,7 +5,7 @@ require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
 ATTEMPT_LIMIT   = 20    # redownload retries until we move on to the next level
-SHOW_ERRORS     = false # log common error messages
+SHOW_ERRORS     = true # log common error messages
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
@@ -202,7 +202,7 @@ module HighScore
             date: Time.now
           )
           demo = Demo.find_or_create_by(replay_id: ar.replay_id)
-          demo.update(id: ar.id)
+          demo.update(id: ar.id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
           demo.update_demo
         end
       end
@@ -594,7 +594,7 @@ class Archive < ActiveRecord::Base
   end
 
   def demo
-    Demo.find_by(replay_id: self.replay_id).demo
+    Demo.find(self.d).demo
   end
 
 end
@@ -636,22 +636,19 @@ class Demo < ActiveRecord::Base
   #   * Suicide is 12 (0C).                                                    |
   #   * The first frame is fictional and must be ignored.                      |
   #----------------------------------------------------------------------------#
+  enum htype: [:level, :episode, :story]
 
   def score
-    Archive.find_by(replay_id: self.replay_id)
-  end
-
-  def type
-    score.highscoreable_type
+    Archive.find(self.id)
   end
 
   def qt
-    case type
-    when "Level"
+    case htype.to_sym
+    when :level
       0
-    when "Episode"
+    when :episode
       1
-    when "Story"
+    when :story
       4
     else
       -1 # error checking
@@ -671,7 +668,7 @@ class Demo < ActiveRecord::Base
       break if get_last_steam_id == initial_id
       response = Net::HTTP.get_response(demo_uri(get_last_steam_id))
     end
-    return -1 if response.code.to_i == 200 && response.body.empty? # replay does not exist
+    return 1 if response.code.to_i == 200 && response.body.empty? # replay does not exist
     return nil if response.body == '-1337'
     raise "502 Bad Gateway" if response.code.to_i == 502
     response.body
@@ -688,12 +685,12 @@ class Demo < ActiveRecord::Base
 
   def parse_demo(replay)
     data   = Zlib::Inflate.inflate(replay[16..-1])
-    header = {level: 0, episode:  4, story:   8}[type.downcase.to_sym]
-    offset = {level: 0, episode: 24, story: 108}[type.downcase.to_sym]
-    count  = {level: 1, episode:  5, story:  25}[type.downcase.to_sym]
+    header = {level: 0, episode:  4, story:   8}[htype.to_sym]
+    offset = {level: 0, episode: 24, story: 108}[htype.to_sym]
+    count  = {level: 1, episode:  5, story:  25}[htype.to_sym]
 
     lengths = (0..count - 1).map{ |d| _unpack(data[header + 4 * d..header + 4 * (d + 1) - 1]) }
-    lengths = [_unpack(data[1..4])] if type == "Level"
+    lengths = [_unpack(data[1..4])] if htype.to_sym == :level
     (0..count - 1).map{ |d|
       offset += lengths[d - 1] unless d == 0
       data[offset..offset + lengths[d] - 1][30..-1]
@@ -713,7 +710,7 @@ class Demo < ActiveRecord::Base
   def update_demo
     replay = get_demo
     return nil if replay.nil? # replay was not fetched successfully
-    if replay == -1 # replay does not exist
+    if replay == 1 # replay does not exist
       ActiveRecord::Base.transaction do
         self.update(expired: true)
       end

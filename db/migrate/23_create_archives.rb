@@ -15,6 +15,7 @@ class CreateArchives < ActiveRecord::Migration[5.1]
     # sharing the same ID.
     create_table :demos do |t|
       t.integer :replay_id
+      t.integer :htype, limit: 1
       t.binary :demo
       t.boolean :expired
     end
