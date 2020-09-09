@@ -898,62 +898,6 @@ def dump(event)
   event << "I dumped some things to the log for you to look at."
 end
 
-def test(event)
-  base = Time.new(2020, 9, 3, 0, 0, 0, "+00:00").to_i # when archiving begun
-  time = [Time.now.to_i - 7 * 24 * 60 * 60, base].max
-  now  = Time.now.to_i
-  pad  = [2, DEFAULT_PADDING, 6, 6, 6, 5, 4]
-
-  changes = Archive.where("unix_timestamp(date) > #{time}")
-                   .order('date desc')
-                   .map{ |ar| [ar.metanet_id, ar.find_rank(time), ar.find_rank(now), ar.highscoreable, ar.score] }
-                   .group_by{ |s| s[0] }
-                   .map{ |id, scores|
-                         [
-                           id,
-                           scores.group_by{ |s| s[3] }
-                                 .map{ |highscoreable, versions|
-                                       max = versions.map{ |v| v[4] }.max
-                                       versions.select{ |v| v[4] == max }.first
-                                     }
-                         ]
-                       }
-                   .map{ |id, scores|
-                         {
-                           player: Player.find_by(metanet_id: id).name,
-                           points: scores.map{ |s| s[1] - s[2] }.sum,
-                           top20s: scores.select{ |s| s[1] == 20 }.size,
-                           top10s: scores.select{ |s| s[1] > 9 && s[2] <= 9 }.size,
-                           top05s: scores.select{ |s| s[1] > 4 && s[2] <= 4 }.size,
-                           zeroes: scores.select{ |s| s[2] == 0 }.size
-                         }
-                       }
-                   .sort_by{ |p| -p[:points] }
-                   .each_with_index
-                   .map{ |p, i|
-                         values = p.values.prepend(i)
-                         values.each_with_index.map{ |v, j|
-                           s = v.to_s.rjust(pad[j], " ")
-                           s += " |" if [0, 1, 2].include?(j)
-                           s
-                         }.join(" ")
-                       }
-                   .take(20)
-                   .join("\n")
-
-  header = ["", "Player", "Points", "Top20s", "Top10s", "Top5s", "0ths"]
-             .each_with_index
-             .map{ |h, i|
-                   s = h.ljust(pad[i], " ")
-                   s += " |" if [0, 1, 2].include?(i)
-                   s
-                 }
-             .join(" ")
-  sep = "-" * (pad.sum + pad.size + 5)
-  event << "**The highscoring report!** [Last 7 days]"
-  event << "```#{header}\n#{sep}\n#{changes}```"
-end
-
 def send_videos(event)
   videos = parse_videos(event.content)
 
@@ -1048,7 +992,6 @@ def respond(event)
   add_steam_id(event) if msg =~ /my steam id is/i
   send_videos(event) if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   faceswap(event) if msg =~ /faceswap/i
-  test(event) if msg =~ /filipination/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
