@@ -4,6 +4,11 @@ require_relative 'models.rb'
 class UserlevelData < ActiveRecord::Base
 end
 
+class UserlevelScore < ActiveRecord::Base
+  belongs_to :userlevel
+  belongs_to :player
+end
+
 class Userlevel < ActiveRecord::Base
   include HighScore
   # available fields: id,  author, author_id, title, favs, date, tile_data (renamed as tiles), object_data (renamed as objects)
@@ -250,6 +255,15 @@ class Userlevel < ActiveRecord::Base
 
   def scores
     self.get_scores.map{ |score| {score: score['score'] / 1000.0, player: score['user_name']} }
+  end
+
+  def format_scores
+    board = scores
+    pad = board.map{ |s| s[:score] }.max.to_i.to_s.length + 4
+    puts pad
+    board.each_with_index.map{ |s, i|
+      "#{HighScore.format_rank(i)}: #{format_string(s[:player])} - #{"%#{pad}.3f" % [s[:score]]}"
+    }.join("\n")
   end
 
   # Generate a file with the usual userlevel format
@@ -555,9 +569,9 @@ def send_userlevel_search(event)
   end
 
   event << output
-#rescue => e
-#  err(e)
-#  event << "Error downloading maps (server is not responding)."
+rescue => e
+  err(e)
+  event << "Error downloading maps (server is not responding)."
 end
 
 # TODO: When downloading by name is implemented, the way to get the ID in the
@@ -623,13 +637,13 @@ def send_userlevel_scores(event)
     event << "You need to specify the name or the numerical ID of the map (e.g. `userlevel scores for 78414`).\n"
     event << "If you don't know it, you can **search** it (e.g. `userlevel search for \"the end\"`)."
   else
-    map = Userlevel::where(id: id)
-    if map.nil? || map.empty?
+    map = Userlevel.find(id)
+    if map.nil?
       event << "The map with the specified ID is not present in the database."
     else
-      map = map[0]
-      scores = map.scores
-      event << "Scores of userlevel `" + map.title + "` with ID `" + map.id.to_s + "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      output = "Scores of userlevel `" + map.title + "` with ID `" + map.id.to_s
+      output += "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      event << output + "```" + map.format_scores + "```"
     end
   end
 end

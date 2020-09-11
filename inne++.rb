@@ -8,9 +8,9 @@ require_relative 'messages.rb'
 
 require 'byebug'
 
-TEST          = false  # If set to true the bot will swith to the test one.
-DOWNLOAD      = true   # If set to false scores the score download threads won't fire up.
-DEMOS         = true   # Creates thread to download demos
+TEST          = true  # If set to true the bot will swith to the test one.
+DOWNLOAD      = false   # If set to false scores the score download threads won't fire up.
+DEMOS         = false   # Creates thread to download demos
 LOG           = false
 ATTEMPT_LIMIT = 5      # Attempts to redownload each leaderboard before skipping it.
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')

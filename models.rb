@@ -94,6 +94,30 @@ def _unpack(bytes)
   bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
 end
 
+def format_string(str, padding = DEFAULT_PADDING)
+  if SCORE_PADDING > 0 # FIXED padding mode
+    "%-#{"%d" % [SCORE_PADDING]}s" % [str]
+  else                 # VARIABLE padding mode
+    if MAX_PADDING > 0   # maximum padding supplied
+      if padding > 0       # valid padding
+        if padding <= MAX_PADDING 
+          "%-#{"%d" % [padding]}s" % [str]
+        else
+          "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0,MAX_PADDING) : str]
+        end
+      else                 # invalid padding
+        "%-#{"%d" % [DEFAULT_PADDING]}s" % [str]
+      end
+    else                 # maximum padding not supplied
+      if padding > 0       # valid padding
+        "%-#{"%d" % [padding]}s" % [str]
+      else                 # invalid padding
+        "%-#{"%d" % [DEFAULT_PADDING]}s" % [str]
+      end
+    end
+  end
+end
+
 module HighScore
 
   def self.format_rank(rank)
@@ -129,11 +153,13 @@ module HighScore
   end
 
   def scores_uri(steam_id)
-    URI("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{self.class.to_s.downcase}_id=#{self.id.to_s}")
+    klass = self.class == Userlevel ? "level" : self.class.to_s.downcase
+    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}")
   end
 
   def replay_uri(steam_id, replay_id)
-    URI("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}")
+    qt = [Level, Userlevel].include?(self.class) ? 0 : (self.class == Episode ? 1 : 4)
+    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
   end
 
   def get_scores
@@ -146,7 +172,7 @@ module HighScore
       response = Net::HTTP.get(scores_uri(get_last_steam_id))
     end
     return nil if response == '-1337'
-    correct_ties(JSON.parse(response)['scores'])
+    clean_scores(correct_ties(JSON.parse(response)['scores']))
   rescue => e
     if (attempts += 1) < ATTEMPT_LIMIT
       if SHOW_ERRORS
@@ -175,13 +201,20 @@ module HighScore
     retry
   end
 
-  def save_scores(updated)
-    updated = updated.select { |score|
-      limit = TABS[self.class.to_s].map{ |k, v| v[1] }.max
-      TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
+  # Remove hackers and cheaters both by implementing the ignore lists and the score thresholds.
+  def clean_scores(boards)
+    boards.select { |score|
+      if self.class == Userlevel
+        limit = 2 ** 32 - 1
+      else
+        limit = TABS[self.class.to_s].map{ |k, v| v[1] }.max
+        TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
+      end
       !IGNORED_PLAYERS.include?(score['user_name']) && !IGNORED_IDS.include?(score['user_id']) && score['score'] / 1000.0 < limit
     }.uniq { |score| score['user_name'] }
+  end
 
+  def save_scores(updated)
     ActiveRecord::Base.transaction do
       updated.each_with_index do |score, i|
         player = Player.find_or_create_by(metanet_id: score['user_id'])
@@ -435,27 +468,7 @@ class Player < ActiveRecord::Base
   end
 
   def format_name(padding = DEFAULT_PADDING)
-    if SCORE_PADDING > 0 # FIXED padding mode
-      "%-#{"%d" % [SCORE_PADDING]}s" % [name]
-    else                 # VARIABLE padding mode
-      if MAX_PADDING > 0   # maximum padding supplied
-        if padding > 0       # valid padding
-          if padding <= MAX_PADDING
-            "%-#{"%d" % [padding]}s" % [name]
-          else
-            "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? name.slice(0,MAX_PADDING) : name]
-          end
-        else                 # invalid padding
-          "%-#{"%d" % [DEFAULT_PADDING]}s" % [name]
-        end
-      else                 # maximum padding not supplied
-        if padding > 0       # valid padding
-          "%-#{"%d" % [padding]}s" % [name]
-        else                 # invalid padding
-          "%-#{"%d" % [DEFAULT_PADDING]}s" % [name]
-        end
-      end
-    end
+    format_string(name, padding)
   end
 
   def scores_by_type_and_tabs(type, tabs)
