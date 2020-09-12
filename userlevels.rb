@@ -4,13 +4,22 @@ require_relative 'models.rb'
 class UserlevelData < ActiveRecord::Base
 end
 
+# We create aliases "player" and "scores" so we don't have to specify "userlevel_"
 class UserlevelScore < ActiveRecord::Base
+  alias_attribute :player, :userlevel_player
   belongs_to :userlevel
-  belongs_to :player
+  belongs_to :userlevel_player, foreign_key: :player_id
+end
+
+class UserlevelPlayer < ActiveRecord::Base
+  alias_attribute :scores, :userlevel_scores
+  has_many :userlevel_scores
 end
 
 class Userlevel < ActiveRecord::Base
   include HighScore
+  alias_attribute :scores, :userlevel_scores
+  has_many :userlevel_scores
   # available fields: id,  author, author_id, title, favs, date, tile_data (renamed as tiles), object_data (renamed as objects)
 
   # 'pref' is the drawing preference for overlaps, the lower the better
@@ -253,12 +262,8 @@ class Userlevel < ActiveRecord::Base
     Userlevel.decode_objects(UserlevelData.find(self.id).object_data)
   end
 
-  def scores
-    self.get_scores.map{ |score| {score: score['score'] / 1000.0, player: score['user_name']} }
-  end
-
   def format_scores
-    board = scores
+    board = self.get_scores.map{ |score| {score: score['score'] / 1000.0, player: score['user_name']} }
     pad = board.map{ |s| s[:score] }.max.to_i.to_s.length + 4
     puts pad
     board.each_with_index.map{ |s, i|

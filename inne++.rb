@@ -451,7 +451,8 @@ def startup
   log("next story update at #{get_next_update(Story).to_s}")
   log("next score update at #{get_next_update('score')}")
 
-  sleep(2) # Let the connection catch up 
+  sleep(2) # Let the connection catch up
+  Userlevel.find(91797).update_scores
 end
 
 def shutdown

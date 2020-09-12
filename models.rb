@@ -192,7 +192,7 @@ module HighScore
   def clean_scores(boards)
     boards.select { |score|
       if self.class == Userlevel
-        limit = 2 ** 32 - 1
+        limit = 2 ** 32 - 1 # No limit
       else
         limit = TABS[self.class.to_s].map{ |k, v| v[1] }.max
         TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
@@ -204,7 +204,7 @@ module HighScore
   def save_scores(updated)
     ActiveRecord::Base.transaction do
       updated.each_with_index do |score, i|
-        player = Player.find_or_create_by(metanet_id: score['user_id'])
+        player = (self.class == Userlevel ? UserlevelPlayer : Player).find_or_create_by(metanet_id: score['user_id'])
         player.update(name: score['user_name'].force_encoding('UTF-8'))
         scores.find_or_create_by(rank: i).update(
           score: score['score'] / 1000.0,
@@ -212,7 +212,7 @@ module HighScore
           player: player,
           tied_rank: updated.find_index { |s| s['score'] == score['score'] }
         )
-        if Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
+        if self.class != Userlevel && Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
           ar = Archive.create(
             replay_id: score['replay_id'].to_i,
             player: Player.find_by(metanet_id: score['user_id']),
