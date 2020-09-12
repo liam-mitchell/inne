@@ -51,7 +51,7 @@ IGNORED_PLAYERS = [
   "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
   "Floof The Goof",
   "Prismo",
-  "Mishu",
+#  "Mishu",
   "dimitry008",
   "Chara",
   "test8378",
@@ -60,7 +60,7 @@ IGNORED_PLAYERS = [
 
 # Problematic hackers? We get rid of them by banning their user IDs
 IGNORED_IDS = [
-  115572, # Mishu
+#  115572, # Mishu
   201322, # dimitry008
   146275, # Puce
   253161, # Chara
@@ -124,32 +124,19 @@ module HighScore
     "#{rank < 10 ? '0' : ''}#{rank}"
   end
 
-  def self.spreads(n, type, tabs)
-    spreads = {}
-    scores = tabs.empty? ? type.all : type.where(tab: tabs)
-
-    scores.each do |elem|
-      spread = elem.spread(n)
-      if !spread.nil?
-        spreads[elem.name] = spread
+  def self.spreads(n, type, tabs, player = nil)
+    (tabs.empty? ? type.all : type.where(tab: tabs)).includes(scores: [:player]).map{ |s|
+      if !s.scores[n].score.nil? && (player.nil? ? true : s.scores[0].player.name == player)
+        [s.name, s.scores[0].score - s.scores[n].score, s.scores[0].player.name]
       end
-    end
-
-    spreads
+    }.compact
   end
 
   def self.ties(type, tabs)
-    ties = []
-    scores = tabs.empty? ? type.all : type.where(tab: tabs)
-
-    scores.each do |elem|
-      tie_count = elem.tie_count
-      if !tie_count.nil? && tie_count >= 3
-        ties << [elem, tie_count, elem.scores.size]
-      end
-    end
-
-    ties
+    (tabs.empty? ? type.all : type.where(tab: tabs)).includes(:scores).map{ |h|
+      ties = h.scores.select{ |s| s.score == h.scores[0].score }.size
+      [h, ties, h.scores.size] unless ties < 3
+    }.compact
   end
 
   def scores_uri(steam_id)
@@ -287,14 +274,6 @@ module HighScore
     score_hash.sort_by{ |s| [-s['score'], s['replay_id']] }
   end
 
-  def spread(n)
-    scores.find_by(rank: n).spread unless !scores.exists?(rank: n)
-  end
-
-  def tie_count
-    scores.take_while{ |s| s.tie }.count
-  end
-
   def max_name_length
     scores.map{ |s| s.player.name.length }.max
   end
@@ -402,14 +381,6 @@ class Score < ActiveRecord::Base
     [result.sum, result.count]
   end
 
-  def spread
-    highscoreable.scores.find_by(rank: 0).score - score
-  end
-
-  def tie
-    highscoreable.scores.find_by(rank: 0).score == score
-  end
-
   def format(name_padding = DEFAULT_PADDING, score_padding = 0)
     "#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}"
   end
@@ -471,14 +442,14 @@ class Player < ActiveRecord::Base
     format_string(name, padding)
   end
 
-  def scores_by_type_and_tabs(type, tabs)
+  def scores_by_type_and_tabs(type, tabs, include = false)
     ret = type ? scores.where(highscoreable_type: type.to_s) : scores.where(highscoreable_type: ["Level", "Episode"])
     ret = tabs.empty? ? ret : ret.includes(:level).where(levels: {tab: tabs}) + ret.includes(:episode).where(episodes: {tab: tabs}) + ret.includes(:story).where(stories: {tab: tabs})
-    ret
+    include ? ret.includes(highscoreable: [:scores]) : ret
   end
 
-  def top_ns(n, type, tabs, ties)
-    scores_by_type_and_tabs(type, tabs).select do |s|
+  def top_ns(n, type, tabs, ties, include = false)
+    scores_by_type_and_tabs(type, tabs, include).select do |s|
       (ties ? s.tied_rank : s.rank) < n
     end
   end
@@ -529,6 +500,16 @@ class Player < ActiveRecord::Base
 
   def total_score(type, tabs)
     scores_by_type_and_tabs(type, tabs).pluck(:score).reduce(0, :+)
+  end
+
+  def average_lead(type, tabs)
+    scores = top_ns(1, type, tabs, false, true)
+    count = scores.size
+    avg = count == 0 ? 0 : scores.map{ |s|
+      scores = s.highscoreable.scores.map(&:score)
+      scores[0] - scores[1]
+    }.sum.to_f / count
+    avg || 0
   end
 end
 

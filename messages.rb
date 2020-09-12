@@ -205,6 +205,9 @@ def send_rankings(event)
       players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
       rankings = players.rankings { |p| p.average_points(type, tabs) }
       header = "average point rankings "
+    elsif msg =~ /lead/i
+      rankings = Player.rankings { |p| p.average_lead(type, tabs) }
+      header = "average lead rankings "
     else
       players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
       rankings = players.rankings { |p| p.average_points(type, tabs) }.map{ |p| [p[0], 20 - p[1]] }
@@ -259,6 +262,7 @@ def send_spreads(event)
   n = (msg[/([0-9][0-9]?)(st|nd|th)/, 1] || 1).to_i
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
+  player = msg[/for (.*)[\.\?]?/i, 1]
   smallest = !!(msg =~ /smallest/)
 
   if n == 0
@@ -266,12 +270,13 @@ def send_spreads(event)
     return
   end
 
-  spreads = HighScore.spreads(n, type, tabs)
-  padding = spreads.map{ |level, spread| spread }.max.to_i.to_s.length + 4
+  spreads = HighScore.spreads(n, type, tabs, player)
+  padding = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
 
-  spreads = spreads.sort_by { |level, spread| (smallest ? spread : -spread) }
+  spreads = spreads.sort_by { |s| (smallest ? s[1] : -s[1]) }
             .take(NUM_ENTRIES)
-            .map { |s| "#{"%-10s" % s[0]} - #{"%#{padding}.3f" % [s[1]]}"}
+            .each_with_index
+            .map { |s, i| "#{"%02d" % i}: #{"%-10s" % s[0]} - #{"%#{padding}.3f" % s[1]} - #{s[2]}"}
             .join("\n")
 
   spread = smallest ? "smallest" : "largest"
@@ -279,7 +284,7 @@ def send_spreads(event)
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
 
-  event << "#{tabs}#{type}s with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
+  event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
 def send_scores(event)
@@ -560,6 +565,18 @@ def send_average_rank(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
   event << "#{player.name} has an average #{type} #{tabs}rank of #{"%.3f" % [20 - average]}."
+end
+
+def send_average_lead(event)
+  msg = event.content
+  player = parse_player(msg, event.user.name)
+  type = parse_type(msg)
+  tabs = parse_tabs(msg)
+  average = player.average_lead(type, tabs)
+
+  type = format_type(type).downcase
+  tabs = format_tabs(tabs)
+  event << "#{player.name} has an average #{type} #{tabs}lead of #{"%.3f" % [average]}."
 end
 
 def send_splits(event)
@@ -952,7 +969,6 @@ def respond(event)
   if !msg[NAME_PATTERN, 2]
     send_rankings(event) if msg =~ /rank/i && msg !~ /history/i
     send_history(event) if msg =~ /history/i && msg !~ /rank/i
-    send_spreads(event) if msg =~ /spread/i
     send_diff(event) if msg =~ /diff/i
     send_community(event) if msg =~ /community/i
     send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
@@ -972,8 +988,10 @@ def respond(event)
   send_episode_time(event) if msg =~ /(when|next).*(episode|eotw)/i
   send_story_time(event) if msg =~ /(when|next).*(story|column|cotm)/i
   send_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
+  send_spreads(event) if msg =~ /spread/i
   send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
   send_average_rank(event) if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
+  send_average_lead(event) if msg =~ /average/i && msg =~ /lead/i && !!msg[NAME_PATTERN, 2]
   send_scores(event) if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
   send_total_score(event) if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
   send_top_n_count(event) if msg =~ /how many/i
