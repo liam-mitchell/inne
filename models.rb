@@ -5,7 +5,7 @@ require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
 ATTEMPT_LIMIT   = 20    # redownload retries until we move on to the next level
-SHOW_ERRORS     = true # log common error messages
+SHOW_ERRORS     = false # log common error messages
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0

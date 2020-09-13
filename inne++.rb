@@ -3,18 +3,27 @@ require 'json'
 require 'net/http'
 require 'thread'
 require 'yaml'
+require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-require 'byebug'
-
-TEST          = true  # If set to true the bot will swith to the test one.
-DOWNLOAD      = false   # If set to false scores the score download threads won't fire up.
-DEMOS         = false   # Creates thread to download demos
-LOG           = false
-ATTEMPT_LIMIT = 5      # Attempts to redownload each leaderboard before skipping it.
+TEST          = false # Switch to the local test bot
+LOG           = false # Export logs and errors into external file
+ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG        = YAML.load_file('db/config.yml')[DATABASE_ENV]
+
+DO_NOTHING        = false # 'true' sets all the following ones to false
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
+UPDATE_STATUS     = false # Thread to regularly update the bot's status
+UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
+UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
+UPDATE_LEVEL      = false # Thread to regularly publish level of the day
+UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
+UPDATE_STORY      = false # Thread to regularly publish column of the month
+UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
+REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
+REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
 STATUS_UPDATE_FREQUENCY    = CONFIG['status_update_frequency']    ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY = CONFIG['highscore_update_frequency'] ||      24 * 60 * 60 # daily
@@ -22,8 +31,11 @@ DEMO_UPDATE_FREQUENCY      = CONFIG['demo_update_frequency']      ||      24 * 6
 LEVEL_UPDATE_FREQUENCY     = CONFIG['level_update_frequency']     ||      24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY   = CONFIG['episode_update_frequency']   ||  7 * 24 * 60 * 60 # weekly
 STORY_UPDATE_FREQUENCY     = CONFIG['story_update_frequency']     || 30 * 24 * 60 * 60 # monthly (roughly)
+USERLEVEL_SCORE_FREQUENCY  = CONFIG['userlevel_score_frequency']  ||      24 * 60 * 60 # daily
 REPORT_UPDATE_FREQUENCY    = CONFIG['report_update_frequency']    ||      24 * 60 * 60 # daily
-REPORT_PERIOD              = CONFIG['report_period']              ||  7 * 24 * 60 * 60 # last 7 days
+REPORT_UPDATE_SIZE         = CONFIG['report_period']              ||  7 * 24 * 60 * 60 # last 7 days
+USERLEVEL_REPORT_FREQUENCY = CONFIG['userlevel_report_frequency'] ||      24 * 60 * 60 # daily
+USERLEVEL_REPORT_SIZE      = CONFIG['userlevel_report_size']      ||               500 # last 500 maps
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
@@ -84,6 +96,14 @@ def update_last_steam_id
   set_last_steam_id(next_user.steam_id) if !next_user.nil?
 end
 
+# This corrects a datetime in the database when it's out of
+# phase (e.g. after a long downtime of the bot).
+def correct_time(time, frequency)
+  time -= frequency while time > Time.now
+  time += frequency while time < Time.now
+  time
+end
+
 # Periodically perform several useful tasks:
 # - Update scores for lotd, eotw and cotm.
 # - Update database with newest userlevels from all playing modes.
@@ -125,7 +145,7 @@ def download_high_scores
           o.update_scores
         rescue => e
           err("error updating high scores for #{o.class.to_s.downcase} #{o.id.to_s}: #{e}")
-          ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
+          ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
         end
       end
 
@@ -192,12 +212,9 @@ def download_high_scores
         end
       end
 
-      next_score_update = get_next_update('score')
-      # this will ensure that no matter what it says on the database, the correct time of next update is computed
-      next_score_update -= HIGHSCORE_UPDATE_FREQUENCY while next_score_update > Time.now
-      next_score_update += HIGHSCORE_UPDATE_FREQUENCY while next_score_update < Time.now
-      delay = next_score_update - Time.now
+      next_score_update = correct_time(get_next_update('score'), HIGHSCORE_UPDATE_FREQUENCY)
       set_next_update('score', next_score_update)
+      delay = next_score_update - Time.now
 
       log("updated rankings, next score update in #{delay} seconds")
 
@@ -231,11 +248,9 @@ def download_demos
         ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
       end
 
-      next_demo_update = get_next_update('demo')
-      next_demo_update -= DEMO_UPDATE_FREQUENCY while next_demo_update > Time.now
-      next_demo_update += DEMO_UPDATE_FREQUENCY while next_demo_update < Time.now
-      delay = next_demo_update - Time.now
+      next_demo_update = correct_time(get_next_update('demo'), DEMO_UPDATE_FREQUENCY)
       set_next_update('demo', next_demo_update)
+      delay = next_demo_update - Time.now
       log("updated demos, next demo update in #{delay} seconds")
       sleep(delay) unless delay < 0
     end
@@ -253,7 +268,7 @@ def send_report
   end
 
   base = Time.new(2020, 9, 3, 0, 0, 0, "+00:00").to_i # when archiving begun
-  time = [Time.now.to_i - REPORT_PERIOD, base].max
+  time = [Time.now.to_i - REPORT_UPDATE_SIZE, base].max
   now  = Time.now.to_i
   pad  = [2, DEFAULT_PADDING, 6, 6, 6, 5, 4]
 
@@ -312,16 +327,55 @@ def start_report
   sleep(5)
   begin
     while true
-      next_report_update = get_next_update('report')
-      next_report_update -= REPORT_UPDATE_FREQUENCY while next_report_update > Time.now
-      next_report_update += REPORT_UPDATE_FREQUENCY while next_report_update < Time.now
-      delay = next_report_update - Time.now
+      next_report_update = correct_time(get_next_update('report'), REPORT_UPDATE_FREQUENCY)
       set_next_update('report', next_report_update)
+      delay = next_report_update - Time.now
       sleep(delay) unless delay < 0
       next if !send_report
     end
   rescue => e
     err("error sending highscoring report: #{e}")
+    retry
+  end
+end
+
+def download_userlevel_scores
+  ActiveRecord::Base.establish_connection(CONFIG)
+  sleep(5)
+  begin
+    while true
+      next_userlevel_score_update = correct_time(get_next_update('userlevel_score'), USERLEVEL_SCORE_FREQUENCY)
+      set_next_update('userlevel_score', next_userlevel_score_update)
+      delay = next_userlevel_score_update - Time.now
+      sleep(delay) unless delay < 0
+      log("updating userlevel scores...")
+
+      # Remove all initial excess userlevel scores
+      amount = UserlevelScore.distinct.count(:userlevel_id) - USERLEVEL_REPORT_SIZE
+      if amount > 0
+        UserlevelScore.pluck(:userlevel_id).uniq.sort.take(USERLEVEL_REPORT_SIZE).each{ |id|
+          UserlevelScore.where(userlevel_id: id).destroy_all
+        }
+      end
+
+      # Update scores for the desired amount of userlevels
+      Userlevel.where(mode: :solo).order(id: :desc).take(USERLEVEL_REPORT_SIZE).each do |u|
+        attempts ||= 0
+        u.update_scores
+        # Only remove older ones when we surpass the limit again, to prevent ending
+        # up with less userlevels than desired.
+        if UserlevelScore.distinct.count(:userlevel_id) > USERLEVEL_REPORT_SIZE
+          min = UserlevelScore.minimum(:userlevel_id).to_i
+          UserlevelScore.where(userlevel_id: min).destroy_all
+        end
+      rescue => e
+        err("error updating highscores for userlevel #{u.id}: #{e}")
+        ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
+      end
+      log("updated userlevel scores")
+    end
+  rescue => e
+    err("error updating userlevel highscores: #{e}")
     retry
   end
 end
@@ -396,30 +450,27 @@ def start_level_of_the_day
     episode_day = false
     story_day = false
     while true
-      log("starting level of the day...")
-      # Autocorrect bad update times
-      next_level_update = get_next_update(Level)
-      next_level_update -= LEVEL_UPDATE_FREQUENCY while next_level_update > Time.now
-      next_level_update += LEVEL_UPDATE_FREQUENCY while next_level_update < Time.now
-      next_episode_update = get_next_update(Episode)
-      next_episode_update -= EPISODE_UPDATE_FREQUENCY while next_episode_update > Time.now
-      next_episode_update += EPISODE_UPDATE_FREQUENCY while next_episode_update < Time.now
+      next_level_update = correct_time(get_next_update(Level), LEVEL_UPDATE_FREQUENCY)
+      next_episode_update = correct_time(get_next_update(Episode), EPISODE_UPDATE_FREQUENCY)
       set_next_update(Level, next_level_update)
       set_next_update(Episode, next_episode_update)
-
       delay = next_level_update - Time.now
       sleep(delay) unless delay < 0
-      next if !send_channel_next(Level)
-      log("sent next level, next update at #{get_next_update(Level).to_s}")
-      is_story_time = get_next_update(Story) < Time.now
 
-      if Time.now > next_episode_update
+     if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
+        log("starting level of the day...")
+        next if !send_channel_next(Level)
+        log("sent next level, next update at #{get_next_update(Level).to_s}")
+      end
+
+      if (UPDATE_EPISODE || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
         sleep(30) # let discord catch up
         send_channel_next(Episode)
         episode_day = true
         log("sent next episode, next update at #{get_next_update(Episode).to_s}")
       end
-      if is_story_time
+
+      if (UPDATE_STORY || DO_EVERYTHING) && !DO_NOTHING && get_next_update(Story) < Time.now
         # we add days until we get to the first day of the next month
         next_story_update = get_next_update(Story)
         month = next_story_update.month
@@ -452,7 +503,6 @@ def startup
   log("next score update at #{get_next_update('score')}")
 
   sleep(2) # Let the connection catch up
-  Userlevel.find(91797).update_scores
 end
 
 def shutdown
@@ -484,16 +534,13 @@ puts "the bot's URL is #{$bot.invite_url}"
 startup
 trap("INT") { $kill_threads = true }
 
-if DOWNLOAD
-  $threads = [
-    Thread.new { start_level_of_the_day },
-    Thread.new { download_high_scores },
-    Thread.new { update_status },
-    Thread.new { start_report }
-  ]
-  $threads << Thread.new { download_demos } if DEMOS
-end
-
+$threads = []
+$threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { download_high_scores }      if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { download_demos }            if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_level_of_the_day }
+$threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 
 $bot.run(true)
 

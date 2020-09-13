@@ -20,7 +20,18 @@ class Userlevel < ActiveRecord::Base
   include HighScore
   alias_attribute :scores, :userlevel_scores
   has_many :userlevel_scores
-  # available fields: id,  author, author_id, title, favs, date, tile_data (renamed as tiles), object_data (renamed as objects)
+  enum mode: [:solo, :coop, :race]
+  # Attributes:
+  #   id        - ID of the userlevel in Metanet's database (and ours)
+  #   author    - Map author name
+  #   author_id - Map author user ID in Metanet's database
+  #   title     - Map title
+  #   favs      - Number of favourites / ++s
+  #   date      - Date of publishing [dd/mm/yy hh:mm] UTC times
+  #   mode      - Playing mode [0 - Solo, 1 - Coop, 2 - Race]
+  #   tiles     - Tile data compressed in zlib, stored in userlevel_data
+  #   objects   - Object data compressed in zlib, stored in userlevel_data
+  # Note: For details about how map data is stored, see the encode_ and decode_ methods below.
 
   # 'pref' is the drawing preference for overlaps, the lower the better
   # 'att' is the number of attributes they have in the old format (in the new one it's always 5)
