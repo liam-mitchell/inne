@@ -4,8 +4,8 @@ require 'net/http'
 require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
-ATTEMPT_LIMIT   = 20    # redownload retries until we move on to the next level
-SHOW_ERRORS     = false # log common error messages
+RETRIES         = 20    # redownload retries until we move on to the next level
+SHOW_ERRORS     = true # log common error messages
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
@@ -51,7 +51,7 @@ IGNORED_PLAYERS = [
   "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
   "Floof The Goof",
   "Prismo",
-#  "Mishu",
+  "Mishu",
   "dimitry008",
   "Chara",
   "test8378",
@@ -60,7 +60,7 @@ IGNORED_PLAYERS = [
 
 # Problematic hackers? We get rid of them by banning their user IDs
 IGNORED_IDS = [
-#  115572, # Mishu
+  115572, # Mishu
   201322, # dimitry008
   146275, # Puce
   253161, # Chara
@@ -152,16 +152,17 @@ module HighScore
   def get_scores
     initial_id = get_last_steam_id
     attempts ||= 0
-    response = Net::HTTP.get(scores_uri(initial_id))
-    while response == '-1337'
+    response = Net::HTTP.get_response(scores_uri(initial_id))
+    while response.body == '-1337'
       update_last_steam_id
       break if get_last_steam_id == initial_id
-      response = Net::HTTP.get(scores_uri(get_last_steam_id))
+      response = Net::HTTP.get_response(scores_uri(get_last_steam_id))
     end
-    return nil if response == '-1337'
-    clean_scores(correct_ties(JSON.parse(response)['scores']))
+    return nil if response.body == '-1337'
+    raise "502 Bad Gateway" if response.code.to_i == 502
+    clean_scores(correct_ties(JSON.parse(response.body)['scores']))
   rescue => e
-    if (attempts += 1) < ATTEMPT_LIMIT
+    if (attempts += 1) < RETRIES
       if SHOW_ERRORS
         err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
       end
@@ -173,14 +174,15 @@ module HighScore
 
   def get_replay(replay_id)
     initial_id = get_last_steam_id
-    response = Net::HTTP.get(replay_uri(initial_id, replay_id))
-    while response == '-1337'
+    response = Net::HTTP.get_response(replay_uri(initial_id, replay_id))
+    while response.body == '-1337'
       update_last_steam_id
       break if get_last_steam_id == initial_id
-      response = Net::HTTP.get(replay_uri(get_last_steam_id, replay_id))
+      response = Net::HTTP.get_response(replay_uri(get_last_steam_id, replay_id))
     end
-    return nil if response == '-1337'
-    response
+    return nil if response.body == '-1337'
+    raise "502 Bad Gateway" if response.code.to_i == 502
+    response.body
   rescue => e
     if SHOW_ERRORS
       err("error getting replay with id #{replay_id}: #{e}")
@@ -221,8 +223,8 @@ module HighScore
             metanet_id: score['user_id'].to_i, # future-proof the db
             date: Time.now
           )
-          demo = Demo.find_or_create_by(replay_id: ar.replay_id)
-          demo.update(id: ar.id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
+          demo = Demo.find_or_create_by(id: ar.id)
+          demo.update(replay_id: ar.replay_id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
           demo.update_demo
         end
       end
@@ -667,7 +669,7 @@ class Demo < ActiveRecord::Base
     raise "502 Bad Gateway" if response.code.to_i == 502
     response.body
   rescue => e
-    if (attempts += 1) < ATTEMPT_LIMIT
+    if (attempts += 1) < RETRIES
       if SHOW_ERRORS
         err("error getting demo with id #{replay_id}: #{e}")
       end

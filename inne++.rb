@@ -7,15 +7,15 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = false # Switch to the local test bot
+TEST          = true # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG        = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
-UPDATE_STATUS     = false # Thread to regularly update the bot's status
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
+UPDATE_STATUS     = true # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
 UPDATE_LEVEL      = false # Thread to regularly publish level of the day
@@ -116,7 +116,7 @@ def update_status
     get_current(Level).update_scores
     get_current(Episode).update_scores
     get_current(Story).update_scores
-    (0..2).each{ |mode| Userlevel.browse(10, 0, mode, true) }
+    (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
     sleep(STATUS_UPDATE_FREQUENCY)
   end
@@ -131,10 +131,6 @@ def download_high_scores
   begin
     while true
       log("updating high scores...")
-
-      #Level.all.each(&:update_scores)
-      #Episode.all.each(&:update_scores)
-      #Story.all.each(&:update_scores)
 
       # We handle exceptions within each instance so that they don't force
       # a retry of the whole function.
@@ -240,7 +236,7 @@ def download_demos
         attempts ||= 0
         ActiveRecord::Base.transaction do
           demo = Demo.find_or_create_by(id: ar[0])
-          demo.update(replay_id: ar[1], htype: Demo.htypes[ar[2].downcase])
+          demo.update(replay_id: ar[1], htype: Demo.htypes[ar[2].to_s.downcase])
           demo.update_demo
         end
       rescue => e

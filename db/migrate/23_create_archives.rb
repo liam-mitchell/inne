@@ -19,10 +19,12 @@ class CreateArchives < ActiveRecord::Migration[5.1]
       t.binary :demo
       t.boolean :expired
     end
+    # Make sure "htype" is a tinyint(4) in MySQL, because tinyint(1) are
+    # interpreted as booleans by default and we don't want to override that.
 
     # Demos will be downloaded in parallel, we give them their own timer.
     ActiveRecord::Base.transaction do
-      GlobalProperty.find_or_create_by(key: 'next_demo_update', value: (Time.now + 86400).to_s)
+      GlobalProperty.find_or_create_by(key: 'next_demo_update').update(value: (Time.now + 86400).to_s)
     end
   end
 end
