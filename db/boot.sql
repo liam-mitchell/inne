@@ -36,3 +36,12 @@ WHERE `key` = 'next_demo_update';
 UPDATE global_properties
 SET `value` = '2020-08-01 23:00:00 +0200'
 WHERE `key` = 'next_report_update';
+
+UPDATE global_properties
+SET `value` = '2020-08-01 23:00:00 +0200'
+WHERE `key` = 'next_userlevel_score_update';
+
+UPDATE global_properties
+SET `value` = '2020-08-01 23:00:00 +0200'
+WHERE `key` = 'next_userlevel_report_update';
+

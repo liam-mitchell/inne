@@ -7,15 +7,15 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = true # Switch to the local test bot
+TEST          = false # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG        = YAML.load_file('db/config.yml')[DATABASE_ENV]
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false # 'true' sets all the following ones to true
-UPDATE_STATUS     = true # Thread to regularly update the bot's status
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
+UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
 UPDATE_LEVEL      = false # Thread to regularly publish level of the day
@@ -335,6 +335,53 @@ def start_report
   end
 end
 
+def send_userlevel_report
+  log("sending highscoring report...")
+  if $channel.nil?
+    err("not connected to a channel, not sending highscoring report")
+    return false
+  end
+
+  zeroths = UserlevelScore.where(tied_rank: 0)
+                          .group(:player_id)
+                          .order('count_id desc')
+                          .count(:id)
+                          .take(20)
+                          .each_with_index
+                          .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
+                          .join("\n")
+  points = UserlevelScore.all
+                         .group_by{ |s| s.player_id }
+                         .map{ |p, scores| [UserlevelPlayer.find(p).name, scores.map{ |s| 20 - s.rank }.sum] }
+                         .sort_by{ |p, points| -points }
+                         .take(20)
+                         .each_with_index
+                         .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0])} - #{"%3d" % p[1]}" }
+                         .join("\n")
+
+  $channel.send_message("**Uselevel highscoring report [Newest 500 maps]**")
+  $channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroths}```")
+  $channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
+  return true
+end
+
+def start_userlevel_report
+  ActiveRecord::Base.establish_connection(CONFIG)
+  sleep(5)
+  begin
+    while true
+      next_userlevel_report_update = correct_time(get_next_update('userlevel_report'), USERLEVEL_REPORT_FREQUENCY)
+      set_next_update('userlevel_report', next_userlevel_report_update)
+      delay = next_userlevel_report_update - Time.now
+      sleep(delay) unless delay < 0
+      next if !send_userlevel_report
+    end
+  rescue => e
+    err("error sending userlevel highscoring report: #{e}")
+    retry
+  end
+end
+
 def download_userlevel_scores
   ActiveRecord::Base.establish_connection(CONFIG)
   sleep(5)
@@ -537,6 +584,7 @@ $threads << Thread.new { download_demos }            if (UPDATE_DEMOS      || DO
 $threads << Thread.new { start_level_of_the_day }
 $threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
+#$threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 
 $bot.run(true)
 

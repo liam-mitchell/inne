@@ -208,6 +208,8 @@ module HighScore
       updated.each_with_index do |score, i|
         player = (self.class == Userlevel ? UserlevelPlayer : Player).find_or_create_by(metanet_id: score['user_id'])
         player.update(name: score['user_name'].force_encoding('UTF-8'))
+        scoretime = score['score'] / 1000.0
+        scoretime = (scoretime * 60.0).round if self.class == Userlevel
         scores.find_or_create_by(rank: i).update(
           score: score['score'] / 1000.0,
           replay_id: score['replay_id'].to_i,
