@@ -7,7 +7,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = true # Switch to the local test bot
+TEST          = false # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
@@ -17,7 +17,7 @@ CHANNEL_ID    = 210778111594332181 # #highscores
 USERLEVELS_ID = 221721273405800458 # #mapping
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false # 'true' sets all the following ones to true
+DO_EVERYTHING     = true # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
@@ -26,7 +26,7 @@ UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = true # Thread to regularly post userlevels' highscoring report
+REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
 STATUS_UPDATE_FREQUENCY    = CONFIG['status_update_frequency']    ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY = CONFIG['highscore_update_frequency'] ||      24 * 60 * 60 # daily
@@ -112,9 +112,6 @@ end
 # - Update database with newest userlevels from all playing modes.
 # - Update bot's status (it only lasts so much).
 def update_status
-  ActiveRecord::Base.establish_connection(CONFIG)
-  sleep(5) # Letting the database catch up
-
   while(true)
     get_current(Level).update_scores
     get_current(Episode).update_scores
@@ -128,9 +125,6 @@ rescue
 end
 
 def download_high_scores
-  ActiveRecord::Base.establish_connection(CONFIG)
-  sleep(5) # Letting the database catch up
-
   begin
     while true
       log("updating high scores...")
@@ -226,9 +220,6 @@ def download_high_scores
 end
 
 def download_demos
-  ActiveRecord::Base.establish_connection(CONFIG)
-  sleep(5)
-
   begin
     while true
       log("updating demos...")
@@ -322,8 +313,6 @@ def send_report
 end
 
 def start_report
-  ActiveRecord::Base.establish_connection(CONFIG)
-  sleep(5)
   begin
     while true
       next_report_update = correct_time(get_next_update('report'), REPORT_UPDATE_FREQUENCY)
@@ -339,10 +328,10 @@ def start_report
 end
 
 def send_userlevel_report
-  log("sending highscoring report...")
+  log("sending userlevel highscoring report...")
   if $channel.nil?
     err("not connected to a channel, not sending highscoring report")
-    #return false
+    return false
   end
 
   zeroths = UserlevelScore.where(tied_rank: 0)
@@ -369,8 +358,6 @@ def send_userlevel_report
 end
 
 def start_userlevel_report
-  ActiveRecord::Base.establish_connection(CONFIG)
-  sleep(5)
   begin
     while true
       next_userlevel_report_update = correct_time(get_next_update('userlevel_report'), USERLEVEL_REPORT_FREQUENCY)
@@ -386,8 +373,6 @@ def start_userlevel_report
 end
 
 def download_userlevel_scores
-  ActiveRecord::Base.establish_connection(CONFIG)
-  sleep(5)
   begin
     while true
       next_userlevel_score_update = correct_time(get_next_update('userlevel_score'), USERLEVEL_SCORE_FREQUENCY)
@@ -489,9 +474,6 @@ def send_channel_next(type)
 end
 
 def start_level_of_the_day
-  ActiveRecord::Base.establish_connection(CONFIG)
-  sleep(5) # Letting the database catch up
-
   begin
     episode_day = false
     story_day = false
@@ -528,8 +510,8 @@ def start_level_of_the_day
         log("sent next story, next update at #{get_next_update(Story).to_s}")
       end
 
-      if !episode_day then send_channel_reminder end
-      if !story_day then send_channel_story_reminder end
+      if !episode_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_reminder end
+      if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
       episode_day = false
       story_day = false
     end
@@ -541,13 +523,11 @@ end
 
 def startup
   ActiveRecord::Base.establish_connection(CONFIG)
-
   log("initialized")
   log("next level update at #{get_next_update(Level).to_s}")
   log("next episode update at #{get_next_update(Episode).to_s}")
   log("next story update at #{get_next_update(Story).to_s}")
   log("next score update at #{get_next_update('score')}")
-
   sleep(2) # Let the connection catch up
 end
 
@@ -563,8 +543,8 @@ end
 
 #$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
 $bot = Discordrb::Bot.new token: (TEST ? ENV['TOKEN_TEST'] : ENV['TOKEN']), client_id: CONFIG['client_id']
-$channel = TEST ? nil : $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
-$mapping_channel = TEST ? nil : $bot.servers[SERVER_ID].channels.find{ |c| c.id == USERLEVELS_ID }
+$channel = nil
+$mapping_channel = nil
 
 $bot.mention do |event|
   respond(event)
@@ -581,6 +561,15 @@ puts "the bot's URL is #{$bot.invite_url}"
 startup
 trap("INT") { $kill_threads = true }
 
+$bot.run(true)
+puts "Established connection to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}."
+if !TEST
+  $channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
+  $mapping_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == USERLEVELS_ID }
+  puts "Main channel: #{$channel.name}." if !$channel.nil?
+  puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
+end
+
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { download_high_scores }      if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING
@@ -589,11 +578,6 @@ $threads << Thread.new { start_level_of_the_day }
 $threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
-
-$bot.run(true)
-puts "Established connection to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}."
-puts "Main channel: #{$channel.name}." if !$channel.nil?
-puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
 
 wd = Thread.new { watchdog }
 wd.join
