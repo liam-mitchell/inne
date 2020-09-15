@@ -815,6 +815,9 @@ def hello(event)
 
   if $channel.nil?
     $channel = event.channel
+    $mapping_channel = event.channel
+    puts "Main channel established: #{$channel.name}." if !$channel.nil?
+    puts "Mapping channel established: #{$mapping_channel.name}." if !$mapping_channel.nil?
     send_times(event)
   end
 end
@@ -824,7 +827,7 @@ def thanks(event)
 end
 
 def faceswap(event)
-  filename = Dir.entries("images/avatars").select { |f| File.file?("images/avatars/" + f) }.sample
+  filename = Dir.entries("images/avatars").select{ |f| File.file?("images/avatars/" + f) }.sample
   file = File.open("images/avatars/" + filename)
   $bot.profile.avatar = file
   file.close
@@ -967,49 +970,49 @@ def respond(event)
 
   # exclusively global methods, this conditional avoids the problem stated in the comment below
   if !msg[NAME_PATTERN, 2]
-    send_rankings(event) if msg =~ /rank/i && msg !~ /history/i
-    send_history(event) if msg =~ /history/i && msg !~ /rank/i
-    send_diff(event) if msg =~ /diff/i
-    send_community(event) if msg =~ /community/i
+    send_rankings(event)    if msg =~ /rank/i && msg !~ /history/i
+    send_history(event)     if msg =~ /history/i && msg !~ /rank/i
+    send_diff(event)        if msg =~ /diff/i
+    send_community(event)   if msg =~ /community/i
     send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
-    send_ownages(event) if msg =~ /ownage/i
-    send_help(event) if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
+    send_ownages(event)     if msg =~ /ownage/i
+    send_help(event)        if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
   end
 
   # on this methods, we will exclude a few problematic words that appear
   # in some level names which would accidentally trigger them
-  hello(event) if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
-  thanks(event) if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
-  dump(event) if msg =~ /dump/i
-  send_level(event) if msg =~ /what.*(level|lotd)/i
-  send_episode(event) if msg =~ /what.*(episode|eotw)/i
-  send_story(event) if msg =~ /what.*(story|column|cotm)/i
-  send_level_time(event) if  msg =~ /(when|next).*(level|lotd)/i
-  send_episode_time(event) if msg =~ /(when|next).*(episode|eotw)/i
-  send_story_time(event) if msg =~ /(when|next).*(story|column|cotm)/i
-  send_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
-  send_spreads(event) if msg =~ /spread/i
+  hello(event)               if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
+  thanks(event)              if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
+  dump(event)                if msg =~ /dump/i
+  send_level(event)          if msg =~ /what.*(level|lotd)/i
+  send_episode(event)        if msg =~ /what.*(episode|eotw)/i
+  send_story(event)          if msg =~ /what.*(story|column|cotm)/i
+  send_level_time(event)     if msg =~ /(when|next).*(level|lotd)/i
+  send_episode_time(event)   if msg =~ /(when|next).*(episode|eotw)/i
+  send_story_time(event)     if msg =~ /(when|next).*(story|column|cotm)/i
+  send_points(event)         if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
+  send_spreads(event)        if msg =~ /spread/i
   send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
-  send_average_rank(event) if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
-  send_average_lead(event) if msg =~ /average/i && msg =~ /lead/i && !!msg[NAME_PATTERN, 2]
-  send_scores(event) if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
-  send_total_score(event) if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
-  send_top_n_count(event) if msg =~ /how many/i
-  send_stats(event) if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
-  send_screenshot(event) if msg =~ /screenshot/i
-  send_suggestions(event) if msg =~ /worst/i && msg !~ /nightmare/i
-  send_list(event) if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
-  send_missing(event) if msg =~ /missing/i
-  send_maxable(event) if msg =~ /maxable/i
-  send_maxed(event) if msg =~ /maxed/i
-  send_level_name(event) if msg =~ /\blevel name\b/i
-  send_level_id(event) if msg =~ /\blevel id\b/i
-  send_analysis(event) if msg =~ /analysis/i
-  send_splits(event) if msg =~ /\bsplits\b/i
-  identify(event) if msg =~ /my name is/i
-  add_steam_id(event) if msg =~ /my steam id is/i
-  send_videos(event) if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
-  faceswap(event) if msg =~ /faceswap/i
+  send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
+  send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && !!msg[NAME_PATTERN, 2]
+  send_scores(event)         if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
+  send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
+  send_top_n_count(event)    if msg =~ /how many/i
+  send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
+  send_screenshot(event)     if msg =~ /screenshot/i
+  send_suggestions(event)    if msg =~ /worst/i && msg !~ /nightmare/i
+  send_list(event)           if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
+  send_missing(event)        if msg =~ /missing/i
+  send_maxable(event)        if msg =~ /maxable/i
+  send_maxed(event)          if msg =~ /maxed/i
+  send_level_name(event)     if msg =~ /\blevel name\b/i
+  send_level_id(event)       if msg =~ /\blevel id\b/i
+  send_analysis(event)       if msg =~ /analysis/i
+  send_splits(event)         if msg =~ /\bsplits\b/i
+  identify(event)            if msg =~ /my name is/i
+  add_steam_id(event)        if msg =~ /my steam id is/i
+  send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
+  faceswap(event)            if msg =~ /faceswap/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't

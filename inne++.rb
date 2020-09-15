@@ -7,14 +7,17 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = false # Switch to the local test bot
+TEST          = true # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG        = YAML.load_file('db/config.yml')[DATABASE_ENV]
+SERVER_ID     = 197765375503368192 # N++ Server
+CHANNEL_ID    = 210778111594332181 # #highscores
+USERLEVELS_ID = 221721273405800458 # #mapping
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
@@ -23,7 +26,7 @@ UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
+REPORT_USERLEVELS = true # Thread to regularly post userlevels' highscoring report
 
 STATUS_UPDATE_FREQUENCY    = CONFIG['status_update_frequency']    ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY = CONFIG['highscore_update_frequency'] ||      24 * 60 * 60 # daily
@@ -339,7 +342,7 @@ def send_userlevel_report
   log("sending highscoring report...")
   if $channel.nil?
     err("not connected to a channel, not sending highscoring report")
-    return false
+    #return false
   end
 
   zeroths = UserlevelScore.where(tied_rank: 0)
@@ -359,9 +362,9 @@ def send_userlevel_report
                          .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0])} - #{"%3d" % p[1]}" }
                          .join("\n")
 
-  $channel.send_message("**Uselevel highscoring report [Newest 500 maps]**")
-  $channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroths}```")
-  $channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
+  $mapping_channel.send_message("**Uselevel highscoring report [Newest 500 maps]**")
+  $mapping_channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroths}```")
+  $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
   return true
 end
 
@@ -560,7 +563,8 @@ end
 
 #$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
 $bot = Discordrb::Bot.new token: (TEST ? ENV['TOKEN_TEST'] : ENV['TOKEN']), client_id: CONFIG['client_id']
-$channel = nil
+$channel = TEST ? nil : $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
+$mapping_channel = TEST ? nil : $bot.servers[SERVER_ID].channels.find{ |c| c.id == USERLEVELS_ID }
 
 $bot.mention do |event|
   respond(event)
@@ -584,9 +588,12 @@ $threads << Thread.new { download_demos }            if (UPDATE_DEMOS      || DO
 $threads << Thread.new { start_level_of_the_day }
 $threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
-#$threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 
 $bot.run(true)
+puts "Established connection to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}."
+puts "Main channel: #{$channel.name}." if !$channel.nil?
+puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
 
 wd = Thread.new { watchdog }
 wd.join

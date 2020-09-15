@@ -211,7 +211,7 @@ module HighScore
         scoretime = score['score'] / 1000.0
         scoretime = (scoretime * 60.0).round if self.class == Userlevel
         scores.find_or_create_by(rank: i).update(
-          score: score['score'] / 1000.0,
+          score: scoretime,
           replay_id: score['replay_id'].to_i,
           player: player,
           tied_rank: updated.find_index { |s| s['score'] == score['score'] }
