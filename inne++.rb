@@ -27,7 +27,7 @@ UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
+REPORT_USERLEVELS = true # Thread to regularly post userlevels' highscoring report
 
 STATUS_UPDATE_FREQUENCY    = CONFIG['status_update_frequency']    ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY = CONFIG['highscore_update_frequency'] ||      24 * 60 * 60 # daily
@@ -246,15 +246,20 @@ def send_userlevel_report
     return false
   end
 
-  zeroths = UserlevelScore.where(tied_rank: 0)
-                          .group(:player_id)
-                          .order('count_id desc')
-                          .count(:id)
-                          .take(20)
-                          .each_with_index
-                          .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
-                          .join("\n")
-  points = UserlevelScore.all
+  min_id = UserlevelScore.pluck(:userlevel_id)
+                         .uniq
+                         .sort_by{ |id| -id }
+                         .take(USERLEVEL_REPORT_SIZE)
+                         .last
+  zeroes = UserlevelScore.where("userlevel_id >= #{min_id} and tied_rank = 0")
+                         .group(:player_id)
+                         .order('count_id desc')
+                         .count(:id)
+                         .take(20)
+                         .each_with_index
+                         .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
+                         .join("\n")
+  points = UserlevelScore.where("userlevel_id >= #{min_id}")
                          .group_by{ |s| s.player_id }
                          .map{ |p, scores| [UserlevelPlayer.find(p).name, scores.map{ |s| 20 - s.rank }.sum] }
                          .sort_by{ |p, points| -points }
@@ -264,14 +269,29 @@ def send_userlevel_report
                          .join("\n")
 
   $mapping_channel.send_message("**Uselevel highscoring report [Newest 500 maps]**")
-  $mapping_channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroths}```")
+  $mapping_channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroes}```")
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
   return true
 end
 
+def start_userlevel_report
+  begin
+    while true
+      next_userlevel_report_update = correct_time(get_next_update('userlevel_report'), USERLEVEL_REPORT_FREQUENCY)
+      set_next_update('userlevel_report', next_userlevel_report_update)
+      delay = next_userlevel_report_update - Time.now
+      sleep(delay) unless delay < 0
+      next if !send_userlevel_report
+    end
+  rescue => e
+    err("error sending userlevel highscoring report: #{e}")
+    retry
+  end
+end
+
 def download_high_scores
   log("downloading high scores...")
-   # We handle exceptions within each instance so that they don't force
+  # We handle exceptions within each instance so that they don't force
   # a retry of the whole function.
   # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
   [Level, Episode, Story].each do |type|
@@ -385,21 +405,6 @@ def start_histories
 rescue => e
   err("error updating highscore histories: #{e}")
   retry
-end
-
-def start_userlevel_report
-  begin
-    while true
-      next_userlevel_report_update = correct_time(get_next_update('userlevel_report'), USERLEVEL_REPORT_FREQUENCY)
-      set_next_update('userlevel_report', next_userlevel_report_update)
-      delay = next_userlevel_report_update - Time.now
-      sleep(delay) unless delay < 0
-      next if !send_userlevel_report
-    end
-  rescue => e
-    err("error sending userlevel highscoring report: #{e}")
-    retry
-  end
 end
 
 def download_userlevel_scores
