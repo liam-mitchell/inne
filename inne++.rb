@@ -7,7 +7,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = false # Switch to the local test bot
+TEST          = true # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
@@ -17,9 +17,10 @@ CHANNEL_ID    = 210778111594332181 # #highscores
 USERLEVELS_ID = 221721273405800458 # #mapping
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = true # 'true' sets all the following ones to true
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
+UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
 UPDATE_LEVEL      = false # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
@@ -30,6 +31,7 @@ REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring rep
 
 STATUS_UPDATE_FREQUENCY    = CONFIG['status_update_frequency']    ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY = CONFIG['highscore_update_frequency'] ||      24 * 60 * 60 # daily
+HISTORY_UPDATE_FREQUENCY   = CONFIG['history_update_frequency']   ||      24 * 60 * 60 # daily
 DEMO_UPDATE_FREQUENCY      = CONFIG['demo_update_frequency']      ||      24 * 60 * 60 # daily
 LEVEL_UPDATE_FREQUENCY     = CONFIG['level_update_frequency']     ||      24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY   = CONFIG['episode_update_frequency']   ||  7 * 24 * 60 * 60 # weekly
@@ -124,130 +126,40 @@ rescue
   retry
 end
 
-def download_high_scores
-  begin
-    while true
-      log("updating high scores...")
-
-      # We handle exceptions within each instance so that they don't force
-      # a retry of the whole function.
-      # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
-      [Level, Episode, Story].each do |type|
-        type.all.each do |o|
-          attempts ||= 0
-          o.update_scores
-        rescue => e
-          err("error updating high scores for #{o.class.to_s.downcase} #{o.id.to_s}: #{e}")
-          ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
-        end
-      end
-
-      log("updated high scores. updating rankings...")
-
-      now = Time.now
-      [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
-        [Level, Episode, Story].each do |type|
-          next if (type == Episode || type == Story) && [:SS, :SS2].include?(tab)
-
-          [1, 5, 10, 20].each do |rank|
-            [true, false].each do |ties|
-              rankings = Player.rankings { |p| p.top_n_count(rank, type, tab, ties) }
-              attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-                {
-                  highscoreable_type: type.to_s,
-                  rank: rank,
-                  ties: ties,
-                  tab: tab,
-                  player: r[0],
-                  count: r[1],
-                  metanet_id: r[0].metanet_id,
-                  timestamp: now
-                }
-              end
-
-              ActiveRecord::Base.transaction do
-                RankHistory.create(attrs)
-              end
-            end
-          end
-
-          rankings = Player.rankings { |p| p.points(type, tab) }
-          attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-            {
-              timestamp: now,
-              tab: tab,
-              highscoreable_type: type.to_s,
-              player: r[0],
-              metanet_id: r[0].metanet_id,
-              points: r[1]
-            }
-          end
-
-          ActiveRecord::Base.transaction do
-            PointsHistory.create(attrs)
-          end
-
-          rankings = Player.rankings { |p| p.total_score(type, tab) }
-          attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-            {
-              timestamp: now,
-              tab: tab,
-              highscoreable_type: type.to_s,
-              player: r[0],
-              metanet_id: r[0].metanet_id,
-              score: r[1]
-            }
-          end
-
-          ActiveRecord::Base.transaction do
-            TotalScoreHistory.create(attrs)
-          end
-        end
-      end
-
-      next_score_update = correct_time(get_next_update('score'), HIGHSCORE_UPDATE_FREQUENCY)
-      set_next_update('score', next_score_update)
-      delay = next_score_update - Time.now
-
-      log("updated rankings, next score update in #{delay} seconds")
-
-      sleep(delay) unless delay < 0
+def download_demos
+  log("updating demos...")
+  ids = Demo.where.not(demo: nil).or(Demo.where(expired: true)).pluck(:id)
+  archives = Archive.where.not(id: ids).pluck(:id, :replay_id, :highscoreable_type)
+  count = archives.size
+  archives.each_with_index do |ar, i|
+    attempts ||= 0
+    ActiveRecord::Base.transaction do
+      demo = Demo.find_or_create_by(id: ar[0])
+      demo.update(replay_id: ar[1], htype: Demo.htypes[ar[2].to_s.downcase])
+      demo.update_demo
     end
   rescue => e
-    err("error updating high scores: #{e}")
-    retry
+    err("error updating demo with ID #{ar[0].to_s}: #{e}")
+    ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
   end
+  log("updated demos")
+  return true
+rescue => e
+  err("error updating demos: #{e}")
+  return false
 end
 
-def download_demos
-  begin
-    while true
-      log("updating demos...")
-      ids = Demo.where.not(demo: nil).or(Demo.where(expired: true)).pluck(:id)
-      archives = Archive.where.not(id: ids).pluck(:id, :replay_id, :highscoreable_type)
-      count = archives.size
-      archives.each_with_index do |ar, i|
-        attempts ||= 0
-        ActiveRecord::Base.transaction do
-          demo = Demo.find_or_create_by(id: ar[0])
-          demo.update(replay_id: ar[1], htype: Demo.htypes[ar[2].to_s.downcase])
-          demo.update_demo
-        end
-      rescue => e
-        err("error updating demo with ID #{ar[0].to_s}: #{e}")
-        ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
-      end
-
-      next_demo_update = correct_time(get_next_update('demo'), DEMO_UPDATE_FREQUENCY)
-      set_next_update('demo', next_demo_update)
-      delay = next_demo_update - Time.now
-      log("updated demos, next demo update in #{delay} seconds")
-      sleep(delay) unless delay < 0
-    end
-  rescue => e
-    err("error downloading demos: #{e}")
-    retry
+def start_demos
+  while true
+    next_demo_update = correct_time(get_next_update('demo'), DEMO_UPDATE_FREQUENCY)
+    set_next_update('demo', next_demo_update)
+    delay = next_demo_update - Time.now
+    sleep(delay) unless delay < 0
+    next if !download_demos
   end
+rescue => e
+  err("error updating demos: #{e}")
+  retry
 end
 
 def send_report
@@ -355,6 +267,124 @@ def send_userlevel_report
   $mapping_channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroths}```")
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
   return true
+end
+
+def download_high_scores
+  log("downloading high scores...")
+   # We handle exceptions within each instance so that they don't force
+  # a retry of the whole function.
+  # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
+  [Level, Episode, Story].each do |type|
+    type.all.each do |o|
+      attempts ||= 0
+      o.update_scores
+    rescue => e
+      err("error updating high scores for #{o.class.to_s.downcase} #{o.id.to_s}: #{e}")
+      ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
+    end
+  end
+  log("downloaded high scores")
+  return true
+rescue
+  err("error download high scores")
+  return false
+end
+
+def start_high_scores
+  begin
+    while true
+      next_score_update = correct_time(get_next_update('score'), HIGHSCORE_UPDATE_FREQUENCY)
+      set_next_update('score', next_score_update)
+      delay = next_score_update - Time.now
+      sleep(delay) unless delay < 0
+      next if !download_high_scores
+    end
+  rescue => e
+    err("error updating high scores: #{e}")
+    retry
+  end
+end
+
+def update_histories
+  log("updating histories...")
+  now = Time.now
+  [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
+    [Level, Episode, Story].each do |type|
+      next if (type == Episode || type == Story) && [:SS, :SS2].include?(tab)
+
+      [1, 5, 10, 20].each do |rank|
+        [true, false].each do |ties|
+          rankings = Player.rankings { |p| p.top_n_count(rank, type, tab, ties) }
+          attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+            {
+              highscoreable_type: type.to_s,
+              rank: rank,
+              ties: ties,
+              tab: tab,
+              player: r[0],
+              count: r[1],
+              metanet_id: r[0].metanet_id,
+              timestamp: now
+            }
+          end
+
+          ActiveRecord::Base.transaction do
+            RankHistory.create(attrs)
+          end
+        end
+      end
+
+      rankings = Player.rankings { |p| p.points(type, tab) }
+      attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+        {
+          timestamp: now,
+          tab: tab,
+          highscoreable_type: type.to_s,
+          player: r[0],
+          metanet_id: r[0].metanet_id,
+          points: r[1]
+        }
+      end
+
+      ActiveRecord::Base.transaction do
+        PointsHistory.create(attrs)
+      end
+
+      rankings = Player.rankings { |p| p.total_score(type, tab) }
+      attrs = rankings.select { |r| r[1] > 0 }.map do |r|
+        {
+          timestamp: now,
+          tab: tab,
+          highscoreable_type: type.to_s,
+          player: r[0],
+          metanet_id: r[0].metanet_id,
+          score: r[1]
+        }
+      end
+
+      ActiveRecord::Base.transaction do
+        TotalScoreHistory.create(attrs)
+      end
+    end
+  end
+  log("updated highscore histories")
+  return true
+rescue
+  err("Error updating histories")
+  return false  
+end
+
+def start_histories
+  while true
+    next_history_update = correct_time(get_next_update('history'), HISTORY_UPDATE_FREQUENCY)
+    set_next_update('history', next_history_update)
+    delay = next_history_update - Time.now
+    sleep(delay) unless delay < 0
+    next if !update_histories
+  end
+rescue => e
+  err("error updating highscore histories: #{e}")
+  retry
 end
 
 def start_userlevel_report
@@ -572,8 +602,9 @@ end
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { download_high_scores }      if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { download_demos }            if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_level_of_the_day }
 $threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING

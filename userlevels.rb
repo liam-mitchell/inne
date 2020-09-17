@@ -288,7 +288,7 @@ class Userlevel < ActiveRecord::Base
     data = ("\x00" * 4).force_encoding("ascii-8bit")   # magic number ?
     data << _pack(1230 + 5 * self.objects.size, 4)     # filesize
     data << ("\xFF" * 4).force_encoding("ascii-8bit")  # static data
-    data << _pack(self.mode, 4)                        # game mode
+    data << _pack(Userlevel.modes[self.mode], 4)       # game mode
     data << ("\x25" + "\x00" * 3 + "\xFF" * 4 + "\x00" * 14).force_encoding("ascii-8bit") # static data
     data << self.title[0..126].ljust(128,"\x00").force_encoding("ascii-8bit") # map title
     data << ("\x00" * 18).force_encoding("ascii-8bit") # static data
