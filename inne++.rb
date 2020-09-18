@@ -259,6 +259,14 @@ def send_userlevel_report
                          .each_with_index
                          .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
                          .join("\n")
+  top20s = UserlevelScore.where("userlevel_id >= #{min_id}")
+                         .group(:player_id)
+                         .order('count_id desc')
+                         .count(:id)
+                         .take(20)
+                         .each_with_index
+                         .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
+                         .join("\n")
   points = UserlevelScore.where("userlevel_id >= #{min_id}")
                          .group_by{ |s| s.player_id }
                          .map{ |p, scores| [UserlevelPlayer.find(p).name, scores.map{ |s| 20 - s.rank }.sum] }
@@ -267,10 +275,20 @@ def send_userlevel_report
                          .each_with_index
                          .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0])} - #{"%3d" % p[1]}" }
                          .join("\n")
+  averag = UserlevelScore.where("userlevel_id >= #{min_id}")
+                         .group_by{ |s| s.player_id }
+                         .map{ |p, scores| [UserlevelPlayer.find(p).name, scores.map{ |s| 20 - s.rank }.sum.to_f / scores.size] }
+                         .sort_by{ |p, points| -points }
+                         .take(20)
+                         .each_with_index
+                         .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0])} - #{"%.3f" % p[1]}" }
+                         .join("\n")
 
-  $mapping_channel.send_message("**Uselevel highscoring report [Newest 500 maps]**")
+  $mapping_channel.send_message("**Userlevel highscoring update [Newest 500 maps]**")
   $mapping_channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroes}```")
+  #$mapping_channel.send_message("Userlevel top20 rankings on #{Time.now.to_s}:\n```#{top20s}```")
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
+  #$mapping_channel.send_message("Userlevel average point rankings on #{Time.now.to_s}:\n```#{averag}```")
   return true
 end
 
