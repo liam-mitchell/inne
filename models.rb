@@ -5,7 +5,8 @@ require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
 RETRIES         = 20    # redownload retries until we move on to the next level
-SHOW_ERRORS     = true # log common error messages
+SHOW_ERRORS     = false # log common error messages
+INVALID_RESP    = '-1337'
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
@@ -51,7 +52,7 @@ IGNORED_PLAYERS = [
   "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
   "Floof The Goof",
   "Prismo",
-  "Mishu",
+#  "Mishu",
   "dimitry008",
   "Chara",
   "test8378",
@@ -60,7 +61,7 @@ IGNORED_PLAYERS = [
 
 # Problematic hackers? We get rid of them by banning their user IDs
 IGNORED_IDS = [
-  115572, # Mishu
+#  115572, # Mishu
   201322, # dimitry008
   146275, # Puce
   253161, # Chara
@@ -153,12 +154,12 @@ module HighScore
     initial_id = get_last_steam_id
     attempts ||= 0
     response = Net::HTTP.get_response(scores_uri(initial_id))
-    while response.body == '-1337'
+    while response.body == INVALID_RESP
       update_last_steam_id
       break if get_last_steam_id == initial_id
       response = Net::HTTP.get_response(scores_uri(get_last_steam_id))
     end
-    return nil if response.body == '-1337'
+    return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
     clean_scores(correct_ties(JSON.parse(response.body)['scores']))
   rescue => e
@@ -175,12 +176,12 @@ module HighScore
   def get_replay(replay_id)
     initial_id = get_last_steam_id
     response = Net::HTTP.get_response(replay_uri(initial_id, replay_id))
-    while response.body == '-1337'
+    while response.body == INVALID_RESP
       update_last_steam_id
       break if get_last_steam_id == initial_id
       response = Net::HTTP.get_response(replay_uri(get_last_steam_id, replay_id))
     end
-    return nil if response.body == '-1337'
+    return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
     response.body
   rescue => e
@@ -661,13 +662,13 @@ class Demo < ActiveRecord::Base
     attempts ||= 0
     initial_id = get_last_steam_id
     response = Net::HTTP.get_response(demo_uri(initial_id))
-    while response.body == '-1337'
+    while response.body == INVALID_RESP
       update_last_steam_id
       break if get_last_steam_id == initial_id
       response = Net::HTTP.get_response(demo_uri(get_last_steam_id))
     end
     return 1 if response.code.to_i == 200 && response.body.empty? # replay does not exist
-    return nil if response.body == '-1337'
+    return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
     response.body
   rescue => e

@@ -8,15 +8,21 @@ Eddy's TODO list for inne:
 \\ ------------------------ Userlevels ------------------------
 - Browse (DONE)
 - Search (DONE)
-- Leaderboards
+- Leaderboards (DONE)
 - Screenshots (DONE)
 - Download (DONE)
 - Rankings
 
-General idea: Update newest userlevels from all play modes on the background every 5 mins (already being done), and then whenever a command is issued, use the local database instead of asking Metanet. This can be done for browsing newest/oldest, and also for searching (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
+Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
+
+Report:
+- Take only Solo userlevels.
+- Store history (only the top 20 players for each of top20, top10, top5, 0th and point rankings, so 100 new entries per day).
 
 Less priority:
 - Demo analysis.
+- Imagesearch: Show pictures of results (miniature) instead of text.
+- Userlevel stats: How many unique authors, maps, averages, etc. Break down by mode and total.
 - Another browse type: "random" (returns a random selection of maps)
 - Simplify author search by having a separate query for it: "userlevel from/by/made by <username>".
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
@@ -37,13 +43,10 @@ Database:
 
 Others:
 - Filter results by any field.
-- Cache previous searches to avoid redownloading. (Note: To avoid memory leaks, limit the cache, order caches chronologically, and once the limit is reached start overwritting the oldest ones). (Note 2: We also don't want to keep old searches, since we might want to deliberately update the search. To avoid this, put a limit on how long a cache can stay and just delete the old ones after the limit has been surpassed. Also, maybe add a specific parameter to force redownload even if it's cached).
 - Add the possibility of making secondary orders (to break ties).
-- Every 24h download newest to update database.
 
 \\ ------------------------ Scores ------------------------
 
-- A function to compare new scores (when they are updated) to the stored ones, and that way produce a daily change report, maybe with new 0ths and new/improved top20s.
 - Ping players who lost 0ths, using the previous function.
 
 \\ ------------------------ Screenshots ------------------------
@@ -93,6 +96,7 @@ Analysis:
 
 \\ ------------------------ Humanlike features ------------------------
 
+- Add guessing game: inne shows a picture of a level and people must figure out the level (by typing the name or level code). Maybe different difficulty settings, the easy one being a full picture and hard one being a section only, maybe ensuring that this section makes sense somehow (ie. it's not just empty space). Since we need to hold state, make sure you can run the game in a thread, with a limit of maybe 5 simultaneous games.
 - Add some backstory, like what happens when outte is asked about inne (murder?)
 - Add some more easter eggs, like a command that shows (or links) eddysipw.
 
@@ -105,6 +109,7 @@ Avatar:
 - Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
 - Interesting: Analyze how do coop demos work. Then, to compare individual demos on the same level, download 2 of them and build an attrac file to run the replay in N++'s menu.
+- Add help for each command, e.g., "help rankings".
 * Customize "list" even further.
 - 0th/Top20 changes (new ones, and per player).
 - Comparison between players.

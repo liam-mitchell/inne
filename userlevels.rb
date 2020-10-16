@@ -636,7 +636,7 @@ def send_userlevel_screenshot(event)
       map = map[0]
       file = map.screenshot(palette)
       output = "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s
-      output += "` by `" + (map.author.to_s.empty? ? " " : map.author) + "` using palette `"
+      output += "` by `" + (map.author.to_s.empty? ? " " : map.author.to_s) + "` using palette `"
       output += palette + "` on " + Time.now.to_s + ".\n"
       event << output
       send_file(event, file, map.id.to_s + ".png", true)
@@ -658,7 +658,7 @@ def send_userlevel_scores(event)
       event << "The map with the specified ID is not present in the database."
     else
       output = "Scores of userlevel `" + map.title + "` with ID `" + map.id.to_s
-      output += "` by `" + (map.author.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      output += "` by `" + (map.author.to_s.empty? ? " " : map.author.to_s) + "` on " + Time.now.to_s + ".\n"
       event << output + "```" + map.format_scores + "```"
     end
   end

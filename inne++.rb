@@ -27,7 +27,7 @@ UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = true # Thread to regularly post userlevels' highscoring report
+REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
 STATUS_UPDATE_FREQUENCY    = CONFIG['status_update_frequency']    ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY = CONFIG['highscore_update_frequency'] ||      24 * 60 * 60 # daily
