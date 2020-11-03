@@ -52,7 +52,7 @@ IGNORED_PLAYERS = [
   "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
   "Floof The Goof",
   "Prismo",
-#  "Mishu",
+  "Mishu",
   "dimitry008",
   "Chara",
   "test8378",
@@ -61,7 +61,7 @@ IGNORED_PLAYERS = [
 
 # Problematic hackers? We get rid of them by banning their user IDs
 IGNORED_IDS = [
-#  115572, # Mishu
+  115572, # Mishu
   201322, # dimitry008
   146275, # Puce
   253161, # Chara

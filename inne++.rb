@@ -15,6 +15,10 @@ CONFIG        = YAML.load_file('db/config.yml')[DATABASE_ENV]
 SERVER_ID     = 197765375503368192 # N++ Server
 CHANNEL_ID    = 210778111594332181 # #highscores
 USERLEVELS_ID = 221721273405800458 # #mapping
+NV2_ID        = 197774025844457472 # #nv2
+POTATO        = true               # joke they have in the nv2 channel
+POTATO_RATE   = 1                  # seconds between discord channel queries
+POTATO_FREQ   = 5        # 3 hours between potatoes
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
 DO_EVERYTHING     = false # 'true' sets all the following ones to true
@@ -203,7 +207,7 @@ def send_report
                    .map{ |p, i|
                          values = p.values.prepend(i)
                          values.each_with_index.map{ |v, j|
-                           s = v.to_s.rjust(pad[j], " ")
+                           s = v.to_s.rjust(pad[j], " ")[0..pad[j]-1]
                            s += " |" if [0, 1, 2].include?(j)
                            s
                          }.join(" ")
@@ -284,7 +288,7 @@ def send_userlevel_report
                          .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0])} - #{"%.3f" % p[1]}" }
                          .join("\n")
 
-  $mapping_channel.send_message("**Userlevel highscoring update [Newest 500 maps]**")
+  $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
   $mapping_channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroes}```")
   #$mapping_channel.send_message("Userlevel top20 rankings on #{Time.now.to_s}:\n```#{top20s}```")
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
@@ -574,6 +578,18 @@ def start_level_of_the_day
   end
 end
 
+def potato
+  while true
+    sleep(POTATO_RATE)
+    next if $nv2_channel.nil? || $last_potato.nil?
+    if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
+      $nv2_channel.send_message(":potato:");
+      $last_potato = Time.now.to_i
+      log("potatoed nv2")
+    end
+  end
+end
+
 def startup
   ActiveRecord::Base.establish_connection(CONFIG)
   log("initialized")
@@ -598,6 +614,8 @@ end
 $bot = Discordrb::Bot.new token: (TEST ? ENV['TOKEN_TEST'] : ENV['TOKEN']), client_id: CONFIG['client_id']
 $channel = nil
 $mapping_channel = nil
+$nv2_channel = nil
+$last_potato = nil
 
 $bot.mention do |event|
   respond(event)
@@ -607,6 +625,10 @@ end
 $bot.private_message do |event|
   respond(event)
   log("private message from #{event.user.name}: #{event.content}")
+end
+
+$bot.message(in: $nv2_channel) do |event|
+  $last_potato = Time.now.to_i
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
@@ -619,8 +641,11 @@ puts "Established connection to servers: #{$bot.servers.map{ |id, s| s.name }.jo
 if !TEST
   $channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
   $mapping_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == USERLEVELS_ID }
+  $nv2_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == NV2_ID }
+  $last_potato = $nv2_channel.history(1)[0].timestamp.to_i
   puts "Main channel: #{$channel.name}." if !$channel.nil?
   puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
+  puts "Nv2 channel: #{$nv2_channel.name}." if !$nv2_channel.nil?
 end
 
 $threads = []
@@ -632,6 +657,7 @@ $threads << Thread.new { start_level_of_the_day }
 $threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { potato }                    if POTATO
 
 wd = Thread.new { watchdog }
 wd.join

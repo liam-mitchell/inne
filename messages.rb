@@ -163,7 +163,7 @@ def format_time
   Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")
 end
 
-def send_file(event, data, name, binary = false)
+def send_file(event, data, name = "result.txt", binary = false)
   tmpfile = File.join(Dir.tmpdir, name)
   File::open(tmpfile, "w", crlf_newline: !binary) do |f|
     f.write(data)
@@ -242,8 +242,8 @@ def send_rankings(event)
   top = top.each_with_index
            .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
            .join("\n")
-
-  event << "#{type} #{tabs}#{header}#{format_time}:\n```#{top}```"
+  msg = "#{type} #{tabs}#{header}#{format_time}:\n```#{top}```"
+  msg.size < 2000 ? event << msg : send_file(event, msg)
 end
 
 def send_total_score(event)
@@ -820,8 +820,11 @@ def hello(event)
   if $channel.nil?
     $channel = event.channel
     $mapping_channel = event.channel
+    $nv2_channel = event.channel
+    $last_potato = $nv2_channel.history(1)[0].timestamp.to_i
     puts "Main channel established: #{$channel.name}." if !$channel.nil?
     puts "Mapping channel established: #{$mapping_channel.name}." if !$mapping_channel.nil?
+    puts "Nv2 channel established: #{$nv2_channel.name}." if !$nv2_channel.nil?
     send_times(event)
   end
 end
