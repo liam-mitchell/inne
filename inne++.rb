@@ -7,7 +7,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = true # Switch to the local test bot
+TEST          = false # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
@@ -17,11 +17,11 @@ CHANNEL_ID    = 210778111594332181 # #highscores
 USERLEVELS_ID = 221721273405800458 # #mapping
 NV2_ID        = 197774025844457472 # #nv2
 POTATO        = true               # joke they have in the nv2 channel
-POTATO_RATE   = 1                  # seconds between discord channel queries
-POTATO_FREQ   = 5        # 3 hours between potatoes
+POTATO_RATE   = 1                  # seconds between potato checks
+POTATO_FREQ   = 3 * 60 * 60        # 3 hours between potato delivers
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false # 'true' sets all the following ones to true
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories

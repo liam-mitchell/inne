@@ -607,7 +607,7 @@ def send_userlevel_download(event)
       map = map[0]
       file = map.convert
       output = "Downloading userlevel `" + map.title + "` with ID `" + map.id.to_s
-      output += "` by `" + (map.author.to_s.empty? ? " " : map.author) + "` on " + Time.now.to_s + ".\n"
+      output += "` by `" + (map.author.to_s.empty? ? " " : map.author.to_s) + "` on " + Time.now.to_s + ".\n"
       event << output
       send_file(event, file, map.id.to_s, true)
     end
