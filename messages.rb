@@ -207,9 +207,9 @@ def send_rankings(event)
       players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
       rankings = players.rankings { |p| p.average_points(type, tabs) }
       header = "average point rankings "
-    elsif msg =~ /lead/i
-      rankings = Player.rankings { |p| p.average_lead(type, tabs) }
-      header = "average lead rankings "
+    #elsif msg =~ /lead/i # commented until we optimize it
+    #  rankings = Player.rankings { |p| p.average_lead(type, tabs) }
+    #  header = "average lead rankings "
     else
       players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
       rankings = players.rankings { |p| p.average_points(type, tabs) }.map{ |p| [p[0], 20 - p[1]] }

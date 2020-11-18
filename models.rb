@@ -4,7 +4,7 @@ require 'net/http'
 require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
-RETRIES         = 20    # redownload retries until we move on to the next level
+RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = false # log common error messages
 INVALID_RESP    = '-1337'
 
@@ -384,6 +384,10 @@ class Score < ActiveRecord::Base
       query.includes(:story).where(stories: {tab: tabs})
     ).map{ |s| s.score }
     [result.sum, result.count]
+  end
+
+  def spread
+    highscoreable.scores.find_by(rank: 0).score - score
   end
 
   def format(name_padding = DEFAULT_PADDING, score_padding = 0)
