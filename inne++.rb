@@ -30,21 +30,23 @@ UPDATE_LEVEL      = false # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
+UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
-STATUS_UPDATE_FREQUENCY    = CONFIG['status_update_frequency']    ||            5 * 60 # every 5 mins
-HIGHSCORE_UPDATE_FREQUENCY = CONFIG['highscore_update_frequency'] ||      24 * 60 * 60 # daily
-HISTORY_UPDATE_FREQUENCY   = CONFIG['history_update_frequency']   ||      24 * 60 * 60 # daily
-DEMO_UPDATE_FREQUENCY      = CONFIG['demo_update_frequency']      ||      24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY     = CONFIG['level_update_frequency']     ||      24 * 60 * 60 # daily
-EPISODE_UPDATE_FREQUENCY   = CONFIG['episode_update_frequency']   ||  7 * 24 * 60 * 60 # weekly
-STORY_UPDATE_FREQUENCY     = CONFIG['story_update_frequency']     || 30 * 24 * 60 * 60 # monthly (roughly)
-USERLEVEL_SCORE_FREQUENCY  = CONFIG['userlevel_score_frequency']  ||      24 * 60 * 60 # daily
-REPORT_UPDATE_FREQUENCY    = CONFIG['report_update_frequency']    ||      24 * 60 * 60 # daily
-REPORT_UPDATE_SIZE         = CONFIG['report_period']              ||  7 * 24 * 60 * 60 # last 7 days
-USERLEVEL_REPORT_FREQUENCY = CONFIG['userlevel_report_frequency'] ||      24 * 60 * 60 # daily
-USERLEVEL_REPORT_SIZE      = CONFIG['userlevel_report_size']      ||               500 # last 500 maps
+STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
+HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
+HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
+DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
+LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
+EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
+STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
+USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
+USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
+REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
+REPORT_UPDATE_SIZE          = CONFIG['report_period']               ||  7 * 24 * 60 * 60 # last 7 days
+USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
+USERLEVEL_REPORT_SIZE       = CONFIG['userlevel_report_size']       ||               500 # last 500 maps
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
@@ -412,7 +414,7 @@ def update_histories
   log("updated highscore histories")
   return true
 rescue
-  err("Error updating histories")
+  err("error updating histories")
   return false  
 end
 
@@ -429,6 +431,32 @@ rescue => e
   retry
 end
 
+def update_userlevel_histories
+  log("updating userlevel histories...")
+  now = Time.now
+
+  
+
+  log("updated userlevel histories")
+  return true   
+rescue
+  err("error updating userlevel histories")
+  return false
+end
+
+def start_userlevel_histories
+  while true
+    next_userlevel_history_update = correct_time(get_next_update('userlevel_history'), USERLEVEL_HISTORY_FREQUENCY)
+    set_next_update('userlevel_history', next_userlevel_history_update)
+    delay = next_userlevel_history_update - Time.now
+    sleep(delay) unless delay < 0
+    next if !update_userlevel_histories
+  end
+rescue => e
+  err("error updating userlevel highscore histories: #{e}")
+  retry
+end
+
 def download_userlevel_scores
   begin
     while true
@@ -439,6 +467,7 @@ def download_userlevel_scores
       log("updating userlevel scores...")
 
       # Remove all initial excess userlevel scores
+      # TODO: I think this is incorrectly deleting the ones I want to keep, also it's sorting in ascending order
       amount = UserlevelScore.distinct.count(:userlevel_id) - USERLEVEL_REPORT_SIZE
       if amount > 0
         UserlevelScore.pluck(:userlevel_id).uniq.sort.take(USERLEVEL_REPORT_SIZE).each{ |id|
@@ -627,8 +656,8 @@ $bot.private_message do |event|
   log("private message from #{event.user.name}: #{event.content}")
 end
 
-$bot.message(in: $nv2_channel) do |event|
-  $last_potato = Time.now.to_i
+$bot.message do |event|
+  $last_potato = Time.now.to_i if event.channel == $nv2_channel
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
@@ -642,7 +671,7 @@ if !TEST
   $channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
   $mapping_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == USERLEVELS_ID }
   $nv2_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == NV2_ID }
-  $last_potato = $nv2_channel.history(1)[0].timestamp.to_i
+  $last_potato = Time.now.to_i
   puts "Main channel: #{$channel.name}." if !$channel.nil?
   puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
   puts "Nv2 channel: #{$nv2_channel.name}." if !$nv2_channel.nil?
@@ -655,6 +684,7 @@ $threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO
 $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_level_of_the_day }
 $threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { potato }                    if POTATO

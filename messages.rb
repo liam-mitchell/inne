@@ -174,7 +174,7 @@ end
 def send_top_n_count(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-  rank = parse_rank(msg) || 1
+  rank = parse_rank(msg) || 20
   type = parse_type(msg)
   tabs = parse_tabs(msg)
   ties = !!(msg =~ /ties/i)
@@ -303,7 +303,7 @@ def send_scores(event)
 
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
-    event.send_message("The cleanliness of this episode 0th is %.3f (%df)." % [clean, (clean / 0.017).round])
+    event.send_message("The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round])
     Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores)
   end
 end
@@ -596,7 +596,7 @@ def send_splits(event)
   clean = ep.cleanliness(r)[1]
   rank = (r == 1 ? "1st" : (r == 2 ? "2nd" : (r == 3 ? "3rd" : "#{r}th")))
   event << "#{rank} splits for episode #{ep.name}: `#{splits.map{ |s| "%.3f, " % s }.join[0..-3]}`."
-  event << "#{rank} time: `#{"%.3f" % ep.scores[r].score}`. #{rank} cleanliness: `#{"%.3f (%df)" % [clean, (clean / 0.017).round]}`."
+  event << "#{rank} time: `#{"%.3f" % ep.scores[r].score}`. #{rank} cleanliness: `#{"%.3f (%df)" % [clean, (60 * clean).round]}`."
 end
 
 def send_diff(event)
