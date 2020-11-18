@@ -174,7 +174,7 @@ end
 def send_top_n_count(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-  rank = parse_rank(msg) || 20
+  rank = !!(msg =~ /0th/i) ? 1 : (parse_rank(msg) || 20)
   type = parse_type(msg)
   tabs = parse_tabs(msg)
   ties = !!(msg =~ /ties/i)
@@ -950,6 +950,17 @@ def send_videos(event)
   event << "You're going to have to be more specific! I know about the following videos for this level:\n```#{descriptions}```"
 end
 
+def unique_holders(event)
+  ranks = [0] * 20
+  Player.all.each { |p|
+    rank = p.scores.map(&:rank).min
+    next if rank.nil?
+    (rank..19).each{ |r| ranks[r] += 1 }
+  }
+  ranks = ranks.each_with_index.map{ |r, i| "#{"%-2d" % i} - #{"%-3d" % r}" }.join("\n")
+  event << "Number of unique highscore holders by rank at #{Time.now.to_s}\n```#{ranks}```"
+end
+
 # TODO set level of the day on startup
 def respond(event)
   msg = event.content
@@ -1020,6 +1031,7 @@ def respond(event)
   add_steam_id(event)        if msg =~ /my steam id is/i
   send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   faceswap(event)            if msg =~ /faceswap/i
+  unique_holders(event)      if msg =~ /\bunique holders\b/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
