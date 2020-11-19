@@ -47,7 +47,6 @@ USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 *
 REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
 REPORT_UPDATE_SIZE          = CONFIG['report_period']               ||  7 * 24 * 60 * 60 # last 7 days
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
-USERLEVEL_REPORT_SIZE       = CONFIG['userlevel_report_size']       ||               500 # last 500 maps
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"

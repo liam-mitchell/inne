@@ -13,6 +13,8 @@ DEFAULT_PADDING = 15    # default variable padding, never make 0
 MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
 TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
 
+USERLEVEL_REPORT_SIZE = 500
+
 # ID ranges for levels and episodes, and score limits to filter new hacked scores
 TABS = {
   "Episode" => {

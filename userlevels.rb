@@ -265,6 +265,28 @@ class Userlevel < ActiveRecord::Base
     dec.scan(/./m).map{ |b| _unpack(b) }.each_slice((dec.size / 5).round).to_a.transpose
   end
 
+  # Because of the way the query is done I use a ranking type instead of yield blocks
+  def self.rank(type, par)
+    min_id = UserlevelScore.pluck(:userlevel_id)
+                           .uniq
+                           .sort_by{ |id| -id }
+                           .take(USERLEVEL_REPORT_SIZE)
+                           .last
+    case type
+    when :rank
+      scores = UserlevelScore.where("userlevel_id >= #{min_id} and rank <= #{par}")
+                             .group(:player_id)
+                             .order('count_id desc')
+                             .count(:id)
+                             .take(20)
+    end
+
+    scores.take(20)
+          .each_with_index
+          .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
+          .join("\n")
+  end
+
   def tiles
     Userlevel.decode_tiles(UserlevelData.find(self.id).tile_data)
   end
@@ -433,6 +455,20 @@ end
 # <---------------------------------------------------------------------------->
 # <---                           MESSAGES                                   --->
 # <---------------------------------------------------------------------------->
+
+# TODO: Move these functions to models.rb since they are shared by messages.rb
+def parse_rank(msg)
+  rank = msg[/top\s*([0-9][0-9]?)/i, 1]
+  rank ? rank.to_i : nil
+end
+
+def format_rank(rank)
+  rank == 1 ? "0th" : "top #{rank}"
+end
+
+def format_time
+  Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")
+end
 
 # We're basically building a regex string similar to: /("|“|”)([^"“”]*)("|“|”)/i
 # Which parses a term in between different types of quotes
@@ -664,6 +700,17 @@ def send_userlevel_scores(event)
   end
 end
 
+def send_userlevel_rankings(event)
+  msg = event.content
+  rank = parse_rank(msg) || 1
+  rank = 1 if rank < 0
+  rank = 20 if rank > 20
+  ties = !!msg[/with ties/i]
+
+  top = Userlevel.rank(:rank, rank - 1)
+  event << "Userlevel #{format_rank(rank)} rankings #{format_time}:\n```#{top}```"
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -678,10 +725,11 @@ def respond_userlevels(event)
   msg = event.content
   msg.sub!(/\A<@!?[0-9]*> */, '') # strip off the @inne++ mention, if present
 
-  send_userlevel_browse(event) if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
-  send_userlevel_search(event) if msg =~ /\bsearch\b/i
-  send_userlevel_download(event) if msg =~ /\bdownload\b/i
+  send_userlevel_browse(event)     if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
+  send_userlevel_search(event)     if msg =~ /\bsearch\b/i
+  send_userlevel_download(event)   if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
-  send_userlevel_scores(event) if msg =~ /scores\b/i # matches 'highscores'
+  send_userlevel_scores(event)     if msg =~ /scores\b/i # matches 'highscores'
+  send_userlevel_rankings(event)   if msg =~ /\brank/i
   #csv(event) if msg =~ /csv/i
 end
