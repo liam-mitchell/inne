@@ -266,24 +266,59 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Because of the way the query is done I use a ranking type instead of yield blocks
-  def self.rank(type, par)
+  def self.rank(type, ties = false, par = nil)
+    dec = true # Whether the result is decimal or floating point
+    rev = true # Whether the sort needs to be ascending or descending
     min_id = UserlevelScore.pluck(:userlevel_id)
                            .uniq
                            .sort_by{ |id| -id }
                            .take(USERLEVEL_REPORT_SIZE)
                            .last
+
+    # For these 2 rankings we use a different more efficient query
+    if ![:rank, :tied].include?(type)
+      scores = UserlevelScore.where("userlevel_id >= #{min_id}")
+                             .group_by{ |s| s.player_id }
+    end
     case type
     when :rank
-      scores = UserlevelScore.where("userlevel_id >= #{min_id} and rank <= #{par}")
+      scores = UserlevelScore.where("userlevel_id >= #{min_id} and #{ties ? "tied_rank" : "rank"} <= #{par}")
                              .group(:player_id)
                              .order('count_id desc')
                              .count(:id)
-                             .take(20)
+    when :tied
+      scores_w  = UserlevelScore.where("userlevel_id >= #{min_id} and tied_rank <= #{par}")
+                                .group(:player_id)
+                                .order('count_id desc')
+                                .count(:id)
+      scores_wo = UserlevelScore.where("userlevel_id >= #{min_id} and rank <= #{par}")
+                                .group(:player_id)
+                                .order('count_id desc')
+                                .count(:id)
+      scores = scores_w.map{ |id, count| [id, count - scores_wo[id].to_i] }
+    when :points
+      scores = scores.map{ |p, ss| [p, ss.map{ |s| 20 - (ties ? s.tied_rank : s.rank) }.sum] }
+    when :avg_points
+      scores = scores.reject{ |p, ss| ss.count < MIN_U_SCORES }
+                     .map{ |p, ss| [p, 20 - ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
+      dec = false
+    when :avg_rank
+      scores = scores.reject{ |p, ss| ss.count < MIN_U_SCORES }
+                     .map{ |p, ss| [p, ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
+      dec = false
+      rev = false
+    when :score
+      scores = scores.map{ |p, ss| [p, ss.map(&:score).sum.to_f / 60] }
+      dec = false
+    end
+    # These 2 queries do the sorting themselves
+    if ![:rank].include?(type)
+      scores = scores.sort_by{ |p, val| rev ? -val : val }
     end
 
     scores.take(20)
           .each_with_index
-          .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
+          .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{(dec ? "%3d" : "%.3f") % p[1]}" }
           .join("\n")
   end
 
@@ -706,9 +741,31 @@ def send_userlevel_rankings(event)
   rank = 1 if rank < 0
   rank = 20 if rank > 20
   ties = !!msg[/with ties/i]
+  type = ""
 
-  top = Userlevel.rank(:rank, rank - 1)
-  event << "Userlevel #{format_rank(rank)} rankings #{format_time}:\n```#{top}```"
+  if msg =~ /average/i
+    if msg =~ /point/i
+      top = Userlevel.rank(:avg_points, ties, rank - 1)
+      type = "average points"
+    else
+      top = Userlevel.rank(:avg_rank, ties, rank - 1)
+      type = "average rank"
+    end
+  elsif msg =~ /point/i
+    top = Userlevel.rank(:points, ties, rank - 1)
+    type = "total points"
+  elsif msg =~ /score/i
+    top = Userlevel.rank(:score, ties, rank - 1)
+    type = "total score"
+  elsif msg =~ /tied/i
+    top = Userlevel.rank(:tied, ties, rank - 1)
+    type = "tied #{format_rank(rank)}"
+  else
+    top = Userlevel.rank(:rank, ties, rank - 1)
+    type = format_rank(rank)
+  end
+
+  event << "Userlevel #{type} #{ties ? "with ties " : ""}rankings #{format_time}:\n```#{top}```"
 end
 
 # Exports userlevel database (bar level data) to CSV, for testing purposes.

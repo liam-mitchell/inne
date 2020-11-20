@@ -9,9 +9,10 @@ EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
 STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
 NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
 
-NUM_ENTRIES = 20 # number of entries to show on diverse methods
-MAX_ENTRIES = 20 # maximum number of entries on methods with user input, to avoid spam
-MIN_SCORES  = 50  # minimum number of highscores to appear in average point rankings
+NUM_ENTRIES  = 20 # number of entries to show on diverse methods
+MAX_ENTRIES  = 20 # maximum number of entries on methods with user input, to avoid spam
+MIN_SCORES   = 50 # minimum number of highscores to appear in average point rankings
+MIN_U_SCORES = 20 # minimum number of userlevel highscores to appear in average rankings
 
 # userlevel functions
 PAGE_SIZE = 20
