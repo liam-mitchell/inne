@@ -106,7 +106,7 @@ def format_string(str, padding = DEFAULT_PADDING)
         if padding <= MAX_PADDING 
           "%-#{"%d" % [padding]}s" % [str]
         else
-          "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0,MAX_PADDING) : str]
+          "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, MAX_PADDING) : str]
         end
       else                 # invalid padding
         "%-#{"%d" % [DEFAULT_PADDING]}s" % [str]

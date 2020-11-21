@@ -1,4 +1,8 @@
+require_relative 'io.rb'
 require_relative 'models.rb'
+
+MIN_U_SCORES = 20 # minimum number of userlevel highscores to appear in average rankings
+PAGE_SIZE    = 20
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
 class UserlevelData < ActiveRecord::Base
@@ -13,7 +17,49 @@ end
 
 class UserlevelPlayer < ActiveRecord::Base
   alias_attribute :scores, :userlevel_scores
-  has_many :userlevel_scores
+  has_many :userlevel_scores, foreign_key: :player_id
+
+  def range_s(rank1, rank2, ties)
+    scores.select{ |s|
+      rank = ties ? s.tied_rank : s.rank
+      rank >= rank1 && rank <= rank2
+    }
+  end
+
+  def range_h(rank1, rank2, ties)
+    range_s(rank1, rank2, ties).group_by(&:rank).sort_by(&:first)
+  end
+
+  def top_ns(rank, ties)
+    range_s(0, rank - 1, ties)
+  end
+
+  def top_n_count(rank, ties)
+    top_ns(rank, ties).count
+  end
+
+  def points(ties)
+    scores.pluck(ties ? :tied_rank : :rank).map{ |r| 20 - r }.sum
+  end
+
+  def avg_points(ties)
+    ss = scores.pluck(ties ? :tied_rank : :rank)
+    ss.length == 0 ? -1 : 20 - ss.sum.to_f / ss.length
+  end
+
+  def total_score
+    scores.pluck(:score).sum.to_f / 60
+  end
+
+  def avg_lead(ties)
+    ss = top_ns(1, ties)
+    count = ss.length
+    avg = count == 0 ? 0 : ss.map{ |s|
+      entries = s.userlevel.scores.map(&:score)
+      entries[0].to_i - entries[1].to_i
+    }.sum.to_f / count
+    avg || 0
+  end
 end
 
 class Userlevel < ActiveRecord::Base
@@ -491,20 +537,6 @@ end
 # <---                           MESSAGES                                   --->
 # <---------------------------------------------------------------------------->
 
-# TODO: Move these functions to models.rb since they are shared by messages.rb
-def parse_rank(msg)
-  rank = msg[/top\s*([0-9][0-9]?)/i, 1]
-  rank ? rank.to_i : nil
-end
-
-def format_rank(rank)
-  rank == 1 ? "0th" : "top #{rank}"
-end
-
-def format_time
-  Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")
-end
-
 # We're basically building a regex string similar to: /("|“|”)([^"“”]*)("|“|”)/i
 # Which parses a term in between different types of quotes
 def parse_term
@@ -768,6 +800,87 @@ def send_userlevel_rankings(event)
   event << "Userlevel #{type} #{ties ? "with ties " : ""}rankings #{format_time}:\n```#{top}```"
 end
 
+def send_userlevel_count(event)
+  msg = event.content
+  player = parse_player(msg, event.user.name, true)
+  rank = !!(msg =~ /0th/i) ? 1 : (parse_rank(msg) || 1)
+  ties = !!(msg =~ /ties/i)
+  tied = !!(msg =~ /\btied\b/i)
+  if tied
+    count = player.top_n_count(rank, true) - player.top_n_count(rank, false)
+  else
+    count = player.top_n_count(rank, ties)
+  end
+  header = format_rank(rank)
+  ties = format_ties(ties)
+  tied = format_tied(tied)
+  event << "#{player.name} has #{count}#{tied}userlevel #{header} scores#{ties}."
+end
+
+def send_userlevel_points(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name, true)
+  ties   = !!(msg =~ /ties/i)
+  points = player.points(ties)
+  ties   = format_ties(ties)
+  event << "#{player.name} has #{points} userlevel points#{ties}."
+end
+
+def send_userlevel_avg_points(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name, true)
+  ties   = !!(msg =~ /ties/i)
+  avg    = player.avg_points(ties)
+  ties   = format_ties(ties)
+  event << "#{player.name} has #{"%.3f" % avg} average userlevel points#{ties}."
+end
+
+def send_userlevel_avg_rank(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name, true)
+  ties   = !!(msg =~ /ties/i)
+  avg    = 20 - player.avg_points(ties)
+  ties   = format_ties(ties)
+  event << "#{player.name} has an average #{"%.3f" % avg} userlevel rank#{ties}."
+end
+
+def send_userlevel_total_score(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name, true)
+  score  = player.total_score
+  ties   = format_ties(ties)
+  event << "#{player.name} has #{"%.3f" % score}s of total userlevel score#{ties}."
+end
+
+def send_userlevel_avg_lead(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name, true)
+  ties   = !!(msg =~ /ties/i)
+  avg    = player.avg_lead(ties)
+  ties   = format_ties(ties)
+  event << "#{player.name} has an average #{"%.3f" % avg} userlevel 0th lead#{ties}."
+end
+
+def send_userlevel_list(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name, true)
+  rank   = parse_rank(msg) || 20
+  bott   = parse_bottom_rank(msg) || 0
+  ties   = !!(msg =~ /ties/i)
+  all    = player.range_h(bott, rank, ties)
+  if rank == 20 && bott == 0 && !!msg[/0th/i]
+    rank = 1
+    bott = 0
+  end
+
+  res = all.map{ |rank, scores|
+    rank.to_s.rjust(2, '0') + ":\n" + scores.map{ |s|
+      "  #{HighScore.format_rank(s.rank)}: [#{s.userlevel.id.to_s.rjust(6)}] #{s.userlevel.title} (#{"%.3f" % [s.score / 60]})"
+    }.join("\n")
+  }.join("\n")
+  send_file(event, res, "userlevel-scores-#{player.name}.txt")
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -782,11 +895,25 @@ def respond_userlevels(event)
   msg = event.content
   msg.sub!(/\A<@!?[0-9]*> */, '') # strip off the @inne++ mention, if present
 
+  # methods not requiring to browse the database
+  if !(msg =~ /"/i)
+    # global methods
+    if  !msg[NAME_PATTERN, 2]
+      send_userlevel_rankings(event)    if msg =~ /\brank/i
+    end
+    send_userlevel_count(event)       if msg =~ /how many/i
+    send_userlevel_points(event)      if msg =~ /point/i && msg !~ /rank/i && msg !~ /average/i
+    send_userlevel_total_score(event) if msg =~ /total score/i && msg !~ /rank/i
+    send_userlevel_avg_points(event)  if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
+    send_userlevel_avg_rank(event)    if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
+    send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
+    send_userlevel_list(event)        if msg =~ /\blist\b/i
+  end
+
   send_userlevel_browse(event)     if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
   send_userlevel_search(event)     if msg =~ /\bsearch\b/i
   send_userlevel_download(event)   if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event)     if msg =~ /scores\b/i # matches 'highscores'
-  send_userlevel_rankings(event)   if msg =~ /\brank/i
   #csv(event) if msg =~ /csv/i
 end
