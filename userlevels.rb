@@ -867,11 +867,11 @@ def send_userlevel_list(event)
   rank   = parse_rank(msg) || 20
   bott   = parse_bottom_rank(msg) || 0
   ties   = !!(msg =~ /ties/i)
-  all    = player.range_h(bott, rank, ties)
   if rank == 20 && bott == 0 && !!msg[/0th/i]
     rank = 1
     bott = 0
   end
+  all = player.range_h(bott, rank - 1, ties)
 
   res = all.map{ |rank, scores|
     rank.to_s.rjust(2, '0') + ":\n" + scores.map{ |s|
