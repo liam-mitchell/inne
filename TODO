@@ -12,12 +12,13 @@ Eddy's TODO list for inne:
 - Leaderboards (DONE)
 - Screenshots (DONE)
 - Download (DONE)
-- Rankings
+- Rankings (DONE)
 
 Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
 
+Implement storage of all userlevel scores, to this end we should have a column in the userlevels table that contains the date when its scores were updated, and we regularly (e.g. daily) check the userlevel list sorted by this date in descending order, and update the scores of the first N userlevels (the ones that were updated the longest ago), say N = 5000 (this takes about 2 hours). Or we can have N = 2000 and also update the newest 2000 levels (since those are more likely to change).
+
 Report:
-- Take only Solo userlevels.
 - Store history (only the top 20 players for each of top20, top10, top5, 0th and point rankings, so 100 new entries per day).
 
 Less priority:
@@ -38,6 +39,7 @@ Less priority:
 - Map editor with slots for each user
 
 Database:
+- 
 - Change format of stored dates to be UNIX time, or something consistent.
 - Code versions of already made queries (browse, search) to use the local database.
 - Make option to switch between an online search to N++ server, and an offline search in the local database. Make local default, since it faster, but have a parameter to switch to online mode.

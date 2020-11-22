@@ -881,6 +881,27 @@ def send_userlevel_list(event)
   send_file(event, res, "userlevel-scores-#{player.name}.txt")
 end
 
+def send_userlevel_stats(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name, true)
+  ties   = !!(msg =~ /ties/i)
+  counts = player.range_h(0, 19, ties).map{ |rank, scores| [rank, scores.length] }
+
+  histogram = AsciiCharts::Cartesian.new(
+    counts,
+    bar: true,
+    hide_zero: true,
+    max_y_vals: 15,
+    title: 'Histogram'
+  ).draw
+
+  totals  = counts.map{ |rank, count| "#{HighScore.format_rank(rank)}: #{"   %3d" % count}" }.join("\n\t")
+  overall = "Totals:    %3d" % counts.reduce(0){ |sum, c| sum += c[1] }
+
+  event << "Userlevel highscoring stats for #{player.name} #{format_time}:\n"
+  event << "```        Scores\n\t#{totals}\n#{overall}\n#{histogram}```"
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -908,6 +929,7 @@ def respond_userlevels(event)
     send_userlevel_avg_rank(event)    if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
     send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
     send_userlevel_list(event)        if msg =~ /\blist\b/i
+    send_userlevel_stats(event)       if msg =~ /stat/i
   end
 
   send_userlevel_browse(event)     if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
