@@ -110,19 +110,19 @@ def send_spreads(event)
     return
   end
 
-  spreads = HighScore.spreads(n, type, tabs, player)
-  padding = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
-
-  spreads = spreads.sort_by { |s| (smallest ? s[1] : -s[1]) }
-            .take(NUM_ENTRIES)
-            .each_with_index
-            .map { |s, i| "#{"%02d" % i}: #{"%-10s" % s[0]} - #{"%#{padding}.3f" % s[1]} - #{s[2]}"}
-            .join("\n")
+  spreads  = HighScore.spreads(n, type, tabs, player)
+                     .sort_by { |s| (smallest ? s[1] : -s[1]) }
+                     .take(NUM_ENTRIES)
+  namepad  = spreads.map{ |s| s[0].length }.max
+  scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
+  spreads  = spreads.each_with_index
+                    .map { |s, i| "#{"%02d" % i}: #{"%-#{namepad}s" % s[0]} - #{"%#{scorepad}.3f" % s[1]} - #{s[2]}"}
+                    .join("\n")
 
   spread = smallest ? "smallest" : "largest"
-  rank = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
-  type = format_type(type).downcase
-  tabs = tabs.empty? ? "All " : format_tabs(tabs)
+  rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
+  type   = format_type(type).downcase
+  tabs   = tabs.empty? ? "All " : format_tabs(tabs)
 
   event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end

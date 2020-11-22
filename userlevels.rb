@@ -3,6 +3,7 @@ require_relative 'models.rb'
 
 MIN_U_SCORES = 20 # minimum number of userlevel highscores to appear in average rankings
 PAGE_SIZE    = 20
+MIN_ID       = 22715 # ID of the very first userlevel, to exclude Metanet levels
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
 class UserlevelData < ActiveRecord::Base
@@ -13,6 +14,14 @@ class UserlevelScore < ActiveRecord::Base
   alias_attribute :player, :userlevel_player
   belongs_to :userlevel
   belongs_to :userlevel_player, foreign_key: :player_id
+
+  def self.newest(id = Userlevel.min_id)
+    self.where("userlevel_id >= #{id}")
+  end
+
+  def self.global
+    newest(MIN_ID)
+  end
 end
 
 class UserlevelPlayer < ActiveRecord::Base
@@ -309,6 +318,30 @@ class Userlevel < ActiveRecord::Base
   def self.decode_objects(object_data)
     dec = Zlib::Inflate.inflate(object_data)
     dec.scan(/./m).map{ |b| _unpack(b) }.each_slice((dec.size / 5).round).to_a.transpose
+  end
+
+  def self.min_id
+    UserlevelScore.pluck(:userlevel_id)
+                  .uniq
+                  .sort_by{ |id| -id }
+                  .take(USERLEVEL_REPORT_SIZE)
+                  .last
+  end
+
+  def self.newest(id = min_id)
+    self.where("id >= #{id}")
+  end
+
+  def self.global
+    newest(MIN_ID)
+  end
+
+  def self.spreads(n, player = nil, full = false)
+    (full ? global : newest).includes(userlevel_scores: [:userlevel_player]).map{ |s|
+      if !s.scores[n].nil? && (player.nil? ? true : s.scores[0].player.name == player)
+        [s.id.to_s, (s.scores[0].score - s.scores[n].score).to_f / 60, s.scores[0].player.name]
+      end
+    }.compact
   end
 
   # Because of the way the query is done I use a ranking type instead of yield blocks
@@ -902,6 +935,32 @@ def send_userlevel_stats(event)
   event << "```        Scores\n\t#{totals}\n#{overall}\n#{histogram}```"
 end
 
+def send_userlevel_spreads(event)
+  msg    = event.content
+  n      = (msg[/([0-9][0-9]?)(st|nd|rd|th)/, 1] || 1).to_i
+  player = msg[/for (.*)[\.\?]?/i, 1] 
+  small  = !!(msg =~ /smallest/)
+
+  if n == 0
+    event << "I can't show you the spread between 0th and 0th..."
+    return
+  end
+
+  spreads = Userlevel.spreads(n, player, false)
+                     .sort_by { |s| (small ? s[1] : -s[1]) }
+                     .take(NUM_ENTRIES)
+  namepad  = spreads.map{ |s| s[0].length }.max
+  scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
+  spreads  = spreads.each_with_index
+                    .map { |s, i| "#{"%02d" % i}: #{"%-#{namepad}s" % s[0]} - #{"%#{scorepad}.3f" % s[1]} - #{s[2]}"}
+                    .join("\n")
+
+  spread = small ? "smallest" : "largest"
+  rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
+
+  event << "Userlevels #{!player.nil? ? "owned by #{player} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -930,6 +989,7 @@ def respond_userlevels(event)
     send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
     send_userlevel_list(event)        if msg =~ /\blist\b/i
     send_userlevel_stats(event)       if msg =~ /stat/i
+    send_userlevel_spreads(event)     if msg =~ /spread/i
   end
 
   send_userlevel_browse(event)     if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
