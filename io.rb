@@ -127,6 +127,26 @@ def parse_tabs(msg)
   ret
 end
 
+# We're basically building a regex string similar to: /("|“|”)([^"“”]*)("|“|”)/i
+# Which parses a term in between different types of quotes
+def parse_term
+  quotes = ["\"", "“", "”"]
+  string = "("
+  quotes.each{ |quote| string += quote + "|" }
+  string = string[0..-2] unless quotes.length == 0
+  string += ")([^"
+  quotes.each{ |quote| string += quote }
+  string += "]*)("  
+  quotes.each{ |quote| string += quote + "|" }
+  string = string[0..-2] unless quotes.length == 0
+  string += ")"
+  string
+end
+
+def parse_userlevel_author(msg)
+  msg[/((by)|(author))\s*#{parse_term}/i, 5] || ""
+end
+
 def format_rank(rank)
   rank == 1 ? "0th" : "top #{rank}"
 end

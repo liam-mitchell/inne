@@ -444,11 +444,13 @@ def update_userlevel_histories
   [-1, 1, 5, 10, 20].each{ |rank|
     rankings = Userlevel.rank(rank == -1 ? :points : :rank, rank == 1 ? true : false, rank - 1)
     attrs = rankings.select{ |r| r[1] > 0 }.map{ |r|
-      timestamp: now,
-      rank: rank,
-      player_id: r[0].player_id,
-      metanet_id: r[0].metanet_id,
-      count: r[1]
+      {
+        timestamp: now,
+        rank: rank,
+        player_id: r[0].player_id,
+        metanet_id: r[0].metanet_id,
+        count: r[1]
+      }
     }
   }
 

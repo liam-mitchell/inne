@@ -577,22 +577,6 @@ end
 # <---                           MESSAGES                                   --->
 # <---------------------------------------------------------------------------->
 
-# We're basically building a regex string similar to: /("|“|”)([^"“”]*)("|“|”)/i
-# Which parses a term in between different types of quotes
-def parse_term
-  quotes = ["\"", "“", "”"]
-  string = "("
-  quotes.each{ |quote| string += quote + "|" }
-  string = string[0..-2] unless quotes.length == 0
-  string += ")([^"
-  quotes.each{ |quote| string += quote }
-  string += "]*)("
-  quotes.each{ |quote| string += quote + "|" }
-  string = string[0..-2] unless quotes.length == 0
-  string += ")"
-  string
-end
-
 def format_userlevels(maps, page, range)
   # Calculate required column padding
   max_padding = {n: 3, id: 6, title: 30, author: 16, date: 14, favs: 4 }
@@ -698,7 +682,7 @@ def send_userlevel_search(event)
   search = msg[/search\s*(for)?\s*#{parse_term}/i, 3] || ""
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
   part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
-  author = msg[/((made\s*by)|(author))\s*("|“|”)([^"“”]*)("|“|”)/i, 5] || ""
+  author = parse_userlevel_author(msg)
   order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
   invert = order.strip[/\A-*/i].length % 2 == 1
   order.delete!("-")
@@ -757,12 +741,10 @@ def send_userlevel_download(event)
   end
 end
 
-def send_userlevel_screenshot(event)
+def send_userlevel_screenshot(event, userlevel = nil)
   msg = event.content
-  # id = msg[/screenshot\s*(for|of)?\s*(\d+)/i, 2] || -1
-  id = msg[/\d+/i] || -1
-  #palette = msg[/(using|with|in)?\s*(palette)?\s*("|“|”)([^"“”]*)("|“|”)/i, 4] || Userlevel::DEFAULT_PALETTE
-  palette = msg[/("|“|”)([^"“”]*)("|“|”)/i, 2] || Userlevel::DEFAULT_PALETTE
+  id = userlevel.nil? ? (msg[/\d+/i] || -1) : userlevel.id
+  palette = userlevel.nil? ? msg[/#{parse_term}/i, 2] || Userlevel::DEFAULT_PALETTE : Userlevel::DEFAULT_PALETTE
 
   if id == -1
     event << "You need to specify the name or the numerical ID of the map (e.g. `screenshot of userlevel 78414`).\n"
@@ -998,6 +980,21 @@ def send_userlevel_maxable(event)
   event << "```    ID - Ties - Author - Player\n#{ties}```"
 end
 
+def send_random_userlevel(event)
+  msg    = event.content
+  author = parse_userlevel_author(msg)
+  amount = msg[/\d+/].to_i || 1
+  mode   = msg =~ /\bcoop\b/i ? :coop : (msg =~ /\brace\b/i ? :race : :solo)
+
+  if amount > 1
+    maps = Userlevel.where(mode: mode, author: author).sample(PAGE_SIZE)
+    event << "Random selection of #{amount} #{mode.to_s} userlevels:" + format_userlevels(Userlevel::serial(maps), 0, (0..PAGE_SIZE - 1))
+  else
+    map = Userlevel.where(mode: mode, author: author).to_a.sample
+    send_userlevel_screenshot(event, map)
+  end
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -1036,5 +1033,6 @@ def respond_userlevels(event)
   send_userlevel_download(event)   if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event)     if msg =~ /scores\b/i # matches 'highscores'
+  send_random_userlevel(event)     if msg =~ /random/i
   #csv(event) if msg =~ /csv/i
 end
