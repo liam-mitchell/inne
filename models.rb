@@ -135,10 +135,11 @@ module HighScore
     }.compact
   end
 
-  def self.ties(type, tabs)
+  def self.ties(type, tabs, player = nil)
     (tabs.empty? ? type.all : type.where(tab: tabs)).includes(:scores).map{ |h|
-      ties = h.scores.select{ |s| s.score == h.scores[0].score }.size
-      [h, ties, h.scores.size] unless ties < 3
+      next if h.scores[0].nil?
+      ties = h.scores.count{ |s| s.score == h.scores[0].score }
+      [h, ties, h.scores.size] unless ties < 3 || h.scores[0..ties - 1].map{ |s| s.player.name }.include?(player)
     }.compact
   end
 

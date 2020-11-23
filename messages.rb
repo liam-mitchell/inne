@@ -253,11 +253,11 @@ def send_maxable(event)
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
 
-  ties = HighScore.ties(type, tabs)
-            .select { |s| s[1] < s[2] && !s[0].scores[0..s[1] - 1].map{ |s| s.player.name }.include?(player) }
+  ties = HighScore.ties(type, tabs, player)
+            .select { |s| s[1] < s[2] }
             .sort_by { |s| -s[1] }
             .take(NUM_ENTRIES)
-            .map { |s| "#{"%-10s" % s[0].name} - #{"%2d" % s[1]}" }
+            .map { |s| "#{"%-10s" % s[0].name} - #{"%2d" % s[1]} - #{format_string(s[0].scores[0].player.name)}" }
             .join("\n")
 
   type = format_type(type).downcase
@@ -269,19 +269,20 @@ end
 
 def send_maxed(event)
   msg = event.content
+  player = msg[/for (.*)[\.\?]?/i, 1]
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
 
-  ties = HighScore.ties(type, tabs)
+  ties = HighScore.ties(type, tabs, player)
             .select { |s| s[1] == s[2] }
-            .map { |s| "#{s[0].name}\n" }
-  ties_list = ties.join
+            .map { |s| "#{"%10s" % s[0].name} - #{format_string(s[0].scores[0].player.name)}" }
 
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
+  player = player.nil? ? "" : " without " + player
 
-  event << "#{tabs}potentially maxed #{type}s (with at least 20 ties for 0th) #{format_time}:\n" +
-  "```\n#{ties_list}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
+  event << "#{tabs}potentially maxed #{type}s (with all scores tied for 0th) #{format_time}#{player}:"
+  event << "```\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
 end
 
 def send_cleanliness(event)

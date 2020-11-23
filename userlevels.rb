@@ -344,20 +344,22 @@ class Userlevel < ActiveRecord::Base
     }.compact
   end
 
+  def self.ties(player = nil, full = false)
+    (full ? global : newest).includes(userlevel_scores: [:userlevel_player]).map{ |h|
+      next if h.scores[0].nil?
+      ties = h.scores.count{ |s| s.score == h.scores[0].score }
+      [h, ties, h.scores.size] unless ties < 3 || h.scores[0..ties - 1].map{ |s| s.player.name }.include?(player)
+    }.compact
+  end
+
   # Because of the way the query is done I use a ranking type instead of yield blocks
   def self.rank(type, ties = false, par = nil)
     dec = true # Whether the result is decimal or floating point
     rev = true # Whether the sort needs to be ascending or descending
-    min_id = UserlevelScore.pluck(:userlevel_id)
-                           .uniq
-                           .sort_by{ |id| -id }
-                           .take(USERLEVEL_REPORT_SIZE)
-                           .last
 
     # For these 2 rankings we use a different more efficient query
     if ![:rank, :tied].include?(type)
-      scores = UserlevelScore.where("userlevel_id >= #{min_id}")
-                             .group_by{ |s| s.player_id }
+      scores = UserlevelScore.newest.group_by{ |s| s.player_id }
     end
     case type
     when :rank
@@ -961,6 +963,31 @@ def send_userlevel_spreads(event)
   event << "Userlevels #{!player.nil? ? "owned by #{player} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
+def send_userlevel_maxed(event)
+  msg    = event.content
+  player = msg[/for (.*)[\.\?]?/i, 1]
+  ties   = Userlevel.ties(player, false)
+                    .select { |s| s[1] == s[2] }
+                    .map { |s| "#{"%6d" % s[0].id} - #{"%6d" % s[0].author_id} - #{format_string(s[0].scores[0].player.name)}" }
+  player = player.nil? ? "" : " without " + player
+  event << "Potentially maxed userlevels (with all scores tied for 0th) #{format_time}#{player}:"
+  event << "```    ID - Author - Player\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed userlevels."
+end
+
+def send_userlevel_maxable(event)
+  msg    = event.content
+  player = msg[/for (.*)[\.\?]?/i, 1]
+  ties   = Userlevel.ties(player, false)
+            .select { |s| s[1] < s[2] }
+            .sort_by { |s| -s[1] }
+            .take(NUM_ENTRIES)
+            .map { |s| "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[0].scores[0].player.name)}" }
+            .join("\n")
+  player = player.nil? ? "" : " without " + player
+  event << "Userlevels with the most ties for 0th #{format_time}#{player}:"
+  event << "```    ID - Ties - Author - Player\n#{ties}```"
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -990,6 +1017,8 @@ def respond_userlevels(event)
     send_userlevel_list(event)        if msg =~ /\blist\b/i
     send_userlevel_stats(event)       if msg =~ /stat/i
     send_userlevel_spreads(event)     if msg =~ /spread/i
+    send_userlevel_maxed(event)       if msg =~ /maxed/i
+    send_userlevel_maxable(event)     if msg =~ /maxable/i
   end
 
   send_userlevel_browse(event)     if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
