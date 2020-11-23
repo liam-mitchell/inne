@@ -27,6 +27,7 @@ end
 class UserlevelPlayer < ActiveRecord::Base
   alias_attribute :scores, :userlevel_scores
   has_many :userlevel_scores, foreign_key: :player_id
+  has_many :userlevel_histories, foreign_key: :player_id
 
   def range_s(rank1, rank2, ties)
     scores.select{ |s|
@@ -69,6 +70,12 @@ class UserlevelPlayer < ActiveRecord::Base
     }.sum.to_f / count
     avg || 0
   end
+end
+
+class UserlevelHistory < ActiveRecord::Base  
+  alias_attribute :player, :userlevel_player
+  belongs_to :userlevel_player, foreign_key: :player_id
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 end
 
 class Userlevel < ActiveRecord::Base
@@ -353,7 +360,7 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Because of the way the query is done I use a ranking type instead of yield blocks
-  def self.rank(type, ties = false, par = nil)
+  def self.rank(type, ties = false, par = nil, full = false)
     dec = true # Whether the result is decimal or floating point
     rev = true # Whether the sort needs to be ascending or descending
 
@@ -397,10 +404,8 @@ class Userlevel < ActiveRecord::Base
       scores = scores.sort_by{ |p, val| rev ? -val : val }
     end
 
-    scores.take(20)
-          .each_with_index
-          .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{(dec ? "%3d" : "%.3f") % p[1]}" }
-          .join("\n")
+    scores = scores.take(NUM_ENTRIES) if !full
+    scores.map{ |p| [UserlevelPlayer.find(p[0]), p[1]] }
   end
 
   def tiles
@@ -831,6 +836,11 @@ def send_userlevel_rankings(event)
     top = Userlevel.rank(:rank, ties, rank - 1)
     type = format_rank(rank)
   end
+
+  dec = top[0][1].is_a?(Integer)
+  top = top.each_with_index
+           .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name)} - #{(dec ? "%3d" : "%.3f") % p[1]}" }
+           .join("\n")
 
   event << "Userlevel #{type} #{ties ? "with ties " : ""}rankings #{format_time}:\n```#{top}```"
 end
