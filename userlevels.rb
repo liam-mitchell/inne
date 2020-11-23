@@ -983,12 +983,12 @@ end
 def send_random_userlevel(event)
   msg    = event.content
   author = parse_userlevel_author(msg)
-  amount = msg[/\d+/].to_i || 1
+  amount = [msg[/\d+/].to_i || 1, PAGE_SIZE].min
   mode   = msg =~ /\bcoop\b/i ? :coop : (msg =~ /\brace\b/i ? :race : :solo)
 
   if amount > 1
-    maps = Userlevel.where(mode: mode, author: author).sample(PAGE_SIZE)
-    event << "Random selection of #{amount} #{mode.to_s} userlevels:" + format_userlevels(Userlevel::serial(maps), 0, (0..PAGE_SIZE - 1))
+    maps = Userlevel.where(mode: mode, author: author).sample(amount)
+    event << "Random selection of #{amount} #{mode.to_s} userlevels:" + format_userlevels(Userlevel::serial(maps), 0, (0..amount - 1))
   else
     map = Userlevel.where(mode: mode, author: author).to_a.sample
     send_userlevel_screenshot(event, map)
