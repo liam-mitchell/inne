@@ -7,7 +7,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = true # Switch to the local test bot
+TEST          = false # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 WAIT          = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
@@ -22,7 +22,7 @@ POTATO_RATE   = 1                  # seconds between potato checks
 POTATO_FREQ   = 3 * 60 * 60        # 3 hours between potato delivers
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false  # 'true' sets all the following ones to true
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
@@ -31,7 +31,7 @@ UPDATE_LEVEL      = false # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
-UPDATE_USER_HIST  = true # Thread to regularly update userlevel highscoring histories
+UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
@@ -677,10 +677,6 @@ $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { potato }                    if POTATO
-
-while !send_userlevel_report
-  sleep(1)
-end
 
 wd = Thread.new { watchdog }
 wd.join
