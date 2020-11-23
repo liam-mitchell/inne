@@ -31,7 +31,7 @@ UPDATE_LEVEL      = false # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
-UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
+UPDATE_USER_HIST  = true # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
@@ -255,49 +255,18 @@ def send_userlevel_report
     return false
   end
 
-  min_id = UserlevelScore.pluck(:userlevel_id)
-                         .uniq
-                         .sort_by{ |id| -id }
-                         .take(USERLEVEL_REPORT_SIZE)
-                         .last
-  zeroes = UserlevelScore.where("userlevel_id >= #{min_id} and tied_rank = 0")
-                         .group(:player_id)
-                         .order('count_id desc')
-                         .count(:id)
-                         .take(20)
-                         .each_with_index
-                         .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
-                         .join("\n")
-  top20s = UserlevelScore.where("userlevel_id >= #{min_id}")
-                         .group(:player_id)
-                         .order('count_id desc')
-                         .count(:id)
-                         .take(20)
-                         .each_with_index
-                         .map{ |p, i| "#{"%02d" % i}: #{format_string(UserlevelPlayer.find(p[0]).name)} - #{"%3d" % p[1]}" }
-                         .join("\n")
-  points = UserlevelScore.where("userlevel_id >= #{min_id}")
-                         .group_by{ |s| s.player_id }
-                         .map{ |p, scores| [UserlevelPlayer.find(p).name, scores.map{ |s| 20 - s.rank }.sum] }
-                         .sort_by{ |p, points| -points }
-                         .take(20)
-                         .each_with_index
-                         .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0])} - #{"%3d" % p[1]}" }
-                         .join("\n")
-  averag = UserlevelScore.where("userlevel_id >= #{min_id}")
-                         .group_by{ |s| s.player_id }
-                         .map{ |p, scores| [UserlevelPlayer.find(p).name, scores.map{ |s| 20 - s.rank }.sum.to_f / scores.size] }
-                         .sort_by{ |p, points| -points }
-                         .take(20)
-                         .each_with_index
-                         .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0])} - #{"%.3f" % p[1]}" }
-                         .join("\n")
+  zeroes = Userlevel.rank(:rank, true, 0)
+                    .each_with_index
+                    .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name)} - #{"%3d" % p[1]}" }
+                    .join("\n")
+  points = Userlevel.rank(:points, false, 0)
+                    .each_with_index
+                    .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name)} - #{"%3d" % p[1]}" }
+                    .join("\n")
 
   $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
-  $mapping_channel.send_message("Userlevel 0th rankings on #{Time.now.to_s}:\n```#{zeroes}```")
-  #$mapping_channel.send_message("Userlevel top20 rankings on #{Time.now.to_s}:\n```#{top20s}```")
+  $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n```#{zeroes}```")
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
-  #$mapping_channel.send_message("Userlevel average point rankings on #{Time.now.to_s}:\n```#{averag}```")
   return true
 end
 
@@ -442,26 +411,25 @@ def update_userlevel_histories
   now = Time.now
 
   [-1, 1, 5, 10, 20].each{ |rank|
-    rankings = Userlevel.rank(rank == -1 ? :points : :rank, rank == 1 ? true : false, rank - 1)
+    rankings = Userlevel.rank(rank == -1 ? :points : :rank, rank == 1 ? true : false, rank - 1, true)
     attrs = rankings.select{ |r| r[1] > 0 }.map{ |r|
       {
         timestamp: now,
         rank: rank,
-        player_id: r[0].player_id,
+        player_id: r[0].id,
         metanet_id: r[0].metanet_id,
         count: r[1]
       }
     }
+    ActiveRecord::Base.transaction do
+      UserlevelHistory.create(attrs)
+    end
   }
-
-  ActiveRecord::Base.transaction do
-    UserlevelHistory.create(attrs)
-  end
 
   log("updated userlevel histories")
   return true   
-rescue
-  err("error updating userlevel histories")
+rescue => e
+  err("error updating userlevel histories: #{e}")
   return false
 end
 
@@ -709,6 +677,10 @@ $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { potato }                    if POTATO
+
+while !send_userlevel_report
+  sleep(1)
+end
 
 wd = Thread.new { watchdog }
 wd.join
