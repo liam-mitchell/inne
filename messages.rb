@@ -146,9 +146,9 @@ def send_scores(event)
   end
 end
 
-def send_screenshot(event)
+def send_screenshot(event, map = nil)
   msg = event.content
-  scores = parse_level_or_episode(msg)
+  scores = map.nil? ? parse_level_or_episode(msg) : map
   name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
 
   screenshot = "screenshots/#{name}.jpg"
@@ -436,6 +436,23 @@ def send_splits(event)
   rank = (r == 1 ? "1st" : (r == 2 ? "2nd" : (r == 3 ? "3rd" : "#{r}th")))
   event << "#{rank} splits for episode #{ep.name}: `#{splits.map{ |s| "%.3f, " % s }.join[0..-3]}`."
   event << "#{rank} time: `#{"%.3f" % ep.scores[r].score}`. #{rank} cleanliness: `#{"%.3f (%df)" % [clean, (60 * clean).round]}`."
+end
+
+def send_random(event)
+  msg    = event.content
+  type = parse_type(msg) || Level
+  tabs = parse_tabs(msg)
+  amount = [msg[/\d+/].to_i || 1, NUM_ENTRIES].min
+
+  maps = tabs.empty? ? type.all : type.where(tab: tabs)
+  if amount > 1
+    event << "Random selection of #{amount} #{format_tabs(tabs)}#{format_type(type).downcase.pluralize}:"
+    event << "```" + maps.sample(amount).each_with_index.map{ |m, i| "#{"%2d" % i} - #{"%10s" % m.name}" }.join("\n") + "```"
+  else
+    map = maps.sample
+    event <<format_type(type) + " " + map.name + "."
+    send_screenshot(event, map)
+  end
 end
 
 def send_diff(event)
@@ -834,6 +851,7 @@ def respond(event)
     send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
     send_ownages(event)     if msg =~ /ownage/i
     send_help(event)        if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
+    send_random(event)      if msg =~ /random/i
   end
 
   # on this methods, we will exclude a few problematic words that appear

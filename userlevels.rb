@@ -988,9 +988,9 @@ def send_random_userlevel(event)
 
   if amount > 1
     maps = Userlevel.where(mode: mode, author: author).sample(amount)
-    event << "Random selection of #{amount} #{mode.to_s} userlevels:" + format_userlevels(Userlevel::serial(maps), 0, (0..amount - 1))
+    event << "Random selection of #{amount} #{mode.to_s} userlevels#{!author.nil? ? "by #{author}" : ""}:" + format_userlevels(Userlevel::serial(maps), 0, (0..amount - 1))
   else
-    map = Userlevel.where(mode: mode, author: author).to_a.sample
+    map = Userlevel.where(mode: mode, author: author).sample
     send_userlevel_screenshot(event, map)
   end
 end
