@@ -218,7 +218,8 @@ module HighScore
           score: scoretime,
           replay_id: score['replay_id'].to_i,
           player: player,
-          tied_rank: updated.find_index { |s| s['score'] == score['score'] }
+          tied_rank: updated.find_index { |s| s['score'] == score['score'] },
+          tab: self.tab
         )
         if self.class != Userlevel && Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
           ar = Archive.create(
@@ -227,7 +228,8 @@ module HighScore
             highscoreable: self,
             score: (score['score'] * 60.0 / 1000.0).round,
             metanet_id: score['user_id'].to_i, # future-proof the db
-            date: Time.now
+            date: Time.now,
+            tab: self.tab
           )
           demo = Demo.find_or_create_by(id: ar.id)
           demo.update(replay_id: ar.replay_id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
@@ -376,6 +378,7 @@ class Score < ActiveRecord::Base
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
   belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
   default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def self.rank(ranking, n, type, tabs, ties)
     rev = true # Whether to sort in asceding or descending order
@@ -593,6 +596,7 @@ end
 class Archive < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   # Returns the leaderboards at a particular point in time
   def self.scores(highscoreable, date)
