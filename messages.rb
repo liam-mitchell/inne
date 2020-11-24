@@ -40,6 +40,7 @@ def send_rankings(event)
   rank = parse_rank(msg) || 1
   ties = !!(msg =~ /ties/i)
 
+  t = Time.now
   if msg =~ /average/i
     if msg =~ /point/i
       players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
@@ -63,11 +64,13 @@ def send_rankings(event)
     rankings = Player.rankings { |p| p.top_n_count(1, type, tabs, true) - p.top_n_count(1, type, tabs, false) }
     header = "tied 0th rankings "
   else
-    rankings = Player.rankings { |p| p.top_n_count(rank, type, tabs, ties) }
+#    rankings = Player.rankings { |p| p.top_n_count(rank, type, tabs, ties) }
+    rankings = Score.rank(:rank, rank - 1, type, tabs, ties)
     rank = format_rank(rank)
     ties = (ties ? "with ties " : "")
     header = "#{rank} rankings #{ties}"
   end
+  log(Time.now - t)
 
   type = format_type(type)
   tabs = format_tabs(tabs)

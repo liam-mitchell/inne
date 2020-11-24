@@ -6,26 +6,21 @@ Eddy's TODO list for inne:
 - "nevermind": delete last inne message prompted by that user.
 - Implement NReality's asterisk to previous 0th holders using the new Archives feature.
 
+\\ ------------------------ Current ------------------------
+- Optimize all rankings, and then others like cleanest/dirtiest.
+- Scores table: Add column "tab", add indices for "tied_rank", "tab" and "highscoreable_type".
+- Improve help (add command list, add help menu for each command).
+
 \\ ------------------------ Userlevels ------------------------
-- Browse (DONE)
-- Search (DONE)
-- Leaderboards (DONE)
-- Screenshots (DONE)
-- Download (DONE)
-- Rankings (DONE)
 
-Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
-
-Implement storage of all userlevel scores, to this end we should have a column in the userlevels table that contains the date when its scores were updated, and we regularly (e.g. daily) check the userlevel list sorted by this date in descending order, and update the scores of the first N userlevels (the ones that were updated the longest ago), say N = 5000 (this takes about 2 hours). Or we can have N = 2000 and also update the newest 2000 levels (since those are more likely to change).
-
-Report:
-- Store history (only the top 20 players for each of top20, top10, top5, 0th and point rankings, so 100 new entries per day).
+- Unify "search" and "browse" for ease of use.
+- Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
+- Implement storage of all userlevel scores, to this end we should have a column in the userlevels table that contains the date when its scores were updated, and we regularly (e.g. daily) check the userlevel list sorted by this date in descending order, and update the scores of the first N userlevels (the ones that were updated the longest ago), say N = 5000 (this takes about 2 hours). Or we can have N = 2000 and also update the newest 2000 levels (since those are more likely to change).
 
 Less priority:
 - Demo analysis.
 - Imagesearch: Show pictures of results (miniature) instead of text.
 - Userlevel stats: How many unique authors, maps, averages, etc. Break down by mode and total.
-- Another browse type: "random" (returns a random selection of maps)
 - Simplify author search by having a separate query for it: "userlevel from/by/made by <username>".
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
 - Store a daily list of all top 50 userlevels (just ID's for instance), so we can see how the hardest levels evolve.
@@ -95,7 +90,7 @@ Analysis:
 
 \\ ------------------------ Hardcore ------------------------
 
-- Cleanliness, and other functions.
+- Cleanliness, splits, and other functions.
 
 \\ ------------------------ Humanlike features ------------------------
 

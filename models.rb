@@ -377,6 +377,26 @@ class Score < ActiveRecord::Base
   belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
   default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
 
+  def self.rank(ranking, n, type, tabs, ties)
+    rev = true # Whether to sort in asceding or descending order
+    scores = self.where(highscoreable_type: type.nil? ? ['Level', 'Episode'] : type.to_s)
+    scores = tabs.empty? ? scores : scores.includes(:level).where(levels: {tab: tabs}) + 
+                                    scores.includes(:episode).where(episodes: {tab: tabs}) +
+                                    scores.includes(:story).where(stories: {tab: tabs})
+#    scores = tabs.empty? ? scores : scores.includes(:level).where(levels: {tab: tabs}).or(
+#                                    scores.includes(:episode).where(episodes: {tab: tabs})).or(
+#                                    scores.includes(:story).where(stories: {tab: tabs}))
+    case ranking
+    when :rank
+      scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
+            .group(:player_id)
+            .order('count_id desc')
+            .count(:id)
+            .take(NUM_ENTRIES)
+            .map{ |p| [Player.find(p[0]), p[1]] }
+    end
+  end
+
   def self.total_scores(type, tabs, secrets)
     tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
     tabs = (secrets ? tabs : tabs - [:SS, :SS2])
