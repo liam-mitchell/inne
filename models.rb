@@ -380,24 +380,51 @@ class Score < ActiveRecord::Base
   default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
-  def self.rank(ranking, n, type, tabs, ties)
+  # Alternative way to perform rankings which is much more efficient in some scenarios
+  # compared to the one in the Player class.
+  def self.rank(ranking, n, type, tabs, ties = nil)
     rev = true # Whether to sort in asceding or descending order
     scores = self.where(highscoreable_type: type.nil? ? ['Level', 'Episode'] : type.to_s)
-    scores = tabs.empty? ? scores : scores.includes(:level).where(levels: {tab: tabs}) + 
-                                    scores.includes(:episode).where(episodes: {tab: tabs}) +
-                                    scores.includes(:story).where(stories: {tab: tabs})
-#    scores = tabs.empty? ? scores : scores.includes(:level).where(levels: {tab: tabs}).or(
-#                                    scores.includes(:episode).where(episodes: {tab: tabs})).or(
-#                                    scores.includes(:story).where(stories: {tab: tabs}))
+    scores = scores.where(tab: tabs) if !tabs.empty?
+
+    # These rankings use a different, more efficient query
+    if ![:rank, :tied_rank].include?(ranking)
+      scores = scores.group_by{ |s| s.player_id }
+    end
     case ranking
     when :rank
-      scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
-            .group(:player_id)
-            .order('count_id desc')
-            .count(:id)
-            .take(NUM_ENTRIES)
-            .map{ |p| [Player.find(p[0]), p[1]] }
+      scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
+                     .group(:player_id)
+                     .order('count_id desc')
+                     .count(:id)
+    when :tied_rank
+      scores_w  = scores.where("tied_rank <= #{n}")
+                        .group(:player_id)
+                        .order('count_id desc')
+                        .count(:id)
+      scores_wo = scores.where("rank <= #{n}")
+                        .group(:player_id)
+                        .order('count_id desc')
+                        .count(:id)
+      scores = scores_w.map{ |id, count| [id, count - scores_wo[id].to_i] }
+    when :points
+      scores = scores.map{ |p, ss| [p, ss.map{ |s| 20 - (ties ? s.tied_rank : s.rank) }.sum] }
+    when :avg_points
+      scores = scores.reject{ |p, ss| ss.count < MIN_SCORES }
+                     .map{ |p, ss| [p, 20 - ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
+    when :avg_rank
+      scores = scores.reject{ |p, ss| ss.count < MIN_SCORES }
+                     .map{ |p, ss| [p, ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
+      rev = false
+    when :score
+      scores = scores.map{ |p, ss| [p, ss.map(&:score).sum.to_f / 60] }
     end
+    # These rankings do the sorting themselves
+    if ![:rank].include?(ranking)
+      scores = scores.sort_by{ |p, val| rev ? -val : val }
+    end
+    print scores.to_a[0]
+    scores.take(NUM_ENTRIES).map{ |p| [Player.find(p[0]), p[1]] }
   end
 
   def self.total_scores(type, tabs, secrets)

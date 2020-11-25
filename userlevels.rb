@@ -364,6 +364,7 @@ class Userlevel < ActiveRecord::Base
     dec = true # Whether the result is decimal or floating point
     rev = true # Whether the sort needs to be ascending or descending
 
+    t = Time.now
     # For these 2 rankings we use a different more efficient query
     if ![:rank, :tied].include?(type)
       scores = UserlevelScore.newest.group_by{ |s| s.player_id }
@@ -403,6 +404,7 @@ class Userlevel < ActiveRecord::Base
     if ![:rank].include?(type)
       scores = scores.sort_by{ |p, val| rev ? -val : val }
     end
+    log(Time.now - t)
 
     scores = scores.take(NUM_ENTRIES) if !full
     scores.map{ |p| [UserlevelPlayer.find(p[0]), p[1]] }

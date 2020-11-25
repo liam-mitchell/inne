@@ -56,15 +56,15 @@ def send_rankings(event)
     end
   elsif msg =~ /point/i
     rankings = Player.rankings { |p| p.points(type, tabs) }
+#    rankings = Score.rank(:points, rank - 1, type, tabs, ties)
     header = "point rankings "
   elsif msg =~ /score/i
     rankings = Player.rankings { |p| p.total_score(type, tabs) }
     header = "score rankings "
   elsif msg =~ /tied/i
-    rankings = Player.rankings { |p| p.top_n_count(1, type, tabs, true) - p.top_n_count(1, type, tabs, false) }
+    rankings = Score.rank(:tied_rank, rank - 1, type, tabs)
     header = "tied 0th rankings "
   else
-#    rankings = Player.rankings { |p| p.top_n_count(rank, type, tabs, ties) }
     rankings = Score.rank(:rank, rank - 1, type, tabs, ties)
     rank = format_rank(rank)
     ties = (ties ? "with ties " : "")
