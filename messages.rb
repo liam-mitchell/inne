@@ -58,7 +58,7 @@ def send_rankings(event)
     rankings = Score.rank(:score, type, tabs)
     header = "score rankings "
   elsif msg =~ /tied/i
-    rankings = Score.rank(:tied_rank, type, tabs)
+    rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1)
     header = "tied 0th rankings "
   else
     rankings = Score.rank(:rank, type, tabs, ties, rank - 1)

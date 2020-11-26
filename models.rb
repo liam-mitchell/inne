@@ -426,9 +426,10 @@ class Score < ActiveRecord::Base
                         .order('count_id desc')
                         .count(:id)
       scores = scores_w.map{ |id, count| [id, count - scores_wo[id].to_i] }
+                       .sort_by{ |id, c| -c }
     when :points
       scores = scores.group(:player_id)
-                     .order("sum(#{ties ? "tied_rank" : "rank"}) desc")
+                     .order("sum(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
                      .sum(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_points
       scores = scores.select("count(player_id)")
