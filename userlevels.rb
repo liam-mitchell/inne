@@ -984,8 +984,8 @@ end
 
 def send_random_userlevel(event)
   msg    = event.content
-  author = parse_userlevel_author(msg)
-  amount = [msg[/\d+/].to_i || 1, PAGE_SIZE].min
+  author = parse_userlevel_author(msg) || ""
+  amount = [msg.remove(author)[/\d+/].to_i || 1, PAGE_SIZE].min
   mode   = msg =~ /\bcoop\b/i ? :coop : (msg =~ /\brace\b/i ? :race : :solo)
 
   if amount > 1

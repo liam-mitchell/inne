@@ -6,6 +6,8 @@ include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = false # log common error messages
+LOG_SQL         = true  # log _all_ SQL queries (for debugging)
+BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
@@ -14,6 +16,7 @@ MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
 TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
 
 USERLEVEL_REPORT_SIZE = 500
+ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 
 # ID ranges for levels and episodes, and score limits to filter new hacked scores
 TABS = {
@@ -95,6 +98,24 @@ end
 def _unpack(bytes)
   if bytes.is_a?(Array) then bytes = bytes.join end
   bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+end
+
+def bench(action)
+  @t ||= Time.now
+  @total ||= 0
+  @step ||= 0
+  case action
+  when :start
+    @step = 0
+    @total = 0
+    @t = Time.now
+  when :step
+    @step += 1
+    int = Time.now - @t
+    @total += int
+    @t = Time.now
+    log("Benchmark #{@step}: #{"%.3fms" % (int * 1000)} (Total: #{"%.3fms" % (@total * 1000)}).")
+  end
 end
 
 def format_string(str, padding = DEFAULT_PADDING)
@@ -377,20 +398,16 @@ class Score < ActiveRecord::Base
   belongs_to :level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: 'highscoreable_id'
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
   belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
-  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
+#  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
-  # Alternative way to perform rankings which is much more efficient in some scenarios
-  # compared to the one in the Player class.
-  def self.rank(ranking, n, type, tabs, ties = nil)
-    rev = true # Whether to sort in asceding or descending order
+  # Alternative method to perform rankings which outperforms the Player approach
+  # since we leave all the heavy lifting to the SQL interface instead of Ruby.
+  def self.rank(ranking, type, tabs, ties = nil, n = nil)
     scores = self.where(highscoreable_type: type.nil? ? ['Level', 'Episode'] : type.to_s)
     scores = scores.where(tab: tabs) if !tabs.empty?
+    bench(:start) if BENCHMARK
 
-    # These rankings use a different, more efficient query
-    if ![:rank, :tied_rank].include?(ranking)
-      scores = scores.group_by{ |s| s.player_id }
-    end
     case ranking
     when :rank
       scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
@@ -408,22 +425,28 @@ class Score < ActiveRecord::Base
                         .count(:id)
       scores = scores_w.map{ |id, count| [id, count - scores_wo[id].to_i] }
     when :points
-      scores = scores.map{ |p, ss| [p, ss.map{ |s| 20 - (ties ? s.tied_rank : s.rank) }.sum] }
+      scores = scores.group(:player_id)
+                     .order("sum(#{ties ? "tied_rank" : "rank"}) desc")
+                     .sum(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_points
-      scores = scores.reject{ |p, ss| ss.count < MIN_SCORES }
-                     .map{ |p, ss| [p, 20 - ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
+      scores = scores.select("count(player_id)")
+                     .group(:player_id)
+                     .having("count(player_id) >= #{MIN_SCORES}")
+                     .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
+                     .average(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_rank
-      scores = scores.reject{ |p, ss| ss.count < MIN_SCORES }
-                     .map{ |p, ss| [p, ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
-      rev = false
+      scores = scores.select("count(player_id)")
+                     .group(:player_id)
+                     .having("count(player_id) >= #{MIN_SCORES}")
+                     .order("avg(#{ties ? "tied_rank" : "rank"})")
+                     .average(ties ? "tied_rank" : "rank")
     when :score
-      scores = scores.map{ |p, ss| [p, ss.map(&:score).sum.to_f / 60] }
+      scores = scores.group(:player_id)
+                     .order("sum(score) desc")
+                     .sum(:score)
     end
-    # These rankings do the sorting themselves
-    if ![:rank].include?(ranking)
-      scores = scores.sort_by{ |p, val| rev ? -val : val }
-    end
-    print scores.to_a[0]
+
+    bench(:step) if BENCHMARK
     scores.take(NUM_ENTRIES).map{ |p| [Player.find(p[0]), p[1]] }
   end
 

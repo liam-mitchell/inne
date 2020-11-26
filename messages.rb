@@ -40,37 +40,32 @@ def send_rankings(event)
   rank = parse_rank(msg) || 1
   ties = !!(msg =~ /ties/i)
 
-  t = Time.now
   if msg =~ /average/i
     if msg =~ /point/i
-      players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
-      rankings = players.rankings { |p| p.average_points(type, tabs) }
+      rankings = Score.rank(:avg_points, type, tabs, ties)
       header = "average point rankings "
     #elsif msg =~ /lead/i # commented until we optimize it
     #  rankings = Player.rankings { |p| p.average_lead(type, tabs) }
     #  header = "average lead rankings "
     else
-      players = Player.where(id: Player.joins(:scores).group('players.id').having("count(highscoreable_id) > #{MIN_SCORES}").pluck(:id))
-      rankings = players.rankings { |p| p.average_points(type, tabs) }.map{ |p| [p[0], 20 - p[1]] }
+      rankings = Score.rank(:avg_rank, type, tabs, ties)
       header = "average rank rankings "
     end
   elsif msg =~ /point/i
-    rankings = Player.rankings { |p| p.points(type, tabs) }
-#    rankings = Score.rank(:points, rank - 1, type, tabs, ties)
+    rankings = Score.rank(:points, type, tabs, ties)
     header = "point rankings "
   elsif msg =~ /score/i
-    rankings = Player.rankings { |p| p.total_score(type, tabs) }
+    rankings = Score.rank(:score, type, tabs)
     header = "score rankings "
   elsif msg =~ /tied/i
-    rankings = Score.rank(:tied_rank, rank - 1, type, tabs)
+    rankings = Score.rank(:tied_rank, type, tabs)
     header = "tied 0th rankings "
   else
-    rankings = Score.rank(:rank, rank - 1, type, tabs, ties)
+    rankings = Score.rank(:rank, type, tabs, ties, rank - 1)
     rank = format_rank(rank)
     ties = (ties ? "with ties " : "")
     header = "#{rank} rankings #{ties}"
   end
-  log(Time.now - t)
 
   type = format_type(type)
   tabs = format_tabs(tabs)
