@@ -6,10 +6,10 @@ include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = false # log common error messages
-LOG_SQL         = true  # log _all_ SQL queries (for debugging)
+LOG_SQL         = false # log _all_ SQL queries (for debugging)
 BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
-DEFAULT_CLASSES = ['Level', 'Episode']
+DEFAULT_TYPES   = ['Level', 'Episode']
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
@@ -405,7 +405,8 @@ class Score < ActiveRecord::Base
   # Alternative method to perform rankings which outperforms the Player approach
   # since we leave all the heavy lifting to the SQL interface instead of Ruby.
   def self.rank(ranking, type, tabs, ties = nil, n = nil)
-    scores = self.where(highscoreable_type: type.nil? ? ['Level', 'Episode'] : type.to_s)
+    type = Level if ranking == :avg_lead && (type.nil? || type.is_a?(Array)) # avg lead only works with 1 type
+    scores = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
     scores = scores.where(tab: tabs) if !tabs.empty?
     bench(:start) if BENCHMARK
 
@@ -441,6 +442,14 @@ class Score < ActiveRecord::Base
                      .having("count(player_id) >= #{MIN_SCORES}")
                      .order("avg(#{ties ? "tied_rank" : "rank"})")
                      .average(ties ? "tied_rank" : "rank")
+    when :avg_lead
+      scores = scores.where(rank: [0, 1])
+                     .pluck(:player_id, :highscoreable_id, :score)
+                     .group_by{ |s| s[1] }
+                     .map{ |h, s| [s[0][0], s[0][2] - s[1][2]] }
+                     .group_by{ |s| s[0] }
+                     .map{ |p, s| [p, s.map{ |t| t[1] }.sum / s.map{ |t| t[1] }.count] }
+                     .sort_by{ |p, s| -s }
     when :score
       scores = scores.group(:player_id)
                      .order("sum(score) desc")
@@ -480,6 +489,7 @@ class Player < ActiveRecord::Base
   has_many :points_histories
   has_many :total_score_histories
 
+  # Deprecated since it's slower, see Score::rank
   def self.rankings(&block)
     players = Player.all
 
@@ -529,7 +539,7 @@ class Player < ActiveRecord::Base
   end
 
   def scores_by_type_and_tabs(type, tabs, include = false)
-    ret = scores.where(highscoreable_type: type.nil? ? DEFAULT_CLASSES : type.to_s)
+    ret = scores.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
     ret = ret.where(tab: tabs) if !tabs.empty?
     include ? ret.includes(highscoreable: [:scores]) : ret
   end
@@ -543,17 +553,19 @@ class Player < ActiveRecord::Base
   end
 
   def scores_by_rank(type, tabs)
+    bench(:start) if BENCHMARK
     ret = Array.new(20, [])
     scores_by_type_and_tabs(type, tabs).group_by(&:rank).sort_by(&:first).each { |rank, scores| ret[rank] = scores }
+    bench(:step) if BENCHMARK
     ret
   end
 
   def score_counts(tabs, ties)
     bench(:start) if BENCHMARK
     counts = {
-      levels:   scores_by_type_and_tabs(Level,   tabs).group(:rank).order(:rank).count(:id),
-      episodes: scores_by_type_and_tabs(Episode, tabs).group(:rank).order(:rank).count(:id),
-      stories:  scores_by_type_and_tabs(Story,   tabs).group(:rank).order(:rank).count(:id)
+      levels:   scores_by_type_and_tabs(Level,   tabs).group(ties ? :tied_rank : :rank).order(ties ? :tied_rank : :rank).count(:id),
+      episodes: scores_by_type_and_tabs(Episode, tabs).group(ties ? :tied_rank : :rank).order(ties ? :tied_rank : :rank).count(:id),
+      stories:  scores_by_type_and_tabs(Story,   tabs).group(ties ? :tied_rank : :rank).order(ties ? :tied_rank : :rank).count(:id)
     }
     bench(:step) if BENCHMARK
     counts
@@ -576,29 +588,50 @@ class Player < ActiveRecord::Base
   end
 
   def points(type, tabs)
-    scores_by_type_and_tabs(type, tabs).pluck(:rank).map { |rank| 20 - rank }.reduce(0, :+)
+    bench(:start) if BENCHMARK
+    points = scores_by_type_and_tabs(type, tabs).sum('20 - rank')
+    bench(:step) if BENCHMARK
+    points
   end
 
   def average_points(type, tabs)
-    scores = scores_by_type_and_tabs(type, tabs).pluck(:rank).map { |rank| 20 - rank }
-    scores.length == 0 ? 0 : scores.reduce(0, :+).to_f / scores.length
+    bench(:start) if BENCHMARK
+    scores = scores_by_type_and_tabs(type, tabs).average('20 - rank')
+    bench(:step) if BENCHMARK
+    scores
   end
 
   def total_score(type, tabs)
-    scores_by_type_and_tabs(type, tabs).pluck(:score).reduce(0, :+)
+    bench(:start) if BENCHMARK
+    scores = scores_by_type_and_tabs(type, tabs).sum(:score)
+    bench(:step) if BENCHMARK
+    scores
   end
 
   def average_lead(type, tabs)
+    type = Level if type.nil?
     bench(:start) if BENCHMARK
-    scores = top_ns(1, type, tabs, false, true)
-    count = scores.size
-    avg = count == 0 ? 0 : scores.map{ |s|
-      scores = s.highscoreable.scores.map(&:score)
-      scores[0] - scores[1]
-    }.sum.to_f / count
+
+    ids = top_ns(1, type, tabs, false).pluck('highscoreable_id')
+    ret = Score.where(highscoreable_type: type.to_s, highscoreable_id: ids, rank: [0, 1])
+    ret = ret.where(tab: tabs) if !tabs.empty?
+    ret = ret.pluck(:highscoreable_id, :score)
+    count = ret.count / 2
+    return 0 if count == 0
+    ret = ret.group_by(&:first).map{ |id, sc| (sc[0][1] - sc[1][1]).abs }.sum / count
+# alternative way, faster when the player has many 0ths but slower otherwise (usual outcome)
+#    ret = Score.where(highscoreable_type: type.to_s, rank: [0, 1])
+#    ret = ret.where(tab: tabs) if !tabs.empty?
+#    ret = ret.pluck(:player_id, :highscoreable_id, :score)
+#             .group_by{ |s| s[1] }
+#             .map{ |h, s| s[0][2] - s[1][2] if s[0][0] == id }
+#             .compact
+#    count = ret.count
+#    return 0 if count == 0
+#    ret = ret.sum / count
 
     bench(:step) if BENCHMARK
-    avg || 0
+    ret
   end
 end
 

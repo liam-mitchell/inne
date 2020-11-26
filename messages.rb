@@ -44,9 +44,9 @@ def send_rankings(event)
     if msg =~ /point/i
       rankings = Score.rank(:avg_points, type, tabs, ties)
       header = "average point rankings "
-    #elsif msg =~ /lead/i # commented until we optimize it
-    #  rankings = Player.rankings { |p| p.average_lead(type, tabs) }
-    #  header = "average lead rankings "
+    elsif msg =~ /lead/i # commented until we optimize it
+      rankings = Score.rank(:avg_lead, type, tabs)
+      header = "average lead rankings "
     else
       rankings = Score.rank(:avg_rank, type, tabs, ties)
       header = "average rank rankings "
@@ -407,7 +407,7 @@ end
 def send_average_lead(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg)
+  type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
   average = player.average_lead(type, tabs)
 
