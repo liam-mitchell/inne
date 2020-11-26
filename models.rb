@@ -538,14 +538,21 @@ class Player < ActiveRecord::Base
     format_string(name, padding)
   end
 
-  def scores_by_type_and_tabs(type, tabs, include = false)
+  def scores_by_type_and_tabs(type, tabs, include = nil)
     ret = scores.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
     ret = ret.where(tab: tabs) if !tabs.empty?
-    include ? ret.includes(highscoreable: [:scores]) : ret
+    case include
+    when :scores
+      ret.includes(highscoreable: [:scores])
+    when :name
+      ret.includes(:highscoreable)
+    else
+      ret
+    end
   end
 
-  def top_ns(n, type, tabs, ties, include = false)
-    scores_by_type_and_tabs(type, tabs, include).where("#{ties ? "tied_rank" : "rank"} < #{n}")
+  def top_ns(n, type, tabs, ties)
+    scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} < #{n}")
   end
 
   def top_n_count(n, type, tabs, ties)
@@ -571,20 +578,28 @@ class Player < ActiveRecord::Base
     counts
   end
 
-  def missing_top_ns(n, type, tabs, ties)
-    levels = top_ns(n, type, tabs, ties).map { |s| s.highscoreable.name }
-    tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
-    if type
-      type.where(tab: tabs).where.not(name: levels).pluck(:name)
-    else
-      Level.where(tab: tabs).where.not(name: levels).pluck(:name) + Episode.where(tab: tabs).where.not(name: levels).pluck(:name)
-    end
+  def missing_top_ns(type, tabs, n)
+    type = Level if type.nil? || type.is_a?(Array) # only works for a single type
+    bench(:start) if BENCHMARK
+    ids = scores_by_type_and_tabs(type, tabs).pluck(:highscoreable_id)
+    scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name).sample(n)
+    print scores
+    bench(:step) if BENCHMARK
+    scores
   end
 
-  def improvable_scores(type, tabs)
-    improvable = {}
-    scores_by_type_and_tabs(type, tabs).each { |s| improvable[s.highscoreable.name] = s.spread }
-    improvable
+  def improvable_scores(type, tabs, n)
+    type = Level if type.nil? || type.is_a?(Array) # only works for a single type
+    bench(:start) if BENCHMARK
+    ids = scores_by_type_and_tabs(type, tabs).pluck(:highscoreable_id, :score).to_h
+    ret = Score.where(highscoreable_type: type.to_s, highscoreable_id: ids.keys, rank: 0)
+    ret = ret.pluck(:highscoreable_id, :score)
+             .map{ |id, s| [id, s - ids[id]] }
+             .sort_by{ |s| -s[1] }
+             .take(n)
+             .map{ |id, s| [type.find(id).name, s] }
+    bench(:step) if BENCHMARK
+    ret
   end
 
   def points(type, tabs)
@@ -609,7 +624,7 @@ class Player < ActiveRecord::Base
   end
 
   def average_lead(type, tabs)
-    type = Level if type.nil?
+    type = Level if type.nil? || type.is_a?(Array) # only works for a single type
     bench(:start) if BENCHMARK
 
     ids = top_ns(1, type, tabs, false).pluck('highscoreable_id')

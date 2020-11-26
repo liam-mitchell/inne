@@ -337,23 +337,20 @@ def send_suggestions(event)
   player = parse_player(msg, event.user.name)
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
-  n = (msg[/\b[0-9][0-9]?\b/] || NUM_ENTRIES / 2).to_i
-  n = (n <= 0 || n > MAX_ENTRIES) ? NUM_ENTRIES / 2 : n
+  n = NUM_ENTRIES / 2 # simplified
+#  n = (msg[/\b[0-9][0-9]?\b/] || NUM_ENTRIES / 2).to_i
+#  n = (n <= 0 || n > MAX_ENTRIES) ? NUM_ENTRIES / 2 : n
 
-  improvable = player.improvable_scores(type, tabs)
+  improvable = player.improvable_scores(type, tabs, n)
   padding = improvable.map{ |level, gap| gap }.max.to_i.to_s.length + 4
 
-  improvable = improvable.sort_by { |level, gap| -gap }
-              .take(n)
-              .map { |level, gap| "#{'%-10s' % [level]} (-#{"%#{padding}.3f" % [gap]})" }
-              .join("\n")
+  improvable = improvable.map { |level, gap| "#{'%-10s' % [level]} - #{"%#{padding}.3f" % [gap]}" }.join("\n")
+  missing = player.missing_top_ns(type, tabs, n).join("\n")
 
-  missing = player.missing_top_ns(20, type, tabs, false).sample(n).join("\n")
   type = type.to_s.downcase
   tabs = tabs.empty? ? "" :  " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
-  event << "#{n} most improvable #{type}s#{tabs} for #{player.name}:\n```#{improvable}```"
-  event << "#{player.name} is not on the board for:\n```#{missing}```"
+  event << "#{n} most improvable #{type}s#{tabs} for #{player.name}:\n```#{improvable}```#{player.name} is not on the board for:\n```\n#{missing}```"
 end
 
 def send_level_id(event)
