@@ -9,6 +9,7 @@ SHOW_ERRORS     = false # log common error messages
 LOG_SQL         = true  # log _all_ SQL queries (for debugging)
 BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
+DEFAULT_CLASSES = ['Level', 'Episode']
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
@@ -528,15 +529,13 @@ class Player < ActiveRecord::Base
   end
 
   def scores_by_type_and_tabs(type, tabs, include = false)
-    ret = type ? scores.where(highscoreable_type: type.to_s) : scores.where(highscoreable_type: ["Level", "Episode"])
-    ret = tabs.empty? ? ret : ret.includes(:level).where(levels: {tab: tabs}) + ret.includes(:episode).where(episodes: {tab: tabs}) + ret.includes(:story).where(stories: {tab: tabs})
+    ret = scores.where(highscoreable_type: type.nil? ? DEFAULT_CLASSES : type.to_s)
+    ret = ret.where(tab: tabs) if !tabs.empty?
     include ? ret.includes(highscoreable: [:scores]) : ret
   end
 
   def top_ns(n, type, tabs, ties, include = false)
-    scores_by_type_and_tabs(type, tabs, include).select do |s|
-      (ties ? s.tied_rank : s.rank) < n
-    end
+    scores_by_type_and_tabs(type, tabs, include).where("#{ties ? "tied_rank" : "rank"} < #{n}")
   end
 
   def top_n_count(n, type, tabs, ties)
@@ -549,17 +548,19 @@ class Player < ActiveRecord::Base
     ret
   end
 
-  def score_counts(tabs)
-    {
-      levels: scores_by_rank(Level, tabs).map(&:length).map(&:to_i),
-      episodes: scores_by_rank(Episode, tabs).map(&:length).map(&:to_i),
-      stories: scores_by_rank(Story, tabs).map(&:length).map(&:to_i)
+  def score_counts(tabs, ties)
+    bench(:start) if BENCHMARK
+    counts = {
+      levels:   scores_by_type_and_tabs(Level,   tabs).group(:rank).order(:rank).count(:id),
+      episodes: scores_by_type_and_tabs(Episode, tabs).group(:rank).order(:rank).count(:id),
+      stories:  scores_by_type_and_tabs(Story,   tabs).group(:rank).order(:rank).count(:id)
     }
+    bench(:step) if BENCHMARK
+    counts
   end
 
   def missing_top_ns(n, type, tabs, ties)
     levels = top_ns(n, type, tabs, ties).map { |s| s.highscoreable.name }
-
     tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
     if type
       type.where(tab: tabs).where.not(name: levels).pluck(:name)
@@ -588,12 +589,15 @@ class Player < ActiveRecord::Base
   end
 
   def average_lead(type, tabs)
+    bench(:start) if BENCHMARK
     scores = top_ns(1, type, tabs, false, true)
     count = scores.size
     avg = count == 0 ? 0 : scores.map{ |s|
       scores = s.highscoreable.scores.map(&:score)
       scores[0] - scores[1]
     }.sum.to_f / count
+
+    bench(:step) if BENCHMARK
     avg || 0
   end
 end

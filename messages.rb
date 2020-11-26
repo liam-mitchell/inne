@@ -162,30 +162,27 @@ def send_stats(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
   tabs = parse_tabs(msg)
-  counts = player.score_counts(tabs)
-
-  histdata = counts[:levels].zip(counts[:episodes])
-             .each_with_index
-             .map { |a, i| [i, a[0] + a[1]]}
+  ties = !!(msg =~ /ties/i)
+  counts = player.score_counts(tabs, ties)
 
   histogram = AsciiCharts::Cartesian.new(
-    histdata,
+    (0..19).map{ |r| [r, counts[:levels][r].to_i + counts[:episodes][r].to_i] },
     bar: true,
     hide_zero: true,
     max_y_vals: 15,
     title: 'Score histogram'
   ).draw
 
-  totals = counts[:levels].zip(counts[:episodes]).zip(counts[:stories]).map(&:flatten)
-           .each_with_index
-           .map { |a, i| "#{HighScore.format_rank(i)}: #{"   %4d  %4d    %4d   %4d" % [a[0] + a[1], a[0], a[1], a[2]]}" }
-           .join("\n\t")
+  full_counts = (0..19).map{ |r|
+    l = counts[:levels][r].to_i
+    e = counts[:episodes][r].to_i
+    s = counts[:stories][r].to_i
+    [l + e, l, e, s]
+  }
 
-  overall = "Totals:    %4d  %4d    %4d   %4d" % counts[:levels].zip(counts[:episodes]).zip(counts[:stories]).map(&:flatten)
-            .map { |a| [a[0] + a[1], a[0], a[1], a[2]] }
-            .reduce([0, 0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
-
-  tabs = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
+  totals  = full_counts.each_with_index.map{ |c, r| "#{HighScore.format_rank(r)}: #{"   %4d  %4d    %4d   %4d" % c}" }.join("\n\t")
+  overall = "Totals:    %4d  %4d    %4d   %4d" % full_counts.reduce([0, 0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
+  tabs    = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
   event << "Player high score counts for #{player.name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}"
   event << "#{histogram}```"
