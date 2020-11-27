@@ -15,21 +15,32 @@ def normalize_name(name)
   name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
 end
 
-def parse_player(msg, username, userlevel = false)
-  p = msg[/for (.*)[\.\?]?/i, 1]
+# explicit: players will only be parsed if they appear explicitly, without inferring from their user, otherwise nil
+# enforce: a player MUST be supplied explicitly, otherwise exception
+def parse_player(msg, username, userlevel = false, explicit = false, enforce = false)
+  p = msg[/(for|of) (.*)[\.\?]?/i, 2]
   playerClass = userlevel ? UserlevelPlayer : Player
 
   # We make sure to only return players with metanet_ids, ie., with highscores.
   if p.nil?
-    raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" unless User.exists?(username: username)
-    player = playerClass.where.not(metanet_id: nil).find_by(name: User.find_by(username: username).player.name)
-    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
-    player
+    if explicit
+      if enforce
+        raise "You need to specify a player using `for/of PLAYERNAME` for this function."
+      else
+        nil
+      end
+    else
+      raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" unless User.exists?(username: username)
+      player = playerClass.where.not(metanet_id: nil).find_by(name: User.find_by(username: username).player.name)
+      raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
+      player
+    end
   else
     player = playerClass.where.not(metanet_id: nil).find_by(name: p)
     raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
     player
   end
+
 end
 
 def parse_video_author(msg)

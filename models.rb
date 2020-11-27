@@ -6,7 +6,7 @@ include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = false # log common error messages
-LOG_SQL         = false # log _all_ SQL queries (for debugging)
+LOG_SQL         = true # log _all_ SQL queries (for debugging)
 BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
@@ -143,26 +143,87 @@ def format_string(str, padding = DEFAULT_PADDING)
   end
 end
 
+# sometimes we need to make sure there's exactly one valid type
+def ensure_type(type)
+  (type.nil? || type.is_a?(Array)) ? Level : type
+end
+
 module HighScore
 
   def self.format_rank(rank)
     "#{rank < 10 ? '0' : ''}#{rank}"
   end
 
-  def self.spreads(n, type, tabs, player = nil)
-    (tabs.empty? ? type.all : type.where(tab: tabs)).includes(scores: [:player]).map{ |s|
-      if !s.scores[n].score.nil? && (player.nil? ? true : s.scores[0].player.name == player)
-        [s.name, s.scores[0].score - s.scores[n].score, s.scores[0].player.name]
-      end
-    }.compact
+  # everything in the "spreads" and "ties" functions has been carefully
+  # benchmarked so, though unelegant, it's the most efficient set of
+  # sql queries
+  def self.spreads(n, type, tabs, small = false, player_id = nil)
+    type = ensure_type(type)
+    bench(:start) if BENCHMARK
+    # retrieve player's 0ths if necessary
+    if !player_id.nil?
+      ids = Score.where(highscoreable_type: type.to_s, rank: 0, player_id: player_id)
+      ids = ids.where(tab: tabs) if !tabs.empty?
+      ids = ids.pluck('highscoreable_id')
+    end
+    # retrieve required scores and compute spreads
+    ret1 = Score.where(highscoreable_type: type.to_s, rank: 0)
+    ret1 = ret1.where(tab: tabs) if !tabs.empty?
+    ret1 = ret1.where(highscoreable_id: ids) if !player_id.nil?
+    ret1 = ret1.pluck(:highscoreable_id, :score).to_h
+    ret2 = Score.where(highscoreable_type: type.to_s, rank: n)
+    ret2 = ret2.where(tab: tabs) if !tabs.empty?
+    ret2 = ret2.where(highscoreable_id: ids) if !player_id.nil?
+    ret2 = ret2.pluck(:highscoreable_id, :score).to_h
+    ret = ret2.map{ |id, s| [id, ret1[id] - s] }
+              .sort_by{ |id, s| small ? s : -s }
+              .take(NUM_ENTRIES)
+              .to_h
+    # retrieve level names
+    lnames = type.where(id: ret.keys)
+                 .pluck(:id, :name)
+                 .to_h
+    # retrieve player names
+    pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
+                  .joins("INNER JOIN players ON players.id = scores.player_id")
+                  .pluck('scores.highscoreable_id', 'players.name')
+                  .to_h
+    ret = ret.map{ |id, s| [lnames[id], s, pnames[id]] }
+    bench(:step) if BENCHMARK
+    ret
   end
 
-  def self.ties(type, tabs, player = nil)
-    (tabs.empty? ? type.all : type.where(tab: tabs)).includes(:scores).map{ |h|
-      next if h.scores[0].nil?
-      ties = h.scores.count{ |s| s.score == h.scores[0].score }
-      [h, ties, h.scores.size] unless ties < 3 || h.scores[0..ties - 1].map{ |s| s.player.name }.include?(player)
-    }.compact
+  def self.ties(type, tabs, player_id = nil, maxed = false)
+    type = ensure_type(type)
+    bench(:start) if BENCHMARK
+    # retrieve most tied for 0th leves
+    ret = Score.where(highscoreable_type: type.to_s, tied_rank: 0)
+    ret = ret.where(tab: tabs) if !tabs.empty?
+    ret = ret.group(:highscoreable_id)
+             .order(!maxed ? 'count(id) desc' : '', :highscoreable_id)
+             .having('count(id) >= 3')
+             .having(!player_id.nil? ? 'amount = 0' : '')
+             .pluck('highscoreable_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
+             .map{ |s| s[0..1] }
+             .to_h
+    log ret
+    # retrieve total score counts for each level (to compare against the tie count and determine maxes)
+    counts = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys)
+                  .group(:highscoreable_id)
+                  .order('count(id) desc')
+                  .count('id')
+    # retrieve player names owning the 0ths on said level
+    pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
+                  .joins("INNER JOIN players ON players.id = scores.player_id")
+                  .pluck('scores.highscoreable_id', 'players.name')
+                  .to_h
+    # retrieve level names
+    lnames = type.where(id: ret.keys)
+                 .pluck(:id, :name)
+                 .to_h
+    ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id]] }
+    bench(:step) if BENCHMARK
+    ret
   end
 
   def scores_uri(steam_id)
@@ -580,7 +641,7 @@ class Player < ActiveRecord::Base
   end
 
   def missing_top_ns(type, tabs, n)
-    type = Level if type.nil? || type.is_a?(Array) # only works for a single type
+    type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
     ids = scores_by_type_and_tabs(type, tabs).pluck(:highscoreable_id)
     scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name).sample(n)
@@ -590,7 +651,7 @@ class Player < ActiveRecord::Base
   end
 
   def improvable_scores(type, tabs, n)
-    type = Level if type.nil? || type.is_a?(Array) # only works for a single type
+    type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
     ids = scores_by_type_and_tabs(type, tabs).pluck(:highscoreable_id, :score).to_h
     ret = Score.where(highscoreable_type: type.to_s, highscoreable_id: ids.keys, rank: 0)
@@ -625,7 +686,7 @@ class Player < ActiveRecord::Base
   end
 
   def average_lead(type, tabs)
-    type = Level if type.nil? || type.is_a?(Array) # only works for a single type
+    type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
 
     ids = top_ns(1, type, tabs, false).pluck('highscoreable_id')

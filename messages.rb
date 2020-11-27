@@ -97,20 +97,14 @@ end
 
 def send_spreads(event)
   msg = event.content
-  n = (msg[/([0-9][0-9]?)(st|nd|th)/, 1] || 1).to_i
+  n = (msg[/([0-9][0-9]?)(st|nd|rd|th)/, 1] || 1).to_i
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
-  player = msg[/for (.*)[\.\?]?/i, 1]
+  player = parse_player(msg, nil, false, true, false)
   smallest = !!(msg =~ /smallest/)
+  raise "I can't show you the spread between 0th and 0th..." if n == 0
 
-  if n == 0
-    event << "I can't show you the spread between 0th and 0th..."
-    return
-  end
-
-  spreads  = HighScore.spreads(n, type, tabs, player)
-                     .sort_by { |s| (smallest ? s[1] : -s[1]) }
-                     .take(NUM_ENTRIES)
+  spreads  = HighScore.spreads(n, type, tabs, smallest, player.nil? ? nil : player.id)
   namepad  = spreads.map{ |s| s[0].length }.max
   scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
   spreads  = spreads.each_with_index
@@ -121,8 +115,7 @@ def send_spreads(event)
   rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
-
-  event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
+  event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player.name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
 def send_scores(event)
@@ -244,38 +237,35 @@ end
 
 def send_maxable(event)
   msg = event.content
-  player = msg[/for (.*)[\.\?]?/i, 1]
+  player = parse_player(msg, nil, false, true, false)
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
 
-  ties = HighScore.ties(type, tabs, player)
+  ties = HighScore.ties(type, tabs, player.nil? ? nil : player.id)
             .select { |s| s[1] < s[2] }
-            .sort_by { |s| -s[1] }
             .take(NUM_ENTRIES)
-            .map { |s| "#{"%-10s" % s[0].name} - #{"%2d" % s[1]} - #{format_string(s[0].scores[0].player.name)}" }
+            .map { |s| "#{"%-10s" % s[0]} - #{"%2d" % s[1]} - #{format_string(s[3])}" }
             .join("\n")
 
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  player = player.nil? ? "" : " without " + player
-
+  player = player.nil? ? "" : " without " + player.name
   event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n```\n#{ties}```"
 end
 
 def send_maxed(event)
   msg = event.content
-  player = msg[/for (.*)[\.\?]?/i, 1]
+  player = parse_player(msg, nil, false, true, false)
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
 
-  ties = HighScore.ties(type, tabs, player)
-            .select { |s| s[1] == s[2] }
-            .map { |s| "#{"%10s" % s[0].name} - #{format_string(s[0].scores[0].player.name)}" }
+  ties = HighScore.ties(type, tabs, player.nil? ? nil : player.id, true)
+                  .select { |s| s[1] == s[2] }
+                  .map { |s| "#{"%10s" % s[0]} - #{format_string(s[3])}" }
 
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  player = player.nil? ? "" : " without " + player
-
+  player = player.nil? ? "" : " without " + player.name
   event << "#{tabs}potentially maxed #{type}s (with all scores tied for 0th) #{format_time}#{player}:"
   event << "```\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
 end
