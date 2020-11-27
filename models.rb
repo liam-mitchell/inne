@@ -6,7 +6,7 @@ include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = false # log common error messages
-LOG_SQL         = true # log _all_ SQL queries (for debugging)
+LOG_SQL         = false # log _all_ SQL queries (for debugging)
 BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
@@ -409,6 +409,7 @@ class Level < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
   has_many :videos, as: :highscoreable
+  belongs_to :episode
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def format_name
@@ -420,6 +421,7 @@ class Episode < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
   has_many :videos, as: :highscoreable
+  has_many :levels
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def format_name
@@ -427,7 +429,10 @@ class Episode < ActiveRecord::Base
   end
 
   def cleanliness(rank = 0)
-    [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].score }.sum - scores[rank].score - 360]
+    bench(:start)
+    ret = [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].score }.sum - scores[rank].score - 360]
+    bench(:step)
+    ret
   end
 
   def ownage
