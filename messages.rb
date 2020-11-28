@@ -5,9 +5,10 @@ require_relative 'io.rb'
 require_relative 'models.rb'
 require_relative 'userlevels.rb'
 
-NUM_ENTRIES  = 20 # number of entries to show on diverse methods
-MAX_ENTRIES  = 20 # maximum number of entries on methods with user input, to avoid spam
-MIN_SCORES   = 50 # minimum number of highscores to appear in average point rankings
+BENCH_MSGS   = true # benchmark functions in messages
+NUM_ENTRIES  = 20   # number of entries to show on diverse methods
+MAX_ENTRIES  = 20   # maximum number of entries on methods with user input, to avoid spam
+MIN_SCORES   = 50   # minimum number of highscores to appear in average point rankings
 
 def send_top_n_count(event)
   msg = event.content
@@ -274,15 +275,12 @@ def send_cleanliness(event)
   msg = event.content
   tabs = parse_tabs(msg)
   cleanest = !!msg[/cleanest/i]
-  episodes = tabs.empty? ? Episode.all : Episode.where(tab: tabs)
 
-  cleanliness = episodes.map{ |e| e.cleanliness }
-  padding = cleanliness.map{ |e| e[1] }.max.to_i.to_s.length + 4
-
-  cleanliness = cleanliness.sort_by{ |e| (cleanest ? e[1] : -e[1]) }
-                .map{ |e| "#{e[0]}:#{e[0][1] == '-' ? "  " : " "}%#{padding}.3f" % [e[1]] }
-                .take(NUM_ENTRIES)
-                .join("\n")
+  cleanliness = Episode.cleanliness(tabs)
+                       .sort_by{ |e| (cleanest ? e[1] : -e[1]) }
+                       .take(NUM_ENTRIES)
+  padding     = cleanliness.map{ |e| ("%.3f" % e[1]).length }.max
+  cleanliness = cleanliness.map{ |e| "#{"%7s" % e[0]} - #{"%#{padding}.3f" % e[1]} - #{e[2]}" }.join("\n")
 
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
   event << "#{tabs}#{cleanest ? "cleanest" : "dirtiest"} episodes #{format_time}:\n```#{cleanliness}```"
@@ -291,16 +289,13 @@ end
 def send_ownages(event)
   msg = event.content
   tabs = parse_tabs(msg)
-  ties = !!(msg =~ /ties/i)
   episodes = tabs.empty? ? Episode.all : Episode.where(tab: tabs)
 
-  ownages = episodes.map{ |e| e.ownage }
-            .select{ |e| e[1] == true }
-            .map{ |e| "#{e[0]}:#{e[0][1]=='-' ? "  " : " "}#{e[2]}" }
-  ownages_list = ownages.join("\n")
+  ownages = Episode.ownages(tabs)
+                    .map{ |e, p| "#{"%7s" % e} - #{p}" }
 
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  list = "```#{ownages_list}```" unless ownages.count == 0
+  list = "```#{ownages.join("\n")}```" unless ownages.count == 0
   event << "#{tabs}episode ownages #{format_time}:\n#{list}There're a total of #{ownages.count} episode ownages."
 end
 

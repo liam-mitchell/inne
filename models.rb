@@ -424,20 +424,78 @@ class Episode < ActiveRecord::Base
   has_many :levels
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
+  def self.cleanliness(tabs, rank = 0)
+    bench(:start) if BENCHMARK
+    query = !tabs.empty? ? Score.where(tab: tabs) : Score
+    # retrieve level 0th sums
+    lvls = query.where(highscoreable_type: 'Level', rank: 0)
+                .joins('INNER JOIN levels ON levels.id = scores.highscoreable_id')
+                .group('levels.episode_id')
+                .sum(:score)
+    # retrieve episode names
+    epis = self.pluck(:id, :name).to_h
+    # retrieve episode 0th scores
+    ret = query.where(highscoreable_type: 'Episode', rank: 0)
+               .joins('INNER JOIN episodes ON episodes.id = scores.highscoreable_id')
+               .joins('INNER JOIN players ON players.id = scores.player_id')
+               .pluck('episodes.id', 'scores.score', 'players.name')
+               .map{ |e, s, n| [epis[e], lvls[e] - s - 360, n] }
+    bench(:step) if BENCHMARK
+    ret
+  end
+
+  def self.ownages(tabs)
+    bench(:start) if BENCHMARK
+    query = !tabs.empty? ? Score.where(tab: tabs) : Score
+    # retrieve episodes with all 5 levels owned by the same person
+    epis = Score.where(highscoreable_type: 'Level', rank: 0)
+                .joins('INNER JOIN levels ON levels.id = scores.highscoreable_id')
+                .group('levels.episode_id')
+                .having('cnt = 1')
+                .pluck('levels.episode_id', 'MIN(scores.player_id)', 'COUNT(DISTINCT scores.player_id) AS cnt')
+                .map{ |e, p, c| [e, p] }
+                .to_h
+    # retrieve respective episode 0ths
+    zeroes = Score.where(highscoreable_type: 'Episode', highscoreable_id: epis.keys, rank: 0)
+                  .joins('INNER JOIN players ON players.id = scores.player_id')
+                  .pluck('scores.highscoreable_id', 'players.id')
+                  .to_h
+    # retrieve episode names
+    enames = Episode.where(id: epis.keys)
+                    .pluck(:id, :name)
+                    .to_h
+    # retrieve player names
+    pnames = Player.where(id: epis.values)
+                   .pluck(:id, :name)
+                   .to_h
+    # keep only matches between the previous 2 result sets to obtain true ownages
+    ret = epis.reject{ |e, p| p != zeroes[e] }
+              .sort_by{ |e, p| e }
+              .map{ |e, p| [enames[e], pnames[p]] }
+    bench(:step) if BENCHMARK
+    ret
+  end
+
   def format_name
     "#{name}"
   end
 
   def cleanliness(rank = 0)
-    bench(:start)
-    ret = [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].score }.sum - scores[rank].score - 360]
-    bench(:step)
+    bench(:start) if BENCHMARK
+    ret = [name, Score.where(highscoreable: levels, rank: 0).sum(:score) - scores[rank].score - 360, scores[rank].player.name]
+    bench(:step) if BENCHMARK
     ret
   end
 
   def ownage
-    owner = scores[0].player.name
-    [name, Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| l.scores[0].player.name == owner }.count(true) == 5, owner]
+    bench(:start) if BENCHMARK
+    owner = scores[0].player
+    lvls = Score.where(highscoreable: levels, rank: 0)
+                .joins('INNER JOIN players ON players.id = scores.player_id')
+                .count("if(players.id = #{owner.id}, 1, NULL)")
+    ret = [name, lvls == 5, owner.name]
+    bench(:step) if BENCHMARK
+    ret
   end
 
   def splits(rank = 0)
