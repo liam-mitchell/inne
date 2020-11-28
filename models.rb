@@ -206,12 +206,11 @@ module HighScore
              .pluck('highscoreable_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
              .map{ |s| s[0..1] }
              .to_h
-    log ret
     # retrieve total score counts for each level (to compare against the tie count and determine maxes)
     counts = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys)
                   .group(:highscoreable_id)
                   .order('count(id) desc')
-                  .count('id')
+                  .count(:id)
     # retrieve player names owning the 0ths on said level
     pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
                   .joins("INNER JOIN players ON players.id = scores.player_id")
@@ -573,7 +572,7 @@ class Score < ActiveRecord::Base
                      .group_by{ |s| s[1] }
                      .map{ |h, s| [s[0][0], s[0][2] - s[1][2]] }
                      .group_by{ |s| s[0] }
-                     .map{ |p, s| [p, s.map{ |t| t[1] }.sum / s.map{ |t| t[1] }.count] }
+                     .map{ |p, s| [p, s.map(&:last).sum / s.map(&:last).count] }
                      .sort_by{ |p, s| -s }
     when :score
       scores = scores.group(:player_id)

@@ -355,71 +355,124 @@ class Userlevel < ActiveRecord::Base
     newest(MIN_ID)
   end
 
-  def self.spreads(n, player = nil, full = false)
-    (full ? global : newest).includes(userlevel_scores: [:userlevel_player]).map{ |s|
-      if !s.scores[n].nil? && (player.nil? ? true : s.scores[0].player.name == player)
-        [s.id.to_s, (s.scores[0].score - s.scores[n].score).to_f / 60, s.scores[0].player.name]
-      end
-    }.compact
+  def self.spreads(n, small = false, player_id = nil, full = false)
+    scores = full ? UserlevelScore.global : UserlevelScore.newest
+    bench(:start) if BENCHMARK
+    # retrieve player's 0ths if necessary
+    ids = scores.where(rank: 0, player_id: player_id).pluck(:userlevel_id) if !player_id.nil?
+    # retrieve required scores and compute spreads
+    ret1 = scores.where(rank: 0)
+    ret1 = ret1.where(userlevel_id: ids) if !player_id.nil?
+    ret1 = ret1.pluck(:userlevel_id, :score).to_h
+    ret2 = scores.where(rank: n)
+    ret2 = ret2.where(userlevel_id: ids) if !player_id.nil?
+    ret2 = ret2.pluck(:userlevel_id, :score).to_h
+    ret = ret2.map{ |id, s| [id, ret1[id] - s] }
+              .sort_by{ |id, s| small ? s : -s }
+              .take(NUM_ENTRIES)
+              .to_h
+    # retrieve player names
+    pnames = scores.where(userlevel_id: ret.keys, rank: 0)
+                   .joins("INNER JOIN userlevel_players ON userlevel_players.id = userlevel_scores.player_id")
+                   .pluck('userlevel_scores.userlevel_id', 'userlevel_players.name')
+                   .to_h
+    ret = ret.map{ |id, s| [id.to_s, s / 60.0, pnames[id]] }
+    bench(:step) if BENCHMARK
+    ret
   end
 
-  def self.ties(player = nil, full = false)
-    (full ? global : newest).includes(userlevel_scores: [:userlevel_player]).map{ |h|
-      next if h.scores[0].nil?
-      ties = h.scores.count{ |s| s.score == h.scores[0].score }
-      [h, ties, h.scores.size] unless ties < 3 || h.scores[0..ties - 1].map{ |s| s.player.name }.include?(player)
-    }.compact
+  def self.ties(player_id = nil, maxed = false, full = false)
+    scores = full ? UserlevelScore.global : UserlevelScore.newest
+    bench(:start) if BENCHMARK
+    # retrieve most tied for 0th leves
+    ret = scores.where(tied_rank: 0)
+                .group(:userlevel_id)
+                .order(!maxed ? 'count(id) desc' : '', :userlevel_id)
+                .having('count(id) >= 3')
+                .having(!player_id.nil? ? 'amount = 0' : '')
+                .pluck('userlevel_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
+                .map{ |s| s[0..1] }
+                .to_h
+    # retrieve total score counts for each level (to compare against the tie count and determine maxes)
+    counts = scores.where(userlevel_id: ret.keys)
+                   .group(:userlevel_id)
+                   .order('count(id) desc')
+                   .count(:id)
+    # retrieve player names owning the 0ths on said level
+    pnames = scores.where(userlevel_id: ret.keys, rank: 0)
+                   .joins("INNER JOIN userlevel_players ON userlevel_players.id = userlevel_scores.player_id")
+                   .pluck('userlevel_scores.userlevel_id', 'userlevel_players.name')
+                   .to_h
+    # retrieve userlevels
+    userl = Userlevel.where(id: ret.keys)
+                     .map{ |u| [u.id, u] }
+                     .to_h
+    ret = ret.map{ |id, c| [userl[id], c, counts[id], pnames[id]] }
+    bench(:step) if BENCHMARK
+    ret
   end
 
   # Because of the way the query is done I use a ranking type instead of yield blocks
   def self.rank(type, ties = false, par = nil, full = false)
-    dec = true # Whether the result is decimal or floating point
-    rev = true # Whether the sort needs to be ascending or descending
+    scores = UserlevelScore.newest
 
     bench(:start) if BENCHMARK
-    # For these 2 rankings we use a different more efficient query
-    if ![:rank, :tied].include?(type)
-      scores = UserlevelScore.newest.group_by{ |s| s.player_id }
-    end
     case type
     when :rank
-      scores = UserlevelScore.where("userlevel_id >= #{min_id} and #{ties ? "tied_rank" : "rank"} <= #{par}")
-                             .group(:player_id)
-                             .order('count_id desc')
-                             .count(:id)
+      scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{par}")
+                     .group(:player_id)
+                     .order('count_id desc')
+                     .count(:id)
     when :tied
-      scores_w  = UserlevelScore.where("userlevel_id >= #{min_id} and tied_rank <= #{par}")
-                                .group(:player_id)
-                                .order('count_id desc')
-                                .count(:id)
-      scores_wo = UserlevelScore.where("userlevel_id >= #{min_id} and rank <= #{par}")
-                                .group(:player_id)
-                                .order('count_id desc')
-                                .count(:id)
+      scores_w  = scores.where("tied_rank <= #{par}")
+                        .group(:player_id)
+                        .order('count_id desc')
+                        .count(:id)
+      scores_wo = scores.where("rank <= #{par}")
+                        .group(:player_id)
+                        .order('count_id desc')
+                        .count(:id)
       scores = scores_w.map{ |id, count| [id, count - scores_wo[id].to_i] }
+                       .sort_by{ |id, c| -c }
     when :points
-      scores = scores.map{ |p, ss| [p, ss.map{ |s| 20 - (ties ? s.tied_rank : s.rank) }.sum] }
+      scores = scores.group(:player_id)
+                     .order("sum(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
+                     .sum(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_points
-      scores = scores.reject{ |p, ss| ss.count < MIN_U_SCORES }
-                     .map{ |p, ss| [p, 20 - ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
-      dec = false
+      scores = scores.select("count(player_id)")
+                     .group(:player_id)   
+                     .having("count(player_id) >= #{MIN_U_SCORES}")
+                     .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
+                     .average(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_rank
-      scores = scores.reject{ |p, ss| ss.count < MIN_U_SCORES }
-                     .map{ |p, ss| [p, ss.map{ |s| ties ? s.tied_rank : s.rank }.sum.to_f / ss.size] }
-      dec = false
-      rev = false
+      scores = scores.select("count(player_id)")
+                     .group(:player_id)
+                     .having("count(player_id) >= #{MIN_SCORES}")
+                     .order("avg(#{ties ? "tied_rank" : "rank"})")
+                     .average(ties ? "tied_rank" : "rank")
+    when :avg_lead 
+      scores = scores.where(rank: [0, 1])
+                     .pluck(:player_id, :userlevel_id, :score)
+                     .group_by{ |s| s[1] }
+                     .reject{ |u, s| s.count < 2 }
+                     .map{ |u, s| [s[0][0], s[0][2] - s[1][2]] }
+                     .group_by{ |s| s[0] }
+                     .map{ |p, s| [p, s.map(&:last).sum / (60.0 * s.map(&:last).count)] }
+                     .sort_by{ |p, s| -s }
     when :score
-      scores = scores.map{ |p, ss| [p, ss.map(&:score).sum.to_f / 60] }
-      dec = false
-    end
-    # These 2 queries do the sorting themselves
-    if ![:rank].include?(type)
-      scores = scores.sort_by{ |p, val| rev ? -val : val }
+      scores = scores.group(:player_id)
+                     .order("sum(score) desc")
+                     .sum('score / 60')
     end
     bench(:step) if BENCHMARK
 
     scores = scores.take(NUM_ENTRIES) if !full
-    scores.map{ |p| [UserlevelPlayer.find(p[0]), p[1]] }
+    # find all players in advance (better performance)
+    players = UserlevelPlayer.where(id: scores.map(&:first))
+                    .map{ |p| [p.id, p] }
+                    .to_h
+    scores.map{ |p, c| [players[p], c] }
+          .reject{ |p, c| c <= 0  }
   end
 
   def tiles
@@ -813,17 +866,20 @@ def send_userlevel_rankings(event)
 
   if msg =~ /average/i
     if msg =~ /point/i
-      top = Userlevel.rank(:avg_points, ties, rank - 1)
+      top = Userlevel.rank(:avg_points, ties)
       type = "average points"
+    elsif msg =~ /lead/i
+      top = Userlevel.rank(:avg_lead)
+      type = "average lead"
     else
-      top = Userlevel.rank(:avg_rank, ties, rank - 1)
+      top = Userlevel.rank(:avg_rank, ties)
       type = "average rank"
     end
   elsif msg =~ /point/i
-    top = Userlevel.rank(:points, ties, rank - 1)
+    top = Userlevel.rank(:points, ties)
     type = "total points"
   elsif msg =~ /score/i
-    top = Userlevel.rank(:score, ties, rank - 1)
+    top = Userlevel.rank(:score)
     type = "total score"
   elsif msg =~ /tied/i
     top = Userlevel.rank(:tied, ties, rank - 1)
@@ -833,9 +889,11 @@ def send_userlevel_rankings(event)
     type = format_rank(rank)
   end
 
-  dec = top[0][1].is_a?(Integer)
+  score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
+  name_padding = top.map{ |r| r[0].name.length }.max
+  format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
   top = top.each_with_index
-           .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name)} - #{(dec ? "%3d" : "%.3f") % p[1]}" }
+           .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}" }
            .join("\n")
 
   event << "Userlevel #{type} #{ties ? "with ties " : ""}rankings #{format_time}:\n```#{top}```"
@@ -946,17 +1004,11 @@ end
 def send_userlevel_spreads(event)
   msg    = event.content
   n      = (msg[/([0-9][0-9]?)(st|nd|rd|th)/, 1] || 1).to_i
-  player = msg[/for (.*)[\.\?]?/i, 1] 
+  player = parse_player(msg, nil, true, true, false)
   small  = !!(msg =~ /smallest/)
+  raise "I can't show you the spread between 0th and 0th..." if n == 0
 
-  if n == 0
-    event << "I can't show you the spread between 0th and 0th..."
-    return
-  end
-
-  spreads = Userlevel.spreads(n, player, false)
-                     .sort_by { |s| (small ? s[1] : -s[1]) }
-                     .take(NUM_ENTRIES)
+  spreads  = Userlevel.spreads(n, small, player.nil? ? nil : player.id, false)
   namepad  = spreads.map{ |s| s[0].length }.max
   scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
   spreads  = spreads.each_with_index
@@ -965,31 +1017,30 @@ def send_userlevel_spreads(event)
 
   spread = small ? "smallest" : "largest"
   rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
-
-  event << "Userlevels #{!player.nil? ? "owned by #{player} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
+  event << "Userlevels #{!player.nil? ? "owned by #{player.name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
 def send_userlevel_maxed(event)
   msg    = event.content
-  player = msg[/for (.*)[\.\?]?/i, 1]
-  ties   = Userlevel.ties(player, false)
+  player = parse_player(msg, nil, true, true, false)
+  ties   = Userlevel.ties(player.nil? ? nil : player.id, true, false)
                     .select { |s| s[1] == s[2] }
-                    .map { |s| "#{"%6d" % s[0].id} - #{"%6d" % s[0].author_id} - #{format_string(s[0].scores[0].player.name)}" }
-  player = player.nil? ? "" : " without " + player
+                    .map { |s| "#{"%6d" % s[0].id} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
+  player = player.nil? ? "" : " without " + player.name
   event << "Potentially maxed userlevels (with all scores tied for 0th) #{format_time}#{player}:"
   event << "```    ID - Author - Player\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed userlevels."
 end
 
 def send_userlevel_maxable(event)
   msg    = event.content
-  player = msg[/for (.*)[\.\?]?/i, 1]
-  ties   = Userlevel.ties(player, false)
+  player = parse_player(msg, nil, true, true, false)
+  ties   = Userlevel.ties(player.nil? ? nil : player.id, false, false)
             .select { |s| s[1] < s[2] }
             .sort_by { |s| -s[1] }
             .take(NUM_ENTRIES)
-            .map { |s| "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[0].scores[0].player.name)}" }
+            .map { |s| "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
             .join("\n")
-  player = player.nil? ? "" : " without " + player
+  player = player.nil? ? "" : " without " + player.name
   event << "Userlevels with the most ties for 0th #{format_time}#{player}:"
   event << "```    ID - Ties - Author - Player\n#{ties}```"
 end
