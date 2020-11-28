@@ -332,54 +332,22 @@ def update_histories
 
       [1, 5, 10, 20].each do |rank|
         [true, false].each do |ties|
-          rankings = Player.rankings { |p| p.top_n_count(rank, type, tab, ties) }
-          attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-            {
-              highscoreable_type: type.to_s,
-              rank: rank,
-              ties: ties,
-              tab: tab,
-              player: r[0],
-              count: r[1],
-              metanet_id: r[0].metanet_id,
-              timestamp: now
-            }
-          end
-
+          rankings = Score.rank(:rank, type, tab, ties, rank - 1, true)
+          attrs    = RankHistory.compose(rankings, type, tab, rank, ties, now)
           ActiveRecord::Base.transaction do
             RankHistory.create(attrs)
           end
         end
       end
 
-      rankings = Player.rankings { |p| p.points(type, tab) }
-      attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-        {
-          timestamp: now,
-          tab: tab,
-          highscoreable_type: type.to_s,
-          player: r[0],
-          metanet_id: r[0].metanet_id,
-          points: r[1]
-        }
-      end
-
+      rankings = Score.rank(:points, type, tab, false, nil, true)
+      attrs    = PointsHistory.compose(rankings, type, tab, now)
       ActiveRecord::Base.transaction do
         PointsHistory.create(attrs)
       end
 
-      rankings = Player.rankings { |p| p.total_score(type, tab) }
-      attrs = rankings.select { |r| r[1] > 0 }.map do |r|
-        {
-          timestamp: now,
-          tab: tab,
-          highscoreable_type: type.to_s,
-          player: r[0],
-          metanet_id: r[0].metanet_id,
-          score: r[1]
-        }
-      end
-
+      rankings = Score.rank(:score, type, tab, false, nil, true)
+      attrs    = TotalScoreHistory.compose(rankings, type, tab, now)
       ActiveRecord::Base.transaction do
         TotalScoreHistory.create(attrs)
       end
@@ -412,15 +380,7 @@ def update_userlevel_histories
 
   [-1, 1, 5, 10, 20].each{ |rank|
     rankings = Userlevel.rank(rank == -1 ? :points : :rank, rank == 1 ? true : false, rank - 1, true)
-    attrs = rankings.select{ |r| r[1] > 0 }.map{ |r|
-      {
-        timestamp: now,
-        rank: rank,
-        player_id: r[0].id,
-        metanet_id: r[0].metanet_id,
-        count: r[1]
-      }
-    }
+    attrs    = UserlevelHistory.compose(rankings, rank, now)
     ActiveRecord::Base.transaction do
       UserlevelHistory.create(attrs)
     end
@@ -677,6 +637,8 @@ $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { potato }                    if POTATO
+
+update_histories
 
 wd = Thread.new { watchdog }
 wd.join

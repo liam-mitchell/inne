@@ -76,6 +76,18 @@ class UserlevelHistory < ActiveRecord::Base
   alias_attribute :player, :userlevel_player
   belongs_to :userlevel_player, foreign_key: :player_id
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+
+  def self.compose(rankings, rank, time)
+    rankings.select{ |r| r[1] > 0 }.map do |r|
+      {
+        timestamp:  time,
+        rank:       rank,
+        player_id:  r[0].id,
+        metanet_id: r[0].metanet_id,
+        count:      r[1]
+      }
+    end
+  end
 end
 
 class Userlevel < ActiveRecord::Base
@@ -364,7 +376,7 @@ class Userlevel < ActiveRecord::Base
     dec = true # Whether the result is decimal or floating point
     rev = true # Whether the sort needs to be ascending or descending
 
-    t = Time.now
+    bench(:start) if BENCHMARK
     # For these 2 rankings we use a different more efficient query
     if ![:rank, :tied].include?(type)
       scores = UserlevelScore.newest.group_by{ |s| s.player_id }
@@ -404,7 +416,7 @@ class Userlevel < ActiveRecord::Base
     if ![:rank].include?(type)
       scores = scores.sort_by{ |p, val| rev ? -val : val }
     end
-    log(Time.now - t)
+    bench(:step) if BENCHMARK
 
     scores = scores.take(NUM_ENTRIES) if !full
     scores.map{ |p| [UserlevelPlayer.find(p[0]), p[1]] }

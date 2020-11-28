@@ -71,7 +71,7 @@ def send_rankings(event)
   type = format_type(type)
   tabs = format_tabs(tabs)
 
-  top = rankings.take(NUM_ENTRIES).select { |r| r[1] > 0 }
+  top = rankings
   score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
   name_padding = top.map{ |r| r[0].name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"

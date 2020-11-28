@@ -528,7 +528,7 @@ class Score < ActiveRecord::Base
 
   # Alternative method to perform rankings which outperforms the Player approach
   # since we leave all the heavy lifting to the SQL interface instead of Ruby.
-  def self.rank(ranking, type, tabs, ties = nil, n = nil)
+  def self.rank(ranking, type, tabs, ties = false, n = 0, full = false)
     type = Level if ranking == :avg_lead && (type.nil? || type.is_a?(Array)) # avg lead only works with 1 type
     scores = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
     scores = scores.where(tab: tabs) if !tabs.empty?
@@ -581,12 +581,13 @@ class Score < ActiveRecord::Base
                      .sum(:score)
     end
 
-    scores = scores.take(NUM_ENTRIES)
+    scores = scores.take(NUM_ENTRIES) if !full
     # find all players in advance (better performant)
     players = Player.where(id: scores.map(&:first))
                     .map{ |p| [p.id, p] }
                     .to_h
     ret = scores.map{ |p, c| [players[p], c] }
+                .reject{ |p, c| c <= 0  }
     bench(:step) if BENCHMARK
     ret
   end
@@ -796,16 +797,57 @@ end
 class RankHistory < ActiveRecord::Base
   belongs_to :player
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+
+  def self.compose(rankings, type, tab, rank, ties, time)
+    rankings.select { |r| r[1] > 0 }.map do |r|
+      {
+        highscoreable_type: type.to_s,
+        rank: rank,
+        ties: ties,
+        tab: tab,
+        player: r[0],
+        count: r[1],
+        metanet_id: r[0].metanet_id,
+        timestamp: time
+      }
+    end
+  end
 end
 
 class PointsHistory < ActiveRecord::Base
   belongs_to :player
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+
+  def self.compose(rankings, type, tab, time)
+    rankings.select { |r| r[1] > 0 }.map do |r|
+      {
+        timestamp: time,
+        tab: tab,
+        highscoreable_type: type.to_s,
+        player: r[0],
+        metanet_id: r[0].metanet_id,
+        points: r[1]
+      }
+    end
+  end
 end
 
 class TotalScoreHistory < ActiveRecord::Base
   belongs_to :player
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+
+  def self.compose(rankings, type, tab, time)
+    rankings.select { |r| r[1] > 0 }.map do |r|
+      {
+        timestamp: time,
+        tab: tab,
+        highscoreable_type: type.to_s,
+        player: r[0],
+        metanet_id: r[0].metanet_id,
+        score: r[1]
+      }
+    end
+  end
 end
 
 class Video < ActiveRecord::Base
