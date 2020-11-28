@@ -581,20 +581,24 @@ class Score < ActiveRecord::Base
                      .sum(:score)
     end
 
+    scores = scores.take(NUM_ENTRIES)
+    # find all players in advance (better performant)
+    players = Player.where(id: scores.map(&:first))
+                    .map{ |p| [p.id, p] }
+                    .to_h
+    ret = scores.map{ |p, c| [players[p], c] }
     bench(:step) if BENCHMARK
-    scores.take(NUM_ENTRIES).map{ |p| [Player.find(p[0]), p[1]] }
+    ret
   end
 
   def self.total_scores(type, tabs, secrets)
+    bench(:start) if BENCHMARK
     tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
     tabs = (secrets ? tabs : tabs - [:SS, :SS2])
-    query = self.where(rank: 0, highscoreable_type: type.to_s)
-    result = (
-      query.includes(:level).where(levels: {tab: tabs}) +
-      query.includes(:episode).where(episodes: {tab: tabs}) +
-      query.includes(:story).where(stories: {tab: tabs})
-    ).map{ |s| s.score }
-    [result.sum, result.count]
+    ret = self.where(highscoreable_type: type.to_s, tab: tabs, rank: 0)
+              .pluck('SUM(score)', 'COUNT(score)')
+    bench(:step) if BENCHMARK
+    ret.first
   end
 
   def spread

@@ -45,7 +45,7 @@ def send_rankings(event)
     if msg =~ /point/i
       rankings = Score.rank(:avg_points, type, tabs, ties)
       header = "average point rankings "
-    elsif msg =~ /lead/i # commented until we optimize it
+    elsif msg =~ /lead/i
       rankings = Score.rank(:avg_lead, type, tabs)
       header = "average lead rankings "
     else
@@ -225,9 +225,9 @@ def send_community(event)
   # 4 of the 5 individual levels give you at the start to be able
   # to compare an episode score with the sum of its level scores.
 
-  text << "Total level score: #{levels[0]}\n"
-  text << "Total episode score: #{episodes[0]}\n"
-  text << (condition ? "Total level score (w/o secrets): #{levels_no_secrets[0]}\n" : "")
+  text << "Total level score: #{"%.3f" % levels[0]}\n"
+  text << "Total episode score: #{"%.3f" % episodes[0]}\n"
+  text << (condition ? "Total level score (w/o secrets): #{"%.3f" % levels_no_secrets[0]}\n" : "")
   text << "Difference between level and episode 0ths: #{"%.3f" % [difference]}\n\n"
   text << "Average level score: #{"%.3f" % [levels[0]/levels[1]]}\n"
   text << "Average episode score: #{"%.3f" % [episodes[0]/episodes[1]]}\n"
