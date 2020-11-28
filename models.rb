@@ -802,13 +802,13 @@ class RankHistory < ActiveRecord::Base
     rankings.select { |r| r[1] > 0 }.map do |r|
       {
         highscoreable_type: type.to_s,
-        rank: rank,
-        ties: ties,
-        tab: tab,
-        player: r[0],
-        count: r[1],
-        metanet_id: r[0].metanet_id,
-        timestamp: time
+        rank:               rank,
+        ties:               ties,
+        tab:                tab,
+        player:             r[0],
+        count:              r[1],
+        metanet_id:         r[0].metanet_id,
+        timestamp:          time
       }
     end
   end
@@ -821,12 +821,12 @@ class PointsHistory < ActiveRecord::Base
   def self.compose(rankings, type, tab, time)
     rankings.select { |r| r[1] > 0 }.map do |r|
       {
-        timestamp: time,
-        tab: tab,
+        timestamp:          time,
+        tab:                tab,
         highscoreable_type: type.to_s,
-        player: r[0],
-        metanet_id: r[0].metanet_id,
-        points: r[1]
+        player:             r[0],
+        metanet_id:         r[0].metanet_id,
+        points:             r[1]
       }
     end
   end
@@ -839,12 +839,12 @@ class TotalScoreHistory < ActiveRecord::Base
   def self.compose(rankings, type, tab, time)
     rankings.select { |r| r[1] > 0 }.map do |r|
       {
-        timestamp: time,
-        tab: tab,
+        timestamp:          time,
+        tab:                tab,
         highscoreable_type: type.to_s,
-        player: r[0],
-        metanet_id: r[0].metanet_id,
-        score: r[1]
+        player:             r[0],
+        metanet_id:         r[0].metanet_id,
+        score:              r[1]
       }
     end
   end
