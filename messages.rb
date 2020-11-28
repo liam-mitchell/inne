@@ -120,9 +120,10 @@ def send_spreads(event)
 end
 
 def send_scores(event)
-  msg = event.content
-  scores = parse_level_or_episode(msg)
-  if scores.update_scores == -1
+  msg     = event.content
+  offline = !!(msg[/offline/i])
+  scores  = parse_level_or_episode(msg)
+  if !offline && scores.update_scores == -1
     event.send_message("Connection to the server failed, sending local cached scores.\n")
   end
 

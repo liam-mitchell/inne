@@ -638,7 +638,5 @@ $threads << Thread.new { start_report }              if (REPORT_METANET    || DO
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { potato }                    if POTATO
 
-update_histories
-
 wd = Thread.new { watchdog }
 wd.join
