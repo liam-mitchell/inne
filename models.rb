@@ -707,12 +707,11 @@ class Player < ActiveRecord::Base
     counts
   end
 
-  def missing_top_ns(type, tabs, n)
+  def missing_top_ns(type, tabs, n, ties)
     type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
-    ids = scores_by_type_and_tabs(type, tabs).pluck(:highscoreable_id)
-    scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name).sample(n)
-    print scores
+    ids = top_ns(n, type, tabs, ties).pluck(:highscoreable_id)
+    scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name)
     bench(:step) if BENCHMARK
     scores
   end

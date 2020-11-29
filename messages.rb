@@ -303,12 +303,12 @@ end
 def send_missing(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg)
+  type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
   rank = parse_rank(msg) || 20
   ties = !!(msg =~ /ties/i)
 
-  missing = player.missing_top_ns(rank, type, tabs, ties).join("\n")
+  missing = player.missing_top_ns(type, tabs, rank, ties).join("\n")
 
   tmpfile = File.join(Dir.tmpdir, "missing-#{player.name.delete(":")}.txt")
   File::open(tmpfile, "w", crlf_newline: true) do |f|
@@ -321,17 +321,15 @@ end
 def send_suggestions(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg) || Level
+  type = parse_type(msg)
   tabs = parse_tabs(msg)
-  n = NUM_ENTRIES / 2 # simplified
-#  n = (msg[/\b[0-9][0-9]?\b/] || NUM_ENTRIES / 2).to_i
-#  n = (n <= 0 || n > MAX_ENTRIES) ? NUM_ENTRIES / 2 : n
+  n = NUM_ENTRIES / 2
 
   improvable = player.improvable_scores(type, tabs, n)
   padding = improvable.map{ |level, gap| gap }.max.to_i.to_s.length + 4
 
   improvable = improvable.map { |level, gap| "#{'%-10s' % [level]} - #{"%#{padding}.3f" % [gap]}" }.join("\n")
-  missing = player.missing_top_ns(type, tabs, n).join("\n")
+  missing = player.missing_top_ns(type, tabs, 20, false).sample(n).join("\n")
 
   type = type.to_s.downcase
   tabs = tabs.empty? ? "" :  " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
