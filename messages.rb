@@ -705,6 +705,87 @@ def send_times(event)
   send_story_time(event)
 end
 
+def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
+  text_rows = rows.select{ |r| r.is_a?(Array) }
+  count = text_rows.map(&:size).max
+  rows.each{ |r| if r.is_a?(Array) then r << "" while r.size < count end }
+  widths = (0..count - 1).map{ |c| text_rows.map{ |r| r[c].to_s.length }.max }
+  sep = widths.map{ |w| sep_i + sep_x * (w + 2) }.join + sep_i + "\n"
+  table = sep.dup
+  table << sep_y + " " * (((sep.size - 1) - header.size) / 2) + header + " " * ((sep.size - 1) - ((sep.size - 1) - header.size) / 2 - header.size - 2) + sep_y + "\n" + sep if !header.nil?
+  rows.each{ |r|
+    if r == :sep
+      table << sep
+    else
+      r.each_with_index{ |s, i|
+        table << sep_y + " " + (s.is_a?(Numeric) ? s.to_s.rjust(widths[i], " ") : s.to_s.ljust(widths[i], " ")) + " "
+      }
+      table << sep_y + "\n"
+    end
+  }
+  table << sep
+  return table
+end
+
+def send_help2(event)
+  cols = 3
+
+  msg = "Hi! I'm **outte++**, the N++ Highscoring Bot and inne++'s evil cousin."
+  msg += "I can do many tasks, like fetching **scores** and **screenshots** of any level, "
+  msg += "performing **rankings** and **stats**, retrieving **lists**, "
+  msg += "browsing and downloading **userlevels**, etc."
+  event << msg
+
+  commands = [
+    "lotd",
+    "eotw",
+    "cotm",
+    "userlevel",
+    "rank",
+    "community",
+    "cleanest",
+    "dirtiest",
+    "ownage",
+    "help",
+    "random",
+    "what",
+    "when",
+    "points",
+    "spread",
+    "average points",
+    "average rank",
+    "average lead",
+    "scores",
+    "total",
+    "how many",
+    "stats",
+    "screenshot",
+    "worst",
+    "list",
+    "missing",
+    "maxable",
+    "maxed",
+    "level name",
+    "level id",
+    "analysis",
+    "splits",
+    "my name is",
+    "my steam id is",
+    "video",
+    "unique holders",
+    "z"
+  ]
+
+  commands.sort!
+  commands.push("") until commands.size % cols == 0
+  col_s = commands.size / cols
+  row = commands[0..col_s - 1]
+  (1..cols - 1).each{ |i| row.zip(commands[i * col_s .. (i + 1) * col_s - 1]) }
+  rows = row.flatten.compact.each_slice(cols).to_a
+  event << "```#{make_table(rows, "COMMAND LIST")}```"
+  
+end
+
 def send_help(event)
   if (event.channel.type != 1) then
     event << "Hi! I'm **outte++**, the N++ Highscoring Bot and inne++'s evil cousin. I can do many tasks, like:\n"
@@ -827,6 +908,7 @@ def respond(event)
     send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
     send_ownages(event)     if msg =~ /ownage/i
     send_help(event)        if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
+    send_help2(event)       if msg =~ /help2/i
     send_random(event)      if msg =~ /random/i
   end
 
