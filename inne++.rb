@@ -407,43 +407,47 @@ rescue => e
 end
 
 def download_userlevel_scores
-  begin
-    while true
-      next_userlevel_score_update = correct_time(get_next_update('userlevel_score'), USERLEVEL_SCORE_FREQUENCY)
-      set_next_update('userlevel_score', next_userlevel_score_update)
-      delay = next_userlevel_score_update - Time.now
-      sleep(delay) unless delay < 0
-      log("updating userlevel scores...")
+  log("updating userlevel scores...")
 
-      # Remove all initial excess userlevel scores
-      # TODO: I think this is incorrectly deleting the ones I want to keep, also it's sorting in ascending order
-      amount = UserlevelScore.distinct.count(:userlevel_id) - USERLEVEL_REPORT_SIZE
-      if amount > 0
-        UserlevelScore.pluck(:userlevel_id).uniq.sort.take(USERLEVEL_REPORT_SIZE).each{ |id|
-          UserlevelScore.where(userlevel_id: id).destroy_all
-        }
-      end
+  # Remove all initial excess userlevel scores
+  amount = UserlevelScore.distinct.count(:userlevel_id) - USERLEVEL_REPORT_SIZE
+  if amount > 0
+    ids = UserlevelScore.pluck(:userlevel_id).uniq.sort.reverse.take(USERLEVEL_REPORT_SIZE)
+    UserlevelScore.where.not(id: ids).each(&:destroy)
+  end
 
-      # Update scores for the desired amount of userlevels
-      Userlevel.where(mode: :solo).order(id: :desc).take(USERLEVEL_REPORT_SIZE).each do |u|
-        attempts ||= 0
-        u.update_scores
-        # Only remove older ones when we surpass the limit again, to prevent ending
-        # up with less userlevels than desired.
-        if UserlevelScore.distinct.count(:userlevel_id) > USERLEVEL_REPORT_SIZE
-          min = UserlevelScore.minimum(:userlevel_id).to_i
-          UserlevelScore.where(userlevel_id: min).destroy_all
-        end
-      rescue => e
-        err("error updating highscores for userlevel #{u.id}: #{e}")
-        ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
-      end
-      log("updated userlevel scores")
+  # Update scores for the desired amount of userlevels
+  Userlevel.where(mode: :solo).order(id: :desc).take(USERLEVEL_REPORT_SIZE).each do |u|
+    attempts ||= 0
+    u.update_scores
+    # Only remove older ones when we surpass the limit again, to prevent ending
+    # up with less userlevels than desired.
+    if UserlevelScore.distinct.count(:userlevel_id) > USERLEVEL_REPORT_SIZE
+      min = UserlevelScore.minimum(:userlevel_id).to_i
+      UserlevelScore.where(userlevel_id: min).destroy_all
     end
   rescue => e
-    err("error updating userlevel highscores: #{e}")
-    retry
+    err("error updating highscores for userlevel #{u.id}: #{e}")
+    ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
   end
+  log("updated userlevel scores")
+  return true
+rescue => e
+  err("error updating userlevel highscores: #{e}")
+  return false
+end
+
+def start_userlevel_scores
+  while true
+    next_userlevel_score_update = correct_time(get_next_update('userlevel_score'), USERLEVEL_SCORE_FREQUENCY)
+    set_next_update('userlevel_score', next_userlevel_score_update)
+    delay = next_userlevel_score_update - Time.now
+    sleep(delay) unless delay < 0
+    next if !download_userlevel_scores
+  end
+rescue => e
+  err("error downloading userlevel highscores: #{e}")
+  retry
 end
 
 def send_channel_screenshot(name, caption)
@@ -632,7 +636,7 @@ $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO
 $threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_level_of_the_day }
-$threads << Thread.new { download_userlevel_scores } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING

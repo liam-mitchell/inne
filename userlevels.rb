@@ -484,12 +484,16 @@ class Userlevel < ActiveRecord::Base
   end
 
   def format_scores
-    board = self.get_scores.map{ |score| {score: score['score'] / 1000.0, player: score['user_name']} }
-    pad = board.map{ |s| s[:score] }.max.to_i.to_s.length + 4
-    puts pad
-    board.each_with_index.map{ |s, i|
-      "#{HighScore.format_rank(i)}: #{format_string(s[:player])} - #{"%#{pad}.3f" % [s[:score]]}"
-    }.join("\n")
+    update_scores
+    if scores.count == 0
+      board = "This userlevel has no highscores!"
+    else
+      board = scores.map{ |s| { score: s.score / 60.0, player: s.player.name } }
+      pad = board.map{ |s| s[:score] }.max.to_i.to_s.length + 4
+      board.each_with_index.map{ |s, i|
+        "#{HighScore.format_rank(i)}: #{format_string(s[:player])} - #{"%#{pad}.3f" % [s[:score]]}"
+      }.join("\n")
+    end
   end
 
   # Generate a file with the usual userlevel format

@@ -300,9 +300,9 @@ module HighScore
           score: scoretime,
           replay_id: score['replay_id'].to_i,
           player: player,
-          tied_rank: updated.find_index { |s| s['score'] == score['score'] },
-          tab: self.tab
+          tied_rank: updated.find_index { |s| s['score'] == score['score'] }
         )
+        scores.find_by(rank: i).update(tab: self.tab) if self.class != Userlevel
         if self.class != Userlevel && Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
           ar = Archive.create(
             replay_id: score['replay_id'].to_i,
