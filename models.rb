@@ -708,10 +708,13 @@ class Player < ActiveRecord::Base
   end
 
   def missing_top_ns(type, tabs, n, ties)
-    type = ensure_type(type) # only works for a single type
+    type = [Level, Episode] if type.nil?
     bench(:start) if BENCHMARK
-    ids = top_ns(n, type, tabs, ties).pluck(:highscoreable_id)
-    scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name)
+    scores = [type].flatten.map{ |t|
+      ids = top_ns(n, t, tabs, ties).pluck(:highscoreable_id)
+      (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).pluck(:name)
+    }.flatten
+#    scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name)
     bench(:step) if BENCHMARK
     scores
   end

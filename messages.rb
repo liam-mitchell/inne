@@ -303,7 +303,7 @@ end
 def send_missing(event)
   msg = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg) || Level
+  type = parse_type(msg)
   tabs = parse_tabs(msg)
   rank = parse_rank(msg) || 20
   ties = !!(msg =~ /ties/i)
