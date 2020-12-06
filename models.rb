@@ -447,7 +447,7 @@ class Episode < ActiveRecord::Base
     bench(:start) if BENCHMARK
     query = !tabs.empty? ? Score.where(tab: tabs) : Score
     # retrieve episodes with all 5 levels owned by the same person
-    epis = Score.where(highscoreable_type: 'Level', rank: 0)
+    epis = query.where(highscoreable_type: 'Level', rank: 0)
                 .joins('INNER JOIN levels ON levels.id = scores.highscoreable_id')
                 .group('levels.episode_id')
                 .having('cnt = 1')
@@ -455,7 +455,7 @@ class Episode < ActiveRecord::Base
                 .map{ |e, p, c| [e, p] }
                 .to_h
     # retrieve respective episode 0ths
-    zeroes = Score.where(highscoreable_type: 'Episode', highscoreable_id: epis.keys, rank: 0)
+    zeroes = query.where(highscoreable_type: 'Episode', highscoreable_id: epis.keys, rank: 0)
                   .joins('INNER JOIN players ON players.id = scores.player_id')
                   .pluck('scores.highscoreable_id', 'players.id')
                   .to_h

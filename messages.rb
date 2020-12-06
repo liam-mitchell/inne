@@ -293,11 +293,20 @@ def send_ownages(event)
   episodes = tabs.empty? ? Episode.all : Episode.where(tab: tabs)
 
   ownages = Episode.ownages(tabs)
-                    .map{ |e, p| "#{"%7s" % e} - #{p}" }
+  list    = ownages.map{ |e, p| "#{"%7s" % e} - #{p}" }.join("\n")
+  count   = ownages.count
+  if count == 0
+    block = ""
+  elsif count <= 20
+    block = "```" + list + "```"
+  else
+    block = "```" + ownages.group_by{ |e, p| p }.map{ |p, o| "#{format_string(p)} - #{o.count}" }.join("\n") + "```"
+  end
 
-  tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  list = "```#{ownages.join("\n")}```" unless ownages.count == 0
-  event << "#{tabs}episode ownages #{format_time}:\n#{list}There're a total of #{ownages.count} episode ownages."
+  tabs_s = tabs.empty? ? "All " : format_tabs(tabs)
+  tabs_e = tabs.empty? ? "" : format_tabs(tabs)
+  event << "#{tabs_s}episode ownages #{format_time}:\n#{block}There're a total of #{count} #{tabs_e}episode ownages."
+  send_file(event, list, "ownages.txt") if count > 20
 end
 
 def send_missing(event)
