@@ -23,6 +23,7 @@ POTATO_FREQ   = 3 * 60 * 60        # 3 hours between potato delivers
 
 DO_NOTHING        = false # 'true' sets all the following ones to false
 DO_EVERYTHING     = false  # 'true' sets all the following ones to true
+OFFLINE_MODE      = true  # Disables all threads that need to access the net, as well as the scores functions
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
@@ -125,10 +126,12 @@ end
 def update_status
   while(true)
     sleep(WAIT) # prevent crazy loops
-    get_current(Level).update_scores
-    get_current(Episode).update_scores
-    get_current(Story).update_scores
-    (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
+    if !OFFLINE_MODE
+      get_current(Level).update_scores
+      get_current(Episode).update_scores
+      get_current(Story).update_scores
+      (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
+    end
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
     sleep(STATUS_UPDATE_FREQUENCY)
   end
@@ -495,10 +498,12 @@ def send_channel_next(type)
     return false
   end
 
-  if !last.nil?
-    last.update_scores
+  if !OFFLINE_MODE
+    if !last.nil?
+      last.update_scores
+    end
+    current.update_scores
   end
-  current.update_scores
 
   prefix = (type == Level ? "Time" : "It's also time")
   duration = (type == Level ? "day" : (type == Episode ? "week" : "month"))
@@ -508,9 +513,13 @@ def send_channel_next(type)
 
   caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
   send_channel_screenshot(current.name, caption)
-  $channel.send_message("Current high scores:\n```#{current.format_scores(current.max_name_length)}```")
+  $channel.send_message("Current #{OFFLINE_MODE ? "(cached) " : ""}high scores:\n```#{current.format_scores(current.max_name_length)}```")
 
-  send_channel_diff(last, get_saved_scores(type), since)
+  if !OFFLINE_MODE
+    send_channel_diff(last, get_saved_scores(type), since)
+  else
+    $channel.send_message("Offline mode activated, not sending score differences.")
+  end
   set_saved_scores(type, current)
 
   return true
@@ -636,15 +645,15 @@ end
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_level_of_the_day }
-$threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { potato }                    if POTATO
 
 wd = Thread.new { watchdog }
