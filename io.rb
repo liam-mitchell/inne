@@ -158,6 +158,10 @@ def parse_userlevel_author(msg)
   msg[/((by)|(author))\s*#{parse_term}/i, 5] || ""
 end
 
+def parse_global(msg)
+  !!msg[/global/i]
+end
+
 def format_rank(rank)
   rank == 1 ? "0th" : "top #{rank}"
 end
@@ -184,6 +188,10 @@ end
 
 def format_time
   Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")
+end
+
+def format_global(full)
+  full ? "global " : "newest "
 end
 
 def send_file(event, data, name = "result.txt", binary = false)

@@ -292,27 +292,34 @@ module HighScore
   def save_scores(updated)
     ActiveRecord::Base.transaction do
       updated.each_with_index do |score, i|
+        # Compute values, userlevels have some differences
         player = (self.class == Userlevel ? UserlevelPlayer : Player).find_or_create_by(metanet_id: score['user_id'])
         player.update(name: score['user_name'].force_encoding('UTF-8'))
         scoretime = score['score'] / 1000.0
         scoretime = (scoretime * 60.0).round if self.class == Userlevel
+        # Update common values
         scores.find_or_create_by(rank: i).update(
-          score: scoretime,
+          score:     scoretime,
           replay_id: score['replay_id'].to_i,
-          player: player,
+          player:    player,
           tied_rank: updated.find_index { |s| s['score'] == score['score'] }
         )
-        scores.find_by(rank: i).update(tab: self.tab) if self.class != Userlevel
+        # Update class-specific values
+        scores.find_by(rank: i).update(tab:         self.tab) if self.class != Userlevel
+        scores.find_by(rank: i).update(last_update: Time.now) if self.class == Userlevel
+        # Update the archive if the run is new
         if self.class != Userlevel && Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
+          # Update archive entry
           ar = Archive.create(
-            replay_id: score['replay_id'].to_i,
-            player: Player.find_by(metanet_id: score['user_id']),
+            replay_id:     score['replay_id'].to_i,
+            player:        Player.find_by(metanet_id: score['user_id']),
             highscoreable: self,
-            score: (score['score'] * 60.0 / 1000.0).round,
-            metanet_id: score['user_id'].to_i, # future-proof the db
-            date: Time.now,
-            tab: self.tab
+            score:         (score['score'] * 60.0 / 1000.0).round,
+            metanet_id:    score['user_id'].to_i, # future-proof the db
+            date:          Time.now,
+            tab:           self.tab
           )
+          # Update demo entry
           demo = Demo.find_or_create_by(id: ar.id)
           demo.update(replay_id: ar.replay_id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
           demo.update_demo

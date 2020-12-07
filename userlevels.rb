@@ -29,40 +29,41 @@ class UserlevelPlayer < ActiveRecord::Base
   has_many :userlevel_scores, foreign_key: :player_id
   has_many :userlevel_histories, foreign_key: :player_id
 
-  def range_s(rank1, rank2, ties)
-    scores.select{ |s|
-      rank = ties ? s.tied_rank : s.rank
-      rank >= rank1 && rank <= rank2
-    }
+  def newest(id = Userlevel.min_id)
+    scores.where("userlevel_id >= #{id}")
+  end  
+
+  def range_s(rank1, rank2, ties, full = false)
+    t  = ties ? 'tied_rank' : 'rank'
+    ss = (full ? scores : newest).where("#{t} >= #{rank1} AND #{t} <= #{rank2}")
   end
 
-  def range_h(rank1, rank2, ties)
-    range_s(rank1, rank2, ties).group_by(&:rank).sort_by(&:first)
+  def range_h(rank1, rank2, ties, full = false)
+    range_s(rank1, rank2, ties, full).group_by(&:rank).sort_by(&:first)
   end
 
-  def top_ns(rank, ties)
-    range_s(0, rank - 1, ties)
+  def top_ns(rank, ties, full = false)
+    range_s(0, rank - 1, ties, full)
   end
 
-  def top_n_count(rank, ties)
-    top_ns(rank, ties).count
+  def top_n_count(rank, ties, full = false)
+    top_ns(rank, ties, full).count
   end
 
-  def points(ties)
-    scores.pluck(ties ? :tied_rank : :rank).map{ |r| 20 - r }.sum
+  def points(ties, full = false)
+    (full ? scores : newest).sum(ties ? '20 - tied_rank' : '20 - rank')
   end
 
-  def avg_points(ties)
-    ss = scores.pluck(ties ? :tied_rank : :rank)
-    ss.length == 0 ? -1 : 20 - ss.sum.to_f / ss.length
+  def avg_points(ties, full = false)
+    (full ? scores : newest).average(ties ? '20 - tied_rank' : '20 - rank')
   end
 
-  def total_score
-    scores.pluck(:score).sum.to_f / 60
+  def total_score(full = false)
+    (full ? scores : newest).sum(:score).to_f / 60
   end
 
-  def avg_lead(ties)
-    ss = top_ns(1, ties)
+  def avg_lead(ties, full = false)
+    ss = top_ns(1, ties, full)
     count = ss.length
     avg = count == 0 ? 0 : ss.map{ |s|
       entries = s.userlevel.scores.map(&:score)
@@ -75,7 +76,6 @@ end
 class UserlevelHistory < ActiveRecord::Base  
   alias_attribute :player, :userlevel_player
   belongs_to :userlevel_player, foreign_key: :player_id
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def self.compose(rankings, rank, time)
     rankings.select{ |r| r[1] > 0 }.map do |r|
@@ -413,8 +413,8 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Because of the way the query is done I use a ranking type instead of yield blocks
-  def self.rank(type, ties = false, par = nil, full = false)
-    scores = UserlevelScore.newest
+  def self.rank(type, ties = false, par = nil, full = false, global = false)
+    scores = global ? UserlevelScore.global : UserlevelScore.newest
 
     bench(:start) if BENCHMARK
     case type
@@ -866,41 +866,43 @@ def send_userlevel_rankings(event)
   rank = 1 if rank < 0
   rank = 20 if rank > 20
   ties = !!msg[/with ties/i]
+  full = parse_global(msg)
   type = ""
 
   if msg =~ /average/i
     if msg =~ /point/i
-      top = Userlevel.rank(:avg_points, ties)
+      top = Userlevel.rank(:avg_points, ties, nil, false, full)
       type = "average points"
     elsif msg =~ /lead/i
-      top = Userlevel.rank(:avg_lead)
+      top = Userlevel.rank(:avg_lead, nil, nil, false, full)
       type = "average lead"
     else
-      top = Userlevel.rank(:avg_rank, ties)
+      top = Userlevel.rank(:avg_rank, ties, nil, false, full)
       type = "average rank"
     end
   elsif msg =~ /point/i
-    top = Userlevel.rank(:points, ties)
+    top = Userlevel.rank(:points, ties, nil, false, full)
     type = "total points"
   elsif msg =~ /score/i
-    top = Userlevel.rank(:score)
+    top = Userlevel.rank(:score, nil, nil, false, full)
     type = "total score"
   elsif msg =~ /tied/i
-    top = Userlevel.rank(:tied, ties, rank - 1)
+    top = Userlevel.rank(:tied, ties, rank - 1, false, full)
     type = "tied #{format_rank(rank)}"
   else
-    top = Userlevel.rank(:rank, ties, rank - 1)
+    top = Userlevel.rank(:rank, ties, rank - 1, false, full)
     type = format_rank(rank)
   end
 
   score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
   name_padding = top.map{ |r| r[0].name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
+  full = format_global(full)
   top = top.each_with_index
            .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}" }
            .join("\n")
 
-  event << "Userlevel #{type} #{ties ? "with ties " : ""}rankings #{format_time}:\n```#{top}```"
+  event << "Userlevel #{full}#{type} #{ties ? "with ties " : ""}rankings #{format_time}:\n```#{top}```"
 end
 
 def send_userlevel_count(event)
@@ -909,59 +911,70 @@ def send_userlevel_count(event)
   rank = !!(msg =~ /0th/i) ? 1 : (parse_rank(msg) || 1)
   ties = !!(msg =~ /ties/i)
   tied = !!(msg =~ /\btied\b/i)
+  full = parse_global(msg)
   if tied
-    count = player.top_n_count(rank, true) - player.top_n_count(rank, false)
+    count = player.top_n_count(rank, true, full) - player.top_n_count(rank, false, full)
   else
-    count = player.top_n_count(rank, ties)
+    count = player.top_n_count(rank, ties, full)
   end
   header = format_rank(rank)
   ties = format_ties(ties)
   tied = format_tied(tied)
-  event << "#{player.name} has #{count}#{tied}userlevel #{header} scores#{ties}."
+  full = format_global(full)
+  event << "#{player.name} has #{count}#{full}#{tied}userlevel #{header} scores#{ties}."
 end
 
 def send_userlevel_points(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
   ties   = !!(msg =~ /ties/i)
-  points = player.points(ties)
+  full   = parse_global(msg)
+  points = player.points(ties, full)
   ties   = format_ties(ties)
-  event << "#{player.name} has #{points} userlevel points#{ties}."
+  full   = format_global(full)
+  event << "#{player.name} has #{points} #{full}userlevel points#{ties}."
 end
 
 def send_userlevel_avg_points(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
   ties   = !!(msg =~ /ties/i)
-  avg    = player.avg_points(ties)
+  full   = parse_global(msg)
+  avg    = player.avg_points(ties, full)
   ties   = format_ties(ties)
-  event << "#{player.name} has #{"%.3f" % avg} average userlevel points#{ties}."
+  full = format_global(full)
+  event << "#{player.name} has #{"%.3f" % avg} average #{full}userlevel points#{ties}."
 end
 
 def send_userlevel_avg_rank(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
   ties   = !!(msg =~ /ties/i)
-  avg    = 20 - player.avg_points(ties)
+  full   = parse_global(msg)
+  avg    = 20 - player.avg_points(ties, full)
   ties   = format_ties(ties)
-  event << "#{player.name} has an average #{"%.3f" % avg} userlevel rank#{ties}."
+  full   = format_global(full)
+  event << "#{player.name} has an average #{"%.3f" % avg} #{full}userlevel rank#{ties}."
 end
 
 def send_userlevel_total_score(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
-  score  = player.total_score
-  ties   = format_ties(ties)
-  event << "#{player.name} has #{"%.3f" % score}s of total userlevel score#{ties}."
+  full   = parse_global(msg)
+  score  = player.total_score(full)
+  full   = format_global(full)
+  event << "#{player.name} has #{"%.3f" % score}s of total #{full}userlevel score."
 end
 
 def send_userlevel_avg_lead(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
   ties   = !!(msg =~ /ties/i)
-  avg    = player.avg_lead(ties)
+  full   = parse_global(msg)
+  avg    = player.avg_lead(ties, full)
   ties   = format_ties(ties)
-  event << "#{player.name} has an average #{"%.3f" % avg} userlevel 0th lead#{ties}."
+  full   = format_global(full)
+  event << "#{player.name} has an average #{"%.3f" % avg} #{full}userlevel 0th lead#{ties}."
 end
 
 def send_userlevel_list(event)
@@ -970,25 +983,27 @@ def send_userlevel_list(event)
   rank   = parse_rank(msg) || 20
   bott   = parse_bottom_rank(msg) || 0
   ties   = !!(msg =~ /ties/i)
+  full   = parse_global(msg)
   if rank == 20 && bott == 0 && !!msg[/0th/i]
     rank = 1
     bott = 0
   end
-  all = player.range_h(bott, rank - 1, ties)
+  all = player.range_h(bott, rank - 1, ties, full)
 
   res = all.map{ |rank, scores|
     rank.to_s.rjust(2, '0') + ":\n" + scores.map{ |s|
       "  #{HighScore.format_rank(s.rank)}: [#{s.userlevel.id.to_s.rjust(6)}] #{s.userlevel.title} (#{"%.3f" % [s.score / 60]})"
     }.join("\n")
   }.join("\n")
-  send_file(event, res, "userlevel-scores-#{player.name}.txt")
+  send_file(event, res, "#{full ? "global-" : ""}userlevel-scores-#{player.name}.txt")
 end
 
 def send_userlevel_stats(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
   ties   = !!(msg =~ /ties/i)
-  counts = player.range_h(0, 19, ties).map{ |rank, scores| [rank, scores.length] }
+  full   = parse_global(msg)
+  counts = player.range_h(0, 19, ties, full).map{ |rank, scores| [rank, scores.length] }
 
   histogram = AsciiCharts::Cartesian.new(
     counts,
@@ -998,11 +1013,12 @@ def send_userlevel_stats(event)
     title: 'Histogram'
   ).draw
 
-  totals  = counts.map{ |rank, count| "#{HighScore.format_rank(rank)}: #{"   %3d" % count}" }.join("\n\t")
-  overall = "Totals:    %3d" % counts.reduce(0){ |sum, c| sum += c[1] }
+  totals  = counts.map{ |rank, count| "#{HighScore.format_rank(rank)}: #{"   %5d" % count}" }.join("\n\t")
+  overall = "Totals:    %5d" % counts.reduce(0){ |sum, c| sum += c[1] }
 
-  event << "Userlevel highscoring stats for #{player.name} #{format_time}:\n"
-  event << "```        Scores\n\t#{totals}\n#{overall}\n#{histogram}```"
+  full = format_global(full)
+  event << "#{full.capitalize}userlevels highscoring stats for #{player.name} #{format_time}:"
+  event << "```          Scores\n\t#{totals}\n#{overall}\n#{histogram}```"
 end
 
 def send_userlevel_spreads(event)
@@ -1010,9 +1026,10 @@ def send_userlevel_spreads(event)
   n      = (msg[/([0-9][0-9]?)(st|nd|rd|th)/, 1] || 1).to_i
   player = parse_player(msg, nil, true, true, false)
   small  = !!(msg =~ /smallest/)
+  full   = parse_global(msg)
   raise "I can't show you the spread between 0th and 0th..." if n == 0
 
-  spreads  = Userlevel.spreads(n, small, player.nil? ? nil : player.id, false)
+  spreads  = Userlevel.spreads(n, small, player.nil? ? nil : player.id, full)
   namepad  = spreads.map{ |s| s[0].length }.max
   scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
   spreads  = spreads.each_with_index
@@ -1021,31 +1038,36 @@ def send_userlevel_spreads(event)
 
   spread = small ? "smallest" : "largest"
   rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
-  event << "Userlevels #{!player.nil? ? "owned by #{player.name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
+  full   = format_global(full)
+  event << "#{full.capitalize}userlevels #{!player.nil? ? "owned by #{player.name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
 def send_userlevel_maxed(event)
   msg    = event.content
   player = parse_player(msg, nil, true, true, false)
-  ties   = Userlevel.ties(player.nil? ? nil : player.id, true, false)
+  full   = parse_global(msg)
+  ties   = Userlevel.ties(player.nil? ? nil : player.id, true, full)
                     .select { |s| s[1] == s[2] }
                     .map { |s| "#{"%6d" % s[0].id} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
   player = player.nil? ? "" : " without " + player.name
-  event << "Potentially maxed userlevels (with all scores tied for 0th) #{format_time}#{player}:"
+  full   = format_global(full)
+  event << "Potentially maxed #{full}userlevels (with all scores tied for 0th) #{format_time}#{player}:"
   event << "```    ID - Author - Player\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed userlevels."
 end
 
 def send_userlevel_maxable(event)
   msg    = event.content
   player = parse_player(msg, nil, true, true, false)
-  ties   = Userlevel.ties(player.nil? ? nil : player.id, false, false)
+  full   = parse_global(msg)
+  ties   = Userlevel.ties(player.nil? ? nil : player.id, false, full)
             .select { |s| s[1] < s[2] }
             .sort_by { |s| -s[1] }
             .take(NUM_ENTRIES)
             .map { |s| "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
             .join("\n")
   player = player.nil? ? "" : " without " + player.name
-  event << "Userlevels with the most ties for 0th #{format_time}#{player}:"
+  full   = format_global(full)
+  event << "#{full.capitalize}userlevels with the most ties for 0th #{format_time}#{player}:"
   event << "```    ID - Ties - Author - Player\n#{ties}```"
 end
 

@@ -30,7 +30,8 @@ UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
 UPDATE_LEVEL      = false # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
-UPDATE_USERLEVELS = false # Thread to regularly download userlevel scores
+UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
+UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
@@ -42,11 +43,13 @@ DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 *
 LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
 STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
-USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
-USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
 REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
 REPORT_UPDATE_SIZE          = CONFIG['report_period']               ||  7 * 24 * 60 * 60 # last 7 days
+USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
+USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                 5 # every 5 secs
+USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
+
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
@@ -407,25 +410,10 @@ rescue => e
 end
 
 def download_userlevel_scores
-  log("updating userlevel scores...")
-
-  # Remove all initial excess userlevel scores
-  amount = UserlevelScore.distinct.count(:userlevel_id) - USERLEVEL_REPORT_SIZE
-  if amount > 0
-    ids = UserlevelScore.pluck(:userlevel_id).uniq.sort.reverse.take(USERLEVEL_REPORT_SIZE)
-    UserlevelScore.where.not(id: ids).each(&:destroy)
-  end
-
-  # Update scores for the desired amount of userlevels
+  log("updating newest userlevel scores...")
   Userlevel.where(mode: :solo).order(id: :desc).take(USERLEVEL_REPORT_SIZE).each do |u|
     attempts ||= 0
     u.update_scores
-    # Only remove older ones when we surpass the limit again, to prevent ending
-    # up with less userlevels than desired.
-    if UserlevelScore.distinct.count(:userlevel_id) > USERLEVEL_REPORT_SIZE
-      min = UserlevelScore.minimum(:userlevel_id).to_i
-      UserlevelScore.where(userlevel_id: min).destroy_all
-    end
   rescue => e
     err("error updating highscores for userlevel #{u.id}: #{e}")
     ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
@@ -447,6 +435,22 @@ def start_userlevel_scores
   end
 rescue => e
   err("error downloading userlevel highscores: #{e}")
+  retry
+end
+
+def update_all_userlevels
+  log("updating all userlevel scores...")
+  while true
+    Userlevel.where(mode: :solo).order('last_update IS NOT NULL, last_update').each do |u|
+      attempts ||= 0
+      u.update_scores
+      sleep(USERLEVEL_UPDATE_RATE)
+    rescue => e
+      err("error updating highscores for userlevel #{u.id}: #{e}")
+      ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
+    end
+  end
+rescue
   retry
 end
 
@@ -637,6 +641,7 @@ $threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO
 $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_level_of_the_day }
 $threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING
