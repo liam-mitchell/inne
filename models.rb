@@ -474,12 +474,13 @@ class Episode < ActiveRecord::Base
                     .to_h
     # retrieve player names
     pnames = Player.where(id: epis.values)
-                   .pluck(:id, :name)
+                   .pluck(:id, :name, :display_name)
+                   .map{ |a, b, c| [a, [b, c]] }
                    .to_h
     # keep only matches between the previous 2 result sets to obtain true ownages
     ret = epis.reject{ |e, p| p != zeroes[e] }
               .sort_by{ |e, p| e }
-              .map{ |e, p| [enames[e], pnames[p]] }
+              .map{ |e, p| [enames[e], pnames[p][1].nil? ? pnames[p][0] : pnames[p][1]] }
     bench(:step) if BENCHMARK
     ret
   end
