@@ -307,8 +307,7 @@ module HighScore
           tied_rank: updated.find_index { |s| s['score'] == score['score'] }
         )
         # Update class-specific values
-        scores.find_by(rank: i).update(tab:         self.tab) if self.class != Userlevel
-        scores.find_by(rank: i).update(last_update: Time.now) if self.class == Userlevel
+        scores.find_by(rank: i).update(tab: self.tab) if self.class != Userlevel
         # Update the archive if the run is new
         if self.class != Userlevel && Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
           # Update archive entry
@@ -327,6 +326,7 @@ module HighScore
           demo.update_demo
         end
       end
+      self.update(last_update: Time.now) if self.class == Userlevel
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
     end

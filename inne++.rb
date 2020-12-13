@@ -33,7 +33,7 @@ UPDATE_LEVEL      = false # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
-UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
+UPDATE_USER_GLOB  = true # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
@@ -443,16 +443,18 @@ rescue => e
 end
 
 def update_all_userlevels
-  log("updating all userlevel scores...")
   while true
+    log("updating all userlevel scores...")
     Userlevel.where(mode: :solo).order('last_update IS NOT NULL, last_update').each do |u|
+      log("updating userlevel #{u.id}")
+      sleep(USERLEVEL_UPDATE_RATE)
       attempts ||= 0
       u.update_scores
-      sleep(USERLEVEL_UPDATE_RATE)
     rescue => e
       err("error updating highscores for userlevel #{u.id}: #{e}")
       ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
     end
+    log("finished updating all userlevel scores")
   end
 rescue
   retry
