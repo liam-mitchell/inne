@@ -670,8 +670,13 @@ class Player < ActiveRecord::Base
     self.histories(PointsHistory, attrs, :points)
   end
 
+  def print_name
+    user = User.where(playername: name).where.not(displayname: nil)
+    user.empty? ? name : user.first.displayname
+  end
+
   def format_name(padding = DEFAULT_PADDING)
-    format_string(name, padding)
+    format_string(print_name, padding)
   end
 
   def scores_by_type_and_tabs(type, tabs, include = nil)

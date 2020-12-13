@@ -31,7 +31,7 @@ def send_top_n_count(event)
   ties = format_ties(ties)
   tied = format_tied(tied)
 
-  event << "#{player.name} has #{count}#{tied}#{tabs}#{type} #{header} scores#{ties}."
+  event << "#{player.print_name} has #{count}#{tied}#{tabs}#{type} #{header} scores#{ties}."
 end
 
 def send_rankings(event)
@@ -73,7 +73,7 @@ def send_rankings(event)
 
   top = rankings
   score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
-  name_padding = top.map{ |r| r[0].name.length }.max
+  name_padding = top.map{ |r| r[0].print_name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
 
   top = top.each_with_index
@@ -93,7 +93,7 @@ def send_total_score(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
 
-  event << "#{player.name}'s total #{tabs}#{type.to_s.downcase} score is #{"%.3f" % [score]}."
+  event << "#{player.print_name}'s total #{tabs}#{type.to_s.downcase} score is #{"%.3f" % [score]}."
 end
 
 def send_spreads(event)
@@ -116,7 +116,7 @@ def send_spreads(event)
   rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
-  event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player.name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
+  event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player.print_name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
 def send_scores(event)
@@ -181,7 +181,7 @@ def send_stats(event)
   overall = "Totals:    %4d  %4d    %4d   %4d" % full_counts.reduce([0, 0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
   tabs    = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
-  event << "Player high score counts for #{player.name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}"
+  event << "Player high score counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}"
   event << "#{histogram}```"
 end
 
@@ -200,7 +200,7 @@ def send_list(event)
     bott = 0
   end
 
-  tmpfile = File.join(Dir.tmpdir, "scores-#{player.name.delete(":")}.txt")
+  tmpfile = File.join(Dir.tmpdir, "scores-#{player.print_name.delete(":")}.txt")
   File::open(tmpfile, "w", crlf_newline: true) do |f|
     all[bott..rank-1].each_with_index do |scores, i|
       list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
@@ -253,7 +253,7 @@ def send_maxable(event)
 
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  player = player.nil? ? "" : " without " + player.name
+  player = player.nil? ? "" : " without " + player.print_name
   event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n```\n#{ties}```"
 end
 
@@ -269,7 +269,7 @@ def send_maxed(event)
 
   type = format_type(type).downcase
   tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  player = player.nil? ? "" : " without " + player.name
+  player = player.nil? ? "" : " without " + player.print_name
   event << "#{tabs}potentially maxed #{type}s (with all scores tied for 0th) #{format_time}#{player}:"
   event << "```\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
 end
@@ -321,7 +321,7 @@ def send_missing(event)
 
   missing = player.missing_top_ns(type, tabs, rank, ties).join("\n")
 
-  tmpfile = File.join(Dir.tmpdir, "missing-#{player.name.delete(":")}.txt")
+  tmpfile = File.join(Dir.tmpdir, "missing-#{player.print_name.delete(":")}.txt")
   File::open(tmpfile, "w", crlf_newline: true) do |f|
     f.write(missing)
   end
@@ -345,7 +345,7 @@ def send_suggestions(event)
   type = type.to_s.downcase
   tabs = tabs.empty? ? "" :  " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
-  event << "#{n} most improvable #{type}s#{tabs} for #{player.name}:\n```#{improvable}```#{player.name} is not on the board for:\n```\n#{missing}```"
+  event << "#{n} most improvable #{type}s#{tabs} for #{player.print_name}:\n```#{improvable}```#{player.print_name} is not on the board for:\n```\n#{missing}```"
 end
 
 def send_level_id(event)
@@ -369,7 +369,7 @@ def send_points(event)
 
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.name} has #{points} #{type} #{tabs}points."
+  event << "#{player.print_name} has #{points} #{type} #{tabs}points."
 end
 
 def send_average_points(event)
@@ -381,7 +381,7 @@ def send_average_points(event)
 
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.name} has #{"%.3f" % [average]} #{type} #{tabs}average points."
+  event << "#{player.print_name} has #{"%.3f" % [average]} #{type} #{tabs}average points."
 end
 
 def send_average_rank(event)
@@ -393,7 +393,7 @@ def send_average_rank(event)
 
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.name} has an average #{type} #{tabs}rank of #{"%.3f" % [20 - average]}."
+  event << "#{player.print_name} has an average #{type} #{tabs}rank of #{"%.3f" % [20 - average]}."
 end
 
 def send_average_lead(event)
@@ -405,7 +405,7 @@ def send_average_lead(event)
 
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.name} has an average #{type} #{tabs}lead of #{"%.3f" % [average]}."
+  event << "#{player.print_name} has an average #{type} #{tabs}lead of #{"%.3f" % [average]}."
 end
 
 def send_splits(event)
@@ -654,6 +654,19 @@ def add_steam_id(event)
   User.find_by(username: event.user.name)
     .update(steam_id: id)
   event << "Thanks! From now on I'll try to use your Steam ID to retrieve scores when I need to."
+end
+
+def add_display_name(event)
+  msg  = event.content
+  name = msg[/my display name is (.*)[\.]?$/i, 1]
+  raise "You need to specify some display name." if name.nil?
+  user = User.find_by(username: event.user.name)
+  if user.nil?
+    event << "I don't know you, you first need to identify using 'my name is <player name>'."
+  else
+    user.update(displayname: name)
+    event << "Great, from now on #{user.playername} will show up as #{name}."
+  end
 end
 
 def hello(event)
@@ -955,6 +968,7 @@ def respond(event)
   send_splits(event)         if msg =~ /\bsplits\b/i
   identify(event)            if msg =~ /my name is/i
   add_steam_id(event)        if msg =~ /my steam id is/i
+  add_display_name(event)    if msg =~ /my display name is/i
   send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   faceswap(event)            if msg =~ /faceswap/i
