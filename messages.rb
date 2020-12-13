@@ -665,6 +665,7 @@ def add_display_name(event)
     event << "I don't know you, you first need to identify using 'my name is <player name>'."
   else
     user.update(displayname: name)
+    user.player.update(display_name: name)
     event << "Great, from now on #{user.playername} will show up as #{name}."
   end
 end

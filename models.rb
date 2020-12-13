@@ -186,9 +186,10 @@ module HighScore
     # retrieve player names
     pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
                   .joins("INNER JOIN players ON players.id = scores.player_id")
-                  .pluck('scores.highscoreable_id', 'players.name')
+                  .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
+                  .map{ |a, b, c| [a, [b, c]] }
                   .to_h
-    ret = ret.map{ |id, s| [lnames[id], s, pnames[id]] }
+    ret = ret.map{ |id, s| [lnames[id], s, pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
     bench(:step) if BENCHMARK
     ret
   end
@@ -214,13 +215,14 @@ module HighScore
     # retrieve player names owning the 0ths on said level
     pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
                   .joins("INNER JOIN players ON players.id = scores.player_id")
-                  .pluck('scores.highscoreable_id', 'players.name')
+                  .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
+                  .map{ |a, b, c| [a, [b, c]] }
                   .to_h
     # retrieve level names
     lnames = type.where(id: ret.keys)
                  .pluck(:id, :name)
                  .to_h
-    ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id]] }
+    ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
     bench(:step) if BENCHMARK
     ret
   end
