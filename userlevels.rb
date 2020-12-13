@@ -484,7 +484,7 @@ class Userlevel < ActiveRecord::Base
   end
 
   def format_scores
-    update_scores if !OFFLINE_MODE
+    update_scores if !OFFLINE_STRICT
     if scores.count == 0
       board = "This userlevel has no highscores!"
     else

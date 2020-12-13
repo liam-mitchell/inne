@@ -123,8 +123,8 @@ def send_scores(event)
   msg     = event.content
   offline = !!(msg[/offline/i])
   scores  = parse_level_or_episode(msg)
-  if OFFLINE_MODE
-    event.send_message("Offline mode is ON, sending local cached scores.\n")
+  if OFFLINE_STRICT
+    event.send_message("Strict offline mode is ON, sending local cached scores.\n")
   elsif !offline && scores.update_scores == -1
     event.send_message("Connection to the server failed, sending local cached scores.\n")
   end
@@ -137,7 +137,7 @@ def send_scores(event)
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
     event.send_message("The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round])
-    Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores) if !offline && !OFFLINE_MODE
+    Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores) if !offline && !OFFLINE_STRICT
   end
 end
 

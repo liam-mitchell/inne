@@ -7,7 +7,7 @@ include ChunkyPNG::Color
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = false # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = true  # benchmark and log functions (for optimization)
+BENCHMARK       = false  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
 

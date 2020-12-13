@@ -7,7 +7,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = true # Switch to the local test bot
+TEST          = false # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 WAIT          = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
@@ -21,9 +21,10 @@ POTATO        = true               # joke they have in the nv2 channel
 POTATO_RATE   = 1                  # seconds between potato checks
 POTATO_FREQ   = 3 * 60 * 60        # 3 hours between potato delivers
 
+OFFLINE_MODE      = true  # Disables most intensive online functionalities
+OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false  # 'true' sets all the following ones to true
-OFFLINE_MODE      = true  # Disables all threads that need to access the net, as well as the scores functions
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
@@ -126,7 +127,7 @@ end
 def update_status
   while(true)
     sleep(WAIT) # prevent crazy loops
-    if !OFFLINE_MODE
+    if !OFFLINE_STRICT
       get_current(Level).update_scores
       get_current(Episode).update_scores
       get_current(Story).update_scores
@@ -498,7 +499,7 @@ def send_channel_next(type)
     return false
   end
 
-  if !OFFLINE_MODE
+  if !OFFLINE_STRICT
     if !last.nil?
       last.update_scores
     end
@@ -513,12 +514,12 @@ def send_channel_next(type)
 
   caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
   send_channel_screenshot(current.name, caption)
-  $channel.send_message("Current #{OFFLINE_MODE ? "(cached) " : ""}high scores:\n```#{current.format_scores(current.max_name_length)}```")
+  $channel.send_message("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores(current.max_name_length)}```")
 
-  if !OFFLINE_MODE
+  if !OFFLINE_STRICT
     send_channel_diff(last, get_saved_scores(type), since)
   else
-    $channel.send_message("Offline mode activated, not sending score differences.")
+    $channel.send_message("Strict offline mode activated, not sending score differences.")
   end
   set_saved_scores(type, current)
 
