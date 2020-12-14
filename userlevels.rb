@@ -1110,7 +1110,7 @@ end
 
 def send_userlevel_summary(event)
   msg    = event.content
-  player = msg[/(for|of)*\s(.*)/i, 2]
+  player = msg[/(for|of)\s*(.*)/i, 2]
   full   = parse_global(msg)
 
   userlevels = full ? Userlevel.global.where(mode: :solo) : Userlevel.newest.where(mode: :solo)
@@ -1159,7 +1159,8 @@ def send_userlevel_summary(event)
     averarank = scores.select("count(rank)").group(:player_id).having("count(rank) >= #{min}").order("avg(rank)").average(:rank).first
     maxes     = Userlevel.ties(nil, true,  full, true)
     maxables  = Userlevel.ties(nil, false, full, true)
-    tls = scores.where(rank: 0).sum(:score).to_f / 60.0
+    tls   = scores.where(rank: 0).sum(:score).to_f / 60.0
+    tls_p = highscore.last.to_f / 60.0
     event << "Scored maps:      #{count_a}"
     event << "Unscored maps:    #{count - count_a}"
     event << "Scores:           #{count_s}"
@@ -1174,7 +1175,7 @@ def send_userlevel_summary(event)
     event << "Most Top10s:      #{prolific2.last} (#{UserlevelPlayer.find(prolific2.first).name})"
     event << "Most Top5s:       #{prolific3.last} (#{UserlevelPlayer.find(prolific3.first).name})"
     event << "Most 0ths:        #{prolific4.last} (#{UserlevelPlayer.find(prolific4.first).name})"
-    event << "Most total score: #{highscore.last} (#{UserlevelPlayer.find(highscore.first).name})"
+    event << "Most total score: #{"%.3f" % tls_p} (#{UserlevelPlayer.find(highscore.first).name})"
     event << "Most points:      #{manypoint.last} (#{UserlevelPlayer.find(manypoint.first).name})"
     event << "Best avg rank:    #{averarank.last} (#{UserlevelPlayer.find(averarank.first).name})" rescue nil
   else
