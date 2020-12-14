@@ -381,7 +381,11 @@ class Userlevel < ActiveRecord::Base
     ret
   end
 
-  def self.ties(player_id = nil, maxed = false, full = false)
+  # @par player_id: Excludes levels in which the player is tied for 0th
+  # @par maxed:     Whether we are computing maxed or maxable levels
+  # @par full:      Whether we use all userlevels or only the newest ones
+  # @par count:     Whether to query all info or only return the map count
+  def self.ties(player_id = nil, maxed = false, full = false, count = false)
     scores = full ? UserlevelScore.global : UserlevelScore.newest
     bench(:start) if BENCHMARK
     # retrieve most tied for 0th leves
@@ -398,16 +402,20 @@ class Userlevel < ActiveRecord::Base
                    .group(:userlevel_id)
                    .order('count(id) desc')
                    .count(:id)
-    # retrieve player names owning the 0ths on said level
-    pnames = scores.where(userlevel_id: ret.keys, rank: 0)
-                   .joins("INNER JOIN userlevel_players ON userlevel_players.id = userlevel_scores.player_id")
-                   .pluck('userlevel_scores.userlevel_id', 'userlevel_players.name')
-                   .to_h
-    # retrieve userlevels
-    userl = Userlevel.where(id: ret.keys)
-                     .map{ |u| [u.id, u] }
+    if !count
+      # retrieve player names owning the 0ths on said level
+      pnames = scores.where(userlevel_id: ret.keys, rank: 0)
+                     .joins("INNER JOIN userlevel_players ON userlevel_players.id = userlevel_scores.player_id")
+                     .pluck('userlevel_scores.userlevel_id', 'userlevel_players.name')
                      .to_h
-    ret = ret.map{ |id, c| [userl[id], c, counts[id], pnames[id]] }
+      # retrieve userlevels
+      userl = Userlevel.where(id: ret.keys)
+                       .map{ |u| [u.id, u] }
+                       .to_h
+      ret = ret.map{ |id, c| [userl[id], c, counts[id], pnames[id]] }
+    else
+      ret = maxed ? ret.count{ |id, c| counts[id] == c } : ret.count
+    end
     bench(:step) if BENCHMARK
     ret
   end
@@ -1086,6 +1094,85 @@ def send_random_userlevel(event)
   end
 end
 
+def send_userlevel_summary(event)
+  msg    = event.content
+  player = msg[/(for|of)(.*)/i, 2]
+  full   = parse_global(msg)
+
+  userlevels = full ? Userlevel.global : Userlevel.newest
+  maps = player.nil? ? userlevels : userlevels.where(author: player)
+  count = maps.count
+  event << "#{format_global(full)} userlevel mapping summary#{" for #{player}" if !player.nil?}:```"
+  event << "Maps:           #{count}\n"
+  if player.nil?
+    authors  = userlevels.group(:author_id).count
+    prolific = userlevels.where.not(author: nil).group(:author_id).order("count(id) desc").count(:id).first
+    popular  = userlevels.where.not(author: nil).group(:author_id).order("sum(favs) desc").sum(:favs).first
+    refined  = userlevels.where.not(author: nil).group(:author_id).order("avg(favs) desc").average(:favs).first
+    event << "Authors:        #{authors}\n"
+    event << "Maps / author:  #{"%.3f" % (count.to_f / authors)}\n"
+    event << "Most maps:      #{prolific.last} (#{Userlevel.find_by(author_id: prolific.first).author})\n"
+    event << "Most ++'s:      #{popular.last} (#{Userlevel.find_by(author_id: popular.first).author})\n"
+    event << "Most avg ++'s:  #{"%.3f" % refined.last} (#{Userlevel.find_by(author_id: refined.first).author})\n"
+  end
+  first = maps.order(id: :desc).first
+  event << "First map:      #{first.date} (#{first.id})\n"
+  last = maps.order(:id).first
+  event << "Last map:       #{last.date} (#{last.id})\n"
+  best = maps.order(favs: :desc).first
+  event << "Most ++'ed map: #{best.favs} (#{best.id})\n"
+  avg = maps.sum(:favs).to_f / count
+  event << "Avg. ++'s:      #{"%.3f" % avg}\n"
+  event << "```"
+
+  userlevel_scores = full ? UserlevelScore.global : UserlevelScore.newest
+  scores = player.nil? ? userlevel_scores : userlevel_scores.joins("INNER JOIN userlevel_players ON userlevel_players.id = userlevel_scores.player_id").where("userlevel_players.name = `#{player}`")
+  count_a = userlevel_scores.distinct.count(:userlevel_id)
+  count_s = scores.count
+  event << "#{format_global(full)} userlevel highscoring summary#{" for #{player}" if !player.nil?}:```"
+  if player.nil?
+    scorers   = userlevel_scores.group(:player_id).count
+    prolific1 = userlevel_scores.group(:player_id).order("count(id) desc").count(:id).first
+    prolific2 = userlevel_scores.where("rank <= 9").group(:player_id).order("count(id) desc").count(:id).first
+    prolific3 = userlevel_scores.where("rank <= 4").group(:player_id).order("count(id) desc").count(:id).first
+    prolific4 = userlevel_scores.where("rank = 0").group(:player_id).order("count(id) desc").count(:id).first
+    highscore = userlevel_scores.group(:player_id).order("sum(score) desc").sum(:score).first
+    manypoint = userlevel_scores.group(:player_id).order("sum(20 - rank) desc").sum("20 - rank").first
+    averarank = userlevel_scores.group(:player_id).order("avg(rank)").average(:rank).first
+    maxes     = userlevel_scores.ties(nil, true,  true, true)
+    maxables  = userlevel_scores.ties(nil, false, true, true)
+    tls = scores.where(rank: 0).sum(:score).to_f / 60.0
+    event << "Scored maps:      #{count_a}\n"
+    event << "Unscored maps:    #{count - count_a}\n"
+    event << "Scores:           #{count_s}\n"
+    event << "Players:          #{scorers}\n"
+    event << "Scores / map:     #{"%.3f" % (count_s.to_f / count)}\n"
+    event << "Scores / player:  #{"%.3f" % (count_s.to_f / scorers)}\n"
+    event << "Total score:      #{"%.3f" % tls}\n"
+    event << "Avg. score:       #{"%.3f" % (tls / count_a)}\n"
+    event << "Maxable maps:     #{maxables}\n"
+    event << "Maxed maps:       #{maxes}\n"
+    event << "Most Top20s:      #{prolific1.last} (#{UserlevelPlayer.find(prolific1.first).name})\n"
+    event << "Most Top10s:      #{prolific2.last} (#{UserlevelPlayer.find(prolific2.first).name})\n"
+    event << "Most Top5s:       #{prolific3.last} (#{UserlevelPlayer.find(prolific3.first).name})\n"
+    event << "Most 0ths:        #{prolific4.last} (#{UserlevelPlayer.find(prolific4.first).name})\n"
+    event << "Most total score: #{highscore.last} (#{UserlevelPlayer.find(highscore.first).name})\n"
+    event << "Most points:      #{manypoint.last} (#{UserlevelPlayer.find(manypoint.first).name})\n"
+    event << "Best avg rank:    #{averarank.last} (#{UserlevelPlayer.find(averarank.first).name})\n"
+  else
+    tls = scores.sum(:score).to_f / 60.0
+    event << "Total Top20s: #{count_s}\n"
+    event << "Total Top10s: #{scores.where("rank <= 9").count}\n"
+    event << "Total Top5s:  #{scores.where("rank <= 4").count}\n"
+    event << "Total 0ths:   #{scores.where("rank = 0").count}\n"
+    event << "Total score:  #{"%.3f" % tls}\n"
+    event << "Avg. score:   #{"%.3f" % (tls / count_s)}\n"
+    event << "Total points: #{scores.sum("20 - rank")}\n"
+    event << "Avg. rank:    #{"%.3f" % scores.average(:rank)}\n"
+  end
+  event << "```"
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -1117,6 +1204,7 @@ def respond_userlevels(event)
     send_userlevel_spreads(event)     if msg =~ /spread/i
     send_userlevel_maxed(event)       if msg =~ /maxed/i
     send_userlevel_maxable(event)     if msg =~ /maxable/i
+    send_userlevel_summary(event)     if msg =~ /summary/i
   end
 
   send_userlevel_browse(event)     if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
