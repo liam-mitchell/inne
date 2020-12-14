@@ -443,19 +443,28 @@ rescue => e
   retry
 end
 
-def update_all_userlevels
-  while true
-    log("updating next userlevel chunk scores...")
-    Userlevel.where(mode: :solo).order('last_update IS NOT NULL, last_update').take(USERLEVEL_DOWNLOAD_CHUNK).each do |u|
-      sleep(USERLEVEL_UPDATE_RATE)
-      attempts ||= 0
-      u.update_scores
-    rescue => e
-      err("error updating highscores for userlevel #{u.id}: #{e}")
-      ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
-    end
+def update_all_userlevels_chunk
+  log("updating next userlevel chunk scores...")
+  Userlevel.where(mode: :solo).order('last_update IS NOT NULL, last_update').take(USERLEVEL_DOWNLOAD_CHUNK).each do |u|
+    sleep(USERLEVEL_UPDATE_RATE)
+    attempts ||= 0
+    u.update_scores
+  rescue => e
+    err("error updating highscores for userlevel #{u.id}: #{e}")
+    ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
   end
-rescue
+  log("updated userlevel chunk scores")
+  return true
+rescue => e
+  err("error updating userlevel chunk scores: #{e}")
+  return false
+end
+
+def update_all_userlevels
+  log("updating all userlevel scores...")
+  update_all_userlevels_chunk while true
+rescue => e
+  err("error updating all userlevel scores: #{e}")
   retry
 end
 
