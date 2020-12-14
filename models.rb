@@ -149,6 +149,36 @@ def ensure_type(type)
   (type.nil? || type.is_a?(Array)) ? Level : type
 end
 
+# find the optimal score / amount of whatever rankings or stat
+def find_max_type(rank, type, tabs)
+  case rank
+  when :points
+    (type == Userlevel || tabs.empty? ? type : type.where(tab: tabs)).count * 20
+  when :avg_points
+    20
+  when :avg_rank
+    0
+  when :maxable
+    20
+  when :clean
+    0.0
+  when :score
+    query = type == Userlevel ? UserlevelScore.where(rank: 0) : Score.where(highscoreable_type: type.to_s, rank: 0)
+    query = query.where(tab: tabs) if !tabs.empty? && type != Userlevel
+    query = query.sum(:score)
+    query = query.to_f / 60.0 if type == Userlevel
+    query
+  else
+    (type == Userlevel || tabs.empty? ? type : type.where(tab: tabs)).count
+  end
+end
+
+def find_max(rank, types, tabs)
+  types = [Level, Episode] if types.nil?
+  maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
+  [:avg_points, :avg_rank, :maxable].include?(rank) ? maxes.first : maxes.map(&:sum)
+end
+
 module HighScore
 
   def self.format_rank(rank)

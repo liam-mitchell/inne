@@ -31,7 +31,7 @@ def send_top_n_count(event)
   ties = format_ties(ties)
   tied = format_tied(tied)
 
-  event << "#{player.print_name} has #{count}#{tied}#{tabs}#{type} #{header} scores#{ties}."
+  event << "#{player.print_name} has #{count} out of #{find_max(:rank, type, tabs)}#{tied}#{tabs}#{type} #{header} scores#{ties}."
 end
 
 def send_rankings(event)
@@ -76,11 +76,13 @@ def send_rankings(event)
   name_padding = top.map{ |r| r[0].print_name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
 
-  top = top.each_with_index
-           .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
-           .join("\n")
-  msg = "#{type} #{tabs}#{header}#{format_time}:\n```#{top}```"
-  msg.size < DISCORD_LIMIT ? event << msg : send_file(event, msg)
+  header = "#{type} #{tabs}#{header}#{format_time}:\n#{format_max(find_max(:rank, type, tabs))}"
+  top    = top.each_with_index
+              .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
+              .join("\n")
+  length = header.length + top.length + 7
+  event << header
+  length < DISCORD_LIMIT ? event << "```" + top + "```" : send_file(event, top)
 end
 
 def send_total_score(event)
@@ -93,7 +95,7 @@ def send_total_score(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
 
-  event << "#{player.print_name}'s total #{tabs}#{type.to_s.downcase} score is #{"%.3f" % [score]}."
+  event << "#{player.print_name}'s total #{tabs}#{type.to_s.downcase} score is #{"%.3f" % [score]} out of #{find_max(:score, type, tabs)}."
 end
 
 def send_spreads(event)
@@ -179,9 +181,11 @@ def send_stats(event)
 
   totals  = full_counts.each_with_index.map{ |c, r| "#{HighScore.format_rank(r)}: #{"   %4d  %4d    %4d   %4d" % c}" }.join("\n\t")
   overall = "Totals:    %4d  %4d    %4d   %4d" % full_counts.reduce([0, 0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
+  maxes   = [Level, Episode, Story].map{ |t| find_max(:rank, t, tabs) }
+  maxes   = "Max:       %4d  %4d    %4d   %4d" % maxes.unshift(maxes.sum)
   tabs    = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
 
-  event << "Player high score counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}"
+  event << "Player high score counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}\n#{maxes}"
   event << "#{histogram}```"
 end
 
@@ -254,7 +258,7 @@ def send_maxable(event)
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
   player = player.nil? ? "" : " without " + player.print_name
-  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n```\n#{ties}```"
+  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n#{format_max(find_max(:maxable, type, tabs))}```\n#{ties}```"
 end
 
 def send_maxed(event)
@@ -313,7 +317,7 @@ def send_ownages(event)
 
   tabs_s = tabs.empty? ? "All " : format_tabs(tabs)
   tabs_e = tabs.empty? ? "" : format_tabs(tabs)
-  event << "#{tabs_s}episode ownages #{format_time}:\n#{block}There're a total of #{count} #{tabs_e}episode ownages."
+  event << "#{tabs_s}episode ownages #{format_time}:\n#{format_max(find_max(:rank, Episode, tabs))}\n#{block}There're a total of #{count} #{tabs_e}episode ownages."
   send_file(event, list, "ownages.txt") if count > 20
 end
 
@@ -375,7 +379,7 @@ def send_points(event)
 
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.print_name} has #{points} #{type} #{tabs}points."
+  event << "#{player.print_name} has #{points} out of #{find_max(:points, type, tabs)} #{type} #{tabs}points."
 end
 
 def send_average_points(event)
@@ -387,7 +391,7 @@ def send_average_points(event)
 
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.print_name} has #{"%.3f" % [average]} #{type} #{tabs}average points."
+  event << "#{player.print_name} has #{"%.3f" % [average]} out of #{"%.3f" % find_max(:avg_points)} #{type} #{tabs}average points."
 end
 
 def send_average_rank(event)
