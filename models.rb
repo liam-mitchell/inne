@@ -176,7 +176,7 @@ end
 def find_max(rank, types, tabs)
   types = [Level, Episode] if types.nil?
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
-  [:avg_points, :avg_rank, :maxable].include?(rank) ? maxes.first : maxes.map(&:sum)
+  [:avg_points, :avg_rank, :maxable].include?(rank) ? maxes.first : maxes.sum
 end
 
 module HighScore
