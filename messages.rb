@@ -80,7 +80,7 @@ def send_rankings(event)
            .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
            .join("\n")
   msg = "#{type} #{tabs}#{header}#{format_time}:\n```#{top}```"
-  msg.size < 2000 ? event << msg : send_file(event, msg)
+  msg.size < DISCORD_LIMIT ? event << msg : send_file(event, msg)
 end
 
 def send_total_score(event)
@@ -240,38 +240,44 @@ def send_community(event)
 end
 
 def send_maxable(event)
-  msg = event.content
+  msg    = event.content
   player = parse_player(msg, nil, false, true, false)
-  type = parse_type(msg) || Level
-  tabs = parse_tabs(msg)
+  type   = parse_type(msg) || Level
+  tabs   = parse_tabs(msg)
 
-  ties = HighScore.ties(type, tabs, player.nil? ? nil : player.id)
+  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id)
             .select { |s| s[1] < s[2] }
             .take(NUM_ENTRIES)
             .map { |s| "#{"%-10s" % s[0]} - #{"%2d" % s[1]} - #{format_string(s[3])}" }
             .join("\n")
 
-  type = format_type(type).downcase
-  tabs = tabs.empty? ? "All " : format_tabs(tabs)
+  type   = format_type(type).downcase
+  tabs   = tabs.empty? ? "All " : format_tabs(tabs)
   player = player.nil? ? "" : " without " + player.print_name
   event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n```\n#{ties}```"
 end
 
 def send_maxed(event)
-  msg = event.content
+  msg    = event.content
   player = parse_player(msg, nil, false, true, false)
-  type = parse_type(msg) || Level
-  tabs = parse_tabs(msg)
+  type   = parse_type(msg) || Level
+  tabs   = parse_tabs(msg)
 
-  ties = HighScore.ties(type, tabs, player.nil? ? nil : player.id, true)
-                  .select { |s| s[1] == s[2] }
-                  .map { |s| "#{"%10s" % s[0]} - #{format_string(s[3])}" }
+  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, true)
+                    .select { |s| s[1] == s[2] }
+                    .map { |s| "#{"%10s" % s[0]} - #{format_string(s[3])}" }
+  count  = ties.count{ |s| s.length > 1 }
+  block  = ties.join("\n")
 
-  type = format_type(type).downcase
-  tabs = tabs.empty? ? "All " : format_tabs(tabs)
+  type   = format_type(type).downcase
+  tabs   = tabs.empty? ? "All " : format_tabs(tabs)
   player = player.nil? ? "" : " without " + player.print_name
-  event << "#{tabs}potentially maxed #{type}s (with all scores tied for 0th) #{format_time}#{player}:"
-  event << "```\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed #{type}s."
+  header = "#{tabs}potentially maxed #{type}s (with all scores tied for 0th) #{format_time}#{player}:"
+  footer = "There's a total of #{count} potentially maxed #{type}s."
+  length = header.length + block.length + footer.length + 7
+  event << header
+  length < DISCORD_LIMIT ? event << "```" + block + "```" : send_file(event, block, "maxed-#{type}s.txt", false)
+  event << footer
 end
 
 def send_cleanliness(event)
@@ -532,7 +538,7 @@ def send_analysis(event)
   header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
 
   result = "#{header}\n```#{key_result}```"
-  if result.size > 2000 then result = result[0..1993] + "...```" end
+  if result.size > DISCORD_LIMIT then result = result[0..DISCORD_LIMIT - 7] + "...```" end
   event << "#{result}"
   tmpfile = File.join(Dir.tmpdir, "analysis-#{scores.name}.txt")
   File::open(tmpfile, "w", crlf_newline: true) do |f|

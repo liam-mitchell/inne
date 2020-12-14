@@ -910,7 +910,10 @@ def send_userlevel_rankings(event)
            .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}" }
            .join("\n")
 
-  event << "Userlevel #{full}#{type} #{ties ? "with ties " : ""}rankings #{format_time}:\n```#{top}```"
+  header = "Userlevel #{full}#{type} #{ties ? "with ties " : ""}rankings #{format_time}:"
+  length = header.length + top.length + 7
+  event << header
+  length < DISCORD_LIMIT ? event << "```" + top + "```" : send_file(event, top, "userlevel-rankings.txt", false)
 end
 
 def send_userlevel_count(event)
@@ -1057,10 +1060,13 @@ def send_userlevel_maxed(event)
   ties   = Userlevel.ties(player.nil? ? nil : player.id, true, full)
                     .select { |s| s[1] == s[2] }
                     .map { |s| "#{"%6d" % s[0].id} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
+  count  = ties.count{ |s| s.length > 1 }
   player = player.nil? ? "" : " without " + player.name
   full   = format_global(full)
+  block  = "    ID - Author - Player\n#{ties.join("\n")}"
   event << "Potentially maxed #{full}userlevels (with all scores tied for 0th) #{format_time}#{player}:"
-  event << "```    ID - Author - Player\n#{ties.join("\n")}```There's a total of #{ties.count{|s| s.length>1}} potentially maxed userlevels."
+  count <= 20 ? event << "```#{block}```" : send_file(event, block, "maxed-userlevels.txt", false)
+  event << "There's a total of #{count} potentially maxed userlevels."
 end
 
 def send_userlevel_maxable(event)
@@ -1084,12 +1090,14 @@ def send_random_userlevel(event)
   author = parse_userlevel_author(msg) || ""
   amount = [msg.remove(author)[/\d+/].to_i || 1, PAGE_SIZE].min
   mode   = msg =~ /\bcoop\b/i ? :coop : (msg =~ /\brace\b/i ? :race : :solo)
+  full   = !parse_newest(msg)
+  levels = full ? Userlevel.global : Userlevel.newest
 
   if amount > 1
-    maps = Userlevel.where(mode: mode, author: author).sample(amount)
-    event << "Random selection of #{amount} #{mode.to_s} userlevels#{!author.empty? ? " by #{author}" : ""}:" + format_userlevels(Userlevel::serial(maps), 0, (0..amount - 1))
+    maps = levels.where(mode: mode, author: author).sample(amount)
+    event << "Random selection of #{amount} #{mode.to_s} #{format_global(full)}userlevels#{!author.empty? ? " by #{author}" : ""}:" + format_userlevels(Userlevel::serial(maps), 0, (0..amount - 1))
   else
-    map = Userlevel.where(mode: mode, author: author).sample
+    map = levels.where(mode: mode, author: author).sample
     send_userlevel_screenshot(event, map)
   end
 end
@@ -1102,7 +1110,7 @@ def send_userlevel_summary(event)
   userlevels = full ? Userlevel.global : Userlevel.newest
   maps = player.nil? ? userlevels : userlevels.where(author: player)
   count = maps.count
-  event << "#{format_global(full)} userlevel mapping summary#{" for #{player}" if !player.nil?}:```"
+  event << "#{format_global(full).capitalize}userlevel mapping summary#{" for #{player}" if !player.nil?}:```"
   event << "Maps:           #{count}\n"
   if player.nil?
     authors  = userlevels.group(:author_id).count
@@ -1129,7 +1137,7 @@ def send_userlevel_summary(event)
   scores = player.nil? ? userlevel_scores : userlevel_scores.joins("INNER JOIN userlevel_players ON userlevel_players.id = userlevel_scores.player_id").where("userlevel_players.name = `#{player}`")
   count_a = userlevel_scores.distinct.count(:userlevel_id)
   count_s = scores.count
-  event << "#{format_global(full)} userlevel highscoring summary#{" for #{player}" if !player.nil?}:```"
+  event << "#{format_global(full).capitalize}userlevel highscoring summary#{" for #{player}" if !player.nil?}:```"
   if player.nil?
     scorers   = userlevel_scores.group(:player_id).count
     prolific1 = userlevel_scores.group(:player_id).order("count(id) desc").count(:id).first

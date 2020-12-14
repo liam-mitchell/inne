@@ -162,6 +162,10 @@ def parse_global(msg)
   !!msg[/global/i]
 end
 
+def parse_newest(msg)
+  !!msg[/newest/i]
+end
+
 def format_rank(rank)
   rank == 1 ? "0th" : "top #{rank}"
 end
@@ -192,6 +196,10 @@ end
 
 def format_global(full)
   full ? "global " : "newest "
+end
+
+def format_max(max)
+  "**MAX** - #{max}\n"
 end
 
 def send_file(event, data, name = "result.txt", binary = false)

@@ -10,6 +10,7 @@ LOG_SQL         = false # log _all_ SQL queries (for debugging)
 BENCHMARK       = false  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
+DISCORD_LIMIT   = 2000
 
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
@@ -780,7 +781,7 @@ class Player < ActiveRecord::Base
     count = ret.count / 2
     return 0 if count == 0
     ret = ret.group_by(&:first).map{ |id, sc| (sc[0][1] - sc[1][1]).abs }.sum / count
-# alternative way, faster when the player has many 0ths but slower otherwise (usual outcome)
+## alternative way, faster when the player has many 0ths but slower otherwise (usual outcome)
 #    ret = Score.where(highscoreable_type: type.to_s, rank: [0, 1])
 #    ret = ret.where(tab: tabs) if !tabs.empty?
 #    ret = ret.pluck(:player_id, :highscoreable_id, :score)
