@@ -51,6 +51,7 @@ USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 *
 USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                 5 # every 5 secs
 USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
+USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
 
 
 def log(msg)
@@ -444,9 +445,8 @@ end
 
 def update_all_userlevels
   while true
-    log("updating all userlevel scores...")
-    Userlevel.where(mode: :solo).order('last_update IS NOT NULL, last_update').each do |u|
-      log("updating userlevel #{u.id}")
+    log("updating next userlevel chunk scores...")
+    Userlevel.where(mode: :solo).order('last_update IS NOT NULL, last_update').take(USERLEVEL_DOWNLOAD_CHUNK).each do |u|
       sleep(USERLEVEL_UPDATE_RATE)
       attempts ||= 0
       u.update_scores
@@ -454,7 +454,6 @@ def update_all_userlevels
       err("error updating highscores for userlevel #{u.id}: #{e}")
       ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
     end
-    log("finished updating all userlevel scores")
   end
 rescue
   retry
