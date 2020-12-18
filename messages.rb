@@ -78,7 +78,7 @@ def send_rankings(event)
   name_padding = top.map{ |r| r[0].print_name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
 
-  header = "#{type} #{tabs}#{header}#{format_time} [MAX. #{max}]:"
+  header = "#{type} #{tabs}#{header} #{format_max(max)} #{format_time}:"
   top    = top.each_with_index
               .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
               .join("\n")
@@ -320,7 +320,7 @@ def send_ownages(event)
 
   tabs_s = tabs.empty? ? "All " : format_tabs(tabs)
   tabs_e = tabs.empty? ? "" : format_tabs(tabs)
-  event << "#{tabs_s}episode ownages #{format_time} [MAX. #{find_max(:rank, Episode, tabs)}]:#{block}There're a total of #{count} #{tabs_e}episode ownages."
+  event << "#{tabs_s}episode ownages #{format_max(find_max(:rank, Episode, tabs))} #{format_time}:#{block}There're a total of #{count} #{tabs_e}episode ownages."
   send_file(event, list, "ownages.txt") if count > 20
 end
 
@@ -468,15 +468,18 @@ def send_diff(event)
 end
 
 def do_analysis(scores, rank)
-  run = scores.get_replay_info(rank)
+  run      = scores.scores[rank]
   return nil if run.nil?
 
-  player = run['user_name']
-  replay_id = run['replay_id'].to_s
-  score = "%.3f" % [run['score'].to_f / 1000]
-  analysis = scores.analyze_replay(replay_id)
-  gold = "%.0f" % [((run['score'].to_f / 1000) + (analysis.size.to_f / 60) - 90) / 2]
-  {'player' => player, 'scores' => scores.format_name, 'rank' => rank, 'score' => score, 'analysis' => analysis, 'gold' => gold}
+  analysis = run.demo.decode_demo
+  {
+    'player'   => run.player.name,
+    'scores'   => scores.format_name,
+    'rank'     => "%02d" % rank,
+    'score'    => "%.3f" % run.score,
+    'analysis' => analysis,
+    'gold'     => "%.0f" % [(run.score + analysis.size.to_f / 60 - 90) / 2]
+  }
 end
 
 def send_analysis(event)
@@ -540,13 +543,14 @@ def send_analysis(event)
      .join("\n")
   }.join("\n\n")
 
-  properties = analysis.map{ |a|
-    "[#{a['player']}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
-  }.join("\n")
+  properties = "```" + analysis.map{ |a|
+    "[#{format_string(a['player'])}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
+  }.join("\n") + "```"
   explanation = "[**-** Nothing, **^** Jump, **>** Right, **<** Left, **/** Right Jump, **\\\\** Left Jump, **≤** Left Right, **|** Left Right Jump]"
   header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
 
-  result = "#{header}\n```#{key_result}```"
+  result = "#{header}"
+  result += "```#{key_result}```" unless analysis.sum{ |a| a['analysis'].size } > 1080
   if result.size > DISCORD_LIMIT then result = result[0..DISCORD_LIMIT - 7] + "...```" end
   event << "#{result}"
   tmpfile = File.join(Dir.tmpdir, "analysis-#{scores.name}.txt")
@@ -914,6 +918,10 @@ def send_unique_holders(event)
   event << "Number of unique highscore holders by rank at #{Time.now.to_s}\n```#{ranks}```"
 end
 
+def testa(event)
+  log(Demo.find_by(replay_id: 2491598).decode_demo)
+end
+
 # TODO set level of the day on startup
 def respond(event)
   msg = event.content
@@ -988,6 +996,7 @@ def respond(event)
   send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   faceswap(event)            if msg =~ /faceswap/i
+  testa(event) if msg =~ /testa/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't

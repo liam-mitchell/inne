@@ -199,7 +199,7 @@ def format_global(full)
 end
 
 def format_max(max)
-  "(*MAX*: #{max})"
+  "[MAX. #{max}]"
 end
 
 def send_file(event, data, name = "result.txt", binary = false)

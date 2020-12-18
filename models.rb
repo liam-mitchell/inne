@@ -564,7 +564,7 @@ class Score < ActiveRecord::Base
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
   belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
 #  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab:  [ :SI, :S, :SU, :SL, :SS, :SS2 ]
 
   # Alternative method to perform rankings which outperforms the Player approach
   # since we leave all the heavy lifting to the SQL interface instead of Ruby.
@@ -644,6 +644,10 @@ class Score < ActiveRecord::Base
 
   def spread
     highscoreable.scores.find_by(rank: 0).score - score
+  end
+
+  def demo
+    Demo.find_by(replay_id: replay_id, htype: Demo.htypes[highscoreable.class.to_s.downcase.to_sym])
   end
 
   def format(name_padding = DEFAULT_PADDING, score_padding = 0)
@@ -1052,9 +1056,10 @@ class Demo < ActiveRecord::Base
     Zlib::Deflate.deflate(replay.join('&'), 9)
   end
 
-  def decode_demo(data)
-    demos = Zlib::Inflate.inflate(data).split('&')
-    return (demos.size == 1 ? demos.first : demos)
+  def decode_demo
+    return nil if demo.nil?
+    demos = Zlib::Inflate.inflate(demo).split('&')
+    return (demos.size == 1 ? demos.first.scan(/./m).map(&:ord) : demos.map{ |d| d.scan(/./m).map(&:ord) })
   end
 
   def update_demo

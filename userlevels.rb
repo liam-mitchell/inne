@@ -938,7 +938,7 @@ def send_userlevel_count(event)
   ties = format_ties(ties)
   tied = format_tied(tied)
   full = format_global(full)
-  event << "#{player.name} has #{count}#{full}#{tied}userlevel #{header} scores#{ties}."
+  event << "#{player.name} has #{count} #{full} #{tied}userlevel #{header} scores#{ties}."
 end
 
 def send_userlevel_points(event)
