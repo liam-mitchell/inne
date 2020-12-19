@@ -1109,10 +1109,10 @@ def send_userlevel_mapping_summary(event)
   player = msg[/(for|of)\s*(.*)/i, 2]
   full   = parse_global(msg)
 
-  userlevels = full ? Userlevel.global.where(mode: :solo) : Userlevel.newest.where(mode: :solo)
+  userlevels = Userlevel.global.where(mode: :solo)
   maps = player.nil? ? userlevels : userlevels.where(author: player)
   count = maps.count
-  event << "#{format_global(full).capitalize}userlevel mapping summary#{" for #{player}" if !player.nil?}:```"
+  event << "Userlevel mapping summary#{" for #{player}" if !player.nil?}:```"
   event << "Maps:           #{count}"
   if player.nil?
     authors  = userlevels.distinct.count(:author_id)
@@ -1142,6 +1142,10 @@ def send_userlevel_highscoring_summary(event)
   msg    = event.content
   player = msg[/(for|of)\s*(.*)/i, 2]
   full   = parse_global(msg)
+  if full && player.nil?
+    event.send_message("The global userlevel highscoring summary on command is disabled for now until it's optimized, you can still do the regular summary, or the global summary for a specific player.")
+    return
+  end
 
   userlevels = full ? Userlevel.global.where(mode: :solo) : Userlevel.newest.where(mode: :solo)
   maps = player.nil? ? userlevels : userlevels.where(author: player)
@@ -1199,8 +1203,9 @@ def send_userlevel_highscoring_summary(event)
 end
 
 def send_userlevel_summary(event)
-  mapping     = !!event.content[/mapping/i]
-  highscoring = !!event.content[/highscoring/i]
+  msg = event.content
+  mapping     = !!msg[/mapping/i]
+  highscoring = !!msg[/highscoring/i]
   both        = !(mapping || highscoring)
   send_userlevel_mapping_summary(event)     if mapping     || both
   send_userlevel_highscoring_summary(event) if highscoring || both
