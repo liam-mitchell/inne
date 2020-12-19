@@ -358,6 +358,7 @@ module HighScore
         end
       end
       self.update(last_update: Time.now) if self.class == Userlevel
+      self.update(scored:       true)    if self.class == Userlevel && updated.size > 0
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
     end

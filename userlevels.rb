@@ -341,11 +341,7 @@ class Userlevel < ActiveRecord::Base
   end
 
   def self.min_id
-    UserlevelScore.pluck(:userlevel_id)
-                  .uniq
-                  .sort_by{ |id| -id }
-                  .take(USERLEVEL_REPORT_SIZE)
-                  .last
+    Userlevel.where(scored: true).order(id: :desc).limit(USERLEVEL_REPORT_SIZE).last.id
   end
 
   def self.newest(id = min_id)
@@ -1108,7 +1104,7 @@ def send_random_userlevel(event)
   end
 end
 
-def send_userlevel_summary(event)
+def send_userlevel_mapping_summary(event)
   msg    = event.content
   player = msg[/(for|of)\s*(.*)/i, 2]
   full   = parse_global(msg)
@@ -1140,6 +1136,16 @@ def send_userlevel_summary(event)
     event << "Avg. ++'s:      #{"%.3f" % avg}"
   end
   event << "```"
+end
+
+def send_userlevel_highscoring_summary(event)
+  msg    = event.content
+  player = msg[/(for|of)\s*(.*)/i, 2]
+  full   = parse_global(msg)
+
+  userlevels = full ? Userlevel.global.where(mode: :solo) : Userlevel.newest.where(mode: :solo)
+  maps = player.nil? ? userlevels : userlevels.where(author: player)
+  count = maps.count
 
   userlevel_scores = full ? UserlevelScore.global : UserlevelScore.newest
   sanitized_name = Userlevel.sanitize("userlevel_players.name = ?", player)
@@ -1190,6 +1196,14 @@ def send_userlevel_summary(event)
     event << "Avg. rank:    #{"%.3f" % scores.average(:rank)}"
   end
   event << "```"
+end
+
+def send_userlevel_summary(event)
+  mapping     = !!event.content[/mapping/i]
+  highscoring = !!event.content[/highscoring/i]
+  both        = !(mapping || highscoring)
+  send_userlevel_mapping_summary(event)     if mapping     || both
+  send_userlevel_highscoring_summary(event) if highscoring || both
 end
 
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
