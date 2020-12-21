@@ -166,10 +166,10 @@ def send_screenshot(event, map = nil)
 end
 
 def send_stats(event)
-  msg = event.content
+  msg    = event.content
   player = parse_player(msg, event.user.name)
-  tabs = parse_tabs(msg)
-  ties = !!(msg =~ /ties/i)
+  tabs   = parse_tabs(msg)
+  ties   = !!(msg =~ /ties/i)
   counts = player.score_counts(tabs, ties)
 
   histogram = AsciiCharts::Cartesian.new(
