@@ -45,31 +45,36 @@ def send_rankings(event)
   if msg =~ /average/i
     if msg =~ /point/i
       rankings = Score.rank(:avg_points, type, tabs, ties)
-      header = "average point rankings "
+      header   = "average point rankings "
+      max      = find_max(:avg_points, type, tabs)
     elsif msg =~ /lead/i
       rankings = Score.rank(:avg_lead, type, tabs)
-      header = "average lead rankings "
+      header   = "average lead rankings "
+      max      = nil
     else
       rankings = Score.rank(:avg_rank, type, tabs, ties)
-      header = "average rank rankings "
+      header   = "average rank rankings "
+      max      = find_max(:avg_rank, type, tabs)
     end
   elsif msg =~ /point/i
     rankings = Score.rank(:points, type, tabs, ties)
-    header = "point rankings "
+    header   = "point rankings "
+    max      = find_max(:points, type, tabs)
   elsif msg =~ /score/i
     rankings = Score.rank(:score, type, tabs)
-    header = "score rankings "
+    header   = "score rankings "
+    max      = find_max(:score, type, tabs)
   elsif msg =~ /tied/i
     rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1)
-    header = "tied 0th rankings "
+    header   = "tied 0th rankings "
   else
     rankings = Score.rank(:rank, type, tabs, ties, rank - 1)
-    rank = format_rank(rank)
-    ties = (ties ? "with ties " : "")
-    header = "#{rank} rankings #{ties}"
+    rank     = format_rank(rank)
+    ties     = (ties ? "with ties " : "")
+    header   = "#{rank} rankings #{ties}"
   end
 
-  max  = find_max(:rank, type, tabs)
+  max  = find_max(:rank, type, tabs) if max.nil?
   type = format_type(type)
   tabs = format_tabs(tabs)
 

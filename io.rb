@@ -2,7 +2,7 @@
 # like levels, players, tabs, types, times, etc.
 # Both messages.rb and userlevels.rb make use of it.
 
-LEVEL_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDE]-[0-9][0-9]?/i
+LEVEL_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
 EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
 STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
 NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
@@ -199,7 +199,7 @@ def format_global(full)
 end
 
 def format_max(max)
-  "[MAX. #{max}]"
+  "[MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]"
 end
 
 def send_file(event, data, name = "result.txt", binary = false)
