@@ -63,7 +63,9 @@ IGNORED_PLAYERS = [
   "dimitry008",
   "Chara",
   "test8378",
-  "VexatiousCheff"
+  "VexatiousCheff",
+  "vex",
+  "DBYT3"
 ]
 
 # Problematic hackers? We get rid of them by banning their user IDs
@@ -73,7 +75,8 @@ IGNORED_IDS = [
   146275, # Puce
   253161, # Chara
   253072, # test8378
-  221472  # VexatiousCheff
+  221472, # VexatiousCheff / vex
+  276273  # DBYT3
 ]
 
 # Turn a little endian binary array into an integer

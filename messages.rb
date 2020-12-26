@@ -192,9 +192,16 @@ def send_stats(event)
   maxes   = [Level, Episode, Story].map{ |t| find_max(:rank, t, tabs) }
   maxes   = "Max:       %4d  %4d    %4d   %4d" % maxes.unshift(maxes[0] + maxes[1])
   tabs    = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
+  msg1    = "Player high score counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}\n#{maxes}"
+  msg2    = "#{histogram}```"
 
-  event << "Player high score counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}\n#{maxes}"
-  event << "#{histogram}```"
+  if msg1.length + msg2.length <= DISCORD_LIMIT
+    event << msg1
+    event << msg2
+  else
+    event.send_message(msg1 + "```")
+    event.send_message("```" + msg2)
+  end
 end
 
 def send_list(event)
@@ -983,7 +990,7 @@ def respond(event)
   send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
   send_scores(event)         if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
   send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
-  send_top_n_count(event)    if msg =~ /how many/i
+  send_top_n_count(event)    if msg =~ /how many/i && msg !~ /point/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
   send_screenshot(event)     if msg =~ /screenshot/i
   send_suggestions(event)    if msg =~ /worst/i && msg !~ /nightmare/i

@@ -462,7 +462,10 @@ end
 
 def update_all_userlevels
   log("updating all userlevel scores...")
-  update_all_userlevels_chunk while true
+  while true
+    update_all_userlevels_chunk
+    sleep(WAIT)
+  end
 rescue => e
   err("error updating all userlevel scores: #{e}")
   retry
