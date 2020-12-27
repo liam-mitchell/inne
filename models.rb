@@ -642,6 +642,7 @@ class Score < ActiveRecord::Base
     tabs = (secrets ? tabs : tabs - [:SS, :SS2])
     ret = self.where(highscoreable_type: type.to_s, tab: tabs, rank: 0)
               .pluck('SUM(score)', 'COUNT(score)')
+              .map{ |score, count| [score.to_f, count.to_i] }
     bench(:step) if BENCHMARK
     ret.first
   end
