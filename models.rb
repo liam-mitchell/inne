@@ -79,6 +79,20 @@ IGNORED_IDS = [
   276273  # DBYT3
 ]
 
+# Individually patched runs from legitimate players because they were done
+# with older versions of levels and the scores are now incorrect.
+# @params: minimum replay id where legit scores start, score adjustment required
+PATCH_RUNS = {
+  :episode => {
+    182 => [695142, -42], # S-C-12
+    217 => [1165074, -8]  # S-C-19
+  },
+  :level => {
+    910  => [286360, -42], # S-C-12-00
+    1089 => [225710,  -8]  # S-C-19-04
+  }
+}
+
 # Turn a little endian binary array into an integer
 def parse_int(bytes)
   if bytes.is_a?(Array) then bytes = bytes.join end
@@ -282,7 +296,7 @@ module HighScore
     end
     return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
-    clean_scores(correct_ties(JSON.parse(response.body)['scores']))
+    correct_ties(clean_scores(JSON.parse(response.body)['scores']))
   rescue => e
     if (attempts += 1) < RETRIES
       if SHOW_ERRORS
@@ -314,15 +328,32 @@ module HighScore
 
   # Remove hackers and cheaters both by implementing the ignore lists and the score thresholds.
   def clean_scores(boards)
-    boards.select { |score|
-      if self.class == Userlevel
-        limit = 2 ** 32 - 1 # No limit
-      else
-        limit = TABS[self.class.to_s].map{ |k, v| v[1] }.max
-        TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
-      end
-      !IGNORED_PLAYERS.include?(score['user_name']) && !IGNORED_IDS.include?(score['user_id']) && score['score'] / 1000.0 < limit
-    }.uniq { |score| score['user_name'] }
+    # Remove potential duplicates
+    boards.uniq!{ |s| s['user_name'] }
+
+    # Compute score upper limit
+    if self.class == Userlevel
+      limit = 2 ** 32 - 1 # No limit
+    else
+      limit = TABS[self.class.to_s].map{ |k, v| v[1] }.max
+      TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
+    end
+
+    # Filter out cheated/hacked runs
+    boards.reject!{ |s|
+      IGNORED_PLAYERS.include?(s['user_name']) || IGNORED_IDS.include?(s['user_id']) || s['score'] / 1000.0 >= limit
+    }
+
+    # Patch old incorrect runs
+    k = self.class.to_s.downcase.to_sym
+    if PATCH_RUNS[k].key?(self.id)
+      boards.each{ |s|
+        entry = PATCH_RUNS[k][self.id]
+        s['score'] += 1000 * entry[1] if s['replay_id'] <= entry[0]
+      }
+    end
+
+    boards
   end
 
   def save_scores(updated)
