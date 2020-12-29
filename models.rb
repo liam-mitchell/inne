@@ -196,6 +196,10 @@ def find_max(rank, types, tabs)
   [:avg_points, :avg_rank, :maxable].include?(rank) ? maxes.first : maxes.sum
 end
 
+def round_score(score)
+  (score * 60).round / 60.0
+end
+
 module HighScore
 
   def self.format_rank(rank)
@@ -513,7 +517,7 @@ class Episode < ActiveRecord::Base
                .joins('INNER JOIN episodes ON episodes.id = scores.highscoreable_id')
                .joins('INNER JOIN players ON players.id = scores.player_id')
                .pluck('episodes.id', 'scores.score', 'players.name')
-               .map{ |e, s, n| [epis[e], lvls[e] - s - 360, n] }
+               .map{ |e, s, n| [epis[e], round_score(lvls[e] - s - 360), n] }
     bench(:step) if BENCHMARK
     ret
   end
@@ -654,6 +658,7 @@ class Score < ActiveRecord::Base
       scores = scores.group(:player_id)
                      .order("sum(score) desc")
                      .sum(:score)
+                     .map{ |id, c| [id, round_score(c)] }
     end
 
     scores = scores.take(NUM_ENTRIES) if !full
@@ -673,7 +678,7 @@ class Score < ActiveRecord::Base
     tabs = (secrets ? tabs : tabs - [:SS, :SS2])
     ret = self.where(highscoreable_type: type.to_s, tab: tabs, rank: 0)
               .pluck('SUM(score)', 'COUNT(score)')
-              .map{ |score, count| [score.to_f, count.to_i] }
+              .map{ |score, count| [round_score(score.to_f), count.to_i] }
     bench(:step) if BENCHMARK
     ret.first
   end

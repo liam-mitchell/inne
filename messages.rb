@@ -307,6 +307,7 @@ def send_cleanliness(event)
   cleanliness = Episode.cleanliness(tabs)
                        .sort_by{ |e| (cleanest ? e[1] : -e[1]) }
                        .take(NUM_ENTRIES)
+#                       .each{ |e| e[1] = round_score(e[1]) }
   padding     = cleanliness.map{ |e| ("%.3f" % e[1]).length }.max
   cleanliness = cleanliness.map{ |e| "#{"%7s" % e[0]} - #{"%#{padding}.3f" % e[1]} - #{e[2]}" }.join("\n")
 
