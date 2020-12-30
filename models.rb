@@ -90,6 +90,10 @@ PATCH_RUNS = {
   :level => {
     910  => [286360, -42], # S-C-12-00
     1089 => [225710,  -8]  # S-C-19-04
+  },
+  :story => {
+  },
+  :userlevel => {
   }
 }
 
@@ -357,6 +361,8 @@ module HighScore
       }
     end
 
+    boards
+  rescue
     boards
   end
 
