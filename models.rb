@@ -180,7 +180,9 @@ def find_max_type(rank, type, tabs)
   when :avg_rank
     0
   when :maxable
-    20
+    HighScore.ties(type, tabs, nil, false, true).size
+  when :maxed
+    HighScore.ties(type, tabs, nil, true, true).size
   when :clean
     0.0
   when :score
@@ -197,7 +199,7 @@ end
 def find_max(rank, types, tabs)
   types = [Level, Episode] if types.nil?
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
-  [:avg_points, :avg_rank, :maxable].include?(rank) ? maxes.first : maxes.sum
+  [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
 end
 
 def round_score(score)
@@ -250,7 +252,10 @@ module HighScore
     ret
   end
 
-  def self.ties(type, tabs, player_id = nil, maxed = false)
+  # @par player_id: Exclude levels where the player already has a score
+  # @par maxed:     Sort differently depending on whether we're interested in maxed or maxable
+  # @par rank:      Return rankings of people with most scores in maxed / maxable levels
+  def self.ties(type, tabs, player_id = nil, maxed = false, rank = false)
     type = ensure_type(type)
     bench(:start) if BENCHMARK
     # retrieve most tied for 0th leves
@@ -268,17 +273,22 @@ module HighScore
                   .group(:highscoreable_id)
                   .order('count(id) desc')
                   .count(:id)
-    # retrieve player names owning the 0ths on said level
-    pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
-                  .joins("INNER JOIN players ON players.id = scores.player_id")
-                  .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
-                  .map{ |a, b, c| [a, [b, c]] }
-                  .to_h
-    # retrieve level names
-    lnames = type.where(id: ret.keys)
-                 .pluck(:id, :name)
-                 .to_h
-    ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+    if rank
+      ret.select!{ |id, c| counts[id] == c } if maxed
+      ret = ret.keys
+    else
+      # retrieve player names owning the 0ths on said level
+      pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
+                    .joins("INNER JOIN players ON players.id = scores.player_id")
+                    .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
+                    .map{ |a, b, c| [a, [b, c]] }
+                    .to_h
+      # retrieve level names
+      lnames = type.where(id: ret.keys)
+                   .pluck(:id, :name)
+                   .to_h
+      ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+    end
     bench(:step) if BENCHMARK
     ret
   end
@@ -665,6 +675,18 @@ class Score < ActiveRecord::Base
                      .order("sum(score) desc")
                      .sum(:score)
                      .map{ |id, c| [id, round_score(c)] }
+    when :maxed
+      scores = Score.where(highscoreable_id: HighScore.ties(type, tabs, nil, true, true))
+                    .where("tied_rank = 0")   
+                    .group(:player_id)
+                    .order("count(id) desc")
+                    .count(:id)
+    when :maxable
+      scores = Score.where(highscoreable_id: HighScore.ties(type, tabs, nil, false, true))
+                    .where("tied_rank = 0")   
+                    .group(:player_id)
+                    .order("count(id) desc")
+                    .count(:id)
     end
 
     scores = scores.take(NUM_ENTRIES) if !full

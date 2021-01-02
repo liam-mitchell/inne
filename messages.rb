@@ -67,6 +67,14 @@ def send_rankings(event)
   elsif msg =~ /tied/i
     rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1)
     header   = "tied 0th rankings "
+  elsif msg =~ /maxed/i
+    rankings = Score.rank(:maxed, type, tabs)
+    header   = "maxed score rankings "
+    max      = find_max(:maxed, type, tabs)
+  elsif msg =~ /maxable/i
+    rankings = Score.rank(:maxable, type, tabs)
+    header   = "maxable score rankings "
+    max      = find_max(:maxable, type, tabs)
   else
     rankings = Score.rank(:rank, type, tabs, ties, rank - 1)
     rank     = format_rank(rank)
@@ -273,7 +281,7 @@ def send_maxable(event)
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
   player = player.nil? ? "" : " without " + player.print_name
-  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n#{format_max(find_max(:maxable, type, tabs))}```\n#{ties}```"
+  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n#{format_max(20)}```\n#{ties}```"
 end
 
 def send_maxed(event)
@@ -997,8 +1005,8 @@ def respond(event)
   send_suggestions(event)    if msg =~ /worst/i && msg !~ /nightmare/i
   send_list(event)           if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
   send_missing(event)        if msg =~ /missing/i
-  send_maxable(event)        if msg =~ /maxable/i
-  send_maxed(event)          if msg =~ /maxed/i
+  send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i
+  send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i
   send_level_name(event)     if msg =~ /\blevel name\b/i
   send_level_id(event)       if msg =~ /\blevel id\b/i
   send_analysis(event)       if msg =~ /analysis/i
