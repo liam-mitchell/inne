@@ -8,7 +8,6 @@ require_relative 'userlevels.rb'
 BENCH_MSGS   = true # benchmark functions in messages
 NUM_ENTRIES  = 20   # number of entries to show on diverse methods
 MAX_ENTRIES  = 20   # maximum number of entries on methods with user input, to avoid spam
-MIN_SCORES   = 50   # minimum number of highscores to appear in average point rankings
 
 def send_top_n_count(event)
   msg = event.content
@@ -47,6 +46,7 @@ def send_rankings(event)
       rankings = Score.rank(:avg_points, type, tabs, ties)
       header   = "average point rankings "
       max      = find_max(:avg_points, type, tabs)
+      avg_msg  = true
     elsif msg =~ /lead/i
       rankings = Score.rank(:avg_lead, type, tabs)
       header   = "average lead rankings "
@@ -55,6 +55,7 @@ def send_rankings(event)
       rankings = Score.rank(:avg_rank, type, tabs, ties)
       header   = "average rank rankings "
       max      = find_max(:avg_rank, type, tabs)
+      avg_msg  = true
     end
   elsif msg =~ /point/i
     rankings = Score.rank(:points, type, tabs, ties)
@@ -83,6 +84,7 @@ def send_rankings(event)
   end
 
   max  = find_max(:rank, type, tabs) if max.nil?
+  min  = "Minimum number of scores required: #{min_scores(type, tabs)}" if !avg_msg.nil?
   type = format_type(type)
   tabs = format_tabs(tabs)
 
@@ -92,12 +94,14 @@ def send_rankings(event)
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
 
   header = "#{type} #{tabs}#{header} #{format_max(max)} #{format_time}:"
-  top    = top.each_with_index
+  top    = "```" + top.each_with_index
               .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
-              .join("\n")
-  length = header.length + top.length + 7
+              .join("\n") + "```"
+  top.concat(min) if !min.nil?
+
+  length = header.length + top.length
   event << header
-  length < DISCORD_LIMIT ? event << "```" + top + "```" : send_file(event, top)
+  length < DISCORD_LIMIT ? event << top : send_file(event, top[3..-4])
 end
 
 def send_total_score(event)

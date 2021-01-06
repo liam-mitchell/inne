@@ -17,31 +17,41 @@ DEFAULT_PADDING = 15    # default variable padding, never make 0
 MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
 TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
 
+MAXMIN_SCORES   = 100    # max-min number of highscores to appear in average point rankings
 USERLEVEL_REPORT_SIZE = 500
 ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 
-# ID ranges for levels and episodes, and score limits to filter new hacked scores
+# ID ranges for levels and episodes
+# Score limits to filter new hacked scores
+# Number of scores required to enter the average rank/point rankings of tab
 TABS = {
   "Episode" => {
-    :SI => [ (  0.. 24).to_a, 400],
-    :S  => [ (120..239).to_a, 950],
-    :SL => [ (240..359).to_a, 650],
-    :SU => [ (480..599).to_a, 650]
+    :SI => [ (  0.. 24).to_a, 400,  5],
+    :S  => [ (120..239).to_a, 950, 25],
+    :SL => [ (240..359).to_a, 650, 25],
+    :SU => [ (480..599).to_a, 650, 25]
   },
   "Level" => {
-    :SI  => [ (  0..  124).to_a,  298],
-    :S   => [ ( 600..1199).to_a,  874],
-    :SL  => [ (1200..1799).to_a,  400],
-    :SS  => [ (1800..1919).to_a, 2462],
-    :SU  => [ (2400..2999).to_a,  530],
-    :SS2 => [ (3000..3119).to_a,  322]
+    :SI  => [ (  0..  124).to_a,  298, 25],
+    :S   => [ ( 600..1199).to_a,  874, 50],
+    :SL  => [ (1200..1799).to_a,  400, 50],
+    :SS  => [ (1800..1919).to_a, 2462, 25],
+    :SU  => [ (2400..2999).to_a,  530, 50],
+    :SS2 => [ (3000..3119).to_a,  322, 25]
   },
   "Story" => {
-    :SI => [ ( 0..  4).to_a, 1000],
-    :S  => [ (24.. 43).to_a, 2000],
-    :SL => [ (48.. 67).to_a, 2000],
-    :SU => [ (96..115).to_a, 1500]
+    :SI => [ ( 0..  4).to_a, 1000, 1],
+    :S  => [ (24.. 43).to_a, 2000, 5],
+    :SL => [ (48.. 67).to_a, 2000, 5],
+    :SU => [ (96..115).to_a, 1500, 5]
   }
+}
+
+# Type-wise max-min for average ranks
+TYPES = {
+  "Episode" =>  [50],
+  "Level"   => [100],
+  "Story"   =>  [10]
 }
 
 IGNORED_PLAYERS = [
@@ -196,10 +206,26 @@ def find_max_type(rank, type, tabs)
   end
 end
 
+# Finds the maximum value a player can reach in a certain ranking
 def find_max(rank, types, tabs)
   types = [Level, Episode] if types.nil?
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
+end
+
+# Finds the minimum number of scores required to appear in a certain
+# average rank/point rankings
+def min_scores(type, tabs)
+  type = [Level, Episode] if type.nil?
+  mins = [type].flatten.map{ |t|
+    if tabs.empty?
+      type_min = TABS[t.to_s].sum{ |k, v| v[2] }
+    else
+      type_min = tabs.map{ |tab| TABS[t.to_s][tab][2] if TABS[t.to_s].key?(tab) }.compact.sum
+    end
+    [type_min, TYPES[t.to_s][0]].min
+  }.sum
+  [mins, MAXMIN_SCORES].min
 end
 
 def round_score(score)
@@ -653,13 +679,13 @@ class Score < ActiveRecord::Base
     when :avg_points
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{MIN_SCORES}")
+                     .having("count(player_id) >= #{min_scores(type, tabs)}")
                      .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
                      .average(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_rank
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{MIN_SCORES}")
+                     .having("count(player_id) >= #{min_scores(type, tabs)}")
                      .order("avg(#{ties ? "tied_rank" : "rank"})")
                      .average(ties ? "tied_rank" : "rank")
     when :avg_lead
