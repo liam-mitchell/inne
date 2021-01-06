@@ -4,6 +4,7 @@
 *.log
 \.byebug_history
 *.db
+*.swp
 \#*
 \.\#*
 missing*

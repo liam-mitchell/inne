@@ -592,9 +592,16 @@ def potato
     sleep(POTATO_RATE)
     next if $nv2_channel.nil? || $last_potato.nil?
     if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
-      $nv2_channel.send_message(":potato:");
+      if $tomato
+        $nv2_channel.send_message(":tomato:")
+        $tomato = false
+        log("tomatoed nv2")
+      else
+        $nv2_channel.send_message(":potato:")
+        $tomato = true
+        log("potatoed nv2")
+      end
       $last_potato = Time.now.to_i
-      log("potatoed nv2")
     end
   end
 end
@@ -625,6 +632,7 @@ $channel = nil
 $mapping_channel = nil
 $nv2_channel = nil
 $last_potato = nil
+$tomato = false
 
 $bot.mention do |event|
   respond(event)
@@ -637,7 +645,10 @@ $bot.private_message do |event|
 end
 
 $bot.message do |event|
-  $last_potato = Time.now.to_i if event.channel == $nv2_channel
+  if event.channel == $nv2_channel
+    $last_potato = Time.now.to_i
+    $tomato = false
+  end
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
