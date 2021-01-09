@@ -120,7 +120,7 @@ end
 
 def send_spreads(event)
   msg = event.content
-  n = (msg[/([0-9][0-9]?)(st|nd|rd|th)/, 1] || 1).to_i
+  n = (parse_rank(msg) || 2) - 1
   type = parse_type(msg) || Level
   tabs = parse_tabs(msg)
   player = parse_player(msg, nil, false, true, false)

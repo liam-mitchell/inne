@@ -242,6 +242,7 @@ module HighScore
   # benchmarked so, though unelegant, it's the most efficient set of
   # sql queries
   def self.spreads(n, type, tabs, small = false, player_id = nil)
+    n = n.clamp(0,19)
     type = ensure_type(type)
     bench(:start) if BENCHMARK
     # retrieve player's 0ths if necessary
