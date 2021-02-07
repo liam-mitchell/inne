@@ -1132,7 +1132,9 @@ def send_userlevel_mapping_summary(event)
     event << "Last map:       #{last.date} (#{last.id})"
     best = maps.order(favs: :desc).first
     event << "Most ++'ed map: #{best.favs} (#{best.id})"
-    avg = maps.sum(:favs).to_f / count
+    sum = maps.sum(:favs).to_i
+    event << "Total ++'s:     #{sum}"
+    avg = sum.to_f / count
     event << "Avg. ++'s:      #{"%.3f" % avg}"
   end
   event << "```"

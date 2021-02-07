@@ -39,45 +39,46 @@ def send_rankings(event)
   type = parse_type(msg)
   tabs = parse_tabs(msg)
   rank = parse_rank(msg) || 1
+  full = parse_global(msg)
   ties = !!(msg =~ /ties/i)
 
   if msg =~ /average/i
     if msg =~ /point/i
-      rankings = Score.rank(:avg_points, type, tabs, ties)
+      rankings = Score.rank(:avg_points, type, tabs, ties, nil, full)
       header   = "average point rankings "
       max      = find_max(:avg_points, type, tabs)
       avg_msg  = true
     elsif msg =~ /lead/i
-      rankings = Score.rank(:avg_lead, type, tabs)
+      rankings = Score.rank(:avg_lead, type, tabs, nil, nil, full)
       header   = "average lead rankings "
       max      = nil
     else
-      rankings = Score.rank(:avg_rank, type, tabs, ties)
+      rankings = Score.rank(:avg_rank, type, tabs, ties, nil, full)
       header   = "average rank rankings "
       max      = find_max(:avg_rank, type, tabs)
       avg_msg  = true
     end
   elsif msg =~ /point/i
-    rankings = Score.rank(:points, type, tabs, ties)
+    rankings = Score.rank(:points, type, tabs, ties, nil, full)
     header   = "point rankings "
     max      = find_max(:points, type, tabs)
   elsif msg =~ /score/i
-    rankings = Score.rank(:score, type, tabs)
+    rankings = Score.rank(:score, type, tabs, nil, nil, full)
     header   = "score rankings "
     max      = find_max(:score, type, tabs)
   elsif msg =~ /tied/i
-    rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1)
+    rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1, full)
     header   = "tied 0th rankings "
   elsif msg =~ /maxed/i
-    rankings = Score.rank(:maxed, type, tabs)
+    rankings = Score.rank(:maxed, type, tabs, nil, nil, full)
     header   = "maxed score rankings "
     max      = find_max(:maxed, type, tabs)
   elsif msg =~ /maxable/i
-    rankings = Score.rank(:maxable, type, tabs)
+    rankings = Score.rank(:maxable, type, tabs, nil, nil, full)
     header   = "maxable score rankings "
     max      = find_max(:maxable, type, tabs)
   else
-    rankings = Score.rank(:rank, type, tabs, ties, rank - 1)
+    rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full)
     rank     = format_rank(rank)
     ties     = (ties ? "with ties " : "")
     header   = "#{rank} rankings #{ties}"
@@ -93,7 +94,7 @@ def send_rankings(event)
   name_padding = top.map{ |r| r[0].print_name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
 
-  header = "#{type} #{tabs}#{header} #{format_max(max)} #{format_time}:"
+  header = "#{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header} #{format_max(max)} #{format_time}:"
   top    = "```" + top.each_with_index
               .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
               .join("\n") + "```"
@@ -101,7 +102,7 @@ def send_rankings(event)
 
   length = header.length + top.length
   event << header
-  length < DISCORD_LIMIT ? event << top : send_file(event, top[3..-4])
+  length < DISCORD_LIMIT && !full ? event << top : send_file(event, top[3..-4], "rankings.txt")
 end
 
 def send_total_score(event)

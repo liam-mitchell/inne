@@ -159,7 +159,7 @@ def parse_userlevel_author(msg)
 end
 
 def parse_global(msg)
-  !!msg[/global/i]
+  !!msg[/global/i] || !!msg[/full/i]
 end
 
 def parse_newest(msg)
@@ -196,6 +196,10 @@ end
 
 def format_global(full)
   full ? "global " : "newest "
+end
+
+def format_full(full)
+  full ? "full " : ""
 end
 
 def format_max(max)
