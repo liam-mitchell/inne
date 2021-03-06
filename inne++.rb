@@ -7,7 +7,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = false # Switch to the local test bot
+TEST          = true # Switch to the local test bot
 LOG           = false # Export logs and errors into external file
 ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
 WAIT          = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
@@ -25,17 +25,17 @@ OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = false # 'true' sets all the following ones to false
 DO_EVERYTHING     = false # 'true' sets all the following ones to true
-UPDATE_STATUS     = true  # Thread to regularly update the bot's status
-UPDATE_SCORES     = true  # Thread to regularly download Metanet's scores
-UPDATE_HISTORY    = true  # Thread to regularly update highscoring histories
-UPDATE_DEMOS      = true  # Thread to regularly download missing Metanet demos
-UPDATE_LEVEL      = true  # Thread to regularly publish level of the day
-UPDATE_EPISODE    = true  # Thread to regularly publish episode of the week
-UPDATE_STORY      = true  # Thread to regularly publish column of the month
+UPDATE_STATUS     = false  # Thread to regularly update the bot's status
+UPDATE_SCORES     = false  # Thread to regularly download Metanet's scores
+UPDATE_HISTORY    = false  # Thread to regularly update highscoring histories
+UPDATE_DEMOS      = false  # Thread to regularly download missing Metanet demos
+UPDATE_LEVEL      = false  # Thread to regularly publish level of the day
+UPDATE_EPISODE    = false  # Thread to regularly publish episode of the week
+UPDATE_STORY      = false  # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-REPORT_METANET    = true  # Thread to regularly post Metanet's highscoring report
+REPORT_METANET    = false  # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
 STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||           15 * 60 # every 5 mins

@@ -173,6 +173,7 @@ def send_screenshot(event, map = nil)
 
   if File.exist? screenshot
     event.attach_file(File::open(screenshot))
+    event << "Screenshot for " + (scores.class == Level ? "#{scores.longname} (#{scores.name})" : scores.name)
   else
     event << "I don't have a screenshot for #{scores.format_name}... :("
   end
