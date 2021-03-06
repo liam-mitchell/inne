@@ -722,7 +722,7 @@ class Score < ActiveRecord::Base
                     .map{ |p| [p.id, p] }
                     .to_h
     ret = scores.map{ |p, c| [players[p], c] }
-                .reject{ |p, c| c <= 0  }
+    ret.reject!{ |p, c| c <= 0  } unless ranking == :avg_rank
     bench(:step) if BENCHMARK
     ret
   end

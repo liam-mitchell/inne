@@ -606,6 +606,14 @@ def potato
   end
 end
 
+def mishnub(event)
+  youmean = ["More like ", "You mean ", "Mish... oh, ", "Better known as ", "A.K.A. "]
+  amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
+  fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends"]
+  laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", " :moleSmirk:", " :Kappa:", " :laughing:", " rolfmao"]
+  event.send_message(youmean.sample + "MishNUB," + amirite.sample + fellas.sample + laugh.sample)
+end
+
 def startup
   ActiveRecord::Base.establish_connection(CONFIG)
   log("initialized")
@@ -649,6 +657,7 @@ $bot.message do |event|
     $last_potato = Time.now.to_i
     $tomato = false
   end
+  mishnub(event) if event.content.downcase.include?("mishu")
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
