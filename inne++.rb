@@ -610,7 +610,7 @@ def mishnub(event)
   youmean = ["More like ", "You mean ", "Mish... oh, ", "Better known as ", "A.K.A. "]
   amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
   fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends"]
-  laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", " :moleSmirk:", " :Kappa:", " :laughing:", " rolfmao"]
+  laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
   event.send_message(youmean.sample + "MishNUB," + amirite.sample + fellas.sample + laugh.sample)
 end
 
