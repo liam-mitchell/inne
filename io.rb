@@ -1,3 +1,5 @@
+require 'active_support/core_ext/integer/inflections' # ordinalize
+
 # This file contain methods to both parse and format crucial parts of messages,
 # like levels, players, tabs, types, times, etc.
 # Both messages.rb and userlevels.rb make use of it.
@@ -168,6 +170,10 @@ end
 
 def format_rank(rank)
   rank == 1 ? "0th" : "top #{rank}"
+end
+
+def format_bottom_rank(rank)
+  "bottom #{rank}"
 end
 
 def format_type(type)

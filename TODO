@@ -1,6 +1,7 @@
 Eddy's TODO list for inne:
 
 - ADD NEW COMMANDS TO HELP / README
+- Restrict display names to ASCII only
 - For Archive scores function: Make sure to sort ties in descending order by using the replay id.
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
 - Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.

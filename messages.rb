@@ -9,22 +9,56 @@ BENCH_MSGS   = true # benchmark functions in messages
 NUM_ENTRIES  = 20   # number of entries to show on diverse methods
 MAX_ENTRIES  = 20   # maximum number of entries on methods with user input, to avoid spam
 
+# Return total count of player's scores within a specific rank range
 def send_top_n_count(event)
-  msg = event.content
+  msg    = event.content
   player = parse_player(msg, event.user.name)
-  rank = !!(msg =~ /0th/i) ? 1 : (parse_rank(msg) || 1)
-  type = parse_type(msg)
-  tabs = parse_tabs(msg)
-  ties = !!(msg =~ /ties/i)
-  tied = !!(msg =~ /\btied\b/i)
+  rank   = parse_rank(msg) || 20
+  bott   = parse_bottom_rank(msg) || 0
+  ind    = nil
+  dflt   = parse_rank(msg).nil? && parse_bottom_rank(msg).nil?
+  type   = parse_type(msg)
+  tabs   = parse_tabs(msg)
+  ties   = !!(msg =~ /ties/i)
+  tied   = !!(msg =~ /\btied\b/i)
+  20.times.each{ |r| ind = r if !!(msg =~ /\b#{r.ordinalize}\b/i) }
 
-  if tied
-    count = player.top_n_count(rank, type, tabs, true) - player.top_n_count(rank, type, tabs, false)
-  else
-    count = player.top_n_count(rank, type, tabs, ties)
+  # If no range is provided, default to 0th count
+  if dflt
+    bott = 0
+    rank = 1
   end
 
-  header = format_rank(rank)
+  # If an individual rank is provided, the range has width 1
+  if !ind.nil?
+    bott = ind
+    rank = ind + 1
+  end
+
+  # The range must make sense
+  if bott >= rank
+    event << "You specified an empty range! (#{bott.ordinalize}-#{(rank - 1).ordinalize})"
+    return
+  end
+
+  # Retrieve score count in specified range
+  if tied
+    count = player.range_n_count(bott, rank, type, tabs, true) - player.range_n_count(bott, rank, type, tabs, false)
+  else
+    count = player.range_n_count(bott, rank, type, tabs, ties)
+  end
+
+  # Format range
+  if bott == rank - 1
+    header = "#{bott.ordinalize}"
+  elsif bott == 0
+    header = format_rank(rank)
+  elsif rank == 20
+    header = format_bottom_rank(bott)
+  else
+    header = "#{bott.ordinalize}-#{(rank - 1).ordinalize}"
+  end
+
   max    = find_max(:rank, type, tabs)
   type   = format_type(type).downcase
   tabs   = format_tabs(tabs)
@@ -469,8 +503,8 @@ end
 
 def send_random(event)
   msg    = event.content
-  type = parse_type(msg) || Level
-  tabs = parse_tabs(msg)
+  type   = parse_type(msg) || Level
+  tabs   = parse_tabs(msg)
   amount = [msg[/\d+/].to_i || 1, NUM_ENTRIES].min
 
   maps = tabs.empty? ? type.all : type.where(tab: tabs)
@@ -479,7 +513,6 @@ def send_random(event)
     event << "```" + maps.sample(amount).each_with_index.map{ |m, i| "#{"%2d" % i} - #{"%10s" % m.name}" }.join("\n") + "```"
   else
     map = maps.sample
-    event <<format_type(type) + " " + map.name + "."
     send_screenshot(event, map)
   end
 end

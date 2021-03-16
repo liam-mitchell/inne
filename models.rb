@@ -830,8 +830,16 @@ class Player < ActiveRecord::Base
     scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} < #{n}")
   end
 
+  def range_ns(a, b, type, tabs, ties)
+    scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
+  end
+
   def top_n_count(n, type, tabs, ties)
     top_ns(n, type, tabs, ties).count
+  end
+
+  def range_n_count(a, b, type, tabs, ties)
+    range_ns(a, b, type, tabs, ties).count
   end
 
   def scores_by_rank(type, tabs)
