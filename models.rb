@@ -806,7 +806,7 @@ class Player < ActiveRecord::Base
 
   def print_name
     user = User.where(playername: name).where.not(displayname: nil)
-    user.empty? ? name : user.first.displayname
+    (user.empty? ? name : user.first.displayname).remove("`")
   end
 
   def format_name(padding = DEFAULT_PADDING)
