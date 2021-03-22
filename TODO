@@ -7,7 +7,12 @@ Eddy's TODO list for inne:
 - Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.
 - "nevermind": delete last inne message prompted by that user.
 - Implement NReality's asterisk to previous 0th holders using the new Archives feature.
+- Implement "table": Shows some measure (e.g. 0ths) broken down by type and tab.
+- Implement "index" (maybe "tally"): Outputs file with a list (like "list") of something, like all 0ths. With a parameter we specify what, for instance, 0th scores or 0th frames. With another parameter we specify the order, like the natural one, or by score in descending order...
 - Compare local scores (nprofile) vs server scores to find differences, a la NReality Score Comparer.
+- Look for N++ activity on Twitch using some ruby gem for twitch API, scan every few minutes and post on #content-creation whenever someone starts streaming it.
+- Add different past aliases from a player (e.g. "asleep at the wheel" and "drunk driver" for MaelstroM")
+- Add cooldown (or randomness) to mishNUB.
 
 \\ ------------------------ Current ------------------------
 - Improve help (add command list, add help menu for each command).

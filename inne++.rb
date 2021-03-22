@@ -7,19 +7,20 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST          = true # Switch to the local test bot
-LOG           = false # Export logs and errors into external file
-ATTEMPT_LIMIT = 5     # Redownload attempts before skipping
-WAIT          = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
-DATABASE_ENV  = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
-CONFIG        = YAML.load_file('db/config.yml')[DATABASE_ENV]
-SERVER_ID     = 197765375503368192 # N++ Server
-CHANNEL_ID    = 210778111594332181 # #highscores
-USERLEVELS_ID = 221721273405800458 # #mapping
-NV2_ID        = 197774025844457472 # #nv2
-POTATO        = true               # joke they have in the nv2 channel
-POTATO_RATE   = 1                  # seconds between potato checks
-POTATO_FREQ   = 3 * 60 * 60        # 3 hours between potato delivers
+TEST           = true # Switch to the local test bot
+LOG            = false # Export logs and errors into external file
+ATTEMPT_LIMIT  = 5     # Redownload attempts before skipping
+WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
+DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
+CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
+SERVER_ID      = 197765375503368192 # N++ Server
+CHANNEL_ID     = 210778111594332181 # #highscores
+USERLEVELS_ID  = 221721273405800458 # #mapping
+NV2_ID         = 197774025844457472 # #nv2
+POTATO         = true               # joke they have in the nv2 channel
+POTATO_RATE    = 1                  # seconds between potato checks
+POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
+MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
@@ -607,11 +608,14 @@ def potato
 end
 
 def mishnub(event)
-  youmean = ["More like ", "You mean ", "Mish... oh, ", "Better known as ", "A.K.A. "]
+  youmean = ["More like ", "You mean ", "Mish... oh, ", "Better known as ", "A.K.A. ", "Also known as "]
   amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
-  fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends"]
+  fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
   laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
-  event.send_message(youmean.sample + "MishNUB," + amirite.sample + fellas.sample + laugh.sample)
+  if $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN
+    event.send_message(youmean.sample + "MishNUB," + amirite.sample + fellas.sample + laugh.sample) 
+    $last_mishu = Time.now.to_i
+  end
 end
 
 def startup
@@ -639,8 +643,9 @@ $bot = Discordrb::Bot.new token: (TEST ? ENV['TOKEN_TEST'] : ENV['TOKEN']), clie
 $channel = nil
 $mapping_channel = nil
 $nv2_channel = nil
-$last_potato = nil
+$last_potato = Time.now.to_i
 $tomato = false
+$last_mishu = nil
 
 $bot.mention do |event|
   respond(event)
