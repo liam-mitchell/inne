@@ -65,7 +65,7 @@ def send_top_n_count(event)
   ties   = format_ties(ties)
   tied   = format_tied(tied)
 
-  event << "#{player.print_name} has #{count} out of #{max}#{tied}#{tabs}#{type} #{header} scores#{ties}."
+  event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{header} scores#{ties}."
 end
 
 def send_rankings(event)

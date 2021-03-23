@@ -1032,7 +1032,7 @@ class Archive < ActiveRecord::Base
         .where(highscoreable: highscoreable)
         .where("unix_timestamp(date) <= #{date}")
         .group('metanet_id')
-        .order('max(score) desc')
+        .order('max(score) desc, max(replay_id) asc')
         .take(20)
         .map{ |s|
           [s.metanet_id.to_i, s['max(score)'].to_i]

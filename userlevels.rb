@@ -446,13 +446,13 @@ class Userlevel < ActiveRecord::Base
     when :avg_points
       scores = scores.select("count(player_id)")
                      .group(:player_id)   
-                     .having("count(player_id) >= #{MIN_U_SCORES}")
+                     .having("count(player_id) >= #{global ? MIN_G_SCORES : MIN_U_SCORES}")
                      .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
                      .average(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_rank
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{MIN_SCORES}")
+                     .having("count(player_id) >= #{global ? MIN_G_SCORES : MIN_U_SCORES}")
                      .order("avg(#{ties ? "tied_rank" : "rank"})")
                      .average(ties ? "tied_rank" : "rank")
     when :avg_lead 
@@ -908,14 +908,15 @@ def send_userlevel_rankings(event)
   name_padding = top.map{ |r| r[0].name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
   full = format_global(full)
-  top = top.each_with_index
+  top = "```" + top.each_with_index
            .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}" }
-           .join("\n")
+           .join("\n") + "```"
+  top.concat("Minimum number of scores required: #{full ? MIN_G_SCORES : MIN_U_SCORES}") if msg =~ /average/i
 
   header = "Userlevel #{full}#{type} #{ties ? "with ties " : ""}rankings #{format_time}:"
-  length = header.length + top.length + 7
+  length = header.length + top.length
   event << header
-  length < DISCORD_LIMIT ? event << "```" + top + "```" : send_file(event, top, "userlevel-rankings.txt", false)
+  length < DISCORD_LIMIT && !full ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
 end
 
 def send_userlevel_count(event)
@@ -934,7 +935,7 @@ def send_userlevel_count(event)
   ties = format_ties(ties)
   tied = format_tied(tied)
   full = format_global(full)
-  event << "#{player.name} has #{count} #{full} #{tied}userlevel #{header} scores#{ties}."
+  event << "#{player.name} has #{count} #{full}#{tied}userlevel #{header} scores#{ties}."
 end
 
 def send_userlevel_points(event)

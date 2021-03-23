@@ -32,6 +32,8 @@ def parse_player(msg, username, userlevel = false, explicit = false, enforce = f
         nil
       end
     else
+      player = playerClass.where.not(metanet_id: nil).find_by(name: username)
+      return player if !player.nil?
       raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" unless User.exists?(username: username)
       player = playerClass.where.not(metanet_id: nil).find_by(name: User.find_by(username: username).player.name)
       raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
@@ -185,7 +187,7 @@ def format_ties(ties)
 end
 
 def format_tied(tied)
-  tied ? " tied " : " "
+  tied ? " tied " : ""
 end
 
 def format_tab(tab)

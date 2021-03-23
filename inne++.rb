@@ -35,7 +35,7 @@ UPDATE_LEVEL      = true  # Thread to regularly publish level of the day
 UPDATE_EPISODE    = true  # Thread to regularly publish episode of the week
 UPDATE_STORY      = true  # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = true  # Thread to regularly download newest userlevel scores
-UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
+UPDATE_USER_GLOB  = true  # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = true  # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = true  # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = true  # Thread to regularly post userlevels' highscoring report
@@ -613,9 +613,9 @@ def mishnub(event)
   amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
   fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
   laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
-  if $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN
+  if event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN
     event.send_message(youmean.sample + "MishNUB," + amirite.sample + fellas.sample + laugh.sample) 
-    $last_mishu = Time.now.to_i
+    $last_mishu = Time.now.to_i unless event.channel.type == 1
   end
 end
 
