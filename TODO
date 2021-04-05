@@ -14,6 +14,11 @@ Eddy's TODO list for inne:
 - Add different past aliases from a player (e.g. "asleep at the wheel" and "drunk driver" for MaelstroM")
 - Add cooldown (or randomness) to mishNUB.
 
+\\ ------------------------ Art ------------------------
+- Use different objects for different colors.
+- Create a custom palette that best fits the image.
+- Dithering.
+
 \\ ------------------------ Current ------------------------
 - Improve help (add command list, add help menu for each command).
 
@@ -21,7 +26,7 @@ Eddy's TODO list for inne:
 
 - Unify "search" and "browse" for ease of use.
 - Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
-- Implement storage of all userlevel scores, to this end we should have a column in the userlevels table that contains the date when its scores were updated, and we regularly (e.g. daily) check the userlevel list sorted by this date in descending order, and update the scores of the first N userlevels (the ones that were updated the longest ago), say N = 5000 (this takes about 2 hours). Or we can have N = 2000 and also update the newest 2000 levels (since those are more likely to change).
+- Userlevel of the day
 
 Less priority:
 - Demo analysis.
@@ -109,7 +114,7 @@ Avatar:
 - Maybe also store the date of the avatar change to avoid the cooldown.
 
 \\ ------------------------ General ------------------------
-- Optimize some functions (e.g. rankings) to use more Rails functions (which directly translate to specific queries on the db, which is faster than doing that with Ruby objects).
+- Add coop and race for some functions, like screenshots
 - Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
 - Interesting: Analyze how do coop demos work. Then, to compare individual demos on the same level, download 2 of them and build an attrac file to run the replay in N++'s menu.

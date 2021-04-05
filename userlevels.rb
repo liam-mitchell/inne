@@ -916,7 +916,7 @@ def send_userlevel_rankings(event)
   header = "Userlevel #{full}#{type} #{ties ? "with ties " : ""}rankings #{format_time}:"
   length = header.length + top.length
   event << header
-  length < DISCORD_LIMIT && !full ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
+  length < DISCORD_LIMIT ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
 end
 
 def send_userlevel_count(event)

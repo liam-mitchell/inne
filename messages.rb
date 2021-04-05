@@ -621,6 +621,10 @@ def send_analysis(event)
 end
 
 def send_history(event)
+  event << "Function not available yet, restructuring being done."
+end
+
+def send_history2(event)
   # Stylistic parameters
   subdivisions = 20 # y axis subdivisions, roughly
   min = 10          # minimum y axis max
