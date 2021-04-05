@@ -34,14 +34,15 @@ def parse_player(msg, username, userlevel = false, explicit = false, enforce = f
     else
       player = playerClass.where.not(metanet_id: nil).find_by(name: username)
       return player if !player.nil?
-      raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" unless User.exists?(username: username)
-      player = playerClass.where.not(metanet_id: nil).find_by(name: User.find_by(username: username).player.name)
-      raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
+      user = User.find_by(username: username)
+      raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
+      player = playerClass.where.not(metanet_id: nil).find_by(name: user.player.name)
+      raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
       player
     end
   else
     player = playerClass.where.not(metanet_id: nil).find_by(name: p)
-    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." unless !player.nil?
+    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
     player
   end
 
