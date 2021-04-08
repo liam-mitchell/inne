@@ -7,7 +7,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST           = true # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true # Log new weekly scores that appear in the report
 ATTEMPT_LIMIT  = 5     # Redownload attempts before skipping
@@ -26,8 +26,8 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
-DO_NOTHING        = true # 'true' sets all the following ones to false
-DO_EVERYTHING     = false # 'true' sets all the following ones to true
+DO_NOTHING        = false # 'true' sets all the following ones to false
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
 UPDATE_STATUS     = true  # Thread to regularly update the bot's status
 UPDATE_SCORES     = true  # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = true  # Thread to regularly update highscoring histories
@@ -634,6 +634,13 @@ def mishnub(event)
   end
 end
 
+def robot(event)
+  start  = ["No! ", "Not at all. ", "Negative. ", "By no means. ", "Most certainly not. ", "Not true. ", "Nuh uh. "]
+  middle = ["I can assure you he's not", "Eddy is not a robot", "Master is very much human", "Senpai is a ningen", "Mr. E is definitely human", "Owner is definitely a hooman", "Eddy is a living human being", "Eduardo es una persona"]
+  ending = [".", "!", " >:(", " (ಠ益ಠ)", " (╯°□°)╯︵ ┻━┻"]
+  event.send_message(start.sample + middle.sample + ending.sample)
+end
+
 def startup
   ActiveRecord::Base.establish_connection(CONFIG)
   log("initialized")
@@ -679,6 +686,7 @@ $bot.message do |event|
     $tomato = false
   end
   mishnub(event) if MISHU && event.content.downcase.include?("mishu")
+  robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
@@ -697,6 +705,8 @@ if !TEST
   puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
   puts "Nv2 channel: #{$nv2_channel.name}." if !$nv2_channel.nil?
 end
+
+#$nv2_channel.send_message("No! Master is very much human >:(")
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
