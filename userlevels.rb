@@ -584,15 +584,17 @@ class Userlevel < ActiveRecord::Base
   end
 
   def screenshot(theme = DEFAULT_PALETTE)
-    if !THEMES.include?(theme) then theme = DEFAULT_PALETTE end
+    themes = THEMES.map(&:downcase)
+    theme = theme.downcase
+    if !themes.include?(theme) then theme = DEFAULT_PALETTE end
 
     # INITIALIZE IMAGES
-    tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, THEMES.index(theme), false)] }.to_h
-    object = OBJECTS.keys.map{ |o| [o, generate_object(o, THEMES.index(theme))] }.to_h
-    object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, THEMES.index(theme), true, true)] }.to_h
+    tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, themes.index(theme), false)] }.to_h
+    object = OBJECTS.keys.map{ |o| [o, generate_object(o, themes.index(theme))] }.to_h
+    object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, themes.index(theme), true, true)] }.to_h
     object.merge!(object_special)
     border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-    image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, THEMES.index(theme)])
+    image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, themes.index(theme)])
 
     # PARSE MAP
     tiles = self.tiles.map(&:dup)
@@ -632,7 +634,7 @@ class Userlevel < ActiveRecord::Base
 
     # PAINT TILE BORDERS
     edge = ChunkyPNG::Image.from_file('images/b.png')
-    edge = mask(edge, BLACK, PALETTE[1, THEMES.index(theme)])
+    edge = mask(edge, BLACK, PALETTE[1, themes.index(theme)])
     (0 .. ROWS).each do |row| # horizontal
       (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
         tile_a = tiles[row][col / 2]
@@ -835,12 +837,16 @@ def send_userlevel_screenshot(event, userlevel = nil)
     if map.nil? || map.empty?
       event << "The map with the specified ID is not present in the database."
     else
-      if !Userlevel::THEMES.include?(palette)
+      index = Userlevel::THEMES.map(&:downcase).index(palette.downcase)
+      if index.nil?
         event << "The palette `" + palette + "` doesn't exit. Using default: `" + Userlevel::DEFAULT_PALETTE + "`."
         palette = Userlevel::DEFAULT_PALETTE
+        index = Userlevel::THEMES.index(Userlevel::DEFAULT_PALETTE)
+      else 
+        palette = Userlevel::THEMES[index]
       end
       map = map[0]
-      file = map.screenshot(palette)
+      file = map.screenshot(Userlevel::THEMES[index])
       output = "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s
       output += "` by `" + (map.author.to_s.empty? ? " " : map.author.to_s) + "` using palette `"
       output += palette + "` on " + Time.now.to_s + ".\n"
