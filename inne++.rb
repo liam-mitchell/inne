@@ -111,8 +111,8 @@ def set_last_steam_id(id)
 end
 
 def update_last_steam_id
-  current = User.find_by(steam_id: get_last_steam_id).id
-  next_user = User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first
+  current   = (User.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
+  next_user = (User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first) rescue nil
   set_last_steam_id(next_user.steam_id) if !next_user.nil?
 end
 
@@ -628,7 +628,7 @@ def mishnub(event)
   amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
   fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
   laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
-  if event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN
+  if rand < 0.05 && (event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN)
     event.send_message(youmean.sample + "MishNUB," + amirite.sample + fellas.sample + laugh.sample) 
     $last_mishu = Time.now.to_i unless event.channel.type == 1
   end
