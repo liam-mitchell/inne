@@ -116,6 +116,16 @@ def update_last_steam_id
   set_last_steam_id(next_user.steam_id) if !next_user.nil?
 end
 
+def activate_last_steam_id
+  p = User.find_by(steam_id: get_last_steam_id)
+  p.update(last_active: Time.now) if !p.nil?
+end
+
+def deactivate_last_steam_id
+  p = User.find_by(steam_id: get_last_steam_id)
+  p.update(last_inactive: Time.now) if !p.nil?   
+end
+
 # This corrects a datetime in the database when it's out of
 # phase (e.g. after a long downtime of the bot).
 def correct_time(time, frequency)
@@ -705,8 +715,6 @@ if !TEST
   puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
   puts "Nv2 channel: #{$nv2_channel.name}." if !$nv2_channel.nil?
 end
-
-#$nv2_channel.send_message("No! Master is very much human >:(")
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING

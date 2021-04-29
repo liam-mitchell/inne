@@ -5,7 +5,7 @@ require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
-SHOW_ERRORS     = false # log common error messages
+SHOW_ERRORS     = true # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
 BENCHMARK       = false  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
@@ -335,12 +335,14 @@ module HighScore
     attempts ||= 0
     response = Net::HTTP.get_response(scores_uri(initial_id))
     while response.body == INVALID_RESP
+      deactivate_last_steam_id
       update_last_steam_id
       break if get_last_steam_id == initial_id
       response = Net::HTTP.get_response(scores_uri(get_last_steam_id))
     end
     return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
+    activate_last_steam_id
     correct_ties(clean_scores(JSON.parse(response.body)['scores']))
   rescue => e
     if (attempts += 1) < RETRIES

@@ -734,8 +734,7 @@ end
 def add_steam_id(event)
   msg = event.content
   id = parse_steam_id(msg)
-  User.find_by(username: event.user.name)
-    .update(steam_id: id)
+  User.find_by(username: event.user.name).update(steam_id: id) if !User.find_by(username: event.user.name).nil? && User.find_by(steam_id: id).nil?
   event << "Thanks! From now on I'll try to use your Steam ID to retrieve scores when I need to."
 end
 
