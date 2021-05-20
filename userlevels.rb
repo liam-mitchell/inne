@@ -23,6 +23,21 @@ class UserlevelScore < ActiveRecord::Base
   def self.global
     newest(MIN_ID)
   end
+
+  def self.retrieve_scores(full, mode = nil, author = "")
+    scores = full ? self.global : self.newest
+    if !mode.nil? || !author.empty?
+      scores = scores.joins("INNER JOIN userlevels ON userlevels.id = userlevel_scores.userlevel_id")
+      if !mode.nil?
+        scores = scores.where("userlevels.mode = #{mode}")
+      end
+      if !author.empty?
+        name = Userlevel.sanitize("userlevels.author = ?", author)
+        scores = scores.where(name)
+      end
+    end
+    scores
+  end
 end
 
 class UserlevelPlayer < ActiveRecord::Base
@@ -32,43 +47,62 @@ class UserlevelPlayer < ActiveRecord::Base
 
   def newest(id = Userlevel.min_id)
     scores.where("userlevel_id >= #{id}")
-  end  
+  end
 
-  def range_s(rank1, rank2, ties, full = false)
+  def retrieve_scores(full = false, mode = nil, author = "")
+    query = full ? scores : newest
+    if !mode.nil? || !author.empty?
+      query = query.joins("INNER JOIN userlevels ON userlevels.id = userlevel_scores.userlevel_id")
+      if !mode.nil?
+        query = query.where("userlevels.mode = #{mode}")
+      end
+      if !author.empty?
+        name = Userlevel.sanitize("userlevels.author = ?", author)
+        query = query.where(name)
+      end
+    end
+    query
+  end
+
+  def range_s(rank1, rank2, ties, full = false, mode = nil, author = "")
     t  = ties ? 'tied_rank' : 'rank'
-    ss = (full ? scores : newest).where("#{t} >= #{rank1} AND #{t} <= #{rank2}")
+    ss = retrieve_scores(full, mode, author).where("#{t} >= #{rank1} AND #{t} <= #{rank2}")
   end
 
-  def range_h(rank1, rank2, ties, full = false)
-    range_s(rank1, rank2, ties, full).group_by(&:rank).sort_by(&:first)
+  def range_h(rank1, rank2, ties, full = false, mode = nil, author = "")
+    range_s(rank1, rank2, ties, full, mode, author).group_by(&:rank).sort_by(&:first)
   end
 
-  def top_ns(rank, ties, full = false)
-    range_s(0, rank - 1, ties, full)
+  def top_ns(rank, ties, full = false, mode = nil, author = "")
+    range_s(0, rank - 1, ties, full, mode, author)
   end
 
-  def top_n_count(rank, ties, full = false)
-    top_ns(rank, ties, full).count
+  def top_n_count(rank, ties, full = false, mode = nil, author = "")
+    top_ns(rank, ties, full, mode, author).count
   end
 
-  def points(ties, full = false)
-    (full ? scores : newest).sum(ties ? '20 - tied_rank' : '20 - rank')
+  def range_n_count(a, b, ties, full = false, mode = nil, author = "")
+    range_s(a, b, ties, full, mode, author).count
   end
 
-  def avg_points(ties, full = false)
-    (full ? scores : newest).average(ties ? '20 - tied_rank' : '20 - rank')
+  def points(ties, full = false, mode = nil, author = "")
+    retrieve_scores(full, mode, author).sum(ties ? '20 - tied_rank' : '20 - rank')
   end
 
-  def total_score(full = false)
-    (full ? scores : newest).sum(:score).to_f / 60
+  def avg_points(ties, full = false, mode = nil, author = "")
+    retrieve_scores(full, mode, author).average(ties ? '20 - tied_rank' : '20 - rank')
   end
 
-  def avg_lead(ties, full = false)
-    ss = top_ns(1, ties, full)
+  def total_score(full = false, mode = nil, author = "")
+    retrieve_scores(full, mode, author).sum(:score).to_f / 60
+  end
+
+  def avg_lead(ties, full = false, mode = nil, author = "")
+    ss = top_ns(1, ties, full, mode, author)
     count = ss.length
     avg = count == 0 ? 0 : ss.map{ |s|
       entries = s.userlevel.scores.map(&:score)
-      entries[0].to_i - entries[1].to_i
+      (entries[0].to_i - entries[1].to_i).to_f / 60.0
     }.sum.to_f / count
     avg || 0
   end
@@ -352,6 +386,63 @@ class Userlevel < ActiveRecord::Base
     newest(MIN_ID)
   end
 
+  # find the optimal score / amount of whatever rankings or stat
+  def self.find_max(rank, global, mode = nil, author = "")
+    case rank
+    when :points
+      query = global ? self.global : self.newest
+      query = query.where(mode: mode) if !mode.nil?
+      query = query.where(author: author) if !author.empty?
+      query = query.count * 20
+      global ? query : [query, USERLEVEL_REPORT_SIZE * 20].min
+    when :avg_points
+      20
+    when :avg_rank
+      0  
+    when :maxable
+      self.ties(nil, false, global, true, mode, author)
+    when :maxed
+      self.ties(nil, true, global, true, mode, author)
+    when :score
+      query = global ? UserlevelScore.global : UserlevelScore.newest
+      if !mode.nil? || !author.empty?
+        query = query.joins("INNER JOIN userlevels ON userlevels.id = userlevel_scores.userlevel_id")
+        if !mode.nil?   
+          query = query.where("userlevels.mode = #{mode}")
+        end
+        if !author.empty?
+          name = Userlevel.sanitize("userlevels.author = ?", author)
+          query = query.where(name)
+        end
+      end
+      query.where(rank: 0).sum(:score).to_f / 60.0
+    else
+      query = global ? self.global : self.newest       
+      query = query.where(mode: mode) if !mode.nil?
+      query = query.where(author: author) if !author.empty?
+      query = query.count
+      global ? query : [query, USERLEVEL_REPORT_SIZE].min
+    end
+  end
+
+  def self.find_min(full, mode = nil, author = "")
+    limit = 0
+    if full
+      if author.empty?
+        limit = MIN_G_SCORES
+      else
+        limit = MIN_U_SCORES
+      end
+    else
+      if author.empty?
+        limit = MIN_U_SCORES
+      else
+        limit = 0
+      end
+    end
+    limit
+  end
+
   def self.spreads(n, small = false, player_id = nil, full = false)
     scores = full ? UserlevelScore.global : UserlevelScore.newest
     bench(:start) if BENCHMARK
@@ -382,22 +473,22 @@ class Userlevel < ActiveRecord::Base
   # @par maxed:     Whether we are computing maxed or maxable levels
   # @par full:      Whether we use all userlevels or only the newest ones
   # @par count:     Whether to query all info or only return the map count
-  def self.ties(player_id = nil, maxed = false, full = false, count = false)
-    scores = full ? UserlevelScore.global : UserlevelScore.newest
+  def self.ties(player_id = nil, maxed = false, full = false, count = false, mode = nil, author = "")
     bench(:start) if BENCHMARK
+    scores = UserlevelScore.retrieve_scores(full, mode, author)
     # retrieve most tied for 0th leves
     ret = scores.where(tied_rank: 0)
                 .group(:userlevel_id)
-                .order(!maxed ? 'count(id) desc' : '', :userlevel_id)
-                .having('count(id) >= 3')
+                .order(!maxed ? 'count(userlevel_scores.id) desc' : '', :userlevel_id)
+                .having('count(userlevel_scores.id) >= 3')
                 .having(!player_id.nil? ? 'amount = 0' : '')
-                .pluck('userlevel_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
+                .pluck('userlevel_id', 'count(userlevel_scores.id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
                 .map{ |s| s[0..1] }
                 .to_h
     # retrieve total score counts for each level (to compare against the tie count and determine maxes)
     counts = scores.where(userlevel_id: ret.keys)
                    .group(:userlevel_id)
-                   .order('count(id) desc')
+                   .order('count(userlevel_scores.id) desc')
                    .count(:id)
     if !count
       # retrieve player names owning the 0ths on said level
@@ -418,8 +509,12 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Because of the way the query is done I use a ranking type instead of yield blocks
-  def self.rank(type, ties = false, par = nil, full = false, global = false)
+  def self.rank(type, ties = false, par = nil, full = false, global = false, author = "")
     scores = global ? UserlevelScore.global : UserlevelScore.newest
+    if !author.empty?   
+      ids = Userlevel.where(author: author).pluck(:id)
+      scores = scores.where(userlevel_id: ids)
+    end
 
     bench(:start) if BENCHMARK
     case type
@@ -446,13 +541,13 @@ class Userlevel < ActiveRecord::Base
     when :avg_points
       scores = scores.select("count(player_id)")
                      .group(:player_id)   
-                     .having("count(player_id) >= #{global ? MIN_G_SCORES : MIN_U_SCORES}")
+                     .having("count(player_id) >= #{find_min(global, nil, author)}")
                      .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
                      .average(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_rank
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{global ? MIN_G_SCORES : MIN_U_SCORES}")
+                     .having("count(player_id) >= #{find_min(global, nil, author)}")
                      .order("avg(#{ties ? "tied_rank" : "rank"})")
                      .average(ties ? "tied_rank" : "rank")
     when :avg_lead 
@@ -476,8 +571,9 @@ class Userlevel < ActiveRecord::Base
     players = UserlevelPlayer.where(id: scores.map(&:first))
                     .map{ |p| [p.id, p] }
                     .to_h
-    scores.map{ |p, c| [players[p], c] }
-          .reject{ |p, c| c <= 0  }
+    scores = scores.map{ |p, c| [players[p], c] }
+    scores.reject!{ |p, c| c <= 0  } unless type == :avg_rank
+    scores
   end
 
   # technical
@@ -877,129 +973,186 @@ def send_userlevel_scores(event)
 end
 
 def send_userlevel_rankings(event)
-  msg = event.content
-  rank = parse_rank(msg) || 1
-  rank = 1 if rank < 0
-  rank = 20 if rank > 20
-  ties = !!msg[/with ties/i]
-  full = parse_global(msg)
-  type = ""
+  msg    = event.content
+  rank   = parse_rank(msg) || 1
+  rank   = 1 if rank < 0
+  rank   = 20 if rank > 20
+  ties   = !!msg[/with ties/i]
+  full   = parse_full(msg)
+  global = parse_global(msg)
+  author = parse_userlevel_author(msg)
+  type   = ""
 
   if msg =~ /average/i
     if msg =~ /point/i
-      top = Userlevel.rank(:avg_points, ties, nil, false, full)
-      type = "average points"
+      top     = Userlevel.rank(:avg_points, ties, nil, full, global, author)
+      type    = "average points"
+      max     = Userlevel.find_max(:avg_points, global, nil, author)
     elsif msg =~ /lead/i
-      top = Userlevel.rank(:avg_lead, nil, nil, false, full)
-      type = "average lead"
+      top     = Userlevel.rank(:avg_lead, nil, nil, full, global, author)
+      type    = "average lead"
+      max     = nil
     else
-      top = Userlevel.rank(:avg_rank, ties, nil, false, full)
-      type = "average rank"
+      top     = Userlevel.rank(:avg_rank, ties, nil, full, global, author)
+      type    = "average rank"
+      max     = Userlevel.find_max(:avg_rank, global, nil, author)
     end
   elsif msg =~ /point/i
-    top = Userlevel.rank(:points, ties, nil, false, full)
-    type = "total points"
+    top       = Userlevel.rank(:points, ties, nil, full, global, author)
+    type      = "total points"
+    max       = Userlevel.find_max(:points, global, nil, author)
   elsif msg =~ /score/i
-    top = Userlevel.rank(:score, nil, nil, false, full)
-    type = "total score"
+    top       = Userlevel.rank(:score, nil, nil, full, global, author)
+    type      = "total score"
+    max       = Userlevel.find_max(:score, global, nil, author)
   elsif msg =~ /tied/i
-    top = Userlevel.rank(:tied, ties, rank - 1, false, full)
-    type = "tied #{format_rank(rank)}"
+    top       = Userlevel.rank(:tied, ties, rank - 1, full, global, author)
+    type      = "tied #{format_rank(rank)}"
+    max       = Userlevel.find_max(:rank, global, nil, author)
   else
-    top = Userlevel.rank(:rank, ties, rank - 1, false, full)
-    type = format_rank(rank)
+    top       = Userlevel.rank(:rank, ties, rank - 1, full, global, author)
+    type      = format_rank(rank)
+    max       = Userlevel.find_max(:rank, global, nil, author)
   end
 
   score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
-  name_padding = top.map{ |r| r[0].name.length }.max
-  format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
-  full = format_global(full)
-  top = "```" + top.each_with_index
-           .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}" }
-           .join("\n") + "```"
-  top.concat("Minimum number of scores required: #{full ? MIN_G_SCORES : MIN_U_SCORES}") if msg =~ /average/i
+  name_padding  = top.map{ |r| r[0].name.length }.max
+  format        = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
+  top           = "```" + top.each_with_index
+                  .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}" }
+                  .join("\n") + "```"
+  top.concat("Minimum number of scores required: #{Userlevel.find_min(global, nil, author)}") if msg =~ /average/i
 
-  header = "Userlevel #{full}#{type} #{ties ? "with ties " : ""}rankings #{format_time}:"
+  full   = format_full(full)
+  global = format_global(global)
+  header = "Userlevel #{full}#{global}#{type} #{ties ? "with ties " : ""}rankings #{format_author(author)} #{format_max(max)} #{format_time}:"
   length = header.length + top.length
   event << header
   length < DISCORD_LIMIT ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
 end
 
 def send_userlevel_count(event)
-  msg = event.content
+  msg    = event.content
   player = parse_player(msg, event.user.name, true)
-  rank = !!(msg =~ /0th/i) ? 1 : (parse_rank(msg) || 1)
-  ties = !!(msg =~ /ties/i)
-  tied = !!(msg =~ /\btied\b/i)
-  full = parse_global(msg)
-  if tied
-    count = player.top_n_count(rank, true, full) - player.top_n_count(rank, false, full)
-  else
-    count = player.top_n_count(rank, ties, full)
+  author = parse_userlevel_author(msg)  
+  full   = parse_global(msg)
+  rank   = parse_rank(msg) || 20
+  bott   = parse_bottom_rank(msg) || 0
+  ind    = nil
+  dflt   = parse_rank(msg).nil? && parse_bottom_rank(msg).nil?
+  type   = parse_type(msg)
+  tabs   = parse_tabs(msg)
+  ties   = !!(msg =~ /ties/i)
+  tied   = !!(msg =~ /\btied\b/i)
+  20.times.each{ |r| ind = r if !!(msg =~ /\b#{r.ordinalize}\b/i) }
+
+  # If no range is provided, default to 0th count
+  if dflt
+    bott = 0
+    rank = 1
   end
-  header = format_rank(rank)
+
+  # If an individual rank is provided, the range has width 1
+  if !ind.nil?
+    bott = ind
+    rank = ind + 1
+  end
+
+  # The range must make sense
+  if bott >= rank
+    event << "You specified an empty range! (#{bott.ordinalize}-#{(rank - 1).ordinalize})"
+    return
+  end
+
+  # Retrieve score count in specified range
+  if tied
+    count = player.range_n_count(bott, rank - 1, true, full, nil, author) - player.range_n_count(bott, rank - 1, type, tabs, false, full, nil, author)
+  else
+    count = player.range_n_count(bott, rank - 1, ties, full, nil, author)
+  end
+
+  # Format range
+  if bott == rank - 1
+    header = "#{bott.ordinalize}"
+  elsif bott == 0
+    header = format_rank(rank)
+  elsif rank == 20
+    header = format_bottom_rank(bott)
+  else
+    header = "#{bott.ordinalize}-#{(rank - 1).ordinalize}"
+  end
+
+  max  = Userlevel.find_max(:rank, full, nil, author)
   ties = format_ties(ties)
   tied = format_tied(tied)
   full = format_global(full)
-  event << "#{player.name} has #{count} #{full}#{tied}userlevel #{header} scores#{ties}."
+  event << "#{player.name} has #{count} out of #{max} #{full}#{tied}#{header} scores#{ties} #{format_author(author)}."
 end
 
 def send_userlevel_points(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
+  author = parse_userlevel_author(msg)
   ties   = !!(msg =~ /ties/i)
   full   = parse_global(msg)
-  points = player.points(ties, full)
+  max    = Userlevel.find_max(:points, full, nil, author)
+  points = player.points(ties, full, nil, author)
   ties   = format_ties(ties)
   full   = format_global(full)
-  event << "#{player.name} has #{points} #{full}userlevel points#{ties}."
+  event << "#{player.name} has #{points} out of #{max} #{full}userlevel points#{ties} #{format_author(author)}."
 end
 
 def send_userlevel_avg_points(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
+  author = parse_userlevel_author(msg)
   ties   = !!(msg =~ /ties/i)
   full   = parse_global(msg)
-  avg    = player.avg_points(ties, full)
+  avg    = player.avg_points(ties, full, nil, author)
   ties   = format_ties(ties)
   full = format_global(full)
-  event << "#{player.name} has #{"%.3f" % avg} average #{full}userlevel points#{ties}."
+  event << "#{player.name} has #{"%.3f" % avg} average #{full}userlevel points#{ties} #{format_author(author)}."
 end
 
 def send_userlevel_avg_rank(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
+  author = parse_userlevel_author(msg)
   ties   = !!(msg =~ /ties/i)
   full   = parse_global(msg)
-  avg    = 20 - player.avg_points(ties, full)
+  avg    = 20 - player.avg_points(ties, full, nil, author)
   ties   = format_ties(ties)
   full   = format_global(full)
-  event << "#{player.name} has an average #{"%.3f" % avg} #{full}userlevel rank#{ties}."
+  event << "#{player.name} has an average #{"%.3f" % avg} #{full}userlevel rank#{ties} #{format_author(author)}."
 end
 
 def send_userlevel_total_score(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
+  author = parse_userlevel_author(msg)
   full   = parse_global(msg)
-  score  = player.total_score(full)
+  max    = Userlevel.find_max(:score, full, nil, author)
+  score  = player.total_score(full, nil, author)
   full   = format_global(full)
-  event << "#{player.name} has #{"%.3f" % score}s of total #{full}userlevel score."
+  event << "#{player.name}'s total #{full}userlevel score is #{"%.3f" % score} out of #{"%.3f" % max} #{format_author(author)}."
 end
 
 def send_userlevel_avg_lead(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
+  author = parse_userlevel_author(msg)
   ties   = !!(msg =~ /ties/i)
   full   = parse_global(msg)
-  avg    = player.avg_lead(ties, full)
+  avg    = player.avg_lead(ties, full, nil, author)
   ties   = format_ties(ties)
   full   = format_global(full)
-  event << "#{player.name} has an average #{"%.3f" % avg} #{full}userlevel 0th lead#{ties}."
+  event << "#{player.name} has an average #{"%.3f" % avg} #{full}userlevel 0th lead#{ties} #{format_author(author)}."
 end
 
 def send_userlevel_list(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
+  author = parse_userlevel_author(msg)
   rank   = parse_rank(msg) || 20
   bott   = parse_bottom_rank(msg) || 0
   ties   = !!(msg =~ /ties/i)
@@ -1008,7 +1161,7 @@ def send_userlevel_list(event)
     rank = 1
     bott = 0
   end
-  all = player.range_h(bott, rank - 1, ties, full)
+  all = player.range_h(bott, rank - 1, ties, full, nil, author)
 
   res = all.map{ |rank, scores|
     rank.to_s.rjust(2, '0') + ":\n" + scores.map{ |s|
@@ -1021,9 +1174,10 @@ end
 def send_userlevel_stats(event)
   msg    = event.content
   player = parse_player(msg, event.user.name, true)
+  author = parse_userlevel_author(msg)
   ties   = !!(msg =~ /ties/i)
   full   = parse_global(msg)
-  counts = player.range_h(0, 19, ties, full).map{ |rank, scores| [rank, scores.length] }
+  counts = player.range_h(0, 19, ties, full, nil, author).map{ |rank, scores| [rank, scores.length] }
 
   histogram = AsciiCharts::Cartesian.new(
     counts,
@@ -1037,7 +1191,7 @@ def send_userlevel_stats(event)
   overall = "Totals:    %5d" % counts.reduce(0){ |sum, c| sum += c[1] }
 
   full = format_global(full)
-  event << "#{full.capitalize}userlevels highscoring stats for #{player.name} #{format_time}:"
+  event << "#{full.capitalize}userlevels highscoring stats for #{player.name} #{format_author(author)} #{format_time}:"
   event << "```          Scores\n\t#{totals}\n#{overall}\n#{histogram}```"
 end
 
@@ -1065,15 +1219,16 @@ end
 def send_userlevel_maxed(event)
   msg    = event.content
   player = parse_player(msg, nil, true, true, false)
+  author = parse_userlevel_author(msg)
   full   = parse_global(msg)
-  ties   = Userlevel.ties(player.nil? ? nil : player.id, true, full)
+  ties   = Userlevel.ties(player.nil? ? nil : player.id, true, full, false, nil, author)
                     .select { |s| s[1] == s[2] }
                     .map { |s| "#{"%6d" % s[0].id} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
   count  = ties.count{ |s| s.length > 1 }
   player = player.nil? ? "" : " without " + player.name
   full   = format_global(full)
   block  = "    ID - Author - Player\n#{ties.join("\n")}"
-  event << "Potentially maxed #{full}userlevels (with all scores tied for 0th) #{format_time}#{player}:"
+  event << "Potentially maxed #{full}userlevels (with all scores tied for 0th) #{format_time}#{player} #{format_author(author)}:"
   count <= 20 ? event << "```#{block}```" : send_file(event, block, "maxed-userlevels.txt", false)
   event << "There's a total of #{count} potentially maxed userlevels."
 end
@@ -1081,17 +1236,19 @@ end
 def send_userlevel_maxable(event)
   msg    = event.content
   player = parse_player(msg, nil, true, true, false)
+  author = parse_userlevel_author(msg)
   full   = parse_global(msg)
-  ties   = Userlevel.ties(player.nil? ? nil : player.id, false, full)
+  ties   = Userlevel.ties(player.nil? ? nil : player.id, false, full, false, nil, author)
             .select { |s| s[1] < s[2] }
             .sort_by { |s| -s[1] }
-            .take(NUM_ENTRIES)
-            .map { |s| "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
-            .join("\n")
+  count  = ties.count
+  ties   = ties.take(NUM_ENTRIES)
+               .map { |s| "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
   player = player.nil? ? "" : " without " + player.name
   full   = format_global(full)
-  event << "#{full.capitalize}userlevels with the most ties for 0th #{format_time}#{player}:"
-  event << "```    ID - Ties - Author - Player\n#{ties}```"
+  event << "#{full.capitalize}userlevels with the most ties for 0th #{format_time}#{player} #{format_author(author)}:"
+  event << "```    ID - Ties - Author - Player\n#{ties.join("\n")}```"
+  event << "There's a total of #{count} maxable userlevels."
 end
 
 def send_random_userlevel(event)
@@ -1147,6 +1304,7 @@ def send_userlevel_mapping_summary(event)
   event << "```"
 end
 
+# TODO: Implement filter by author here
 def send_userlevel_highscoring_summary(event)
   msg    = event.content
   player = msg[/(for|of)\s*(.*)/i, 2]
@@ -1234,31 +1392,32 @@ def respond_userlevels(event)
   msg = event.content
   msg.sub!(/\A<@!?[0-9]*> */, '') # strip off the @inne++ mention, if present
 
-  # methods not requiring to browse the database
+  # methods that don't require special browsing terms
   if !(msg =~ /"/i)
-    # global methods
-    if  !msg[NAME_PATTERN, 2]
-      send_userlevel_rankings(event)    if msg =~ /\brank/i
-    end
-    send_userlevel_count(event)       if msg =~ /how many/i
-    send_userlevel_points(event)      if msg =~ /point/i && msg !~ /rank/i && msg !~ /average/i
-    send_userlevel_total_score(event) if msg =~ /total score/i && msg !~ /rank/i
-    send_userlevel_avg_points(event)  if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
-    send_userlevel_avg_rank(event)    if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
-    send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
-    send_userlevel_list(event)        if msg =~ /\blist\b/i
-    send_userlevel_stats(event)       if msg =~ /stat/i
     send_userlevel_spreads(event)     if msg =~ /spread/i
-    send_userlevel_maxed(event)       if msg =~ /maxed/i
-    send_userlevel_maxable(event)     if msg =~ /maxable/i
     send_userlevel_summary(event)     if msg =~ /summary/i
   end
 
-  send_userlevel_browse(event)     if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
-  send_userlevel_search(event)     if msg =~ /\bsearch\b/i
-  send_userlevel_download(event)   if msg =~ /\bdownload\b/i
-  send_userlevel_screenshot(event) if msg =~ /\bscreen\s*shots*\b/i
-  send_userlevel_scores(event)     if msg =~ /scores\b/i # matches 'highscores'
-  send_random_userlevel(event)     if msg =~ /random/i
+  # exclusively global methods
+  if !msg[NAME_PATTERN, 2]
+    send_userlevel_rankings(event)   if msg =~ /\brank/i
+  end
+
+  send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
+  send_userlevel_search(event)      if msg =~ /\bsearch\b/i
+  send_userlevel_download(event)    if msg =~ /\bdownload\b/i
+  send_userlevel_screenshot(event)  if msg =~ /\bscreen\s*shots*\b/i
+  send_userlevel_scores(event)      if msg =~ /scores\b/i # matches 'highscores'
+  send_userlevel_count(event)       if msg =~ /how many/i
+  send_userlevel_points(event)      if msg =~ /point/i && msg !~ /rank/i && msg !~ /average/i
+  send_userlevel_avg_points(event)  if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
+  send_userlevel_avg_rank(event)    if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
+  send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
+  send_userlevel_total_score(event) if msg =~ /total score/i && msg !~ /rank/i
+  send_userlevel_list(event)        if msg =~ /\blist\b/i
+  send_userlevel_stats(event)       if msg =~ /stat/i
+  send_userlevel_maxed(event)       if msg =~ /maxed/i
+  send_userlevel_maxable(event)     if msg =~ /maxable/i
+  send_random_userlevel(event)      if msg =~ /random/i
   #csv(event) if msg =~ /csv/i
 end

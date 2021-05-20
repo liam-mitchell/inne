@@ -7,7 +7,7 @@ include ChunkyPNG::Color
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = true # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = false  # benchmark and log functions (for optimization)
+BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
 DISCORD_LIMIT   = 2000
@@ -184,7 +184,7 @@ end
 def find_max_type(rank, type, tabs)
   case rank
   when :points
-    (type == Userlevel || tabs.empty? ? type : type.where(tab: tabs)).count * 20
+    (tabs.empty? ? type : type.where(tab: tabs)).count * 20
   when :avg_points
     20
   when :avg_rank
@@ -196,13 +196,13 @@ def find_max_type(rank, type, tabs)
   when :clean
     0.0
   when :score
-    query = type == Userlevel ? UserlevelScore.where(rank: 0) : Score.where(highscoreable_type: type.to_s, rank: 0)
-    query = query.where(tab: tabs) if !tabs.empty? && type != Userlevel
+    query = Score.where(highscoreable_type: type.to_s, rank: 0)
+    query = query.where(tab: tabs) if !tabs.empty?
     query = query.sum(:score)
-    query = query.to_f / 60.0 if type == Userlevel
+    query = query.to_f / 60.0
     query
   else
-    (type == Userlevel || tabs.empty? ? type : type.where(tab: tabs)).count
+    (tabs.empty? ? type : type.where(tab: tabs)).count
   end
 end
 

@@ -164,7 +164,11 @@ def parse_userlevel_author(msg)
 end
 
 def parse_global(msg)
-  !!msg[/global/i] || !!msg[/full/i]
+  !!msg[/global/i]
+end
+
+def parse_full(msg)
+  !!msg[/full/i]
 end
 
 def parse_newest(msg)
@@ -188,7 +192,7 @@ def format_ties(ties)
 end
 
 def format_tied(tied)
-  tied ? " tied " : ""
+  tied ? "tied " : ""
 end
 
 def format_tab(tab)
@@ -212,7 +216,11 @@ def format_full(full)
 end
 
 def format_max(max)
-  "[MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]"
+  !max.nil? ? "[MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ""
+end
+
+def format_author(name)
+  !name.empty? ? "on maps by #{name}" : ""
 end
 
 def send_file(event, data, name = "result.txt", binary = false)

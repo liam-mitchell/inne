@@ -59,11 +59,11 @@ def send_top_n_count(event)
     header = "#{bott.ordinalize}-#{(rank - 1).ordinalize}"
   end
 
-  max    = find_max(:rank, type, tabs)
-  type   = format_type(type).downcase
-  tabs   = format_tabs(tabs)
-  ties   = format_ties(ties)
-  tied   = format_tied(tied)
+  max  = find_max(:rank, type, tabs)
+  type = format_type(type).downcase
+  tabs = format_tabs(tabs)
+  ties = format_ties(ties)
+  tied = format_tied(tied)
 
   event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{header} scores#{ties}."
 end
@@ -103,6 +103,7 @@ def send_rankings(event)
   elsif msg =~ /tied/i
     rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1, full)
     header   = "tied 0th rankings "
+    max      = find_max(:rank, type, tabs)
   elsif msg =~ /maxed/i
     rankings = Score.rank(:maxed, type, tabs, nil, nil, full)
     header   = "maxed score rankings "
@@ -114,11 +115,11 @@ def send_rankings(event)
   else
     rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full)
     rank     = format_rank(rank)
+    max      = find_max(:rank, type, tabs)
     ties     = (ties ? "with ties " : "")
     header   = "#{rank} rankings #{ties}"
   end
 
-  max  = find_max(:rank, type, tabs) if max.nil?
   min  = "Minimum number of scores required: #{min_scores(type, tabs)}" if !avg_msg.nil?
   type = format_type(type)
   tabs = format_tabs(tabs)
@@ -341,9 +342,8 @@ def send_maxed(event)
   player = player.nil? ? "" : " without " + player.print_name
   header = "#{tabs}potentially maxed #{type}s (with all scores tied for 0th) #{format_time}#{player}:"
   footer = "There's a total of #{count} potentially maxed #{type}s."
-  length = header.length + block.length + footer.length + 7
   event << header
-  length < DISCORD_LIMIT ? event << "```" + block + "```" : send_file(event, block, "maxed-#{type}s.txt", false)
+  count <= 20 ? event << "```#{block}```" : send_file(event, block, "maxed-#{type}s.txt", false)
   event << footer
 end
 
@@ -982,7 +982,7 @@ def send_unique_holders(event)
 end
 
 def testa(event)
-  log(Demo.find_by(replay_id: 2491598).decode_demo)
+  puts Userlevel.find_max(:score, true)
 end
 
 # TODO set level of the day on startup
@@ -1059,7 +1059,7 @@ def respond(event)
   send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   faceswap(event)            if msg =~ /faceswap/i
-  testa(event) if msg =~ /testa/i
+  #testa(event) if msg =~ /testa/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
