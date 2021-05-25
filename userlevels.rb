@@ -1165,7 +1165,7 @@ def send_userlevel_list(event)
 
   res = all.map{ |rank, scores|
     rank.to_s.rjust(2, '0') + ":\n" + scores.map{ |s|
-      "  #{HighScore.format_rank(s.rank)}: [#{s.userlevel.id.to_s.rjust(6)}] #{s.userlevel.title} (#{"%.3f" % [s.score / 60]})"
+      "  #{HighScore.format_rank(s.rank)}: [#{s.userlevel.id.to_s.rjust(6)}] #{s.userlevel.title} (#{"%.3f" % [s.score.to_f / 60.0]})"
     }.join("\n")
   }.join("\n")
   send_file(event, res, "#{full ? "global-" : ""}userlevel-scores-#{player.name}.txt")

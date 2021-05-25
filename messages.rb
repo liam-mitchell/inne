@@ -13,57 +13,31 @@ MAX_ENTRIES  = 20   # maximum number of entries on methods with user input, to a
 def send_top_n_count(event)
   msg    = event.content
   player = parse_player(msg, event.user.name)
-  rank   = parse_rank(msg) || 20
-  bott   = parse_bottom_rank(msg) || 0
-  ind    = nil
-  dflt   = parse_rank(msg).nil? && parse_bottom_rank(msg).nil?
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
+  range  = parse_range(msg)
   ties   = !!(msg =~ /ties/i)
   tied   = !!(msg =~ /\btied\b/i)
-  20.times.each{ |r| ind = r if !!(msg =~ /\b#{r.ordinalize}\b/i) }
-
-  # If no range is provided, default to 0th count
-  if dflt
-    bott = 0
-    rank = 1
-  end
-
-  # If an individual rank is provided, the range has width 1
-  if !ind.nil?
-    bott = ind
-    rank = ind + 1
-  end
 
   # The range must make sense
-  if bott >= rank
-    event << "You specified an empty range! (#{bott.ordinalize}-#{(rank - 1).ordinalize})"
+  if !range[2]
+    event << "You specified an empty range! (#{format_range(range[0], range[1])})"
     return
   end
 
   # Retrieve score count in specified range
   if tied
-    count = player.range_n_count(bott, rank, type, tabs, true) - player.range_n_count(bott, rank, type, tabs, false)
+    count = player.range_n_count(range[0], range[1], type, tabs, true) - player.range_n_count(range[0], range[1], type, tabs, false)
   else
-    count = player.range_n_count(bott, rank, type, tabs, ties)
+    count = player.range_n_count(range[0], range[1], type, tabs, ties)
   end
 
-  # Format range
-  if bott == rank - 1
-    header = "#{bott.ordinalize}"
-  elsif bott == 0
-    header = format_rank(rank)
-  elsif rank == 20
-    header = format_bottom_rank(bott)
-  else
-    header = "#{bott.ordinalize}-#{(rank - 1).ordinalize}"
-  end
-
-  max  = find_max(:rank, type, tabs)
-  type = format_type(type).downcase
-  tabs = format_tabs(tabs)
-  ties = format_ties(ties)
-  tied = format_tied(tied)
+  max   = find_max(:rank, type, tabs)
+  type  = format_type(type).downcase
+  tabs  = format_tabs(tabs)
+  range = format_range(range[0], range[1])
+  ties  = format_ties(ties)
+  tied  = format_tied(tied)
 
   event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{header} scores#{ties}."
 end
@@ -102,7 +76,7 @@ def send_rankings(event)
     max      = find_max(:score, type, tabs)
   elsif msg =~ /tied/i
     rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1, full)
-    header   = "tied 0th rankings "
+    header   = "tied #{format_rank(rank)} rankings "
     max      = find_max(:rank, type, tabs)
   elsif msg =~ /maxed/i
     rankings = Score.rank(:maxed, type, tabs, nil, nil, full)
@@ -313,7 +287,7 @@ def send_maxable(event)
   type   = parse_type(msg) || Level
   tabs   = parse_tabs(msg)
 
-  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id)
+  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, false)
             .select { |s| s[1] < s[2] }
             .take(NUM_ENTRIES)
             .map { |s| "#{"%-10s" % s[0]} - #{"%2d" % s[1]} - #{format_string(s[3])}" }
@@ -482,6 +456,90 @@ def send_average_lead(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
   event << "#{player.print_name} has an average #{type} #{tabs}lead of #{"%.3f" % [average]}."
+end
+
+def send_table(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name)
+  range  = parse_range(msg)
+  global = false
+  ties   = !!(msg =~ /ties/i)
+  avg    = !!(msg =~ /average/i)
+
+  # The range must make sense
+  if !range[2]
+    event << "You specified an empty range! (#{format_range(range[0], range[1])})"
+    return
+  end
+
+  if avg
+    if msg =~ /point/i
+      table   = player.table(:avg_points, ties, nil, nil)
+      header  = "average points table"
+    else
+      table   = player.table(:avg_rank, ties, nil, nil)
+      header  = "average rank table"
+    end
+  elsif msg =~ /point/i
+    table   = player.table(:points, ties, nil, nil)
+    header  = "points table"
+  elsif msg =~ /score/i
+    table   = player.table(:score, ties, nil, nil)
+    header  = "total score table"
+  elsif msg =~ /tied/i
+    table   = player.table(:tied, ties, range[0], range[1])
+    header  = "tied #{rank.ordinalize} table"
+  elsif msg =~ /maxed/i
+    table   = player.table(:maxed, ties, nil, nil)
+    header  = "maxed scores table"
+    global  = true
+  elsif msg =~ /maxable/i
+    table   = player.table(:maxable, ties, nil, nil)
+    header  = "maxable scores table"
+    global  = true
+  else
+    table   = player.table(:rank, ties, range[0], range[1])
+    header  = "#{format_range(range[0], range[1])} table"
+  end
+
+  # construct table
+  if avg
+    scores = player.table(:rank, ties, 0, 20)
+    totals = Level::tabs.map{ |tab, id|
+      lvl = scores[0][tab] || 0
+      ep  = scores[1][tab] || 0
+      [format_tab(tab.to_sym), lvl, ep, lvl + ep]
+    }
+  end
+  table = Level::tabs.each_with_index.map{ |tab, i|
+    lvl = table[0][tab[0]] || 0
+    ep  = table[1][tab[0]] || 0
+    [format_tab(tab[0].to_sym), lvl, ep, avg ? wavg([lvl, ep], totals[i][1..2]) : lvl + ep]
+  }
+
+  # format table
+  rows = []
+  rows << ["", "Level", "Episode", "Total"]
+  rows << :sep
+  rows += table
+  rows << :sep
+  if !avg
+    rows << [
+      "Total",
+      table.map(&:second).sum,
+      table.map(&:third).sum,
+      table.map(&:fourth).sum
+    ]
+  else
+    rows << [
+      "Total",
+      wavg(table.map(&:second), totals.map(&:second)),
+      wavg(table.map(&:third),  totals.map(&:third)),
+      wavg(table.map(&:fourth), totals.map(&:fourth))
+    ]
+  end
+  player = global ? "" : "#{player.format_name.strip}'s "
+  event << "#{player}#{global ? header.capitalize : header} #{format_time}:```#{make_table(rows)}```"  
 end
 
 def send_splits(event)
@@ -816,7 +874,7 @@ def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
   text_rows = rows.select{ |r| r.is_a?(Array) }
   count = text_rows.map(&:size).max
   rows.each{ |r| if r.is_a?(Array) then r << "" while r.size < count end }
-  widths = (0..count - 1).map{ |c| text_rows.map{ |r| r[c].to_s.length }.max }
+  widths = (0..count - 1).map{ |c| text_rows.map{ |r| (r[c].is_a?(Float) ? "%.3f" % r[c] : r[c].to_s).length }.max }
   sep = widths.map{ |w| sep_i + sep_x * (w + 2) }.join + sep_i + "\n"
   table = sep.dup
   table << sep_y + " " * (((sep.size - 1) - header.size) / 2) + header + " " * ((sep.size - 1) - ((sep.size - 1) - header.size) / 2 - header.size - 2) + sep_y + "\n" + sep if !header.nil?
@@ -825,7 +883,7 @@ def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
       table << sep
     else
       r.each_with_index{ |s, i|
-        table << sep_y + " " + (s.is_a?(Numeric) ? s.to_s.rjust(widths[i], " ") : s.to_s.ljust(widths[i], " ")) + " "
+        table << sep_y + " " + (s.is_a?(Numeric) ? (s.is_a?(Integer) ? s : "%.3f" % s).to_s.rjust(widths[i], " ") : s.to_s.ljust(widths[i], " ")) + " "
       }
       table << sep_y + "\n"
     end
@@ -1012,7 +1070,7 @@ def respond(event)
 
   # exclusively global methods, this conditional avoids the problem stated in the comment below
   if !msg[NAME_PATTERN, 2]
-    send_rankings(event)    if msg =~ /rank/i && msg !~ /history/i
+    send_rankings(event)    if msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i
     send_history(event)     if msg =~ /history/i && msg !~ /rank/i
     send_diff(event)        if msg =~ /diff/i
     send_community(event)   if msg =~ /community/i
@@ -1034,21 +1092,22 @@ def respond(event)
   send_level_time(event)     if msg =~ /(when|next).*(level|lotd)/i
   send_episode_time(event)   if msg =~ /(when|next).*(episode|eotw)/i
   send_story_time(event)     if msg =~ /(when|next).*(story|column|cotm)/i
-  send_points(event)         if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
+  send_points(event)         if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /table/i && msg !~ /floating/i && msg !~ /legrange/i
   send_spreads(event)        if msg =~ /spread/i
-  send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /floating/i && msg !~ /legrange/i
-  send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
-  send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
+  send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /table/i && msg !~ /floating/i && msg !~ /legrange/i
+  send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i && !!msg[NAME_PATTERN, 2]
+  send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i && msg !~ /table/i
   send_scores(event)         if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
-  send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
+  send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
   send_top_n_count(event)    if msg =~ /how many/i && msg !~ /point/i
+  send_table(event)          if msg =~ /\btable\b/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
   send_screenshot(event)     if msg =~ /screenshot/i
   send_suggestions(event)    if msg =~ /worst/i && msg !~ /nightmare/i
   send_list(event)           if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
   send_missing(event)        if msg =~ /missing/i
-  send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i
-  send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i
+  send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i && msg !~ /table/i
+  send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i && msg !~ /table/i
   send_level_name(event)     if msg =~ /\blevel name\b/i
   send_level_id(event)       if msg =~ /\blevel id\b/i
   send_analysis(event)       if msg =~ /analysis/i

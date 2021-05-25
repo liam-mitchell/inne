@@ -17,6 +17,14 @@ def normalize_name(name)
   name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
 end
 
+def normalize_tab(tab)
+  format_tab(parse_tabs(tab)[0])
+end
+
+def formalize_tab(tab)
+  parse_tabs(tab)[0].to_s
+end
+
 # explicit: players will only be parsed if they appear explicitly, without inferring from their user, otherwise nil
 # enforce: a player MUST be supplied explicitly, otherwise exception
 def parse_player(msg, username, userlevel = false, explicit = false, enforce = false)
@@ -117,12 +125,12 @@ end
 
 def parse_rank(msg)
   rank = msg[/top\s*([0-9][0-9]?)/i, 1]
-  rank ? rank.to_i : nil
+  rank ? rank.to_i.clamp(1, 20) : nil
 end
 
 def parse_bottom_rank(msg)
   rank = msg[/bottom\s*([0-9][0-9]?)/i, 1]
-  rank ? 20 - rank.to_i : nil
+  rank ? (20 - rank.to_i).clamp(0, 19) : nil
 end
 
 def parse_ranks(msg)
@@ -130,13 +138,43 @@ def parse_ranks(msg)
   ranks.empty? ? [0] : ranks
 end
 
+# We parse a complex variery of ranges here, from individual ranks, to tops,
+# bottoms, intermediate ranges, etc.
+def parse_range(msg)
+  rank   = parse_rank(msg) || 20
+  bott   = parse_bottom_rank(msg) || 0
+  ind    = nil
+  dflt   = parse_rank(msg).nil? && parse_bottom_rank(msg).nil?
+  valid  = true
+  20.times.each{ |r| ind = r if !!(msg =~ /\b#{r.ordinalize}\b/i) }
+
+  # If no range is provided, default to 0th count
+  if dflt
+    bott = 0
+    rank = 1
+  end
+
+  # If an individual rank is provided, the range has width 1
+  if !ind.nil?
+    bott = ind
+    rank = ind + 1
+  end
+
+  # The range must make sense   
+  if bott >= rank
+    valid = false
+  end
+
+  [bott, rank, valid]
+end
+
 def parse_tabs(msg)
   ret = []
 
-  ret << :SI if msg =~ /\b(intro|SI|I)\b/i
+  ret << :SI if msg =~ /\b(intro|SI)\b/i
   ret << :S if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
-  ret << :SU if msg =~ /\b(SU|UE|U|ultimate)\b/i
-  ret << :SL if msg =~ /\b(legacy|SL|L)\b/i
+  ret << :SU if msg =~ /\b(SU|UE|ultimate)\b/i
+  ret << :SL if msg =~ /\b(legacy|SL)\b/i
   ret << :SS if msg =~ /(\A|\s)(secret|\?)(\Z|\s)/i
   ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
 
@@ -175,12 +213,24 @@ def parse_newest(msg)
   !!msg[/newest/i]
 end
 
-def format_rank(rank)
+def format_rank(rank, bott = nil)
   rank == 1 ? "0th" : "top #{rank}"
 end
 
 def format_bottom_rank(rank)
   "bottom #{rank}"
+end
+
+def format_range(bott, rank)
+  if bott == rank - 1
+    header = "#{bott.ordinalize}"
+  elsif bott == 0
+    header = format_rank(rank)
+  elsif rank == 20
+    header = format_bottom_rank(bott)
+  else
+    header = "#{bott.ordinalize}-#{(rank - 1).ordinalize}"
+  end
 end
 
 def format_type(type)

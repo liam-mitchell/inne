@@ -5,9 +5,9 @@ require 'chunky_png' # for screenshot generation
 include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
-SHOW_ERRORS     = true # log common error messages
+SHOW_ERRORS     = true  # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = true  # benchmark and log functions (for optimization)
+BENCHMARK       = false # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
 DISCORD_LIMIT   = 2000
@@ -17,7 +17,8 @@ DEFAULT_PADDING = 15    # default variable padding, never make 0
 MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
 TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
 
-MAXMIN_SCORES   = 100    # max-min number of highscores to appear in average point rankings
+MIN_TIES        = 3     # minimum number of ties for 0th to be considered maxable
+MAXMIN_SCORES   = 100   # max-min number of highscores to appear in average point rankings
 USERLEVEL_REPORT_SIZE = 500
 ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 
@@ -228,8 +229,15 @@ def min_scores(type, tabs)
   [mins, MAXMIN_SCORES].min
 end
 
+# round float to nearest frame
 def round_score(score)
   (score * 60).round / 60.0
+end
+
+# weighed average
+def wavg(arr, w)
+  return [0] * arr.size if arr.size != w.size
+  arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
 end
 
 module HighScore
@@ -282,7 +290,7 @@ module HighScore
   # @par player_id: Exclude levels where the player already has a score
   # @par maxed:     Sort differently depending on whether we're interested in maxed or maxable
   # @par rank:      Return rankings of people with most scores in maxed / maxable levels
-  def self.ties(type, tabs, player_id = nil, maxed = false, rank = false)
+  def self.ties(type, tabs, player_id = nil, maxed = nil, rank = false)
     type = ensure_type(type)
     bench(:start) if BENCHMARK
     # retrieve most tied for 0th leves
@@ -290,7 +298,7 @@ module HighScore
     ret = ret.where(tab: tabs) if !tabs.empty?
     ret = ret.group(:highscoreable_id)
              .order(!maxed ? 'count(id) desc' : '', :highscoreable_id)
-             .having('count(id) >= 3')
+             .having("count(id) >= #{MIN_TIES}")
              .having(!player_id.nil? ? 'amount = 0' : '')
              .pluck('highscoreable_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
              .map{ |s| s[0..1] }
@@ -300,8 +308,10 @@ module HighScore
                   .group(:highscoreable_id)
                   .order('count(id) desc')
                   .count(:id)
+    # filter
+    maxed ? ret.select!{ |id, c| c == counts[id] } : ret.select!{ |id, c| c < counts[id] } if !maxed.nil?
+
     if rank
-      ret.select!{ |id, c| counts[id] == c } if maxed
       ret = ret.keys
     else
       # retrieve player names owning the 0ths on said level
@@ -934,6 +944,53 @@ class Player < ActiveRecord::Base
 
     bench(:step) if BENCHMARK
     ret
+  end
+
+  def table(rank, ties, a, b)
+    [Level, Episode, Story].map do |type|
+      case rank
+      when :rank
+        scores.where(highscoreable_type: type)
+              .where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
+              .group(:tab)
+              .count(:id)
+              .to_h
+      when :tied_rank
+        scores1 = scores.where(highscoreable_type: type)
+                        .where("tied_rank >= #{a} AND tied_rank < #{b}")
+                        .group(:tab)
+                        .count(:id)
+                        .to_h
+        scores2 = scores.where(highscoreable_type: type)
+                        .where("rank >= #{a} AND rank < #{b}")
+                        .group(:tab)
+                        .count(:id)
+                        .to_h
+        scores1.map{ |tab, count| [tab, count - scores2[tab]] }.to_h
+      when :points
+        scores.where(highscoreable_type: type).group(:tab).sum(ties ? "20 - tied_rank" : "20 - rank").to_h
+      when :score
+        scores.where(highscoreable_type: type).group(:tab).sum(:score).to_h
+      when :avg_points
+        scores.where(highscoreable_type: type).group(:tab).average(ties ? "20 - tied_rank" : "20 - rank").to_h
+      when :avg_rank
+        scores.where(highscoreable_type: type).group(:tab).average(ties ? "tied_rank" : "rank").to_h
+      when :maxed
+        HighScore.ties(type, [], nil, true, false)
+                 .select{ |t| t[1] == t[2] }
+                 .group_by{ |t| t[0].split("-")[0] }
+                 .map{ |tab, scores| [normalize_tab(tab), scores.size] }
+                 .to_h
+      when :maxable
+        HighScore.ties(type, [], nil, false, false)
+                 .select{ |t| t[1] < t[2] }  
+                 .group_by{ |t| t[0].split("-")[0] }
+                 .map{ |tab, scores| [formalize_tab(tab), scores.size] }
+                 .to_h   
+      else
+        scores.where(highscoreable_type: type).group(:tab).count(:id).to_h
+      end
+    end
   end
 end
 
