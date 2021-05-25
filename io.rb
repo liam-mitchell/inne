@@ -213,12 +213,12 @@ def parse_newest(msg)
   !!msg[/newest/i]
 end
 
-def format_rank(rank, bott = nil)
+def format_rank(rank)
   rank == 1 ? "0th" : "top #{rank}"
 end
 
 def format_bottom_rank(rank)
-  "bottom #{rank}"
+  "bottom #{20 - rank}"
 end
 
 def format_range(bott, rank)
