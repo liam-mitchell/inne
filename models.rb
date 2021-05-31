@@ -200,7 +200,7 @@ def find_max_type(rank, type, tabs)
     query = Score.where(highscoreable_type: type.to_s, rank: 0)
     query = query.where(tab: tabs) if !tabs.empty?
     query = query.sum(:score)
-    query = query.to_f / 60.0
+    query = query
     query
   else
     (tabs.empty? ? type : type.where(tab: tabs)).count
