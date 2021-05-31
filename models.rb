@@ -819,48 +819,50 @@ class Player < ActiveRecord::Base
   # Only works for 1 type at a time
   def self.comparison_(type, tabs, p1, p2)
     type = ensure_type(type)
+    request = Score.where(highscoreable_type: type)
+    request = request.where(tab: tabs) if !tabs.empty?
     t = type.to_s.downcase.pluralize
     bench(:start) if BENCHMARK
-    ids = Score.where(highscoreable_type: type, player: [p1, p2])
-               .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
-               .group(:highscoreable_id)
-               .having('count(highscoreable_id) > 1')
-               .pluck('MIN(highscoreable_id)')
-    scores1 = Score.where(highscoreable_type: type, highscoreable_id: ids, player: p1)
-                   .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
-                   .order(:highscoreable_id)
-                   .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
-    scores2 = Score.where(highscoreable_type: type, highscoreable_id: ids, player: p2)
-                   .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
-                   .order(:highscoreable_id)
-                   .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+    ids = request.where(player: [p1, p2])
+                 .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+                 .group(:highscoreable_id)
+                 .having('count(highscoreable_id) > 1')
+                 .pluck('MIN(highscoreable_id)')
+    scores1 = request.where(highscoreable_id: ids, player: p1)
+                     .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+                     .order(:highscoreable_id)
+                     .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+    scores2 = request.where(highscoreable_id: ids, player: p2)
+                     .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+                     .order(:highscoreable_id)
+                     .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
     scores = scores1.zip(scores2).group_by{ |s1, s2| s1[3] <=> s2[3] }
-    s1 = Score.where(highscoreable_type: type, player: p1)
-              .where.not(highscoreable_id: ids)
-              .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
-              .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
-              .group_by{ |s| s[0] }
-              .map{ |r, s| [r, s.sort_by{ |s| s[1] }] }
-              .to_h
-    s2 = scores.key?(1) ? scores[1].group_by{ |s1, s2| s1[0] }
+    s1 = request.where(player: p1)
+                .where.not(highscoreable_id: ids)
+                .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+                .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+                .group_by{ |s| s[0] }
+                .map{ |r, s| [r, s.sort_by{ |s| s[1] }] }
+                .to_h
+    s2 = scores.key?(1)  ? scores[1].group_by{ |s1, s2| s1[0] }
                                    .map{ |r, s| [r, s.sort_by{ |s1, s2| s1[1] }] }
                                    .to_h
-                        : {}
-    s3 = scores.key?(0) ? scores[0].group_by{ |s1, s2| s1[0] }
+                         : {}
+    s3 = scores.key?(0)  ? scores[0].group_by{ |s1, s2| s1[0] }
                                    .map{ |r, s| [r, s.sort_by{ |s1, s2| s1[1] }] }
                                    .to_h
-                        : {}
+                         : {}
     s4 = scores.key?(-1) ? scores[-1].group_by{ |s1, s2| s1[0] }
                                      .map{ |r, s| [r, s.sort_by{ |s1, s2| s2[1] }] }
                                      .to_h
                          : {}
-    s5 = Score.where(highscoreable_type: type, player: p2)
-              .where.not(highscoreable_id: ids)
-              .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
-              .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
-              .group_by{ |s| s[0] }
-              .map{ |r, s| [r, s.sort_by{ |s| s[1] }] }
-              .to_h
+    s5 = request.where(player: p2)
+                .where.not(highscoreable_id: ids)
+                .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+                .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+                .group_by{ |s| s[0] }
+                .map{ |r, s| [r, s.sort_by{ |s| s[1] }] }
+                .to_h
     bench(:step) if BENCHMARK
     [s1, s2, s3, s4, s5]
   end

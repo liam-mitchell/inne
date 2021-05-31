@@ -550,7 +550,7 @@ def send_comparison(event)
   comp   = Player.comparison(type, tabs, p1, p2)
   counts = comp.map{ |t| t.map{ |r, s| s.size }.sum }
 
-  header = "Comparison between #{p1.tname} and #{p2.tname} #{format_time}:"
+  header = "#{format_type(type)} #{format_tabs(tabs)}comparison between #{p1.tname} and #{p2.tname} #{format_time}:"
   rows = ["Scores with only #{p1.tname}"]
   rows << "Scores where #{p1.tname} > #{p2.tname}"
   rows << "Scores where #{p1.tname} = #{p2.tname}"
