@@ -236,7 +236,7 @@ end
 
 # weighed average
 def wavg(arr, w)
-  return [0] * arr.size if arr.size != w.size
+  return -1 if arr.size != w.size
   arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
 end
 
@@ -816,6 +816,75 @@ class Player < ActiveRecord::Base
     self.histories(PointsHistory, attrs, :points)
   end
 
+  # Only works for 1 type at a time
+  def self.comparison_(type, tabs, p1, p2)
+    type = ensure_type(type)
+    t = type.to_s.downcase.pluralize
+    bench(:start) if BENCHMARK
+    ids = Score.where(highscoreable_type: type, player: [p1, p2])
+               .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+               .group(:highscoreable_id)
+               .having('count(highscoreable_id) > 1')
+               .pluck('MIN(highscoreable_id)')
+    scores1 = Score.where(highscoreable_type: type, highscoreable_id: ids, player: p1)
+                   .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+                   .order(:highscoreable_id)
+                   .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+    scores2 = Score.where(highscoreable_type: type, highscoreable_id: ids, player: p2)
+                   .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+                   .order(:highscoreable_id)
+                   .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+    scores = scores1.zip(scores2).group_by{ |s1, s2| s1[3] <=> s2[3] }
+    s1 = Score.where(highscoreable_type: type, player: p1)
+              .where.not(highscoreable_id: ids)
+              .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+              .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+              .group_by{ |s| s[0] }
+              .map{ |r, s| [r, s.sort_by{ |s| s[1] }] }
+              .to_h
+    s2 = scores.key?(1) ? scores[1].group_by{ |s1, s2| s1[0] }
+                                   .map{ |r, s| [r, s.sort_by{ |s1, s2| s1[1] }] }
+                                   .to_h
+                        : {}
+    s3 = scores.key?(0) ? scores[0].group_by{ |s1, s2| s1[0] }
+                                   .map{ |r, s| [r, s.sort_by{ |s1, s2| s1[1] }] }
+                                   .to_h
+                        : {}
+    s4 = scores.key?(-1) ? scores[-1].group_by{ |s1, s2| s1[0] }
+                                     .map{ |r, s| [r, s.sort_by{ |s1, s2| s2[1] }] }
+                                     .to_h
+                         : {}
+    s5 = Score.where(highscoreable_type: type, player: p2)
+              .where.not(highscoreable_id: ids)
+              .joins("INNER JOIN #{t} ON #{t}.id = scores.highscoreable_id")
+              .pluck(:rank, :highscoreable_id, "#{t}.name", :score)
+              .group_by{ |s| s[0] }
+              .map{ |r, s| [r, s.sort_by{ |s| s[1] }] }
+              .to_h
+    bench(:step) if BENCHMARK
+    [s1, s2, s3, s4, s5]
+  end
+
+  # Merges the results for each type using the previous method
+  def self.comparison(type, tabs, p1, p2)
+    type = [Level, Episode] if type.nil?
+    ret = (0..4).map{ |t| (0..19).to_a.map{ |r| [r, []] }.to_h }
+    [type].flatten.each{ |t|
+      scores = comparison_(t, tabs, p1, p2)
+      (0..4).each{ |i|
+        (0..19).each{ |r|
+          ret[i][r] += scores[i][r] if !scores[i][r].nil?
+        }
+      }
+    }
+    (0..4).each{ |i|
+      (0..19).each{ |r|
+        ret[i].delete(r) if ret[i][r].empty?
+      }
+    }
+    ret
+  end
+
   def print_name
     user = User.where(playername: name).where.not(displayname: nil)
     (user.empty? ? name : user.first.displayname).remove("`")
@@ -823,6 +892,11 @@ class Player < ActiveRecord::Base
 
   def format_name(padding = DEFAULT_PADDING)
     format_string(print_name, padding)
+  end
+
+  # truncate name
+  def tname(length = MAX_PADDING)
+    TRUNCATE_NAME ? print_name[0..length] : print_name
   end
 
   def scores_by_type_and_tabs(type, tabs, include = nil)

@@ -542,6 +542,34 @@ def send_table(event)
   event << "#{player}#{global ? header.capitalize : header} #{format_time}:```#{make_table(rows)}```"  
 end
 
+def send_comparison(event)
+  msg    = event.content
+  type   = parse_type(msg)
+  tabs   = parse_tabs(msg)
+  p1, p2 = parse_players(msg, event.user.name)
+  comp   = Player.comparison(type, tabs, p1, p2)
+  counts = comp.map{ |t| t.map{ |r, s| s.size }.sum }
+
+  header = "Comparison between #{p1.tname} and #{p2.tname} #{format_time}:"
+  rows = ["Scores with only #{p1.tname}"]
+  rows << "Scores where #{p1.tname} > #{p2.tname}"
+  rows << "Scores where #{p1.tname} = #{p2.tname}"
+  rows << "Scores where #{p1.tname} < #{p2.tname}"
+  rows << "Scores with only #{p2.tname}"
+  l = rows.map(&:length).max
+  table = rows.zip(counts).map{ |r, c| r.ljust(l) + " - " + c.to_s.rjust(4) }.join("\n")
+  list = (0..4).map{ |i|
+           rows[i] + ":\n\n" + comp[i].map{ |r, s|
+             s.map{ |e|
+               e.size == 2 ? format_pair(e) : format_entry(e)
+             }.join("\n")
+           }.join("\n") + "\n"
+         }.join("\n")
+
+  event << header + "```" + table + "```"
+  send_file(event, list, "comparison-#{p1.tname}-#{p2.tname}.txt")
+end
+
 def send_splits(event)
   ep = parse_level_or_episode(event.content)
   ep = Episode.find_by(name: ep.name[0..-4]) if ep.class == Level
@@ -1101,6 +1129,7 @@ def respond(event)
   send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
   send_top_n_count(event)    if msg =~ /how many/i && msg !~ /point/i
   send_table(event)          if msg =~ /\btable\b/i
+  send_comparison(event)     if msg =~ /compare/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
   send_screenshot(event)     if msg =~ /screenshot/i
   send_suggestions(event)    if msg =~ /worst/i && msg !~ /nightmare/i

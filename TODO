@@ -7,12 +7,10 @@ Eddy's TODO list for inne:
 - Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.
 - "nevermind": delete last inne message prompted by that user.
 - Implement NReality's asterisk to previous 0th holders using the new Archives feature.
-- Implement "table": Shows some measure (e.g. 0ths) broken down by type and tab.
 - Implement "index" (maybe "tally"): Outputs file with a list (like "list") of something, like all 0ths. With a parameter we specify what, for instance, 0th scores or 0th frames. With another parameter we specify the order, like the natural one, or by score in descending order...
 - Compare local scores (nprofile) vs server scores to find differences, a la NReality Score Comparer.
 - Look for N++ activity on Twitch using some ruby gem for twitch API, scan every few minutes and post on #content-creation whenever someone starts streaming it.
 - Add different past aliases from a player (e.g. "asleep at the wheel" and "drunk driver" for MaelstroM")
-- Add cooldown (or randomness) to mishNUB.
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.
@@ -114,6 +112,7 @@ Avatar:
 - Maybe also store the date of the avatar change to avoid the cooldown.
 
 \\ ------------------------ General ------------------------
+- Tie breaker for rankings: Average rank, instead of random.
 - Add coop and race for some functions, like screenshots
 - Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
@@ -123,20 +122,16 @@ Avatar:
 - 0th/Top20 changes (new ones, and per player).
 - Comparison between players.
 - Charts with colors.
-- Option to select quantity (instead of 20).
 - One should relate levels to their episodes with has_many and belongs_to => Rebuild database, maybe by creating more indices. We could use this to create a "cleanliness" and an "ownage?" method for episodes.
 - Some methods are duplicated in messages and inne++ files, like 'send_screenshot' or 'send_diff', ¿what to do here, delete the one in inne++ (which is not being used)?
 
 - Add "download for <level>" using the files we already have.
-- Change level names of secret levels (they've been fixed, ?-X-14 is unlocked by X-14).
 - Possibility to return lists in order of level and not rank.
 - For "splits", also download episode 0th replay and parse it to get the actual 0th splits, so that we can compare the 0th splits with the ideal splits we are currently producing by adding up the level 0ths.
 - Implement "missing" in the "list" function, so that we could get "bottom 5 list for jirka that I don't already have".
 - Unique 0th holders.
 - 0th rankings ignoring certain players.
-- Refactor 0th rankings by using the Score class, should be much faster.
 - Add relaxed episode ownages (without episode), and ownages with ties.
-- Change threshold of 50 for a player to appear to depend on the amount of levels/eps per tab (maybe 0% episodes, 2.5% levels?).
 
 
 \\ ------------------------ Notes ------------------------

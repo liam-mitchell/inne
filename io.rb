@@ -27,33 +27,67 @@ end
 
 # explicit: players will only be parsed if they appear explicitly, without inferring from their user, otherwise nil
 # enforce: a player MUST be supplied explicitly, otherwise exception
-def parse_player(msg, username, userlevel = false, explicit = false, enforce = false)
+# implicit: the player will be inferred from their user, without even parsing the comment
+def parse_player(msg, username, userlevel = false, explicit = false, enforce = false, implicit = false)
   p = msg[/(for|of) (.*)[\.\?]?/i, 2]
   playerClass = userlevel ? UserlevelPlayer : Player
 
   # We make sure to only return players with metanet_ids, ie., with highscores.
-  if p.nil?
-    if explicit
-      if enforce
-        raise "You need to specify a player using `for/of PLAYERNAME` for this function."
+  if implicit
+    player = playerClass.where.not(metanet_id: nil).find_by(name: username)
+    return player if !player.nil?
+    user = User.find_by(username: username)
+    raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
+    player = playerClass.where.not(metanet_id: nil).find_by(name: user.player.name)
+    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
+    player
+  else
+    if p.nil?
+      if explicit
+        if enforce
+          raise "You need to specify a player for this function."
+        else
+          nil
+        end
       else
-        nil
+        player = playerClass.where.not(metanet_id: nil).find_by(name: username)
+        return player if !player.nil?
+        user = User.find_by(username: username)
+        raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
+        player = playerClass.where.not(metanet_id: nil).find_by(name: user.player.name)
+        raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
+        player
       end
     else
-      player = playerClass.where.not(metanet_id: nil).find_by(name: username)
-      return player if !player.nil?
-      user = User.find_by(username: username)
-      raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
-      player = playerClass.where.not(metanet_id: nil).find_by(name: user.player.name)
+      player = playerClass.where.not(metanet_id: nil).find_by(name: p)
       raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
       player
     end
-  else
-    player = playerClass.where.not(metanet_id: nil).find_by(name: p)
-    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
-    player
   end
+end
 
+# Parse a pair of players. The user may provide 0, 1 or 2 names in different
+# formats, so we act accordingly and reuse the previous method.
+def parse_players(msg, username, userlevel = false)
+  playerClass = userlevel ? UserlevelPlayer : Player
+  p = msg.scan(/#{parse_term}/i).map(&:second)
+  case p.size
+  when 0
+    p1 = parse_player(msg, username, userlevel, true, true, false)
+    p2 = parse_player(msg, username, userlevel, false, false, true)
+  when 1
+    p1 = playerClass.where.not(metanet_id: nil).find_by(name: p[0])
+    raise "#{p[0]} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if p1.nil?
+    p2 = parse_player(msg, username, userlevel, false, false, true)
+  when 2
+    p1 = playerClass.where.not(metanet_id: nil).find_by(name: p[0])
+    raise "#{p[0]} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if p1.nil?
+    p2 = playerClass.where.not(metanet_id: nil).find_by(name: p[1])
+    raise "#{p[1]} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if p2.nil?
+  else
+    raise "Too many players! Please enter either 1 or 2."
+  end
+  [p1, p2]
 end
 
 def parse_video_author(msg)
@@ -271,6 +305,14 @@ end
 
 def format_author(name)
   !name.empty? ? "on maps by #{name}" : ""
+end
+
+def format_entry(arr)
+  arr[0].to_s.rjust(2, "0") + ": " + arr[2].ljust(10) + " - " + ("%.3f" % [arr[3]]).rjust(8)
+end
+
+def format_pair(arr)
+  "[" + format_entry(arr[0]) + "] vs. [" + format_entry(arr[1]) + "]"
 end
 
 def send_file(event, data, name = "result.txt", binary = false)
