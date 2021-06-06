@@ -41,7 +41,7 @@ UPDATE_USER_HIST  = true  # Thread to regularly update userlevel highscoring his
 REPORT_METANET    = true  # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = true  # Thread to regularly post userlevels' highscoring report
 
-STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||           15 * 60 # every 5 mins
+STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
 HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
 DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
@@ -673,12 +673,13 @@ end
 
 #$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
 $bot = Discordrb::Bot.new token: (TEST ? ENV['TOKEN_TEST'] : ENV['TOKEN']), client_id: CONFIG['client_id']
-$channel = nil
+$channel         = nil
 $mapping_channel = nil
-$nv2_channel = nil
-$last_potato = Time.now.to_i
-$tomato = false
-$last_mishu = nil
+$nv2_channel     = nil
+$last_potato     = Time.now.to_i
+$tomato          = false
+$last_mishu      = nil
+$status_update   = Time.now.to_i
 
 $bot.mention do |event|
   respond(event)

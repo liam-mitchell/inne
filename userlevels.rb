@@ -1378,6 +1378,27 @@ def send_userlevel_summary(event)
   send_userlevel_highscoring_summary(event) if highscoring || both
 end
 
+def send_userlevel_time(event)
+  next_level = ($status_update + STATUS_UPDATE_FREQUENCY) - Time.now.to_i
+  next_level_minutes = (next_level / 60).to_i
+  next_level_seconds = next_level - (next_level / 60).to_i * 60
+
+  event << "I'll update the userlevel database in #{next_level_minutes} minutes and #{next_level_seconds} seconds."
+end
+
+def send_userlevel_scores_time(event)
+  next_level = get_next_update('userlevel_score') - Time.now
+  next_level_hours = (next_level / (60 * 60)).to_i
+  next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
+
+  event << "I'll update the *newest* userlevel scores in #{next_level_hours} hours and #{next_level_minutes} minutes."
+end
+
+def send_userlevel_times(event)
+  send_userlevel_time(event)
+  send_userlevel_scores_time(event)
+end
+
 # Exports userlevel database (bar level data) to CSV, for testing purposes.
 def csv(event)
   s = "id,author_id,author,title,favs,date,mode\n"
@@ -1403,6 +1424,7 @@ def respond_userlevels(event)
     send_userlevel_rankings(event)   if msg =~ /\brank/i
   end
 
+  send_userlevel_times(event)       if msg =~ /\bwhen\b/i
   send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
   send_userlevel_search(event)      if msg =~ /\bsearch\b/i
   send_userlevel_download(event)    if msg =~ /\bdownload\b/i
