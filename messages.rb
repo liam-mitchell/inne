@@ -1079,7 +1079,7 @@ def send_twitch(event)
   else
     lists.each{ |game, list|
       if list.size > 0
-        event << "*#{game}*: #{list.size}"
+        event << "**#{game}**: #{list.size}"
         streams = list.take(20).map{ |stream| Twitch::format_stream(stream) }.join("\n")
         event << "```" + Twitch::table_header + "\n" + streams + "```"
       end

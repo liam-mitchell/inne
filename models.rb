@@ -1452,7 +1452,7 @@ module Twitch extend self
   end
 
   def update_twitch_streams
-    GAME_IDS.except('GTASA').each{ |game, id|
+    GAME_IDS.each{ |game, id|
       $twitch_streams[game] = get_twitch_streams(game)
     }
   end

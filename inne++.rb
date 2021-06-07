@@ -50,6 +50,7 @@ OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = true # 'true' sets all the following ones to false
 DO_EVERYTHING     = false  # 'true' sets all the following ones to true
 UPDATE_STATUS     = true  # Thread to regularly update the bot's status
+UPDATE_TWITCH     = true  # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = true  # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = true  # Thread to regularly update highscoring histories
 UPDATE_DEMOS      = true  # Thread to regularly download missing Metanet demos
@@ -61,9 +62,9 @@ UPDATE_USER_GLOB  = true  # Thread to continuously (but slowly) download all use
 UPDATE_USER_HIST  = true  # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = true  # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = true  # Thread to regularly post userlevels' highscoring report
-LOOKUP_TWITCH     = true  # Thread to regularly look up N related Twitch streams
 
 STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
+TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||                60 # every 1 min
 HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
 HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
 DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
@@ -171,9 +172,34 @@ def update_status
       get_current(Story).update_scores
     end
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
-    Twitch::update_twitch_streams
     sleep(STATUS_UPDATE_FREQUENCY)
   end
+rescue
+  retry
+end
+
+def update_twitch
+  if $content_channel.nil?
+    err("not connected to a channel, not sending twitch report")
+    sleep(WAIT)
+    retry
+  end
+
+  while(true)
+    sleep(WAIT)
+    old_streams = $twitch_streams.dup
+    Twitch::update_twitch_streams
+    $twitch_streams.each{ |game, list|
+      if old_streams.key?(game)
+        list.each{ |stream|
+          if !old_streams[game].map{ |s| s['id'] }.include?(stream['id'])
+            $content_channel.send_message("#{stream['user_name']} started streaming #{game}!")
+          end
+        }
+      end
+    }
+    sleep(TWITCH_UPDATE_FREQUENCY)
+  end  
 rescue
   retry
 end
@@ -752,6 +778,7 @@ Twitch::update_twitch_streams
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 #$threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
