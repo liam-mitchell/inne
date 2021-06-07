@@ -122,6 +122,10 @@ def format_date(date)
   date[0..7].split("/").reverse.join("/") + date[-6..-1]
 end
 
+def to_ascii(s)
+  s.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
+end
+
 # Convert an integer into a little endian binary string of 'size' bytes and back
 def _pack(n, size)
   n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
@@ -1322,4 +1326,135 @@ class Demo < ActiveRecord::Base
     end
     return nil
   end
+end
+
+module Twitch extend self
+
+  GAME_IDS = {
+    'N'     => 12273,
+    'N+'    => 18983,
+    'Nv2'   => 105456,
+    'N++'   => 369385,
+    'GTASA' => 6521 # This is for testing purposes, since often there are no N streams live
+  }
+
+  def get_twitch_token
+    GlobalProperty.find_by(key: 'twitch_token').value
+  end
+
+  def set_twitch_token(token)
+    GlobalProperty.find_by(key: 'twitch_token').update(value: token)
+  end
+
+  def table_header
+    "#{"Player".ljust(15, " ")} #{"Title".ljust(35, " ")} #{"Time".ljust(12, " ")} #{"Views".ljust(4, " ")}\n#{"-" * 70}"
+  end
+
+  def format_stream(s)
+    name  = to_ascii(s['user_name'].remove("\n").strip[0..14]).ljust(15, ' ')
+    title = to_ascii(s['title'].remove("\n").strip[0..34]).ljust(35, ' ')
+    time  = "#{(Time.now - DateTime.parse(s['started_at']).to_time).to_i / 60} mins ago".rjust(12, ' ')
+    views = s['viewer_count'].to_s.rjust(5, ' ')
+    "#{name} #{title} #{time} #{views}"
+  end
+
+  def update_twitch_token
+    res = Net::HTTP.post_form(
+      URI.parse("https://id.twitch.tv/oauth2/token"),
+      {
+        client_id: $config['twitch_id'],
+        client_secret: ENV['TWITCH_SECRET'],
+        grant_type: 'client_credentials'
+      }
+    )
+    if res.code.to_i == 401
+      err("TWITCH: Unauthorized to perform requests, please verify you have this correctly configured.")      
+    elsif res.code.to_i != 200
+      err("TWITCH: App access token request failed.")
+    else
+      $twitch_token = JSON.parse(res.body)['access_token']
+      set_twitch_token($twitch_token)
+    end
+  rescue
+    err("TWITCH: App access token request method failed.")
+    sleep(5)
+    retry
+  end
+
+  # TODO: Add attempts to the loop, raise if fail
+  def get_twitch_game_id(name)
+    update_twitch_token if $twitch_token.nil?
+    uri = URI("https://api.twitch.tv/helix/games?name=#{name}")
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = true
+    loop do
+      res = http.get(
+        uri.request_uri,
+        {
+          'Authorization' => "Bearer #{$twitch_token}",
+          'Client-Id' => $config['twitch_id']
+        }
+      )
+      if res.code.to_i == 401
+        update_twitch_token
+        sleep(5)
+      elsif res.code.to_i != 200
+        err("TWITCH: Game ID request failed.")
+        sleep(5)
+      else
+        return JSON.parse(res.body)['id'].to_i
+      end
+    end
+  rescue
+    err("TWITCH: Game ID request method failed.")
+    sleep(5)
+    retry
+  end
+
+ # TODO: Add attempts to the loops, raise if fail
+ # TODO: Add offset/pagination for when there are many results
+  def get_twitch_streams(name, offset = nil)
+    if !GAME_IDS.key?(name)
+      err("TWITCH: Supplied game not known.")
+      return
+    end
+    while $twitch_token.nil?
+      update_twitch_token
+      sleep(5)
+    end
+    uri = URI("https://api.twitch.tv/helix/streams?first=100&game_id=#{GAME_IDS[name]}")
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = true
+    res = nil
+    loop do
+      res = http.get(
+        uri.request_uri,
+        {
+          'Authorization' => "Bearer #{$twitch_token}",
+          'Client-Id' => $config['twitch_id']
+        }
+      )
+      if res.code.to_i == 401
+        update_twitch_token
+        sleep(5)
+      elsif res.code.to_i != 200
+        err("TWITCH: Stream list request for #{name} failed.")
+        sleep(5)
+      else
+        break
+      end
+    end
+    JSON.parse(res.body)['data'].sort_by{ |s| s['user_name'].downcase }
+  rescue
+    err("TWITCH: Stream list request method for #{name} failed.")
+    sleep(5)
+    retry
+  end
+
+  def update_twitch_streams
+    GAME_IDS.except('GTASA').each{ |game, id|
+      $twitch_streams[game] = get_twitch_streams(game)
+    }
+  end
+
 end

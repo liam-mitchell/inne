@@ -1,3 +1,23 @@
+# IMPORTANT NOTE: To set up the bot for the first time:
+#
+# 1) Set up the following environment variable:
+# 1.1) DISCORD_TOKEN - This is Discord's application token / secret for your bot.
+# 2) Set up the following 2 environment variables (optional):
+# 2.1) TWITCH_SECRET - This is your Twitch app's secret, if you want to be able to
+#                      use the Twitch functionality. Otherwise, disable the
+#                      variable LOOKUP_TWITCH down below.
+# 2.2) DISCORD_TOKEN_TEST - Same as DISCORD_TOKEN, but for a secondary development
+#                           bot. If you don't care about this, never enable the
+#                           variable TEST down below.
+# 3) Configure the "outte" environment of the config file in ./db/config.yml,
+#    or create a new one and rename the DATABASE_ENV variable down below.
+# 4) Configure the "outte_test" environment of the config file (optional).
+# 5) Create, migrate and seed a database named "inne". Make sure to use MySQL
+#    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
+#    care of the bot for a copy of the database (see Contact).
+#
+# Contact: https://discord.gg/nplusplus
+
 require 'discordrb'
 require 'json'
 require 'net/http'
@@ -18,6 +38,7 @@ SERVER_ID      = 197765375503368192 # N++ Server
 CHANNEL_ID     = 210778111594332181 # #highscores
 USERLEVELS_ID  = 221721273405800458 # #mapping
 NV2_ID         = 197774025844457472 # #nv2
+CONTENT_ID     = 197793786389200896 # #content-creation
 POTATO         = true               # joke they have in the nv2 channel
 POTATO_RATE    = 1                  # seconds between potato checks
 POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
@@ -40,6 +61,7 @@ UPDATE_USER_GLOB  = true  # Thread to continuously (but slowly) download all use
 UPDATE_USER_HIST  = true  # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = true  # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = true  # Thread to regularly post userlevels' highscoring report
+LOOKUP_TWITCH     = true  # Thread to regularly look up N related Twitch streams
 
 STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
 HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
@@ -142,12 +164,14 @@ def update_status
   while(true)
     sleep(WAIT) # prevent crazy loops
     if !OFFLINE_STRICT
+      (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
+      $status_update = Time.now.to_i
       get_current(Level).update_scores
       get_current(Episode).update_scores
       get_current(Story).update_scores
-      (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
     end
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
+    Twitch::update_twitch_streams
     sleep(STATUS_UPDATE_FREQUENCY)
   end
 rescue
@@ -672,14 +696,18 @@ def watchdog
 end
 
 #$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
-$bot = Discordrb::Bot.new token: (TEST ? ENV['TOKEN_TEST'] : ENV['TOKEN']), client_id: CONFIG['client_id']
+$bot = Discordrb::Bot.new token: (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']), client_id: CONFIG['client_id']
+$config          = CONFIG
 $channel         = nil
 $mapping_channel = nil
 $nv2_channel     = nil
+$content_channel = nil
 $last_potato     = Time.now.to_i
 $tomato          = false
 $last_mishu      = nil
 $status_update   = Time.now.to_i
+$twitch_token    = nil
+$twitch_streams  = {}
 
 $bot.mention do |event|
   respond(event)
@@ -708,14 +736,19 @@ trap("INT") { $kill_threads = true }
 $bot.run(true)
 puts "Established connection to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}."
 if !TEST
-  $channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
+  $channel         = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
   $mapping_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == USERLEVELS_ID }
-  $nv2_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == NV2_ID }
+  $nv2_channel     = $bot.servers[SERVER_ID].channels.find{ |c| c.id == NV2_ID }
+  $content_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CONTENT_ID }
   $last_potato = Time.now.to_i
-  puts "Main channel: #{$channel.name}." if !$channel.nil?
+  puts "Main channel: #{$channel.name}."            if !$channel.nil?
   puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
-  puts "Nv2 channel: #{$nv2_channel.name}." if !$nv2_channel.nil?
+  puts "Nv2 channel: #{$nv2_channel.name}.        " if !$nv2_channel.nil?
+  puts "Content channel: #{$content_channel.name}." if !$content_channel.nil?
 end
+
+$twitch_token = Twitch::get_twitch_token
+Twitch::update_twitch_streams
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING

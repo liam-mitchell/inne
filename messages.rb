@@ -843,13 +843,15 @@ def hello(event)
   event << "Hi!"
 
   if $channel.nil?
-    $channel = event.channel
+    $channel         = event.channel
     $mapping_channel = event.channel
-    $nv2_channel = event.channel
+    $nv2_channel     = event.channel
+    $content_channel = event.channel
     $last_potato = $nv2_channel.history(1)[0].timestamp.to_i
-    puts "Main channel established: #{$channel.name}." if !$channel.nil?
+    puts "Main channel established: #{$channel.name}."            if !$channel.nil?
     puts "Mapping channel established: #{$mapping_channel.name}." if !$mapping_channel.nil?
-    puts "Nv2 channel established: #{$nv2_channel.name}." if !$nv2_channel.nil?
+    puts "Nv2 channel established: #{$nv2_channel.name}."         if !$nv2_channel.nil?
+    puts "Content channel established: #{$content_channel.name}." if !$content_channel.nil?
     send_times(event)
   end
 end
@@ -1067,6 +1069,24 @@ def send_unique_holders(event)
   event << "Number of unique highscore holders by rank at #{Time.now.to_s}\n```#{ranks}```"
 end
 
+# TODO: Implement a way to query next pages if there are more than 20 streams.
+#       ... who are we kidding we'll never need this bahahahah.
+def send_twitch(event)
+  lists = ["N++", "N+", "N", "Nv2"].map{ |name| [name, Twitch::get_twitch_streams(name)] }.to_h
+  event << "Currently active N related Twitch streams #{format_time}:"
+  if lists.map{ |k, v| v.size }.sum == 0
+    event << "None :shrug:"
+  else
+    lists.each{ |game, list|
+      if list.size > 0
+        event << "*#{game}*: #{list.size}"
+        streams = list.take(20).map{ |stream| Twitch::format_stream(stream) }.join("\n")
+        event << "```" + Twitch::table_header + "\n" + streams + "```"
+      end
+    }
+  end
+end
+
 def testa(event)
   puts Userlevel.find_max(:score, true)
 end
@@ -1146,6 +1166,7 @@ def respond(event)
   add_display_name(event)    if msg =~ /my display name is/i
   send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
+  send_twitch(event)         if msg =~ /\btwitch\b/i
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 
