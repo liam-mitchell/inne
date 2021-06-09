@@ -182,7 +182,7 @@ def update_twitch
   if $content_channel.nil?
     err("not connected to a channel, not sending twitch report")
     sleep(WAIT)
-    retry
+    raise
   end
 
   while(true)
@@ -193,7 +193,7 @@ def update_twitch
       if old_streams.key?(game)
         list.each{ |stream|
           if !old_streams[game].map{ |s| s['id'] }.include?(stream['id'])
-            $content_channel.send_message("#{stream['user_name']} started streaming #{game}!")
+            $content_channel.send_message("#{stream['user_name']} started streaming #{game}! https://www.twitch.tv/#{stream['user_login']}")
           end
         }
       end

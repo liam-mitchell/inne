@@ -1334,8 +1334,8 @@ module Twitch extend self
     'N'     => 12273,
     'N+'    => 18983,
     'Nv2'   => 105456,
-    'N++'   => 369385,
-    'GTASA' => 6521 # This is for testing purposes, since often there are no N streams live
+    'N++'   => 369385
+#    'GTASA' => 6521 # This is for testing purposes, since often there are no N streams live
   }
 
   def get_twitch_token
