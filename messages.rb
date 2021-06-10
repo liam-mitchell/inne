@@ -1072,7 +1072,9 @@ end
 # TODO: Implement a way to query next pages if there are more than 20 streams.
 #       ... who are we kidding we'll never need this bahahahah.
 def send_twitch(event)
-  lists = ["N++", "N+", "N", "Nv2"].map{ |name| [name, Twitch::get_twitch_streams(name)] }.to_h
+  lists = ["N++", "N+", "N", "Nv2"].map{ |name|
+    Twitch::GAME_IDS.key?(name) ? [name, Twitch::get_twitch_streams(name)] : nil
+  }.compact.to_h
   event << "Currently active N related Twitch streams #{format_time}:"
   if lists.map{ |k, v| v.size }.sum == 0
     event << "None :shrug:"

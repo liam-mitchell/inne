@@ -39,6 +39,7 @@ CHANNEL_ID     = 210778111594332181 # #highscores
 USERLEVELS_ID  = 221721273405800458 # #mapping
 NV2_ID         = 197774025844457472 # #nv2
 CONTENT_ID     = 197793786389200896 # #content-creation
+TWITCH_ROLE    = "Twitch"           # Discord role for those that want to be pinged when a new stream happens
 POTATO         = true               # joke they have in the nv2 channel
 POTATO_RATE    = 1                  # seconds between potato checks
 POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
@@ -157,6 +158,28 @@ def correct_time(time, frequency)
   time
 end
 
+# Pings a role by name (returns ping string)
+def ping(rname)
+  server = $bot.servers.values.first
+  if server.nil?
+    log("server not found")
+    return ""
+  end
+
+  role = server.roles.select{ |r| r.name == rname }.first
+  if role != nil
+    if role.mentionable
+      return role.mention
+    else
+      log("role #{rname} in server #{server.name} not mentionable")
+      return ""
+    end
+  else
+    log("role #{rname} not found in server #{server.name}")
+    return ""
+  end
+end
+
 # Periodically perform several useful tasks:
 # - Update scores for lotd, eotw and cotm.
 # - Update database with newest userlevels from all playing modes.
@@ -193,14 +216,15 @@ def update_twitch
       if old_streams.key?(game)
         list.each{ |stream|
           if !old_streams[game].map{ |s| s['id'] }.include?(stream['id'])
-            $content_channel.send_message("#{stream['user_name']} started streaming #{game}! https://www.twitch.tv/#{stream['user_login']}")
+            $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming #{game}! https://www.twitch.tv/#{stream['user_login']}")
           end
         }
       end
     }
     sleep(TWITCH_UPDATE_FREQUENCY)
   end  
-rescue
+rescue => e
+  err(e)
   retry
 end
 
@@ -778,7 +802,7 @@ Twitch::update_twitch_streams
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
+$threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING)# && !DO_NOTHING
 $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 #$threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
