@@ -160,7 +160,7 @@ end
 
 # Pings a role by name (returns ping string)
 def ping(rname)
-  server = $bot.servers.values.first
+  server = TEST ? $bot.servers.values.first : $bot.servers[SERVER_ID]
   if server.nil?
     log("server not found")
     return ""
@@ -802,7 +802,7 @@ Twitch::update_twitch_streams
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING)# && !DO_NOTHING
+$threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 #$threads << Thread.new { start_histories }           if (UPDATE_HISTORY    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
