@@ -25,6 +25,8 @@ Eddy's TODO list for inne:
 - Unify "search" and "browse" for ease of use.
 - Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
 - Userlevel of the day
+- Unify names: Authors who have changed username, group by author id and change all names to the most recent one.
+- Add Metanet levels to the db.
 
 Less priority:
 - Demo analysis.
