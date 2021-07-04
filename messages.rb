@@ -382,18 +382,14 @@ def send_suggestions(event)
   player = parse_player(msg, event.user.name)
   type = parse_type(msg)
   tabs = parse_tabs(msg)
-  n = NUM_ENTRIES / 2
 
-  improvable = player.improvable_scores(type, tabs, n)
+  improvable = player.improvable_scores(type, tabs, NUM_ENTRIES)
   padding = improvable.map{ |level, gap| gap }.max.to_i.to_s.length + 4
-
   improvable = improvable.map { |level, gap| "#{'%-10s' % [level]} - #{"%#{padding}.3f" % [gap]}" }.join("\n")
-  missing = player.missing_top_ns(type, tabs, 20, false).sample(n).join("\n")
 
-  type = type.to_s.downcase
-  tabs = tabs.empty? ? "" :  " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
-
-  event << "#{n} most improvable #{type}s#{tabs} for #{player.print_name}:\n```#{improvable}```#{player.print_name} is not on the board for:\n```\n#{missing}```"
+  tabs = format_tabs(tabs)
+  type = format_type(type).downcase
+  event << "Most improvable #{tabs}#{type} scores for #{player.print_name}:\n#{format_block(improvable)}"
 end
 
 def send_level_id(event)

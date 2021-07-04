@@ -344,24 +344,24 @@ module HighScore
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
   end
 
-  def get_scores
+  def get_data(uri_proc, data_proc, err)
     initial_id = get_last_steam_id
     attempts ||= 0
-    response = Net::HTTP.get_response(scores_uri(initial_id))
+    response = Net::HTTP.get_response(uri_proc.call(initial_id))
     while response.body == INVALID_RESP
       deactivate_last_steam_id
       update_last_steam_id
       break if get_last_steam_id == initial_id
-      response = Net::HTTP.get_response(scores_uri(get_last_steam_id))
+      response = Net::HTTP.get_response(uri_proc.call(get_last_steam_id))
     end
     return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
     activate_last_steam_id
-    correct_ties(clean_scores(JSON.parse(response.body)['scores']))
+    data_proc.call(response.body)
   rescue => e
     if (attempts += 1) < RETRIES
       if SHOW_ERRORS
-        err("error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}: #{e}")
+        err("#{err}: #{e}")
       end
       retry
     else
@@ -369,22 +369,18 @@ module HighScore
     end
   end
 
+  def get_scores
+    uri  = Proc.new { |steam_id| scores_uri(steam_id) }
+    data = Proc.new { |data| correct_ties(clean_scores(JSON.parse(data)['scores'])) }
+    err  = "error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}"
+    get_data(uri, data, err)
+  end
+
   def get_replay(replay_id)
-    initial_id = get_last_steam_id
-    response = Net::HTTP.get_response(replay_uri(initial_id, replay_id))
-    while response.body == INVALID_RESP
-      update_last_steam_id
-      break if get_last_steam_id == initial_id
-      response = Net::HTTP.get_response(replay_uri(get_last_steam_id, replay_id))
-    end
-    return nil if response.body == INVALID_RESP
-    raise "502 Bad Gateway" if response.code.to_i == 502
-    response.body
-  rescue => e
-    if SHOW_ERRORS
-      err("error getting replay with id #{replay_id}: #{e}")
-    end
-    retry
+    uri  = Proc.new { |steam_id| replay_uri(steam_id, replay_id) }
+    data = Proc.new { |data| data }
+    err  = "error getting replay with id #{replay_id} for #{self.class.to_s.downcase} with id #{self.id.to_s}"
+    get_data(uri, data, err)
   end
 
   # Remove hackers and cheaters both by implementing the ignore lists and the score thresholds.
