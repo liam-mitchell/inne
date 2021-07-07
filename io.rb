@@ -315,6 +315,10 @@ def format_pair(arr)
   "[" + format_entry(arr[0]) + "] vs. [" + format_entry(arr[1]) + "]"
 end
 
+def format_block(str)
+  "```\n#{str}```"
+end
+
 def send_file(event, data, name = "result.txt", binary = false)
   tmpfile = File.join(Dir.tmpdir, name)
   File::open(tmpfile, "w", crlf_newline: !binary) do |f|

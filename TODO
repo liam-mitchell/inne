@@ -11,6 +11,7 @@ Eddy's TODO list for inne:
 - Compare local scores (nprofile) vs server scores to find differences, a la NReality Score Comparer.
 - Look for N++ activity on Twitch using some ruby gem for twitch API, scan every few minutes and post on #content-creation whenever someone starts streaming it.
 - Add different past aliases from a player (e.g. "asleep at the wheel" and "drunk driver" for MaelstroM")
+- Add total <rank> score, and show total score and total 19th score gained daily and weekly.
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.
