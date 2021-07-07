@@ -151,29 +151,39 @@ def send_spreads(event)
   event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player.print_name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
-def send_scores(event)
+def send_scores(event, map = nil, ret = false)
   msg     = event.content
   offline = !!(msg[/offline/i])
-  scores  = parse_level_or_episode(msg)
+  scores = map.nil? ? parse_level_or_episode(msg) : map
   if OFFLINE_STRICT
-    event.send_message("Strict offline mode is ON, sending local cached scores.\n")
+    event << "Strict offline mode is ON, sending local cached scores.\n"
   elsif !offline && scores.update_scores == -1
-    event.send_message("Connection to the server failed, sending local cached scores.\n")
+    event << "Connection to the server failed, sending local cached scores.\n"
+  end
+
+  event << "Current high scores for #{scores.format_name}:\n```#{scores.format_scores(scores.max_name_length) rescue ""}```"
+  if scores.is_a?(Episode)
+    clean = scores.cleanliness[1]
+    event << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
   end
 
   # Send immediately here - using << delays sending until after the event has been processed,
   # and we want to download the scores for the episode in the background after sending since it
-  # takes a few seconds
-  event.send_message("Current high scores for #{scores.format_name}:\n```#{scores.format_scores(scores.max_name_length) rescue ""}```")
+  # takes a few seconds.
+  res = ""
+  res = event.drain_into(res)
+  if ret
+    return res
+  else
+    event.send_message(res)
+  end
 
   if scores.is_a?(Episode)
-    clean = scores.cleanliness[1]
-    event.send_message("The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round])
     Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores) if !offline && !OFFLINE_STRICT
   end
 end
 
-def send_screenshot(event, map = nil)
+def send_screenshot(event, map = nil, ret = false)
   msg = event.content
   scores = map.nil? ? parse_level_or_episode(msg) : map
   name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
@@ -181,10 +191,55 @@ def send_screenshot(event, map = nil)
   screenshot = "screenshots/#{name}.jpg"
 
   if File.exist? screenshot
-    event.attach_file(File::open(screenshot))
-    event << "Screenshot for " + (scores.class == Level ? "#{scores.longname} (#{scores.name})" : scores.name)
+    str  = "Screenshot for " + (scores.class == Level ? "#{scores.longname} (#{scores.name})" : scores.name)
+    file = File::open(screenshot)
+    if ret
+      return [file, str]
+    else
+      event.send_file(file, caption: str)
+    end
   else
-    event << "I don't have a screenshot for #{scores.format_name}... :("
+    str = "I don't have a screenshot for #{scores.format_name}... :("
+    if ret
+      return [nil, str]
+    else
+      event.send_message(str)
+    end
+  end
+end
+
+def send_screenscores(event)
+  msg = event.content
+  map = parse_level_or_episode(msg)
+  ss  = send_screenshot(event, map, true)
+  s   = send_scores(event, map, true)
+
+  if ss[0].nil?
+    event.send_message(ss[1])
+  else
+    event.send_file(ss[0], caption: ss[1])
+  end
+
+  sleep(0.05)
+
+  event.send_message(s)
+
+end
+
+def send_scoreshot(event)
+  msg = event.content
+  map = parse_level_or_episode(msg)
+  s   = send_scores(event, map, true)
+  ss  = send_screenshot(event, map, true)
+
+  event.send_message(s)
+
+  sleep(0.05)
+
+  if ss[0].nil?
+    event.send_message(ss[1])
+  else
+    event.send_file(ss[0], caption: ss[1])
   end
 end
 
@@ -1147,13 +1202,15 @@ def respond(event)
   send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /table/i && msg !~ /floating/i && msg !~ /legrange/i
   send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i && !!msg[NAME_PATTERN, 2]
   send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i && msg !~ /table/i
-  send_scores(event)         if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
+  send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
   send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
   send_top_n_count(event)    if msg =~ /how many/i && msg !~ /point/i
   send_table(event)          if msg =~ /\btable\b/i
   send_comparison(event)     if msg =~ /compare/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
   send_screenshot(event)     if msg =~ /screenshot/i
+  send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
+  send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
   send_suggestions(event)    if msg =~ /worst/i && msg !~ /nightmare/i
   send_list(event)           if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
   send_missing(event)        if msg =~ /missing/i

@@ -158,23 +158,23 @@ end
 
 def format_string(str, padding = DEFAULT_PADDING)
   if SCORE_PADDING > 0 # FIXED padding mode
-    "%-#{"%d" % [SCORE_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, SCORE_PADDING - 1) : str]
+    "%-#{"%d" % [SCORE_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, SCORE_PADDING) : str]
   else                 # VARIABLE padding mode
     if MAX_PADDING > 0   # maximum padding supplied
       if padding > 0       # valid padding
         if padding <= MAX_PADDING 
-          "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding - 1) : str]
+          "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding) : str]
         else
-          "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, MAX_PADDING - 1) : str]
+          "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, MAX_PADDING) : str]
         end
       else                 # invalid padding
-        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING - 1) : str]
+        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING) : str]
       end
     else                 # maximum padding not supplied
       if padding > 0       # valid padding
-        "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding - 1) : str]
+        "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding) : str]
       else                 # invalid padding
-        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING - 1) : str]
+        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING) : str]
       end
     end
   end
