@@ -15,6 +15,8 @@
 # 5) Create, migrate and seed a database named "inne". Make sure to use MySQL
 #    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
 #    care of the bot for a copy of the database (see Contact).
+# 6) Install Ruby 2.7 to maximize compatibility, then run the Bundler to
+#    obtain the correct version of all gems (libraries).
 #
 # Contact: https://discord.gg/nplusplus
 

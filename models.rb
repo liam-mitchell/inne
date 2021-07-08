@@ -345,8 +345,8 @@ module HighScore
   end
 
   def get_data(uri_proc, data_proc, err)
-    initial_id = get_last_steam_id
     attempts ||= 0
+    initial_id = get_last_steam_id
     response = Net::HTTP.get_response(uri_proc.call(initial_id))
     while response.body == INVALID_RESP
       deactivate_last_steam_id
@@ -1257,6 +1257,7 @@ class Demo < ActiveRecord::Base
     initial_id = get_last_steam_id
     response = Net::HTTP.get_response(demo_uri(initial_id))
     while response.body == INVALID_RESP
+      deactivate_last_steam_id
       update_last_steam_id
       break if get_last_steam_id == initial_id
       response = Net::HTTP.get_response(demo_uri(get_last_steam_id))
@@ -1264,6 +1265,7 @@ class Demo < ActiveRecord::Base
     return 1 if response.code.to_i == 200 && response.body.empty? # replay does not exist
     return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
+    activate_last_steam_id
     response.body
   rescue => e
     if (attempts += 1) < RETRIES
