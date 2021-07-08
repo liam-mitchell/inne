@@ -29,7 +29,7 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST           = true # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true # Log new weekly scores that appear in the report
 ATTEMPT_LIMIT  = 5     # Redownload attempts before skipping
@@ -41,7 +41,7 @@ CHANNEL_ID     = 210778111594332181 # #highscores
 USERLEVELS_ID  = 221721273405800458 # #mapping
 NV2_ID         = 197774025844457472 # #nv2
 CONTENT_ID     = 197793786389200896 # #content-creation
-TWITCH_ROLE    = "voyeur"           # Discord role for those that want to be pinged when a new stream happens
+TWITCH_ROLE    = "Voyeur"           # Discord role for those that want to be pinged when a new stream happens
 POTATO         = true               # joke they have in the nv2 channel
 POTATO_RATE    = 1                  # seconds between potato checks
 POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
@@ -50,8 +50,8 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
-DO_NOTHING        = true # 'true' sets all the following ones to false
-DO_EVERYTHING     = false  # 'true' sets all the following ones to true
+DO_NOTHING        = false # 'true' sets all the following ones to false
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
 UPDATE_STATUS     = true  # Thread to regularly update the bot's status
 UPDATE_TWITCH     = true  # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = true  # Thread to regularly download Metanet's scores
@@ -218,7 +218,7 @@ def update_twitch
       if old_streams.key?(game)
         list.each{ |stream|
           if !old_streams[game].map{ |s| s['id'] }.include?(stream['id'])
-            $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming #{game}! https://www.twitch.tv/#{stream['user_login']}")
+            $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>")
           end
         }
       end
