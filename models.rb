@@ -662,11 +662,18 @@ class Score < ActiveRecord::Base
 
   # Alternative method to perform rankings which outperforms the Player approach
   # since we leave all the heavy lifting to the SQL interface instead of Ruby.
-  def self.rank(ranking, type, tabs, ties = false, n = 0, full = false)
+  def self.rank(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
     type = Level if ranking == :avg_lead && (type.nil? || type.is_a?(Array)) # avg lead only works with 1 type
-    scores = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
-    scores = scores.where(tab: tabs) if !tabs.empty?
+    req = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
+    req = req.where(tab: tabs) if !tabs.empty?
     bench(:start) if BENCHMARK
+
+    # Preprocessing to ignore players
+    if !players.empty?
+      scores = req.where.not(player: players)
+    else
+      scores = req
+    end
 
     case ranking
     when :rank
@@ -735,6 +742,10 @@ class Score < ActiveRecord::Base
                     .to_h
     ret = scores.map{ |p, c| [players[p], c] }
     ret.reject!{ |p, c| c <= 0  } unless ranking == :avg_rank
+
+    # Postprocessing to unignore players
+
+
     bench(:step) if BENCHMARK
     ret
   end

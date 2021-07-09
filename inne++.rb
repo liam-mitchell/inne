@@ -29,9 +29,9 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST           = false # Switch to the local test bot
+TEST           = true  # Switch to the local test bot
 LOG            = false # Export logs and errors into external file
-LOG_REPORT     = true # Log new weekly scores that appear in the report
+LOG_REPORT     = true  # Log new weekly scores that appear in the report
 ATTEMPT_LIMIT  = 5     # Redownload attempts before skipping
 WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
 DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
@@ -50,8 +50,8 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
-DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
+DO_NOTHING        = true  # 'true' sets all the following ones to false
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
 UPDATE_STATUS     = true  # Thread to regularly update the bot's status
 UPDATE_TWITCH     = true  # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = true  # Thread to regularly download Metanet's scores

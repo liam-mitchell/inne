@@ -49,45 +49,46 @@ def send_rankings(event)
   rank = parse_rank(msg) || 1
   full = parse_global(msg)
   ties = !!(msg =~ /ties/i)
+  play = parse_many_players(msg)
 
   if msg =~ /average/i
     if msg =~ /point/i
-      rankings = Score.rank(:avg_points, type, tabs, ties, nil, full)
+      rankings = Score.rank(:avg_points, type, tabs, ties, nil, full, play)
       header   = "average point rankings "
       max      = find_max(:avg_points, type, tabs)
       avg_msg  = true
     elsif msg =~ /lead/i
-      rankings = Score.rank(:avg_lead, type, tabs, nil, nil, full)
+      rankings = Score.rank(:avg_lead, type, tabs, nil, nil, full, play)
       header   = "average lead rankings "
       max      = nil
     else
-      rankings = Score.rank(:avg_rank, type, tabs, ties, nil, full)
+      rankings = Score.rank(:avg_rank, type, tabs, ties, nil, full, play)
       header   = "average rank rankings "
       max      = find_max(:avg_rank, type, tabs)
       avg_msg  = true
     end
   elsif msg =~ /point/i
-    rankings = Score.rank(:points, type, tabs, ties, nil, full)
+    rankings = Score.rank(:points, type, tabs, ties, nil, full, play)
     header   = "point rankings "
     max      = find_max(:points, type, tabs)
   elsif msg =~ /score/i
-    rankings = Score.rank(:score, type, tabs, nil, nil, full)
+    rankings = Score.rank(:score, type, tabs, nil, nil, full, play)
     header   = "score rankings "
     max      = find_max(:score, type, tabs)
   elsif msg =~ /tied/i
-    rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1, full)
+    rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1, full, play)
     header   = "tied #{format_rank(rank)} rankings "
     max      = find_max(:rank, type, tabs)
   elsif msg =~ /maxed/i
-    rankings = Score.rank(:maxed, type, tabs, nil, nil, full)
+    rankings = Score.rank(:maxed, type, tabs, nil, nil, full, play)
     header   = "maxed score rankings "
     max      = find_max(:maxed, type, tabs)
   elsif msg =~ /maxable/i
-    rankings = Score.rank(:maxable, type, tabs, nil, nil, full)
+    rankings = Score.rank(:maxable, type, tabs, nil, nil, full, play)
     header   = "maxable score rankings "
     max      = find_max(:maxable, type, tabs)
   else
-    rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full)
+    rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full, play)
     rank     = format_rank(rank)
     max      = find_max(:rank, type, tabs)
     ties     = (ties ? "with ties " : "")
@@ -103,7 +104,7 @@ def send_rankings(event)
   name_padding = top.map{ |r| r[0].print_name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
 
-  header = "#{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header} #{format_max(max)} #{format_time}:"
+  header = "#{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header} #{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
   top    = "```" + top.each_with_index
               .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
               .join("\n") + "```"
@@ -161,11 +162,12 @@ def send_scores(event, map = nil, ret = false)
     event << "Connection to the server failed, sending local cached scores.\n"
   end
 
-  event << "Current high scores for #{scores.format_name}:\n```#{scores.format_scores(scores.max_name_length) rescue ""}```"
+  str = "Current high scores for #{scores.format_name}:\n```#{scores.format_scores(scores.max_name_length) rescue ""}```"
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
-    event << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
+    str += "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
   end
+  event << str
 
   # Send immediately here - using << delays sending until after the event has been processed,
   # and we want to download the scores for the episode in the background after sending since it

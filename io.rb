@@ -90,6 +90,20 @@ def parse_players(msg, username, userlevel = false)
   [p1, p2]
 end
 
+def parse_many_players(msg, userlevel = false)
+  playerClass = userlevel ? UserlevelPlayer : Player
+  msg = msg[/without (.*)/i, 1] || ""  
+  players = msg.split(/,|\band\b|\bor\b/i).flatten.map(&:strip).reject(&:empty?)
+  #pl = msg.scan(/#{parse_term}/i).map(&:second)
+  players.map!{ |name|
+    p = playerClass.where.not(metanet_id: nil).find_by(name: name)
+    p.nil? ? name : p
+  }
+  errors = players.select{ |p| p.is_a?(String) }
+  raise "#{format_sentence(errors)} #{errors.size == 1 ? "doesn't" : "don't"} have any high scores! Either you misspelled the name, or they're exceptionally bad... " if errors.size > 0
+  players
+end
+
 def parse_video_author(msg)
   return msg[/by (.*)[\.\?]?\Z/i, 1]
 end
@@ -317,6 +331,12 @@ end
 
 def format_block(str)
   "```\n#{str}```"
+end
+
+def format_sentence(e)
+  return e[0].to_s if e.size == 1
+  e[-2] = e[-2].to_s + " and #{e[-1].to_s}"
+  e[0..-2].map(&:to_s).join(", ")
 end
 
 def send_file(event, data, name = "result.txt", binary = false)
