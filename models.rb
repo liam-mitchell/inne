@@ -7,7 +7,7 @@ include ChunkyPNG::Color
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = true  # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = false # benchmark and log functions (for optimization)
+BENCHMARK       = true # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
 DISCORD_LIMIT   = 2000
@@ -663,17 +663,11 @@ class Score < ActiveRecord::Base
   # Alternative method to perform rankings which outperforms the Player approach
   # since we leave all the heavy lifting to the SQL interface instead of Ruby.
   def self.rank(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
+    return rank_exclude(ranking, type, tabs, ties, n, full, players) if !players.empty?
     type = Level if ranking == :avg_lead && (type.nil? || type.is_a?(Array)) # avg lead only works with 1 type
-    req = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
-    req = req.where(tab: tabs) if !tabs.empty?
+    scores = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
+    scores = scores.where(tab: tabs) if !tabs.empty?
     bench(:start) if BENCHMARK
-
-    # Preprocessing to ignore players
-    if !players.empty?
-      scores = req.where.not(player: players)
-    else
-      scores = req
-    end
 
     case ranking
     when :rank
@@ -743,11 +737,27 @@ class Score < ActiveRecord::Base
     ret = scores.map{ |p, c| [players[p], c] }
     ret.reject!{ |p, c| c <= 0  } unless ranking == :avg_rank
 
-    # Postprocessing to unignore players
-
-
     bench(:step) if BENCHMARK
     ret
+  end
+
+  def self.rank_exclude(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
+    bench(:start) if BENCHMARK
+    pids = players.map(&:id)
+    p = {}
+    type = [Level, Episode] if type.nil?
+    [type].flatten.each{ |t|
+      (tabs.empty? ? t.all : t.where(tab: tabs)).each{ |e|
+        log e.name
+        tied = 0 # TODO: account for ties
+        e.scores.reject{ |s| pids.include?(s.player_id) }.sort_by{ |s| s.rank }.each_with_index{ |s, i|
+          p[s.player_id] = 0 if !p.key?(s.player_id)
+          p[s.player_id] += 1 if i <= n
+        }
+      }
+    }
+    bench(:step) if BENCHMARK
+    p.sort_by{ |id, c| -c }.take(NUM_ENTRIES).map{ |id, c| [Player.find(id), c] }
   end
 
   def self.total_scores(type, tabs, secrets)
