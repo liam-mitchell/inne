@@ -735,29 +735,57 @@ class Score < ActiveRecord::Base
                     .map{ |p| [p.id, p] }
                     .to_h
     ret = scores.map{ |p, c| [players[p], c] }
-    ret.reject!{ |p, c| c <= 0  } unless ranking == :avg_rank
+    ret.reject!{ |p, c| c <= 0  } unless [:avg_rank, :avg_lead].include?(ranking)
 
     bench(:step) if BENCHMARK
     ret
   end
 
+  # Rankings excluding specified players. Less optimized than the function above
+  # because I couldn't find a way to ignore them other than loop through all levels
+  # on a one by one basis.
   def self.rank_exclude(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
     bench(:start) if BENCHMARK
     pids = players.map(&:id)
-    p = {}
+    p = Player.pluck(:id).map{ |id| [id, 0] }.to_h
     type = [Level, Episode] if type.nil?
+    t_rank = 0
+    t_score = -1
+
     [type].flatten.each{ |t|
       (tabs.empty? ? t.all : t.where(tab: tabs)).each{ |e|
         log e.name
-        tied = 0 # TODO: account for ties
+        t_rank = 0
+        t_score = 3000.0
         e.scores.reject{ |s| pids.include?(s.player_id) }.sort_by{ |s| s.rank }.each_with_index{ |s, i|
-          p[s.player_id] = 0 if !p.key?(s.player_id)
-          p[s.player_id] += 1 if i <= n
+          if s.score < t_score
+            t_rank = i
+            t_score = s.score
+          end
+
+          case ranking
+          when :rank
+            (ties ? t_rank : i) <= n ? p[s.player_id] += 1 : break
+          when :tied_rank
+            t_rank <= n ? (i <= n ? next : p[s.player_id] += 1) : break
+          when :points
+            p[s.player_id] += 20 - (ties ? t_rank : i)
+#          when :avg_points            
+#          when :avg_rank
+#          when :avg_lead
+#          when :score
+#          when :maxed
+#          when :maxable
+          end
         }
       }
     }
+
     bench(:step) if BENCHMARK
-    p.sort_by{ |id, c| -c }.take(NUM_ENTRIES).map{ |id, c| [Player.find(id), c] }
+    p.sort_by{ |id, c| -c }
+     .take(NUM_ENTRIES)
+     .reject{ |id, c| c == 0 unless [:avg_rank, :avg_lead].include?(ranking) }
+     .map{ |id, c| [Player.find(id), c] }
   end
 
   def self.total_scores(type, tabs, secrets)

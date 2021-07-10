@@ -76,7 +76,7 @@ def send_rankings(event)
     header   = "score rankings "
     max      = find_max(:score, type, tabs)
   elsif msg =~ /tied/i
-    rankings = Score.rank(:tied_rank, type, tabs, ties, rank - 1, full, play)
+    rankings = Score.rank(:tied_rank, type, tabs, true, rank - 1, full, play)
     header   = "tied #{format_rank(rank)} rankings "
     max      = find_max(:rank, type, tabs)
   elsif msg =~ /maxed/i
