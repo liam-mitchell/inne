@@ -7,7 +7,7 @@ include ChunkyPNG::Color
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = true  # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = true # benchmark and log functions (for optimization)
+BENCHMARK       = false # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
 DISCORD_LIMIT   = 2000
@@ -663,10 +663,11 @@ class Score < ActiveRecord::Base
   # Alternative method to perform rankings which outperforms the Player approach
   # since we leave all the heavy lifting to the SQL interface instead of Ruby.
   def self.rank(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
-    return rank_exclude(ranking, type, tabs, ties, n, full, players) if !players.empty?
+    return rank_exclude(ranking, type, tabs, ties, n, full, players) if !players.empty? && [:rank, :tied_rank, :points, :avg_points, :avg_rank, :avg_lead].include?(ranking)
     type = Level if ranking == :avg_lead && (type.nil? || type.is_a?(Array)) # avg lead only works with 1 type
     scores = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
     scores = scores.where(tab: tabs) if !tabs.empty?
+    scores = scores.where.not(player: players) if !players.empty?
     bench(:start) if BENCHMARK
 
     case ranking
@@ -716,17 +717,17 @@ class Score < ActiveRecord::Base
                      .sum(:score)
                      .map{ |id, c| [id, round_score(c)] }
     when :maxed
-      scores = Score.where(highscoreable_id: HighScore.ties(type, tabs, nil, true, true))
-                    .where("tied_rank = 0")   
-                    .group(:player_id)
-                    .order("count(id) desc")
-                    .count(:id)
+      scores = scores.where(highscoreable_id: HighScore.ties(type, tabs, nil, true, true))
+                     .where("tied_rank = 0")   
+                     .group(:player_id)
+                     .order("count(id) desc")
+                     .count(:id)
     when :maxable
-      scores = Score.where(highscoreable_id: HighScore.ties(type, tabs, nil, false, true))
-                    .where("tied_rank = 0")   
-                    .group(:player_id)
-                    .order("count(id) desc")
-                    .count(:id)
+      scores = scores.where(highscoreable_id: HighScore.ties(type, tabs, nil, false, true))
+                     .where("tied_rank = 0")   
+                     .group(:player_id)
+                     .order("count(id) desc")
+                     .count(:id)
     end
 
     scores = scores.take(NUM_ENTRIES) if !full
@@ -748,21 +749,24 @@ class Score < ActiveRecord::Base
     bench(:start) if BENCHMARK
     pids = players.map(&:id)
     p = Player.pluck(:id).map{ |id| [id, 0] }.to_h
+    q = Player.pluck(:id).map{ |id| [id, 0] }.to_h
     type = [Level, Episode] if type.nil?
     t_rank = 0
     t_score = -1
 
     [type].flatten.each{ |t|
       (tabs.empty? ? t.all : t.where(tab: tabs)).each{ |e|
-        log e.name
         t_rank = 0
         t_score = 3000.0
+        if ranking == :avg_lead
+          a_id = -1
+          a_score = -1
+        end
         e.scores.reject{ |s| pids.include?(s.player_id) }.sort_by{ |s| s.rank }.each_with_index{ |s, i|
           if s.score < t_score
             t_rank = i
             t_score = s.score
           end
-
           case ranking
           when :rank
             (ties ? t_rank : i) <= n ? p[s.player_id] += 1 : break
@@ -770,19 +774,32 @@ class Score < ActiveRecord::Base
             t_rank <= n ? (i <= n ? next : p[s.player_id] += 1) : break
           when :points
             p[s.player_id] += 20 - (ties ? t_rank : i)
-#          when :avg_points            
-#          when :avg_rank
-#          when :avg_lead
-#          when :score
-#          when :maxed
-#          when :maxable
+          when :avg_points
+            p[s.player_id] += 20 - (ties ? t_rank : i)
+            q[s.player_id] += 1
+          when :avg_rank
+            p[s.player_id] += ties ? t_rank : i
+            q[s.player_id] += 1
+          when :avg_lead
+            if i == 0
+              a_id = s.player_id
+              a_score = s.score
+            elsif i == 1
+              p[a_id] += a_score - s.score
+              q[a_id] += 1
+            else
+              break
+            end
           end
         }
       }
     }
 
     bench(:step) if BENCHMARK
-    p.sort_by{ |id, c| -c }
+    p = p.select{ |id, c| q[id] > (ranking == :avg_lead ? 0 : min_scores(type, tabs)) }
+         .map{ |id, c| [id, c.to_f / q[id]] }
+         .to_h if [:avg_points, :avg_rank, :avg_lead].include?(ranking)
+    p.sort_by{ |id, c| ranking == :avg_rank ? c : -c }
      .take(NUM_ENTRIES)
      .reject{ |id, c| c == 0 unless [:avg_rank, :avg_lead].include?(ranking) }
      .map{ |id, c| [Player.find(id), c] }

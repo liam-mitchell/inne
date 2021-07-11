@@ -314,7 +314,7 @@ def format_full(full)
 end
 
 def format_max(max)
-  !max.nil? ? "[MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ""
+  !max.nil? ? " [MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ""
 end
 
 def format_author(name)

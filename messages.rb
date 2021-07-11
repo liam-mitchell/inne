@@ -47,7 +47,7 @@ def send_rankings(event)
   type = parse_type(msg)
   tabs = parse_tabs(msg)
   rank = parse_rank(msg) || 1
-  full = parse_global(msg)
+  full = parse_global(msg) || parse_full(msg)
   ties = !!(msg =~ /ties/i)
   play = parse_many_players(msg)
 
@@ -104,7 +104,7 @@ def send_rankings(event)
   name_padding = top.map{ |r| r[0].print_name.length }.max
   format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
 
-  header = "#{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header} #{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
+  header = "#{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header}#{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
   top    = "```" + top.each_with_index
               .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
               .join("\n") + "```"
@@ -353,7 +353,7 @@ def send_maxable(event)
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
   player = player.nil? ? "" : " without " + player.print_name
-  event << "#{tabs}#{type}s with the most ties for 0th #{format_time}#{player}:\n#{format_max(20)}```\n#{ties}```"
+  event << "#{tabs}#{type}s with the most ties for 0th#{format_max(20)} #{format_time}#{player}:\n```\n#{ties}```"
 end
 
 def send_maxed(event)
@@ -412,7 +412,7 @@ def send_ownages(event)
 
   tabs_s = tabs.empty? ? "All " : format_tabs(tabs)
   tabs_e = tabs.empty? ? "" : format_tabs(tabs)
-  event << "#{tabs_s}episode ownages #{format_max(find_max(:rank, Episode, tabs))} #{format_time}:#{block}There're a total of #{count} #{tabs_e}episode ownages."
+  event << "#{tabs_s}episode ownages#{format_max(find_max(:rank, Episode, tabs))} #{format_time}:#{block}There're a total of #{count} #{tabs_e}episode ownages."
   send_file(event, list, "ownages.txt") if count > 20
 end
 
