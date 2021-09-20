@@ -1222,6 +1222,10 @@ class Video < ActiveRecord::Base
   end
 end
 
+class Challenge < ActiveRecord::Base
+  belongs_to :level
+end
+
 class Archive < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
