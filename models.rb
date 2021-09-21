@@ -542,11 +542,17 @@ class Level < ActiveRecord::Base
   include HighScore
   has_many :scores, as: :highscoreable
   has_many :videos, as: :highscoreable
+  has_many :challenges
   belongs_to :episode
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 
   def format_name
     "#{longname} (#{name})"
+  end
+
+  def format_challenges
+    pad = challenges.map{ |c| c.count }.max
+    challenges.map{ |c| c.format(pad) }.join("\n")
   end
 end
 
@@ -1224,6 +1230,38 @@ end
 
 class Challenge < ActiveRecord::Base
   belongs_to :level
+
+  def objs
+    {
+      "G" => self.g,
+      "T" => self.t,
+      "O" => self.o,
+      "C" => self.c,
+      "E" => self.e
+    }
+  end
+
+  def type
+    index == 0 ? '!' : '?'
+  end
+
+  def count
+    objs.select{ |k, v| v != 0 }.count
+  end
+
+  def format_type
+    "[" + type * count + "]"
+  end
+
+  def format_objs
+    objs.map{ |k, v|
+      v == 1 ? "#{k}++" : (v == -1 ? "#{k}--" : "")
+    }.join
+  end
+
+  def format(pad)
+    format_type + " " * [1, pad - count + 1].max + format_objs
+  end
 end
 
 class Archive < ActiveRecord::Base
@@ -1257,7 +1295,7 @@ class Archive < ActiveRecord::Base
   end
 
   def demo
-    Demo.find(self.d).demo
+    Demo.find(self.id).demo
   end
 
 end

@@ -656,6 +656,14 @@ def send_random(event)
   end
 end
 
+def send_challenges(event)
+  msg = event.content
+  lvl = parse_level_or_episode(msg)
+  raise "#{lvl.class.to_s.pluralize.capitalize} don't have challenges!" if lvl.class != Level
+  raise "#{lvl.tab.to_s} levels don't have challenges!" if ["SI", "SL"].include?(lvl.tab.to_s)
+  event << "Challenges for #{lvl.longname} (#{lvl.name}):\n#{format_block(lvl.format_challenges)}"
+end
+
 def send_diff(event)
   type = parse_type(event.content) || Level
   current = get_current(type)
@@ -1222,6 +1230,7 @@ def respond(event)
   add_steam_id(event)        if msg =~ /my steam id is/i
   add_display_name(event)    if msg =~ /my display name is/i
   send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
+  send_challenges(event)     if msg =~ /\bchallenges\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   send_twitch(event)         if msg =~ /\btwitch\b/i
   faceswap(event)            if msg =~ /faceswap/i
