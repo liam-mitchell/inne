@@ -76,7 +76,8 @@ IGNORED_PLAYERS = [
   "test8378",
   "VexatiousCheff",
   "vex",
-  "DBYT3"
+  "DBYT3",
+  "Yup_This_Is_My_Name"
 ]
 
 # Problematic hackers? We get rid of them by banning their user IDs
@@ -87,7 +88,8 @@ IGNORED_IDS = [
   253161, # Chara
   253072, # test8378
   221472, # VexatiousCheff / vex
-  276273  # DBYT3
+  276273, # DBYT3
+  291743  # Yup_This_Is_My_Name
 ]
 
 # Individually patched runs from legitimate players because they were done
