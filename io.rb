@@ -10,7 +10,7 @@ STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
 NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
 
 def parse_type(msg)
-  (msg[/level/i] ? Level : (msg[/episode/i] ? Episode : ((msg[/\bstory\b/i] || msg[/\bcolumn/i] || msg[/hard\s*core/i] || msg[/\bhc\b/i]) ? Story : nil)))
+  ((msg[/level/i] || msg[/lotd/i]) ? Level : ((msg[/episode/i] || msg[/eotw/i]) ? Episode : ((msg[/\bstory\b/i] || msg[/\bcolumn/i] || msg[/hard\s*core/i] || msg[/\bhc\b/i] || msg[/cotm/i]) ? Story : nil)))
 end
 
 def normalize_name(name)
