@@ -29,43 +29,53 @@ require 'byebug'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-TEST           = false  # Switch to the local test bot
+# Development variables
+TEST           = true  # Switch to the local test bot
+TEST_REPORT    = true  # Produces the report immediately once
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true  # Log new weekly scores that appear in the report
+
+# Internal variables
 ATTEMPT_LIMIT  = 5     # Redownload attempts before skipping
 WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
 DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
+
+# Discord variables
 SERVER_ID      = 197765375503368192 # N++ Server
 CHANNEL_ID     = 210778111594332181 # #highscores
 USERLEVELS_ID  = 221721273405800458 # #mapping
 NV2_ID         = 197774025844457472 # #nv2
 CONTENT_ID     = 197793786389200896 # #content-creation
 TWITCH_ROLE    = "Voyeur"           # Discord role for those that want to be pinged when a new stream happens
+
+# Jokes
 POTATO         = true               # joke they have in the nv2 channel
 POTATO_RATE    = 1                  # seconds between potato checks
 POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
 MISHU          = true               # MishNUB joke
 MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 
+# Individual flags for each thread / task
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
-UPDATE_STATUS     = true  # Thread to regularly update the bot's status
-UPDATE_TWITCH     = true  # Thread to regularly look up N related Twitch streams
-UPDATE_SCORES     = true  # Thread to regularly download Metanet's scores
-UPDATE_HISTORY    = true  # Thread to regularly update highscoring histories
-UPDATE_DEMOS      = true  # Thread to regularly download missing Metanet demos
-UPDATE_LEVEL      = true  # Thread to regularly publish level of the day
-UPDATE_EPISODE    = true  # Thread to regularly publish episode of the week
-UPDATE_STORY      = true  # Thread to regularly publish column of the month
-UPDATE_USERLEVELS = true  # Thread to regularly download newest userlevel scores
-UPDATE_USER_GLOB  = true  # Thread to continuously (but slowly) download all userlevel scores
-UPDATE_USER_HIST  = true  # Thread to regularly update userlevel highscoring histories
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
+UPDATE_STATUS     = false # Thread to regularly update the bot's status
+UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
+UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
+UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
+UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
+UPDATE_LEVEL      = false # Thread to regularly publish level of the day
+UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
+UPDATE_STORY      = false # Thread to regularly publish column of the month
+UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
+UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
+UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
 REPORT_METANET    = true  # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = true  # Thread to regularly post userlevels' highscoring report
+REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
+# Update frequencies for each task
 STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
 TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||                60 # every 1 min
 HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
@@ -205,10 +215,12 @@ end
 def update_twitch
   if $content_channel.nil?
     err("not connected to a channel, not sending twitch report")
-    sleep(WAIT)
     raise
   end
-
+  if $twitch_token.nil?
+    $twitch_token = Twitch::get_twitch_token
+    Twitch::update_twitch_streams
+  end
   while(true)
     sleep(WAIT)
     old_streams = $twitch_streams.dup
@@ -226,6 +238,7 @@ def update_twitch
   end  
 rescue => e
   err(e)
+  sleep(WAIT)
   retry
 end
 
@@ -337,22 +350,58 @@ def send_report
     File.write("report_log", log_text)
   end
 
+  sleep(1)
+  # Compute, for levels, episodes and stories, the following quantities:
+  # Seconds of total score gained.
+  # Seconds of total score in 19th gained.
+  # Total number of changes.
+  # Total number of involved players.
+  # Total number of involved highscoreables.
+  total = { "Level" => [0, 0, 0, 0, 0], "Episode" => [0, 0, 0, 0, 0], "Story" => [0, 0, 0, 0, 0] }
+  changes = Archive.where("unix_timestamp(date) > #{time}")
+                   .order('date desc')
+                   .map{ |ar|
+                     total[ar.highscoreable.class.to_s][2] += 1
+                     [ar.metanet_id, ar.highscoreable]
+                   }
+  changes.group_by{ |s| s[1].class.to_s }
+         .each{ |klass, scores|
+                total[klass][3] = scores.uniq{ |s| s[0]    }.size
+                total[klass][4] = scores.uniq{ |s| s[1].id }.size
+              }
+  changes.map{ |h| h[1] }
+         .uniq
+         .each{ |h|
+                total[h.class.to_s][0] += Archive.scores(h, now).first[1] - Archive.scores(h, time).first[1]
+                total[h.class.to_s][1] += Archive.scores(h, now).last[1] - Archive.scores(h, time).last[1]
+              }
+
+  total = total.map{ |klass, n|
+    "• There were **#{n[2]}** new scores by **#{n[3]}** players in **#{n[4]}** #{klass.downcase.pluralize}, making the boards **#{"%.3f" % [n[1].to_f / 60.0]}** seconds harder and increasing the total 0th score by **#{"%.3f" % [n[0].to_f / 60.0]}** seconds."
+  }.join("\n")
+  $channel.send_message("**Summary**:\n" + total)
+
   log("highscoring report sent")  
   return true
 end
 
 def start_report
   begin
-    while true
-      sleep(WAIT) # prevent crazy loops
-      next_report_update = correct_time(get_next_update('report'), REPORT_UPDATE_FREQUENCY)
-      set_next_update('report', next_report_update)
-      delay = next_report_update - Time.now
-      sleep(delay) unless delay < 0
-      next if !send_report
+    if TEST_REPORT
+      raise if !send_report
+    else
+      while true
+        sleep(WAIT) # prevent crazy loops
+        next_report_update = correct_time(get_next_update('report'), REPORT_UPDATE_FREQUENCY)
+        set_next_update('report', next_report_update)
+        delay = next_report_update - Time.now
+        sleep(delay) unless delay < 0
+        next if !send_report
+      end
     end
   rescue => e
     err("error sending highscoring report: #{e}")
+    sleep(WAIT)
     retry
   end
 end
@@ -797,10 +846,6 @@ if !TEST
   puts "Nv2 channel: #{$nv2_channel.name}.        " if !$nv2_channel.nil?
   puts "Content channel: #{$content_channel.name}." if !$content_channel.nil?
 end
-
-# TODO: Put this inside thread to prevent it from blocking Ctrl+C
-$twitch_token = Twitch::get_twitch_token
-Twitch::update_twitch_streams
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING

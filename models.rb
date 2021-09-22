@@ -1284,6 +1284,7 @@ class Archive < ActiveRecord::Base
         }
   end
 
+  # Returns the rank of the player at a particular point in time
   def find_rank(time)
     old_score = Archive.scores(self.highscoreable, time)
                        .each_with_index
