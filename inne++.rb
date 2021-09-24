@@ -30,8 +30,8 @@ require_relative 'models.rb'
 require_relative 'messages.rb'
 
 # Development variables
-TEST           = true  # Switch to the local test bot
-TEST_REPORT    = true  # Produces the report immediately once
+TEST           = false  # Switch to the local test bot
+TEST_REPORT    = false  # Produces the report immediately once
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true  # Log new weekly scores that appear in the report
 
@@ -60,7 +60,7 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false # 'true' sets all the following ones to true
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
@@ -72,7 +72,7 @@ UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-REPORT_METANET    = true  # Thread to regularly post Metanet's highscoring report
+REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
 # Update frequencies for each task
@@ -85,7 +85,8 @@ LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 *
 EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
 STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
 REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
-REPORT_UPDATE_SIZE          = CONFIG['report_period']               ||  7 * 24 * 60 * 60 # last 7 days
+REPORT_UPDATE_SIZE          = CONFIG['report_update_size']          ||  7 * 24 * 60 * 60 # last 7 days
+SUMMARY_UPDATE_SIZE         = CONFIG['summary_update_size']         ||  7 * 24 * 60 * 60 # last 7 days
 USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
 USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
 USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
@@ -286,11 +287,12 @@ def send_report
     return false
   end
 
-  base = Time.new(2020, 9, 3, 0, 0, 0, "+00:00").to_i # when archiving begun
-  time = [Time.now.to_i - REPORT_UPDATE_SIZE, base].max
-  now  = Time.now.to_i
-  pad  = [2, DEFAULT_PADDING, 6, 6, 6, 5, 4]
-  log  = [] if LOG_REPORT
+  base  = Time.new(2020, 9, 3, 0, 0, 0, "+00:00").to_i # when archiving begun
+  time  = [Time.now.to_i - REPORT_UPDATE_SIZE,  base].max
+  time2 = [Time.now.to_i - SUMMARY_UPDATE_SIZE, base].max
+  now   = Time.now.to_i
+  pad   = [2, DEFAULT_PADDING, 6, 6, 6, 5, 4]
+  log   = [] if LOG_REPORT
 
   changes = Archive.where("unix_timestamp(date) > #{time}")
                    .order('date desc')
@@ -340,7 +342,7 @@ def send_report
              .join(" ")
   sep = "-" * (pad.sum + pad.size + 5)
 
-  $channel.send_message("**The highscoring report!** [Last 7 days]```#{header}\n#{sep}\n#{changes}```")
+  $channel.send_message("**The weekly highscoring report!** [Last 7 days]```#{header}\n#{sep}\n#{changes}```")
   if LOG_REPORT
     log_text = log.sort_by{ |name, scores| name }.map{ |name, scores|
       scores.map{ |s|
@@ -358,7 +360,7 @@ def send_report
   # Total number of involved players.
   # Total number of involved highscoreables.
   total = { "Level" => [0, 0, 0, 0, 0], "Episode" => [0, 0, 0, 0, 0], "Story" => [0, 0, 0, 0, 0] }
-  changes = Archive.where("unix_timestamp(date) > #{time}")
+  changes = Archive.where("unix_timestamp(date) > #{time2}")
                    .order('date desc')
                    .map{ |ar|
                      total[ar.highscoreable.class.to_s][2] += 1
@@ -379,7 +381,7 @@ def send_report
   total = total.map{ |klass, n|
     "• There were **#{n[2]}** new scores by **#{n[3]}** players in **#{n[4]}** #{klass.downcase.pluralize}, making the boards **#{"%.3f" % [n[1].to_f / 60.0]}** seconds harder and increasing the total 0th score by **#{"%.3f" % [n[0].to_f / 60.0]}** seconds."
   }.join("\n")
-  $channel.send_message("**Summary**:\n" + total)
+  $channel.send_message("**Daily summary**:\n" + total)
 
   log("highscoring report sent")  
   return true
