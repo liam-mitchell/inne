@@ -30,8 +30,8 @@ require_relative 'models.rb'
 require_relative 'messages.rb'
 
 # Development variables
-TEST           = false  # Switch to the local test bot
-TEST_REPORT    = false  # Produces the report immediately once
+TEST           = true  # Switch to the local test bot
+TEST_REPORT    = true  # Produces the report immediately once
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true  # Log new weekly scores that appear in the report
 
@@ -60,7 +60,7 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
+DO_EVERYTHING     = false  # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
@@ -72,7 +72,7 @@ UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
+REPORT_METANET    = true # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
 # Update frequencies for each task
@@ -86,7 +86,7 @@ EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 *
 STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
 REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
 REPORT_UPDATE_SIZE          = CONFIG['report_update_size']          ||  7 * 24 * 60 * 60 # last 7 days
-SUMMARY_UPDATE_SIZE         = CONFIG['summary_update_size']         ||  7 * 24 * 60 * 60 # last 7 days
+SUMMARY_UPDATE_SIZE         = CONFIG['summary_update_size']         ||  1 * 24 * 60 * 60 # last day
 USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
 USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
 USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
@@ -342,7 +342,7 @@ def send_report
              .join(" ")
   sep = "-" * (pad.sum + pad.size + 5)
 
-  $channel.send_message("**The weekly highscoring report!** [Last 7 days]```#{header}\n#{sep}\n#{changes}```")
+  $channel.send_message("**Weekly highscoring report**:```#{header}\n#{sep}\n#{changes}```")
   if LOG_REPORT
     log_text = log.sort_by{ |name, scores| name }.map{ |name, scores|
       scores.map{ |s|
@@ -381,7 +381,7 @@ def send_report
   total = total.map{ |klass, n|
     "• There were **#{n[2]}** new scores by **#{n[3]}** players in **#{n[4]}** #{klass.downcase.pluralize}, making the boards **#{"%.3f" % [n[1].to_f / 60.0]}** seconds harder and increasing the total 0th score by **#{"%.3f" % [n[0].to_f / 60.0]}** seconds."
   }.join("\n")
-  $channel.send_message("**Daily summary**:\n" + total)
+  $channel.send_message("**Daily highscoring summary**:\n" + total)
 
   log("highscoring report sent")  
   return true
@@ -389,7 +389,7 @@ end
 
 def start_report
   begin
-    if TEST_REPORT
+    if TEST && TEST_REPORT
       raise if !send_report
     else
       while true
@@ -854,7 +854,7 @@ $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO
 $threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
 $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { start_level_of_the_day }
+$threads << Thread.new { start_level_of_the_day }    # No checks here because they're done individually there
 $threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
