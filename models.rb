@@ -16,6 +16,7 @@ SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
 MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
 TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
+COOL            = true  # show cool face for people in the ckc in the scores
 
 MIN_TIES        = 3     # minimum number of ties for 0th to be considered maxable
 MAXMIN_SCORES   = 100   # max-min number of highscores to appear in average point rankings
@@ -506,9 +507,28 @@ module HighScore
     scores.map{ |s| s.player.name.length }.max
   end
 
+  def find_coolness
+    bench(:start) if BENCHMARK
+    max   = scores.map(&:score).max.to_i.to_s.length + 4
+    s1    = scores.first.score.to_s
+    s2    = scores.last.score.to_s
+    d     = (0...max).find{ |i| s1[i] != s2[i] }
+    if !d.nil?
+      d     = -(max - d - 5) - (max - d < 4 ? 1 : 0)
+      cools = scores.size.times.find{ |i| scores[i].score < s1.to_f.truncate(d) }
+    else
+      cools = 0
+    end
+    bench(:step) if BENCHMARK
+    cools
+  rescue => e
+    puts e.backtrace
+    raise
+  end
+
   def format_scores(padding = DEFAULT_PADDING)
     max = scores.map(&:score).max.to_i.to_s.length + 4
-    scores.map{ |s| s.format(padding, max) }.join("\n")
+    scores.each_with_index.map{ |s, i| s.format(padding, max, i < find_coolness) }.join("\n")
   end
 
   def difference(old)
@@ -832,8 +852,8 @@ class Score < ActiveRecord::Base
     Demo.find_by(replay_id: replay_id, htype: Demo.htypes[highscoreable.class.to_s.downcase.to_sym])
   end
 
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0)
-    "#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}"
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, cool = false)
+    "#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{cool ? " 😎" : ""}"
   end
 end
 

@@ -31,7 +31,7 @@ require_relative 'messages.rb'
 
 # Development variables
 TEST           = true  # Switch to the local test bot
-TEST_REPORT    = true  # Produces the report immediately once
+TEST_REPORT    = false # Produces the report immediately once
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true  # Log new weekly scores that appear in the report
 
@@ -60,7 +60,7 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false  # 'true' sets all the following ones to true
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
@@ -72,7 +72,7 @@ UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-REPORT_METANET    = true # Thread to regularly post Metanet's highscoring report
+REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
 # Update frequencies for each task
