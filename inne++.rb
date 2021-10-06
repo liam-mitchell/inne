@@ -30,8 +30,8 @@ require_relative 'models.rb'
 require_relative 'messages.rb'
 
 # Development variables
-TEST           = true  # Switch to the local test bot
-TEST_REPORT    = false # Produces the report immediately once
+TEST           = false  # Switch to the local test bot
+TEST_REPORT    = false  # Produces the report immediately once
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true  # Log new weekly scores that appear in the report
 
@@ -60,7 +60,7 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = false # 'true' sets all the following ones to true
+DO_EVERYTHING     = true  # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
