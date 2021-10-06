@@ -1,6 +1,9 @@
 Eddy's TODO list for inne:
 
 - ADD NEW COMMANDS TO HELP / README
+- Distribution of scores: top20 episode distribution = first show some stats regarding top20s per episode (most top20s in an ep, least, average, etc), then a file with all episodes sorted by # of top20s). Parameters: type, rank (top20, 0th, etc), distribution type (by episodes, by rows, by tabs).
+- CKC rankings, both normal (counting) and weighed by the number of cool kids in each board (obviously, with type and tab as parameters).
+- Total coolness.
 - Restrict display names to ASCII only
 - For Archive scores function: Make sure to sort ties in descending order by using the replay id.
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
@@ -23,6 +26,8 @@ Eddy's TODO list for inne:
 
 \\ ------------------------ Userlevels ------------------------
 
+- Usernames are being truncated.
+- We need to update all maps regularly, for the ++'s, etc.
 - Unify "search" and "browse" for ease of use.
 - Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
 - Userlevel of the day
