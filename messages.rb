@@ -116,12 +116,12 @@ def send_rankings(event)
   top = rankings
   score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
   name_padding = top.map{ |r| r[0].print_name.length }.max
-  format = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
+  format = top.empty? ? "" : (top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f")
 
   header = "#{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header}#{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
-  top    = "```" + top.each_with_index
+  top    = top.empty? ? "```These boards are empty!```" : ("```" + top.each_with_index
               .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
-              .join("\n") + "```"
+              .join("\n") + "```")
   top.concat(min) if !min.nil?
 
   length = header.length + top.length
