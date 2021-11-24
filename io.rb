@@ -339,6 +339,10 @@ def format_sentence(e)
   e[0..-2].map(&:to_s).join(", ")
 end
 
+def format_list_score(s)
+  "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})"
+end
+
 def send_file(event, data, name = "result.txt", binary = false)
   tmpfile = File.join(Dir.tmpdir, name)
   File::open(tmpfile, "w", crlf_newline: !binary) do |f|

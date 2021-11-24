@@ -18,6 +18,8 @@ def send_top_n_count(event)
   range  = parse_range(msg)
   ties   = !!(msg =~ /ties/i)
   tied   = !!(msg =~ /\btied\b/i)
+  sing   = !!(msg =~ /\bsingular\b/i)
+  plur   = !!(msg =~ /\bplural\b/i)
 
   # The range must make sense
   if !range[2]
@@ -26,7 +28,11 @@ def send_top_n_count(event)
   end
 
   # Retrieve score count in specified range
-  if tied
+  if sing
+    count = player.singular(type, tabs, false).values.map(&:size).sum
+  elsif plur
+    count = player.singular(type, tabs, true).values.map(&:size).sum
+  elsif tied
     count = player.range_n_count(range[0], range[1], type, tabs, true) - player.range_n_count(range[0], range[1], type, tabs, false)
   else
     count = player.range_n_count(range[0], range[1], type, tabs, ties)
@@ -35,7 +41,7 @@ def send_top_n_count(event)
   max   = find_max(:rank, type, tabs)
   type  = format_type(type).downcase
   tabs  = format_tabs(tabs)
-  range = format_range(range[0], range[1])
+  range = sing ? 'singular' : (plur ? 'plural' : format_range(range[0], range[1]))
   ties  = format_ties(ties)
   tied  = format_tied(tied)
 
@@ -75,6 +81,14 @@ def send_rankings(event)
     rankings = Score.rank(:score, type, tabs, nil, nil, full, play)
     header   = "score rankings "
     max      = find_max(:score, type, tabs)
+  elsif msg =~ /singular/i
+    rankings = Score.rank(:singular, type, tabs, nil, 1, full, play)
+    header   = "singular 0th rankings "
+    max      = find_max(:rank, type, tabs)
+  elsif msg =~ /plural/i
+    rankings = Score.rank(:singular, type, tabs, nil, 0, full, play)
+    header   = "plural 0th rankings "
+    max      = find_max(:rank, type, tabs)
   elsif msg =~ /tied/i
     rankings = Score.rank(:tied_rank, type, tabs, true, rank - 1, full, play)
     header   = "tied #{format_rank(rank)} rankings "
@@ -291,26 +305,21 @@ def send_list(event)
   tabs   = parse_tabs(msg)
   rank   = parse_rank(msg) || 20
   bott   = parse_bottom_rank(msg) || 0
-  ties   = !!(msg =~ /ties/i)
-  all    = player.scores_by_rank(type, tabs)
+  sing   = !!(msg =~ /\bsingular\b/i)
+  plur   = !!(msg =~ /\bplural\b/i)  
+  all    =  sing ? player.singular(type, tabs, false) :
+           (plur ? player.singular(type, tabs, true) :
+            player.scores_by_rank(type, tabs))
 
   if rank == 20 && bott == 0 && !!msg[/0th/i]
     rank = 1
     bott = 0
   end
 
-  tmpfile = File.join(Dir.tmpdir, "scores-#{player.print_name.delete(":")}.txt")
-  File::open(tmpfile, "w", crlf_newline: true) do |f|
-    all[bott..rank-1].each_with_index do |scores, i|
-      list = scores.map { |s| "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})" }
-             .join("\n  ")
-      f.write("#{bott+i}:\n  ")
-      f.write(list)
-      f.write("\n")
-    end
-  end
-
-  event.attach_file(File::open(tmpfile))
+  list = all.select{ |r, s| (bott...rank).cover?(r) }
+            .map{ |r, s| "#{r}:\n" + s.map{ |ss| "  " + format_list_score(ss) }.join("\n") }
+            .join("\n")
+  send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
 end
 
 def send_community(event)

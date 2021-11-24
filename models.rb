@@ -7,7 +7,7 @@ include ChunkyPNG::Color
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = true  # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = false # benchmark and log functions (for optimization)
+BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
 DISCORD_LIMIT   = 2000
@@ -717,6 +717,17 @@ class Score < ActiveRecord::Base
                         .count(:id)
       scores = scores_w.map{ |id, count| [id, count - scores_wo[id].to_i] }
                        .sort_by{ |id, c| -c }
+    when :singular
+      types = (type.nil? ? DEFAULT_TYPES : [type.to_s]).map{ |t|
+        ids = scores.where(rank: 1, tied_rank: n, highscoreable_type: t)
+                    .pluck(:highscoreable_id)
+        scores.where(rank: 0, highscoreable_type: t, highscoreable_id: ids)
+              .group(:player_id)
+              .count(:id)
+      }
+      scores = types.map(&:keys).flatten.uniq.map{ |id|
+        [id, types.map{ |t| t[id].to_i }.sum]
+      }.sort_by{ |id, c| -c }
     when :points
       scores = scores.group(:player_id)
                      .order("sum(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
@@ -1028,8 +1039,7 @@ class Player < ActiveRecord::Base
 
   def scores_by_rank(type, tabs)
     bench(:start) if BENCHMARK
-    ret = Array.new(20, [])
-    scores_by_type_and_tabs(type, tabs).group_by(&:rank).sort_by(&:first).each { |rank, scores| ret[rank] = scores }
+    ret = scores_by_type_and_tabs(type, tabs).group_by(&:rank).sort_by(&:first)
     bench(:step) if BENCHMARK
     ret
   end
@@ -1092,6 +1102,21 @@ class Player < ActiveRecord::Base
     scores
   end
 
+  def singular_(type, tabs, plural = false)
+    req = Score.where(highscoreable_type: type.to_s)
+    req = req.where(tab: tabs) if !tabs.empty?
+    ids = req.where("rank = 1 AND tied_rank = #{plural ? 0 : 1}").pluck(:highscoreable_id)
+    scores_by_type_and_tabs(type, tabs).where(rank: 0, highscoreable_id: ids)
+  end
+
+  def singular(type, tabs, plural = false)
+    bench(:start) if BENCHMARK
+    type = type.nil? ? DEFAULT_TYPES : [type.to_s]
+    ret = type.map{ |t| singular_(t, tabs, plural) }.flatten.group_by(&:rank)
+    bench(:step) if BENCHMARK
+    ret
+  end
+
   def average_lead(type, tabs)
     type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
@@ -1103,7 +1128,7 @@ class Player < ActiveRecord::Base
     count = ret.count / 2
     return 0 if count == 0
     ret = ret.group_by(&:first).map{ |id, sc| (sc[0][1] - sc[1][1]).abs }.sum / count
-## alternative way, faster when the player has many 0ths but slower otherwise (usual outcome)
+## alternative method, faster when the player has many 0ths but slower otherwise (usual outcome)
 #    ret = Score.where(highscoreable_type: type.to_s, rank: [0, 1])
 #    ret = ret.where(tab: tabs) if !tabs.empty?
 #    ret = ret.pluck(:player_id, :highscoreable_id, :score)
