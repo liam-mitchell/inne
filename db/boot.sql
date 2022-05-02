@@ -52,3 +52,7 @@ WHERE `key` = 'next_history_update';
 UPDATE global_properties
 SET `value` = '2020-11-03 22:00:00 +0200'
 WHERE `key` = 'next_userlevel_history_update';
+
+UPDATE global_properties
+SET `value` = '2020-11-03 22:00:00 +0200'
+WHERE `key` = 'next_userlevel_tab_update';

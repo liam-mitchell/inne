@@ -4,7 +4,18 @@ require_relative 'models.rb'
 MIN_U_SCORES = 20 # minimum number of userlevel highscores to appear in average rankings
 MIN_G_SCORES = 500 # minimum number of userlevel highscores to appear in global average rankings
 PAGE_SIZE    = 20
+PART_SIZE    = 500 # number of userlevels per file returned by the server when querying levels
 MIN_ID       = 22715 # ID of the very first userlevel, to exclude Metanet levels
+
+# Mapping the qt (query type) to each userlevel tab.
+# Update refers to whether we update our db's tab info.
+# The limit refers to how many pages (of 500 maps each) we update the db with.
+USERLEVEL_TABS = {
+  7  => { name: 'best',     limit:  2, update: true },
+  8  => { name: 'featured', limit: -1, update: true },
+  9  => { name: 'top',      limit:  2, update: true },
+  11 => { name: 'hardest',  limit:  2, update: true }
+}
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
 class UserlevelData < ActiveRecord::Base
@@ -317,6 +328,36 @@ class Userlevel < ActiveRecord::Base
   rescue => e
     err(e)
     nil
+  end
+
+  # Updates position of userlevels in several lists (best, top weekly, featured, hardest...)
+  # For this, one field per list is used, and most userlevels have a value of NULL here
+  # A different table to store these relationships would be better storage-wise, but would
+  # severely limit querying flexibility.
+  def self.parse_tabs(levels)
+    return false if levels.nil? || levels.size < 48
+    count  = parse_int(levels[16..19])
+    page   = parse_int(levels[20..23])
+    qt     = parse_int(levels[28..31])
+    tab    = USERLEVEL_TABS[qt][:name] rescue nil
+    return false if tab.nil?
+
+    ActiveRecord::Base.transaction do
+      ids = levels[48 .. 48 + 44 * count - 1].scan(/./m).each_slice(44).to_a.each_with_index{ |l, i|
+        Userlevel.find(parse_int(l[0..3])).update(tab => page * PART_SIZE + i) rescue nil
+      }
+    end
+    return true
+  rescue => e
+    print(e)
+    return false
+  end
+
+  # Returns true if the page is full, indicating there are more pages
+  def self.update_relationships(qt = 11, page = 0, mode = 0)
+    return if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
+    levels = get_levels(qt, page, mode)
+    return parse_tabs(levels) && parse_int(levels[16..19]) == PART_SIZE
   end
 
   def self.browse(qt = 10, page = 0, mode = 0, update = false)
@@ -680,6 +721,7 @@ class Userlevel < ActiveRecord::Base
   end
 
   def screenshot(theme = DEFAULT_PALETTE)
+    bench(:start) if BENCHMARK
     themes = THEMES.map(&:downcase)
     theme = theme.downcase
     if !themes.include?(theme) then theme = DEFAULT_PALETTE end
@@ -747,7 +789,7 @@ class Userlevel < ActiveRecord::Base
         if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
       end
     end
-
+    bench(:step) if BENCHMARK
     image.to_blob
   end
 end
@@ -804,6 +846,7 @@ def format_userlevels(maps, page, range)
 end
 
 def send_userlevel_browse(event)
+  bench(:start) if BENCHMARK
   msg = event.content
   user = event.user.name
   page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
@@ -833,9 +876,11 @@ def send_userlevel_browse(event)
     event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
     return
   end
+  bench(:step) if BENCHMARK
 
   if order.empty? && category == 10 then invert = !invert end
   maps = Userlevel::sort(maps, order, invert)
+  bench(:step) if BENCHMARK
   count = maps.size
   pages = (maps.size.to_f / PAGE_SIZE).ceil
   page = pages - 1 if page > pages - 1 unless pages == 0
@@ -848,6 +893,7 @@ def send_userlevel_browse(event)
   output += "Date: " + Time.now.to_s + ".\n"
   output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
   output += format_userlevels(Userlevel::serial(maps), page, range)
+  bench(:step) if BENCHMARK
 
   event << output
 rescue => e

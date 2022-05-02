@@ -345,7 +345,7 @@ end
 
 def send_file(event, data, name = "result.txt", binary = false)
   tmpfile = File.join(Dir.tmpdir, name)
-  File::open(tmpfile, "w", crlf_newline: !binary) do |f|
+  File::open(tmpfile, binary ? "wb" : "w", crlf_newline: !binary) do |f|
     f.write(data)
   end
   event.attach_file(File::open(tmpfile))

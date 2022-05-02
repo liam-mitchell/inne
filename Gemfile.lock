@@ -1,4 +1,7 @@
 GEM
+  specs:
+
+GEM
   remote: https://rubygems.org/
   specs:
     actioncable (5.1.7)
@@ -62,6 +65,7 @@ GEM
     factory_bot (6.1.0)
       activesupport (>= 5.0.0)
     ffi (1.13.1)
+    ffi (1.13.1-x64-mingw32)
     globalid (0.4.2)
       activesupport (>= 4.2.0)
     gruff (0.10.0)
@@ -87,9 +91,12 @@ GEM
     minitest (5.14.1)
     mocha (1.11.2)
     mysql2 (0.5.3)
+    mysql2 (0.5.3-x64-mingw32)
     netrc (0.11.0)
     nio4r (2.5.2)
     nokogiri (1.10.10)
+      mini_portile2 (~> 2.4.0)
+    nokogiri (1.10.10-x64-mingw32)
       mini_portile2 (~> 2.4.0)
     opus-ruby (1.0.1)
       ffi
@@ -128,6 +135,12 @@ GEM
       http-cookie (>= 1.0.2, < 2.0)
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
+    rest-client (2.1.0-x64-mingw32)
+      ffi (~> 1.9)
+      http-accept (>= 1.7.0, < 2.0)
+      http-cookie (>= 1.0.2, < 2.0)
+      mime-types (>= 1.16, < 4.0)
+      netrc (~> 0.8)
     rmagick (4.1.2)
     sprockets (4.0.2)
       concurrent-ruby (~> 1.0)
@@ -145,6 +158,7 @@ GEM
     unf (0.1.4)
       unf_ext
     unf_ext (0.0.7.7)
+    unf_ext (0.0.7.7-x64-mingw32)
     websocket (1.2.8)
     websocket-client-simple (0.3.0)
       event_emitter
@@ -158,6 +172,7 @@ GEM
 
 PLATFORMS
   ruby
+  x64-mingw32
 
 DEPENDENCIES
   activerecord!
@@ -175,4 +190,4 @@ DEPENDENCIES
   yaml_db!
 
 BUNDLED WITH
-   2.1.4
+   2.3.12

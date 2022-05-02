@@ -2,6 +2,7 @@
 require 'active_record'
 require 'net/http'
 require 'chunky_png' # for screenshot generation
+#require 'oily_png'
 include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level

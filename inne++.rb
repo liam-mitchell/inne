@@ -12,10 +12,10 @@
 # 3) Configure the "outte" environment of the config file in ./db/config.yml,
 #    or create a new one and rename the DATABASE_ENV variable down below.
 # 4) Configure the "outte_test" environment of the config file (optional).
-# 5) Create, migrate and seed a database named "inne". Make sure to use MySQL
+# 5) Create, migrate and seed a database named "inne". Make sure to use MySQL 5.7
 #    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
 #    care of the bot for a copy of the database (see Contact).
-# 6) Install Ruby 2.7 to maximize compatibility, then run the Bundler to
+# 6) Install Ruby 2.6 to maximize compatibility, then run the Bundler to
 #    obtain the correct version of all gems (libraries).
 #
 # Contact: https://discord.gg/nplusplus
@@ -59,8 +59,8 @@ MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 # Individual flags for each thread / task
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
-DO_NOTHING        = true  # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
+DO_NOTHING        = false # 'true' sets all the following ones to false
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
@@ -72,6 +72,7 @@ UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
+UPDATE_USER_TABS  = true  # Thread to regularly update userlevel tabs (best, featured, top, hardest)
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
@@ -91,6 +92,7 @@ USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 *
 USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
 USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
+USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||            5 * 60 # daily
 USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
 
 def log(msg)
@@ -624,6 +626,45 @@ rescue => e
   retry
 end
 
+def update_userlevel_tabs
+  log("updating userlevel tabs")
+  ["solo", "coop", "race"].each_with_index{ |mode, m|
+    [7, 8, 9, 11].each { |qt|
+      tab = USERLEVEL_TABS[qt][:name]
+      print("Clearing #{mode} indices of #{tab}...".ljust(80, " ") + "\r")
+      ActiveRecord::Base.transaction do
+        Userlevel.where(mode: m).where.not(tab => nil).update_all(tab => nil)
+      end
+      page = 0
+      while true
+        print("Updating #{mode} page #{page + 1} / #{USERLEVEL_TABS[qt][:limit]} of #{tab}...".ljust(80, " ") + "\r")
+        remaining = Userlevel::update_relationships(qt, page, m)
+        page += 1
+        break if !remaining || (USERLEVEL_TABS[qt][:limit] != -1 && page >= USERLEVEL_TABS[qt][:limit])
+      end
+    }
+  }
+  print(" " * 80 + "\r")
+  log("updated userlevel tabs")
+  return true   
+rescue => e
+  err("error updating userlevel tabs: #{e}")
+  return false
+end
+
+def start_userlevel_tabs
+  while true
+    next_userlevel_tab_update = correct_time(get_next_update('userlevel_tab'), USERLEVEL_TAB_FREQUENCY)
+    set_next_update('userlevel_tab', next_userlevel_tab_update)
+    delay = next_userlevel_tab_update - Time.now
+    sleep(delay) unless delay < 0
+    next if !update_userlevel_tabs
+  end
+rescue => e
+  err("error updating userlevel tabs: #{e}")
+  retry
+end
+
 def send_channel_screenshot(name, caption)
   name = name.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
   screenshot = "screenshots/#{name}.jpg"
@@ -858,6 +899,7 @@ $threads << Thread.new { start_level_of_the_day }    # No checks here because th
 $threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { start_userlevel_tabs }      if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { potato }                    if POTATO
