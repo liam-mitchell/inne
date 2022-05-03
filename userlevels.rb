@@ -1,20 +1,21 @@
 require_relative 'io.rb'
 require_relative 'models.rb'
 
-MIN_U_SCORES = 20 # minimum number of userlevel highscores to appear in average rankings
-MIN_G_SCORES = 500 # minimum number of userlevel highscores to appear in global average rankings
-PAGE_SIZE    = 20
-PART_SIZE    = 500 # number of userlevels per file returned by the server when querying levels
-MIN_ID       = 22715 # ID of the very first userlevel, to exclude Metanet levels
+MIN_U_SCORES  = 20 # minimum number of userlevel highscores to appear in average rankings
+MIN_G_SCORES  = 500 # minimum number of userlevel highscores to appear in global average rankings
+PAGE_SIZE     = 20
+PART_SIZE     = 500 # number of userlevels per file returned by the server when querying levels
+MIN_ID        = 22715 # ID of the very first userlevel, to exclude Metanet levels
 
 # Mapping the qt (query type) to each userlevel tab.
 # Update refers to whether we update our db's tab info.
 # The limit refers to how many pages (of 500 maps each) we update the db with.
+# The size refers to how many maps we consider when performing stats from that tab.
 USERLEVEL_TABS = {
-  7  => { name: 'best',     limit:  2, update: true },
-  8  => { name: 'featured', limit: -1, update: true },
-  9  => { name: 'top',      limit:  2, update: true },
-  11 => { name: 'hardest',  limit:  2, update: true }
+  7  => { name: 'best',     limit:  2, size: 1000, update: true },
+  8  => { name: 'featured', limit: -1, size: -1,   update: true },
+  9  => { name: 'top',      limit:  2, size: 1000, update: true },
+  11 => { name: 'hardest',  limit:  2, size: 1000, update: true }
 }
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
@@ -216,6 +217,17 @@ class Userlevel < ActiveRecord::Base
   HEIGHT = DIM * (ROWS + 2)
   INVALID_NAMES = [nil, "null", ""]
 
+  def self.tab(qt, mode = 0)
+    query = Userlevel.where(mode: mode)
+    return query if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
+    if USERLEVEL_TABS[qt][:size] >= 0
+      query = query.where("#{USERLEVEL_TABS[qt][:name]} < #{USERLEVEL_TABS[qt][:size]}")
+    else
+      query = query.where("#{USERLEVEL_TABS[qt][:name]} IS NOT NULL")
+    end
+    query
+  end
+
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
     URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
   end
@@ -390,9 +402,12 @@ class Userlevel < ActiveRecord::Base
       end
     }
     return "" if !order.is_a?(Symbol)
-    str = "ORDER BY #{fields[order][0]}"
+    # sorting by date doesn't work since they are stored as strings rather than
+    # timestamps, but it's equivalent to sorting by id, so we change it
+    # (still, default date order will be reversed, not so for ids)
+    str = order == :date ? "id" : fields[order][0]
     if inverted.include?(order) ^ invert then str += " DESC" end
-    return str
+    str
   end
 
   def self.encode_tiles(tiles)
@@ -797,11 +812,11 @@ end
 
 def format_userlevels(maps, page, range)
   # Calculate required column padding
-  max_padding = {n: 3, id: 6, title: 30, author: 16, date: 14, favs: 4 }
+  max_padding = {n: 6, id: 6, title: 30, author: 16, date: 14, favs: 4 }
   min_padding = {n: 2, id: 2, title:  5, author:  6, date: 14, favs: 2 }
   def_padding = {n: 3, id: 6, title: 25, author: 16, date: 14, favs: 2 }
   if !maps.nil? && !maps.empty?
-    n_padding =      [ [ range.to_a.max.to_s.length,                        max_padding[:n]     ].min, min_padding[:n]      ].max
+    n_padding =      [ [ (range.to_a.max + 1).to_s.length,                  max_padding[:n]     ].min, min_padding[:n]      ].max
     id_padding =     [ [ maps.map{ |map| map[:id].to_i }.max.to_s.length,   max_padding[:id]    ].min, min_padding[:id]     ].max
     title_padding  = [ [ maps.map{ |map| map[:title].to_s.length }.max,     max_padding[:title] ].min, min_padding[:title]  ].max
     author_padding = [ [ maps.map{ |map| map[:author].to_s.length }.max,    max_padding[:title] ].min, min_padding[:author] ].max
@@ -816,19 +831,19 @@ def format_userlevels(maps, page, range)
   output = "```\n"
   output += "%-#{padding[:n]}.#{padding[:n]}s " % "N"
   output += "%-#{padding[:id]}.#{padding[:id]}s " % "ID"
-  output += "%-#{padding[:title]}.#{padding[:title]}s " % "Title"
-  output += "%-#{padding[:author]}.#{padding[:author]}s " % "Author"
-  output += "%-#{padding[:date]}.#{padding[:date]}s " % "Date"
+  output += "%-#{padding[:title]}.#{padding[:title]}s " % "TITLE"
+  output += "%-#{padding[:author]}.#{padding[:author]}s " % "AUTHOR"
+  output += "%-#{padding[:date]}.#{padding[:date]}s " % "DATE"
   output += "%-#{padding[:favs]}.#{padding[:favs]}s" % "++"
   output += "\n"
-  output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
+  #output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
 
   # Print levels
   if maps.nil? || maps.empty?
     output += " " * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
   else
     maps.each_with_index{ |m, i|
-      line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * page + i).to_s
+      line = "%#{padding[:n]}.#{padding[:n]}s " % (PAGE_SIZE * (page - 1) + i + 1).to_s
       padding.reject{ |k, v| k == :n  }.each{ |k, v|
         if m[k].is_a?(Integer)
           line += "%#{padding[k]}.#{padding[k]}s " % m[k].to_s
@@ -848,13 +863,13 @@ def send_userlevel_browse(event)
   bench(:start) if BENCHMARK
   msg    = event.content
   user   = event.user.name
-  page   = msg[/page\s*(\d+)/i, 1].to_i || 0
+  page   = msg[/page\s*(\d+)/i, 1].to_i || 1
 
   # Regex to determine the field to order by
   # Order may be inverted by specifying a "-" before, or a "desc" after, or both
   regex  = /(order|sort)\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
   order  = msg[regex, 3] || ""
-  desc   = msg[regex, 4] == "desc"
+  desc   = msg[regex, 5] == "desc"
   invert = (order.strip[/\A-*/i].length % 2 == 1) ^ desc
   order.delete!("-")
 
@@ -879,43 +894,29 @@ def send_userlevel_browse(event)
   #<------ Fetch userlevels ------>
 
   # Filter userlevels
-  query = Userlevel.where(mode: 0)
-  query = query.where("#{tab} IS NOT NULL") if !tab.nil?
-
+  query = tab.nil? ? Userlevel.where(mode: 0) : Userlevel::tab(category, 0)
+  # Compute count, page number and offset
+  count  = query.count
+  pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
+  page   = page > pages ? pages : (page < 1 ? 1 : page)
+  offset = (page - 1) * PAGE_SIZE
   # Order userlevels
   if tab.nil?
     order_str = Userlevel::sort(order, invert)
-    query = query.order(Userlevel::sort)
+    query = !order_str.empty? ? query.order(order_str) : query.order("id DESC") 
   else
     query = query.order("#{tab} ASC")
   end
-
   # Fetch userlevels
-  # TODO: compute "count" and "pages", apply offset and limit, pluck
-=begin
-  maps = [0, 1, 10].include?(category) ? Userlevel.all : Userlevel::browse(category, part, 0, false)
-  if maps.nil?
-    event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
-    return
-  end
-  bench(:step) if BENCHMARK
+  maps = query.offset(offset).limit(PAGE_SIZE).all
 
-  if order.empty? && category == 10 then invert = !invert end
-  maps = Userlevel::sort(maps, order, invert)
-  bench(:step) if BENCHMARK
-  count = maps.size
-  pages = (maps.size.to_f / PAGE_SIZE).ceil
-  page = pages - 1 if page > pages - 1 unless pages == 0
-  range = (PAGE_SIZE * page .. PAGE_SIZE * (page + 1) - 1)
-  maps = maps[range]
-=end
+  # <------ Display userlevel ------>
 
   output = "Browsing **" + categories[category][0].to_s.upcase + "**. "
-  output += "Page **" + page.to_s + "/" + (pages - 1).to_s + "**. "
-  output += "Order: **" + (order == "" ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
-  output += "Date: " + Time.now.to_s + ".\n"
-  output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
-  output += format_userlevels(Userlevel::serial(maps), page, range)
+  output += "Order: **" + (order == "" ? "DEFAULT" : order.to_s.upcase) + "**.\n"
+  output += "Total results: **" + count.to_s + "**. "
+  output += "Page: **" + page.to_s + "/" + pages.to_s + "**.\n"
+  output += format_userlevels(Userlevel::serial(maps), page, offset .. offset + 19)
   bench(:step) if BENCHMARK
 
   event << output
