@@ -370,32 +370,29 @@ class Userlevel < ActiveRecord::Base
     parse(levels, update)
   end
 
-  def self.sort(maps, order, invert = false)
-    fields = { # possible spellings for each field, to be used for sorting or filtering
-      :n => ["n", "number"],
-      :id => ["id", "map id", "map_id", "level id", "level_id"],
-      :title => ["title", "name"],
+  # Produces the SQL order string, used when fetching maps from the db
+  def self.sort(order = "", invert = false)
+    return "" if !order.is_a?(String)
+     # possible spellings for each field, to be used for sorting or filtering
+     # DO NOT CHANGE FIRST VALUE (its also the column name)
+    fields = {
+      :id     => ["id", "map id", "map_id", "level id", "level_id"],
+      :title  => ["title", "name"],
       :author => ["author", "player", "user", "person"],
-      :date => ["date", "time", "moment", "day", "period"],
-      :favs => ["fav", "favs", "++", "++s", "++'s", "favourite", "favourites"]
+      :date   => ["date", "time", "moment", "day", "period"],
+      :favs   => ["favs", "fav", "++", "++s", "++'s", "favourite", "favourites"]
     }
-    inverted = [:id, :date, :favs] # the order of these fields will be reversed by default
-    if !order.nil?
-      fields.each{ |k, v|
-        if v.include?(order.strip)
-          order = k
-          break
-        end
-      }
-    else
-      order = :n
-    end
-    if !order.is_a?(Symbol) then order = :n end
-    if order == :date then order = :id end
-    if order != :n then maps = maps.sort_by(&order) end
-    if inverted.include?(order) then maps = maps.reverse end
-    if invert then maps = maps.reverse end
-    maps
+    inverted = [:date, :favs] # the order of these fields will be reversed by default
+    fields.each{ |k, v|
+      if v.include?(order.strip)
+        order = k
+        break
+      end
+    }
+    return "" if !order.is_a?(Symbol)
+    str = "ORDER BY #{fields[order][0]}"
+    if inverted.include?(order) ^ invert then str += " DESC" end
+    return str
   end
 
   def self.encode_tiles(tiles)
@@ -846,14 +843,22 @@ def format_userlevels(maps, page, range)
 end
 
 def send_userlevel_browse(event)
+  # <------ Parse all message elements ------>
+
   bench(:start) if BENCHMARK
-  msg = event.content
-  user = event.user.name
-  page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
-  part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
-  order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
-  invert = order.strip[/\A-*/i].length % 2 == 1 || false
+  msg    = event.content
+  user   = event.user.name
+  page   = msg[/page\s*(\d+)/i, 1].to_i || 0
+
+  # Regex to determine the field to order by
+  # Order may be inverted by specifying a "-" before, or a "desc" after, or both
+  regex  = /(order|sort)\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
+  order  = msg[regex, 3] || ""
+  desc   = msg[regex, 4] == "desc"
+  invert = (order.strip[/\A-*/i].length % 2 == 1) ^ desc
   order.delete!("-")
+
+  # Determine the category / tab
   category = 10
   categories = {
      0 => ["All",        "all"],
@@ -864,13 +869,30 @@ def send_userlevel_browse(event)
     10 => ["Newest",     "newest"],
     11 => ["Hardest",    "hardest"]
   }
-
   categories.each{ |id, cat| category = id if !!(msg =~ /#{cat[1]}/i) }
   if category.nil?
     event << "Error browsing userlevels: You need to specify a tab to browse (best, featured, top, newest, hardest, all)."
     return
   end
+  tab = [7, 8, 9, 11].include?(category) ? categories[category][1] : nil
 
+  #<------ Fetch userlevels ------>
+
+  # Filter userlevels
+  query = Userlevel.where(mode: 0)
+  query = query.where("#{tab} IS NOT NULL") if !tab.nil?
+
+  # Order userlevels
+  if tab.nil?
+    order_str = Userlevel::sort(order, invert)
+    query = query.order(Userlevel::sort)
+  else
+    query = query.order("#{tab} ASC")
+  end
+
+  # Fetch userlevels
+  # TODO: compute "count" and "pages", apply offset and limit, pluck
+=begin
   maps = [0, 1, 10].include?(category) ? Userlevel.all : Userlevel::browse(category, part, 0, false)
   if maps.nil?
     event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
@@ -886,6 +908,7 @@ def send_userlevel_browse(event)
   page = pages - 1 if page > pages - 1 unless pages == 0
   range = (PAGE_SIZE * page .. PAGE_SIZE * (page + 1) - 1)
   maps = maps[range]
+=end
 
   output = "Browsing **" + categories[category][0].to_s.upcase + "**. "
   output += "Page **" + page.to_s + "/" + (pages - 1).to_s + "**. "
