@@ -12,10 +12,11 @@ MIN_ID        = 22715 # ID of the very first userlevel, to exclude Metanet level
 # The limit refers to how many pages (of 500 maps each) we update the db with.
 # The size refers to how many maps we consider when performing stats from that tab.
 USERLEVEL_TABS = {
-  7  => { name: 'best',     limit:  2, size: 1000, update: true },
-  8  => { name: 'featured', limit: -1, size: -1,   update: true },
-  9  => { name: 'top',      limit:  2, size: 1000, update: true },
-  11 => { name: 'hardest',  limit:  2, size: 1000, update: true }
+  7  => { name: 'best',     fullname: 'Best',       limit:  2, size: 1000, update: true  },
+  8  => { name: 'featured', fullname: 'Featured',   limit: -1, size: -1,   update: true  },
+  9  => { name: 'top',      fullname: 'Top Weekly', limit:  2, size: 1000, update: true  },
+  10 => { name: 'all',      fullname: 'Newest',     limit: -1, size: -1,   update: false },
+  11 => { name: 'hardest',  fullname: 'Hardest',    limit:  2, size: 1000, update: true  }
 }
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
@@ -386,17 +387,18 @@ class Userlevel < ActiveRecord::Base
   def self.sort(order = "", invert = false)
     return "" if !order.is_a?(String)
      # possible spellings for each field, to be used for sorting or filtering
+     # doesn't include plurals (except "favs", read next line) because we "singularize" later
      # DO NOT CHANGE FIRST VALUE (its also the column name)
     fields = {
       :id     => ["id", "map id", "map_id", "level id", "level_id"],
       :title  => ["title", "name"],
-      :author => ["author", "player", "user", "person"],
-      :date   => ["date", "time", "moment", "day", "period"],
-      :favs   => ["favs", "fav", "++", "++s", "++'s", "favourite", "favourites"]
+      :author => ["author", "player", "user", "person", "mapper"],
+      :date   => ["date", "time", "datetime", "moment", "day", "period"],
+      :favs   => ["favs", "fav", "++", "++'", "favourite", "favorite"]
     }
     inverted = [:date, :favs] # the order of these fields will be reversed by default
     fields.each{ |k, v|
-      if v.include?(order.strip)
+      if v.include?(order.strip.singularize)
         order = k
         break
       end
@@ -864,6 +866,8 @@ def send_userlevel_browse(event)
   msg    = event.content
   user   = event.user.name
   page   = msg[/page\s*(\d+)/i, 1].to_i || 1
+  search = msg[/for\s*#{parse_term}/i, 2] || ""
+  author = parse_userlevel_author(msg)
 
   # Regex to determine the field to order by
   # Order may be inverted by specifying a "-" before, or a "desc" after, or both
@@ -874,91 +878,37 @@ def send_userlevel_browse(event)
   order.delete!("-")
 
   # Determine the category / tab
-  category = 10
-  categories = {
-     0 => ["All",        "all"],
-     1 => ["Oldest",     "oldest"],
-     7 => ["Best",       "best"],
-     8 => ["Featured",   "featured"],
-     9 => ["Top Weekly", "top"],
-    10 => ["Newest",     "newest"],
-    11 => ["Hardest",    "hardest"]
-  }
-  categories.each{ |id, cat| category = id if !!(msg =~ /#{cat[1]}/i) }
-  if category.nil?
-    event << "Error browsing userlevels: You need to specify a tab to browse (best, featured, top, newest, hardest, all)."
-    return
-  end
-  tab = [7, 8, 9, 11].include?(category) ? categories[category][1] : nil
+  cat = 10 # newest
+  USERLEVEL_TABS.each{ |qt, v| cat = qt if !!(msg =~ /#{v[:name]}/i) }
+  tab = USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(cat) ? USERLEVEL_TABS[cat][:name] : nil
 
   #<------ Fetch userlevels ------>
 
   # Filter userlevels
-  query = tab.nil? ? Userlevel.where(mode: 0) : Userlevel::tab(category, 0)
+  query = tab.nil? ? Userlevel.where(mode: 0) : Userlevel::tab(cat, 0)
+  query = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
+  query = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
   # Compute count, page number and offset
   count  = query.count
   pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
   page   = page > pages ? pages : (page < 1 ? 1 : page)
   offset = (page - 1) * PAGE_SIZE
   # Order userlevels
-  if tab.nil?
-    order_str = Userlevel::sort(order, invert)
-    query = !order_str.empty? ? query.order(order_str) : query.order("id DESC") 
-  else
-    query = query.order("#{tab} ASC")
-  end
+  order_str = Userlevel::sort(order, invert)
+  query = !order_str.empty? ? query.order(order_str) : (!tab.nil? ? query.order("#{tab} ASC") : query.order("id DESC"))
   # Fetch userlevels
   maps = query.offset(offset).limit(PAGE_SIZE).all
 
   # <------ Display userlevel ------>
 
-  output = "Browsing **" + categories[category][0].to_s.upcase + "**. "
-  output += "Order: **" + (order == "" ? "DEFAULT" : order.to_s.upcase) + "**.\n"
-  output += "Total results: **" + count.to_s + "**. "
-  output += "Page: **" + page.to_s + "/" + pages.to_s + "**.\n"
+  output = "Browsing " + USERLEVEL_TABS[cat][:name] + " maps"
+  output += " by \"_#{author[0..63]}_\"" if !author.empty?
+  output += " containing \"_#{search[0..63]}_\"" if !search.empty?
+  output += " sorted by #{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}#{invert ? " (descending)" : ""}.\n"
+  output += "Total results: **" + count.to_s + "**.\n"
   output += format_userlevels(Userlevel::serial(maps), page, offset .. offset + 19)
+  output += "Page: **" + page.to_s + "/" + pages.to_s + "**."
   bench(:step) if BENCHMARK
-
-  event << output
-rescue => e
-  err(e)
-  event << "Error downloading maps (server is not responding)."
-end
-
-def send_userlevel_search(event)
-  msg = event.content
-  user = event.user.name
-  search = msg[/search\s*(for)?\s*#{parse_term}/i, 3] || ""
-  page = msg[/page\s*([0-9][0-9]?)/i, 1].to_i || 0
-  part = msg[/part\s*([0-9][0-9]?)/i, 1].to_i || 0
-  author = parse_userlevel_author(msg)
-  order = msg[/(order|sort)\s*(by)?\s*((\w|\+|-)*)/i, 3] || ""
-  invert = order.strip[/\A-*/i].length % 2 == 1
-  order.delete!("-")
-
-  if !search.ascii_only?
-    event << "Sorry! We can only perform ASCII-only searches."
-  else
-    search = search[0..63] # truncate search query to fit under the character limit
-    maps = author.empty? ? Userlevel::search(search, part, 0, false) : Userlevel.where(author: author)
-    if maps.nil?
-      event << "Error downloading maps (server down?) or parsing maps (unknown format received?)."
-      return
-    end
-    maps = Userlevel::sort(maps, order, invert)
-    count = maps.size
-    pages = (maps.size.to_f / PAGE_SIZE).ceil
-    page = pages - 1 if page > pages - 1 unless pages == 0
-    range = (PAGE_SIZE * page .. PAGE_SIZE * (page + 1) - 1)
-    maps = maps[range]
-
-    output = "Searching for \"" + (!search.empty? ? ("**" + search + "**") : "") + "\". "
-    output += "Page **" + page.to_s + "/" + (pages > 0 ? (pages - 1).to_s : "0") + "**. "
-    output += "Order: **" + (order == "" ? "DEFAULT" : order.to_s.upcase) + "**. Filter: **DEFAULT**.\n"
-    output += "Date: " + Time.now.to_s + ".\n"
-    output += "Total results: **" + count.to_s + "**. Use \"page <number>\" to navigate the pages.\n"
-    output += format_userlevels(Userlevel::serial(maps), page, range)
-  end
 
   event << output
 rescue => e
@@ -1496,7 +1446,6 @@ def respond_userlevels(event)
 
   send_userlevel_times(event)       if msg =~ /\bwhen\b/i
   send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
-  send_userlevel_search(event)      if msg =~ /\bsearch\b/i
   send_userlevel_download(event)    if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event)  if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event)      if msg =~ /scores\b/i # matches 'highscores'
