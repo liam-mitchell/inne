@@ -8,7 +8,6 @@ Eddy's TODO list for inne:
 - Restrict display names to ASCII only
 - For Archive scores function: Make sure to sort ties in descending order by using the replay id.
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
-- Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.
 - "nevermind": delete last inne message prompted by that user.
 - Implement NReality's asterisk to previous 0th holders using the new Archives feature.
 - Implement "index" (maybe "tally"): Outputs file with a list (like "list") of something, like all 0ths. With a parameter we specify what, for instance, 0th scores or 0th frames. With another parameter we specify the order, like the natural one, or by score in descending order...
@@ -17,6 +16,8 @@ Eddy's TODO list for inne:
 - Level alias table (e.g. "cfl" for compendium for literates")
 - Add total <rank> score, and show total score and total 19th score gained daily and weekly.
 - Allow to add "rankings" to any userlevel query (browse) to instead perform rankings on the result set.
+- Add arrow navigation to rankings and other functions
+- Look into this "button" and "dropdown menu" new functionalities of discordrb
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.
@@ -30,7 +31,6 @@ Eddy's TODO list for inne:
 
 - Usernames are being truncated.
 - We need to update all maps regularly, for the ++'s, etc.
-- Unify "search" and "browse" for ease of use.
 - Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
 - Userlevel of the day
 - Unify names: Authors who have changed username, group by author id and change all names to the most recent one. BUT keep old names in the alias table.
@@ -57,8 +57,6 @@ Less priority:
 Database:
 
 - Change format of stored dates to be UNIX time, or something consistent.
-- Code versions of already made queries (browse, search) to use the local database.
-- Make option to switch between an online search to N++ server, and an offline search in the local database. Make local default, since it faster, but have a parameter to switch to online mode.
 
 Others:
 - Filter results by any field.

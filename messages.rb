@@ -1160,7 +1160,7 @@ def send_twitch(event)
 end
 
 def testa(event)
-  puts Userlevel.find_max(:score, true)
+  
 end
 
 # TODO set level of the day on startup
@@ -1243,7 +1243,7 @@ def respond(event)
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   send_twitch(event)         if msg =~ /\btwitch\b/i
   faceswap(event)            if msg =~ /faceswap/i
-  #testa(event) if msg =~ /testa/i
+  testa(event) if msg =~ /testa/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't

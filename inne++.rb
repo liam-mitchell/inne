@@ -871,6 +871,33 @@ $bot.message do |event|
   robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
 end
 
+def arrow_react(event)
+  if event.message.author.id == CONFIG['client_id'] && !!event.message.content[/\ABrowsing /]
+    case event.emoji.name
+    when "⏮️"
+      send_userlevel_browse(event, -1000000000) # force first page
+    when "⏪"
+      send_userlevel_browse(event, -10)
+    when "◀️"
+      send_userlevel_browse(event, -1)
+    when "▶️"
+      send_userlevel_browse(event, 1)
+    when "⏩"
+      send_userlevel_browse(event, 10)
+    when "⏭️"
+      send_userlevel_browse(event, 1000000000) # force last page
+    end
+  end
+end
+
+$bot.reaction_add do |event| 
+  arrow_react(event)
+end
+
+$bot.reaction_remove do |event| 
+  arrow_react(event)
+end
+
 puts "the bot's URL is #{$bot.invite_url}"
 
 startup

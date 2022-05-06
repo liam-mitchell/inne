@@ -859,21 +859,35 @@ def format_userlevels(maps, page, range)
   output + "```"
 end
 
-def send_userlevel_browse(event)
+# The next function queries userlevels from the database based on a number of
+# parameters, like the title, the author, and the tab:
+# ---
+# The parameter is used specifically in the feature that allows people to react
+# with arrows in order to move on to a different page in the result set. In this
+# case, we will parse THE BOT'S message as though it was a user command, or more
+# specifically, the first and last lines, which have been crafted so that they are
+# valid commands containing all the necessary info to figure out what the original
+# query was, so that we can reexecute it (identically, except with a different
+# page number modified by the parameter) and edit the original bot's message.
+def send_userlevel_browse(event, page_offset = 0)
   # <------ Parse all message elements ------>
 
   bench(:start) if BENCHMARK
-  msg    = event.content
-  user   = event.user.name
-  page   = msg[/page\s*(\d+)/i, 1].to_i || 1
-  search = msg[/for\s*#{parse_term}/i, 2] || ""
+  if page_offset == 0 # Initial query
+    msg = event.content
+  else # Edited query
+    msg = event.message.content
+    msg = [msg.split("\n").first, msg.split("\n").last.remove("*")].join("\n")
+  end
+  page   = (msg[/page:?\s*(\d+)/i, 1].to_i || 1) + page_offset
+  search = msg[/(for|containing)\s*#{parse_term}/i, 3] || ""
   author = parse_userlevel_author(msg)
 
   # Regex to determine the field to order by
   # Order may be inverted by specifying a "-" before, or a "desc" after, or both
-  regex  = /(order|sort)\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
-  order  = msg[regex, 3] || ""
-  desc   = msg[regex, 5] == "desc"
+  regex  = /(order|sort)(ed)?\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
+  order  = msg[regex, 4] || ""
+  desc   = msg[regex, 6] == "desc"
   invert = (order.strip[/\A-*/i].length % 2 == 1) ^ desc
   order.delete!("-")
 
@@ -901,16 +915,32 @@ def send_userlevel_browse(event)
 
   # <------ Display userlevel ------>
 
+  # CAREFUL with reformatting the first line of the message. It is currently
+  # being used for parsing the message in the future. When someone reacts to
+  # the message with an arrow in order to move to another page, we determine
+  # what query we need to execute based on this one line, by parsing it just
+  # like any user command, rather than having to store the queries in the db
+  # The same holds for the last line, which is used to find the current page
   output = "Browsing " + USERLEVEL_TABS[cat][:name] + " maps"
-  output += " by \"_#{author[0..63]}_\"" if !author.empty?
-  output += " containing \"_#{search[0..63]}_\"" if !search.empty?
-  output += " sorted by #{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}#{invert ? " (descending)" : ""}.\n"
+  output += " by \"#{author[0..63]}\"" if !author.empty?
+  output += " containing \"#{search[0..63]}\"" if !search.empty?
+  output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}.\n"
   output += "Total results: **" + count.to_s + "**.\n"
   output += format_userlevels(Userlevel::serial(maps), page, offset .. offset + 19)
   output += "Page: **" + page.to_s + "/" + pages.to_s + "**."
   bench(:step) if BENCHMARK
 
-  event << output
+  message = page_offset == 0 ? event.channel.send_message(output) : event.message.edit(output)
+=begin
+  if page_offset == 0
+    message.create_reaction("⏮️")
+    message.create_reaction("⏪")
+    message.create_reaction("◀️")
+    message.create_reaction("▶️")
+    message.create_reaction("⏩")
+    message.create_reaction("⏭️")
+  end
+=end
 rescue => e
   err(e)
   event << "Error downloading maps (server is not responding)."
@@ -1445,7 +1475,7 @@ def respond_userlevels(event)
   end
 
   send_userlevel_times(event)       if msg =~ /\bwhen\b/i
-  send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bshow\b/i
+  send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bsearch\b/i
   send_userlevel_download(event)    if msg =~ /\bdownload\b/i
   send_userlevel_screenshot(event)  if msg =~ /\bscreen\s*shots*\b/i
   send_userlevel_scores(event)      if msg =~ /scores\b/i # matches 'highscores'
