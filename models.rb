@@ -250,6 +250,30 @@ def wavg(arr, w)
   arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
 end
 
+# Send a message to a channel with a navigation bar made with buttons.
+# The idea is to implement this in many functions that are "browseable",
+# e.g. userlevel search, leaderboards, screenshots, rankings (see more pages).
+#
+# If the boolean in true, then the meesage is being edited, and the event we
+# receive is a ButtonEvent. If its false, then the message is being created,
+# and the event is probably either MentionEvent or PrivateMessageEvent.
+# These have different methods! So be careful.
+def msg_with_nav(event, msg, edit = false, first = false, last = false)
+  view = Discordrb::Webhooks::View.new{ |view|
+    view.row{ |r|
+      r.button(label: "❙❮", style: :primary, emoji: nil, disabled: first, custom_id: 'button:nav:-1000000000')
+      r.button(label: "❮",  style: :primary, emoji: nil, disabled: first, custom_id: 'button:nav:-1')
+      r.button(label: "❯",  style: :primary, emoji: nil, disabled: last,  custom_id: 'button:nav:1')
+      r.button(label: "❯❙", style: :primary, emoji: nil, disabled: last,  custom_id: 'button:nav:1000000000')
+    }
+  }
+  if edit
+    event.update_message(content: msg, components: view)
+  else
+    event.channel.send_message(msg, false, nil, nil, nil, nil, view)
+  end
+end
+
 module HighScore
 
   def self.format_rank(rank)

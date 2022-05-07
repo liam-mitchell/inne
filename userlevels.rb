@@ -930,20 +930,15 @@ def send_userlevel_browse(event, page_offset = 0)
   output += "Page: **" + page.to_s + "/" + pages.to_s + "**."
   bench(:step) if BENCHMARK
 
-  message = page_offset == 0 ? event.channel.send_message(output) : event.message.edit(output)
-=begin
-  if page_offset == 0
-    message.create_reaction("⏮️")
-    message.create_reaction("⏪")
-    message.create_reaction("◀️")
-    message.create_reaction("▶️")
-    message.create_reaction("⏩")
-    message.create_reaction("⏭️")
-  end
-=end
+  msg_with_nav(event, output, page_offset != 0, page == 1, page == pages)
 rescue => e
   err(e)
-  event << "Error downloading maps (server is not responding)."
+  err_str = "Error downloading maps (server is not responding)."
+  if page_offset == 0
+    event << err_str
+  else
+    event.channel.send_message(err_str)
+  end
 end
 
 # TODO: When downloading by name is implemented, the way to get the ID in the

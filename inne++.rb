@@ -16,16 +16,28 @@
 #    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
 #    care of the bot for a copy of the database (see Contact).
 # 6) Install Ruby 2.6 to maximize compatibility, then run the Bundler to
-#    obtain the correct version of all gems (libraries).
+#    obtain the correct version of all gems (libraries), I recommend using rbenv.
+#    In particular, ensure you have Rails 5.1.x and Discordrb >= 3.4.2.
+# 7) Make sure you edit the source files in UTF8.
 #
 # Contact: https://discord.gg/nplusplus
 
+# We use some gems directly from Github repositories (in particular, Discordrb,
+# so that we can use the latest features, not present in the outdated RubyGems
+# version). This is supported by Bundler but not by RubyGems directly. The next
+# two lines makes makes these gems available / visible.
+require 'rubygems'
+require 'bundler/setup'
+
+# Included gems
 require 'discordrb'
 require 'json'
 require 'net/http'
 require 'thread'
 require 'yaml'
 require 'byebug'
+
+# Import other source files
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
@@ -839,7 +851,11 @@ def watchdog
 end
 
 #$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
-$bot = Discordrb::Bot.new token: (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']), client_id: CONFIG['client_id']
+$bot = Discordrb::Bot.new(
+  token:     (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']),
+  client_id: CONFIG['client_id'],
+  intents:   :unprivileged
+)
 $config          = CONFIG
 $channel         = nil
 $mapping_channel = nil
@@ -871,31 +887,21 @@ $bot.message do |event|
   robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
 end
 
-def arrow_react(event)
-  if event.message.author.id == CONFIG['client_id'] && !!event.message.content[/\ABrowsing /]
-    case event.emoji.name
-    when "⏮️"
-      send_userlevel_browse(event, -1000000000) # force first page
-    when "⏪"
-      send_userlevel_browse(event, -10)
-    when "◀️"
-      send_userlevel_browse(event, -1)
-    when "▶️"
-      send_userlevel_browse(event, 1)
-    when "⏩"
-      send_userlevel_browse(event, 10)
-    when "⏭️"
-      send_userlevel_browse(event, 1000000000) # force last page
-    end
-  end
-end
-
 $bot.reaction_add do |event| 
   arrow_react(event)
 end
 
 $bot.reaction_remove do |event| 
   arrow_react(event)
+end
+
+$bot.button do |event|
+  id = event.interaction.button.custom_id
+  if id[/button:nav/i]
+    if !!event.message.content[/\ABrowsing /]
+      send_userlevel_browse(event, id.split(':').last.to_i)
+    end
+  end
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
