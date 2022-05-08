@@ -7,7 +7,7 @@ include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = true  # log common error messages
-LOG_SQL         = false # log _all_ SQL queries (for debugging)
+LOG_SQL         = true  # log _all_ SQL queries (for debugging)
 BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
@@ -258,13 +258,33 @@ end
 # receive is a ButtonEvent. If its false, then the message is being created,
 # and the event is probably either MentionEvent or PrivateMessageEvent.
 # These have different methods! So be careful.
-def msg_with_nav(event, msg, edit = false, first = false, last = false)
+def msg_with_nav(event, msg, page, pages, order = nil, edit = false)
+  # Normalize order
+  order = "default" if order.nil? || order.empty?
+  order = order.downcase.split(" ").first
+  order = "date" if order == "id"
+  # Component collection (View)
   view = Discordrb::Webhooks::View.new{ |view|
+    # ActionRow builder with a Select Menu for the order
     view.row{ |r|
-      r.button(label: "❙❮", style: :primary, emoji: nil, disabled: first, custom_id: 'button:nav:-1000000000')
-      r.button(label: "❮",  style: :primary, emoji: nil, disabled: first, custom_id: 'button:nav:-1')
-      r.button(label: "❯",  style: :primary, emoji: nil, disabled: last,  custom_id: 'button:nav:1')
-      r.button(label: "❯❙", style: :primary, emoji: nil, disabled: last,  custom_id: 'button:nav:1000000000')
+      r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
+        ["default", "title", "author", "date", "favs"].each{ |b|
+          m.option(label: "Sort by: #{b.capitalize}", value: "menu:order:#{b}", default: b == order)
+        }
+        #m.option(label: 'Sort by: Title',   value: 'menu:order:title')
+        #m.option(label: 'Sort by: Author',  value: 'menu:order:author')
+        #m.option(label: 'Sort by: Date',    value: 'menu:order:date')
+        #m.option(label: 'Sort by: ++\'s',   value: 'menu:order:favs')
+      }
+    }
+    # ActionRow builder with Buttons for page navigation
+    view.row{ |r|
+      p = "#{page} / #{pages}"
+      r.button(label: "❙❮", style: :primary,   disabled: page == 1,      custom_id: 'button:nav:-1000000000')
+      r.button(label: "❮",  style: :primary,   disabled: page == 1,      custom_id: 'button:nav:-1')
+      r.button(label: p,    style: :secondary, disabled: true,           custom_id: 'button:nav:page')
+      r.button(label: "❯",  style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1')
+      r.button(label: "❯❙", style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1000000000')
     }
   }
   if edit

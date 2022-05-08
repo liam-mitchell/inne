@@ -813,6 +813,7 @@ end
 # <---------------------------------------------------------------------------->
 
 def format_userlevels(maps, page, range)
+  #bench(:start) if BENCHMARK
   # Calculate required column padding
   max_padding = {n: 6, id: 6, title: 30, author: 16, date: 14, favs: 4 }
   min_padding = {n: 2, id: 2, title:  5, author:  6, date: 14, favs: 2 }
@@ -856,6 +857,7 @@ def format_userlevels(maps, page, range)
       output << line + "\n"
     }
   end
+  #bench(:step) if BENCHMARK
   output + "```"
 end
 
@@ -869,24 +871,28 @@ end
 # valid commands containing all the necessary info to figure out what the original
 # query was, so that we can reexecute it (identically, except with a different
 # page number modified by the parameter) and edit the original bot's message.
-def send_userlevel_browse(event, page_offset = 0)
+def send_userlevel_browse(event, page: nil, order: nil)
+  
   # <------ Parse all message elements ------>
 
   bench(:start) if BENCHMARK
-  if page_offset == 0 # Initial query
+  # Determine whether this is the initial query (new post) or an interaction
+  # query (edit post).
+  initial = page.nil? && order.nil?
+  if initial
     msg = event.content
-  else # Edited query
+  else
     msg = event.message.content
-    msg = [msg.split("\n").first, msg.split("\n").last.remove("*")].join("\n")
+    msg = msg.split("```").first # Everything before the actual userlevel names
   end
-  page   = (msg[/page:?\s*(\d+)/i, 1].to_i || 1) + page_offset
+  page   = (msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + page.to_i
   search = msg[/(for|containing)\s*#{parse_term}/i, 3] || ""
   author = parse_userlevel_author(msg)
 
   # Regex to determine the field to order by
   # Order may be inverted by specifying a "-" before, or a "desc" after, or both
   regex  = /(order|sort)(ed)?\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
-  order  = msg[regex, 4] || ""
+  order  = order || msg[regex, 4] || ""
   desc   = msg[regex, 6] == "desc"
   invert = (order.strip[/\A-*/i].length % 2 == 1) ^ desc
   order.delete!("-")
@@ -903,7 +909,9 @@ def send_userlevel_browse(event, page_offset = 0)
   query = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
   query = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
   # Compute count, page number and offset
+  bench(:step) if BENCHMARK
   count  = query.count
+  bench(:step) if BENCHMARK
   pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
   page   = page > pages ? pages : (page < 1 ? 1 : page)
   offset = (page - 1) * PAGE_SIZE
@@ -911,30 +919,33 @@ def send_userlevel_browse(event, page_offset = 0)
   order_str = Userlevel::sort(order, invert)
   query = !order_str.empty? ? query.order(order_str) : (!tab.nil? ? query.order("#{tab} ASC") : query.order("id DESC"))
   # Fetch userlevels
-  maps = query.offset(offset).limit(PAGE_SIZE).all
-
+bench(:step) if BENCHMARK
+  ids = query.offset(offset).limit(PAGE_SIZE).pluck(:id)
+  maps = query.where(id: ids).all.to_a
+bench(:step) if BENCHMARK
   # <------ Display userlevel ------>
 
-  # CAREFUL with reformatting the first line of the message. It is currently
-  # being used for parsing the message in the future. When someone reacts to
-  # the message with an arrow in order to move to another page, we determine
-  # what query we need to execute based on this one line, by parsing it just
-  # like any user command, rather than having to store the queries in the db
-  # The same holds for the last line, which is used to find the current page
-  output = "Browsing " + USERLEVEL_TABS[cat][:name] + " maps"
+  # CAREFUL reformatting the first two lines of the output message (the header),
+  # since they are used for parsing the message. When someone interacts with it,
+  # either by pressing a button or making a selection in the menu, we need to
+  # modify the query and edit the message. We use the header to figure out what
+  # the original query was, by parsing it exactly as though it were a user
+  # message, so it needs to have a format compatible with the regex we use to
+  # parse commands. I know, genius implementation.
+  output = "Browsing #{USERLEVEL_TABS[cat][:name]} maps"
   output += " by \"#{author[0..63]}\"" if !author.empty?
   output += " containing \"#{search[0..63]}\"" if !search.empty?
   output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}.\n"
-  output += "Total results: **" + count.to_s + "**.\n"
+  output += "Total results: **#{count}**. Page: **#{page}/#{pages}**."
   output += format_userlevels(Userlevel::serial(maps), page, offset .. offset + 19)
-  output += "Page: **" + page.to_s + "/" + pages.to_s + "**."
   bench(:step) if BENCHMARK
 
-  msg_with_nav(event, output, page_offset != 0, page == 1, page == pages)
+  msg_with_nav(event, output, page, pages, order_str, !initial)
 rescue => e
   err(e)
-  err_str = "Error downloading maps (server is not responding)."
-  if page_offset == 0
+  puts(e.backtrace)
+  err_str = "An error happened, try again, if it keeps failing, contact."
+  if initial
     event << err_str
   else
     event.channel.send_message(err_str)

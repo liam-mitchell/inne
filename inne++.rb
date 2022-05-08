@@ -896,10 +896,19 @@ $bot.reaction_remove do |event|
 end
 
 $bot.button do |event|
-  id = event.interaction.button.custom_id
-  if id[/button:nav/i]
+  if event.custom_id[/\Abutton:nav/i]
+    #event.interaction.defer
     if !!event.message.content[/\ABrowsing /]
-      send_userlevel_browse(event, id.split(':').last.to_i)
+      send_userlevel_browse(event, page: event.custom_id.split(':').last.to_i)
+    end
+  end
+end
+
+$bot.select_menu do |event|
+  if event.custom_id[/\Amenu:order/]
+    #event.interaction.defer
+    if !!event.message.content[/\ABrowsing /]
+      send_userlevel_browse(event, order: event.values.first.split(':').last)
     end
   end
 end
