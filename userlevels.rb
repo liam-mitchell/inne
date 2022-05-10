@@ -222,11 +222,11 @@ class Userlevel < ActiveRecord::Base
     query = Userlevel.where(mode: mode)
     return query if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
     if USERLEVEL_TABS[qt][:size] >= 0
-      query = query.where("#{USERLEVEL_TABS[qt][:name]} < #{USERLEVEL_TABS[qt][:size]}")
+      #query = query.where("#{USERLEVEL_TABS[qt][:name]} < #{USERLEVEL_TABS[qt][:size]}")
+      return query.where("tab LIKE '%#{USERLEVEL_TABS[qt][:name][0]}%'")
     else
-      query = query.where("#{USERLEVEL_TABS[qt][:name]} IS NOT NULL")
+      return query.where("#{USERLEVEL_TABS[qt][:name]} IS NOT NULL")
     end
-    query
   end
 
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
