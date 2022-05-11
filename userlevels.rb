@@ -218,15 +218,18 @@ class Userlevel < ActiveRecord::Base
   HEIGHT = DIM * (ROWS + 2)
   INVALID_NAMES = [nil, "null", ""]
 
-  def self.tab(qt, mode = 0)
+  # We implement 2 different ways to select the userlevels belonging to a specific tab
+  # This is done because depending on the other parameters of the query, one or the
+  # other might be faster.
+  def self.tab(qt, mode = 0, slow = false)
     query = Userlevel.where(mode: mode)
     return query if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
-    if USERLEVEL_TABS[qt][:size] >= 0
-      #query = query.where("#{USERLEVEL_TABS[qt][:name]} < #{USERLEVEL_TABS[qt][:size]}")
-      return query.where("tab LIKE '%#{USERLEVEL_TABS[qt][:name][0]}%'")
-    else
-      return query.where("#{USERLEVEL_TABS[qt][:name]} IS NOT NULL")
-    end
+    return query.where("tab LIKE '%#{USERLEVEL_TABS[qt][:name][0]}%'")
+    #if USERLEVEL_TABS[qt][:size] >= 0
+    #  return query.where("#{USERLEVEL_TABS[qt][:name]} < #{USERLEVEL_TABS[qt][:size]}")
+    #else
+    #  return query.where("#{USERLEVEL_TABS[qt][:name]} IS NOT NULL")
+    #end
   end
 
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
@@ -909,9 +912,7 @@ def send_userlevel_browse(event, page: nil, order: nil)
   query = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
   query = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
   # Compute count, page number and offset
-  bench(:step) if BENCHMARK
   count  = query.count
-  bench(:step) if BENCHMARK
   pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
   page   = page > pages ? pages : (page < 1 ? 1 : page)
   offset = (page - 1) * PAGE_SIZE
@@ -919,10 +920,8 @@ def send_userlevel_browse(event, page: nil, order: nil)
   order_str = Userlevel::sort(order, invert)
   query = !order_str.empty? ? query.order(order_str) : (!tab.nil? ? query.order("#{tab} ASC") : query.order("id DESC"))
   # Fetch userlevels
-bench(:step) if BENCHMARK
   ids = query.offset(offset).limit(PAGE_SIZE).pluck(:id)
   maps = query.where(id: ids).all.to_a
-bench(:step) if BENCHMARK
   # <------ Display userlevel ------>
 
   # CAREFUL reformatting the first two lines of the output message (the header),

@@ -2,9 +2,9 @@ class AddUserlevelIndexes < ActiveRecord::Migration[5.1]
   def change
     # Add extra indexes to relevant columns to further enhance performance.
     # Mainly required for smooth userlevel browsing.
-    # We add one column (tab) whose only purpose is to summarize the info
-    # of 4 others, in a way that it suffices to index just this one column
-    # instead of the other 4 and we still get the benfits.
+    ## We add one column (tab) whose only purpose is to summarize the info
+    ## of 4 others, in a way that it suffices to index just this one column
+    ## instead of the other 4 and we still get the benfits.
     # Other important notes:
     # * Indexes are composite so that we can filter by some columns and sort
     #   by others, without losing the benefit of the index.
@@ -19,6 +19,7 @@ class AddUserlevelIndexes < ActiveRecord::Migration[5.1]
     # * One exception is the ID, which due to being the primary key of the
     #   table, is a clustered index, and thus we always get the additional
     #   performance without needing to compose it with other indices.
+=begin
     add_column :userlevels, :tab, :string
     count = Userlevel.count.to_i
     ActiveRecord::Base.transaction do
@@ -32,8 +33,9 @@ class AddUserlevelIndexes < ActiveRecord::Migration[5.1]
         u.update(tab: tab)
       }
     end
-    add_index :userlevels, [:title,  :author, :mode, :tab]
-    add_index :userlevels, [:author, :title,  :mode, :tab]
-    add_index :userlevels, [:favs,   :title,  :mode, :tab, :author]
+=end
+    add_index :userlevels, [:title,  :author, :mode]
+    add_index :userlevels, [:author, :title,  :mode]
+    add_index :userlevels, [:favs,   :title,  :mode, :author]
   end
 end
