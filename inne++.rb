@@ -84,7 +84,7 @@ UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-UPDATE_USER_TABS  = false  # Thread to regularly update userlevel tabs (best, featured, top, hardest)
+UPDATE_USER_TABS  = true  # Thread to regularly update userlevel tabs (best, featured, top, hardest)
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
@@ -104,7 +104,7 @@ USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 *
 USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
 USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
-USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      24 * 60 * 60 # daily
+USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||            1 * 60 # daily
 USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
 
 def log(msg)
@@ -643,16 +643,14 @@ def update_userlevel_tabs
   ["solo", "coop", "race"].each_with_index{ |mode, m|
     [7, 8, 9, 11].each { |qt|
       tab = USERLEVEL_TABS[qt][:name]
-      print("Clearing #{mode} indices of #{tab}...".ljust(80, " ") + "\r")
-      ActiveRecord::Base.transaction do
-        Userlevel.where(mode: m).where.not(tab => nil).update_all(tab => nil)
-      end
-      page = 0
+      page = -1
       while true
-        print("Updating #{mode} page #{page + 1} / #{USERLEVEL_TABS[qt][:limit]} of #{tab}...".ljust(80, " ") + "\r")
-        remaining = Userlevel::update_relationships(qt, page, m)
         page += 1
-        break if !remaining || (USERLEVEL_TABS[qt][:limit] != -1 && page >= USERLEVEL_TABS[qt][:limit])
+        break if !Userlevel::update_relationships(qt, page, m)
+      end
+      ActiveRecord::Base.transaction do
+        #Userlevel.where(mode: m).where.not(tab => nil).update_all(tab => nil)
+        UserlevelTab.where(mode: m, qt: qt).where("`index` >= #{USERLEVEL_TABS[qt][:size]}").delete_all
       end
     }
   }

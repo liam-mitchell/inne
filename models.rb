@@ -7,7 +7,7 @@ include ChunkyPNG::Color
 
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = true  # log common error messages
-LOG_SQL         = true  # log _all_ SQL queries (for debugging)
+LOG_SQL         = false # log _all_ SQL queries (for debugging)
 BENCHMARK       = true  # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
@@ -394,10 +394,10 @@ module HighScore
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
   end
 
-  def get_data(uri_proc, data_proc, err)
+  def self.get_data(uri_proc, data_proc, err, *vargs)
     attempts ||= 0
     initial_id = get_last_steam_id
-    response = Net::HTTP.get_response(uri_proc.call(initial_id))
+    response = Net::HTTP.get_response(uri_proc.call(initial_id, *vargs))
     while response.body == INVALID_RESP
       deactivate_last_steam_id
       update_last_steam_id
@@ -423,14 +423,14 @@ module HighScore
     uri  = Proc.new { |steam_id| scores_uri(steam_id) }
     data = Proc.new { |data| correct_ties(clean_scores(JSON.parse(data)['scores'])) }
     err  = "error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}"
-    get_data(uri, data, err)
+    HighScore::get_data(uri, data, err)
   end
 
   def get_replay(replay_id)
     uri  = Proc.new { |steam_id| replay_uri(steam_id, replay_id) }
     data = Proc.new { |data| data }
     err  = "error getting replay with id #{replay_id} for #{self.class.to_s.downcase} with id #{self.id.to_s}"
-    get_data(uri, data, err)
+    HighScore::get_data(uri, data, err)
   end
 
   # Remove hackers and cheaters both by implementing the ignore lists and the score thresholds.

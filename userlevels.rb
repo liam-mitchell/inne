@@ -23,6 +23,9 @@ USERLEVEL_TABS = {
 class UserlevelData < ActiveRecord::Base
 end
 
+class UserlevelTab < ActiveRecord::Base
+end
+
 # We create aliases "player" and "scores" so we don't have to specify "userlevel_"
 class UserlevelScore < ActiveRecord::Base
   alias_attribute :player, :userlevel_player
@@ -244,6 +247,7 @@ class Userlevel < ActiveRecord::Base
     maps.map(&:as_json).map(&:symbolize_keys)
   end
 
+=begin
   def self.get_levels(qt = 10, page = 0, mode = 0)
     initial_id = get_last_steam_id
     response = Net::HTTP.get(levels_uri(initial_id, qt, page, mode))
@@ -255,8 +259,16 @@ class Userlevel < ActiveRecord::Base
     return nil if response == '-1337'
     response
   rescue => e
-    err("error querying page nº #{page} of userlevels from category #{qt}: #{e}")
+    err("error querying page #{page} of userlevels from category #{qt}: #{e}")
     retry
+  end
+=end
+
+  def self.get_levels(qt = 10, page = 0, mode = 0)
+    uri  = Proc.new { |steam_id, qt, page, mode| Userlevel::levels_uri(steam_id, qt, page, mode) }
+    data = Proc.new { |data| data }
+    err  = "error querying page #{page} of userlevels from category #{qt}"
+    HighScore::get_data(uri, data, err, qt, page, mode)
   end
 
   def self.get_search(search = "", page = 0, mode = 0)
@@ -355,12 +367,17 @@ class Userlevel < ActiveRecord::Base
     count  = parse_int(levels[16..19])
     page   = parse_int(levels[20..23])
     qt     = parse_int(levels[28..31])
+    mode   = parse_int(levels[32..35])
     tab    = USERLEVEL_TABS[qt][:name] rescue nil
     return false if tab.nil?
 
     ActiveRecord::Base.transaction do
       ids = levels[48 .. 48 + 44 * count - 1].scan(/./m).each_slice(44).to_a.each_with_index{ |l, i|
-        Userlevel.find(parse_int(l[0..3])).update(tab => page * PART_SIZE + i) rescue nil
+        #Userlevel.find(parse_int(l[0..3])).update(tab => page * PART_SIZE + i) rescue nil
+        index = page * PART_SIZE + i
+        return false if USERLEVEL_TABS[qt][:size] != -1 && index >= USERLEVEL_TABS[qt][:size]
+        print("Updating #{USERLEVEL_TABS[qt][:name]} map #{index} / #{USERLEVEL_TABS[qt][:size]}...".ljust(80, " ") + "\r")
+        UserlevelTab.find_or_create_by(mode: mode, qt: qt, index: index).update(userlevel_id: parse_int(l[0..3]))
       }
     end
     return true
@@ -371,7 +388,7 @@ class Userlevel < ActiveRecord::Base
 
   # Returns true if the page is full, indicating there are more pages
   def self.update_relationships(qt = 11, page = 0, mode = 0)
-    return if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
+    return false if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
     levels = get_levels(qt, page, mode)
     return parse_tabs(levels) && parse_int(levels[16..19]) == PART_SIZE
   end
