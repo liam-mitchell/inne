@@ -8,7 +8,7 @@ include ChunkyPNG::Color
 RETRIES         = 50    # redownload retries until we move on to the next level
 SHOW_ERRORS     = true  # log common error messages
 LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = true  # benchmark and log functions (for optimization)
+BENCHMARK       = false # benchmark and log functions (for optimization)
 INVALID_RESP    = '-1337'
 DEFAULT_TYPES   = ['Level', 'Episode']
 DISCORD_LIMIT   = 2000
@@ -86,20 +86,27 @@ IGNORED_PLAYERS = [
   "vex",
   "DBYT3",
   "Yup_This_Is_My_Name",
-  "vorcazm"
+  "vorcazm",
+  "The_Mega_Force",
+  "Boringfish"
 ]
 
 # Problematic hackers? We get rid of them by banning their user IDs
 IGNORED_IDS = [
+   63944, # Kronogenics
   115572, # Mishu
+  128613, # cock unsucker
   201322, # dimitry008
   146275, # Puce
+  243184, # Player
   253161, # Chara
   253072, # test8378
   221472, # VexatiousCheff / vex
   276273, # DBYT3
   291743, # Yup_This_Is_My_Name
-   75839  # vorcazm
+   75839, # vorcazm
+  307030, # The_Mega_Force
+  298531  # Boringfish
 ]
 
 # Individually patched runs from legitimate players because they were done
