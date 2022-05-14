@@ -3,7 +3,7 @@ require_relative 'models.rb'
 
 MIN_U_SCORES  = 20 # minimum number of userlevel highscores to appear in average rankings
 MIN_G_SCORES  = 500 # minimum number of userlevel highscores to appear in global average rankings
-PAGE_SIZE     = 20
+PAGE_SIZE     = 10
 PART_SIZE     = 500 # number of userlevels per file returned by the server when querying levels
 MIN_ID        = 22715 # ID of the very first userlevel, to exclude Metanet levels
 
@@ -12,11 +12,11 @@ MIN_ID        = 22715 # ID of the very first userlevel, to exclude Metanet level
 # The limit refers to how many pages (of 500 maps each) we update the db with.
 # The size refers to how many maps we consider when performing stats from that tab.
 USERLEVEL_TABS = {
-  7  => { name: 'best',     fullname: 'Best',       limit:  2, size: 1000, update: true  },
-  8  => { name: 'featured', fullname: 'Featured',   limit: -1, size: -1,   update: true  },
-  9  => { name: 'top',      fullname: 'Top Weekly', limit:  2, size: 1000, update: true  },
-  10 => { name: 'all',      fullname: 'Newest',     limit: -1, size: -1,   update: false },
-  11 => { name: 'hardest',  fullname: 'Hardest',    limit:  2, size: 1000, update: true  }
+  10 => { name: 'all',      fullname: 'All',        size: -1,   update: false }, # keep first
+  7  => { name: 'best',     fullname: 'Best',       size: 1000, update: true  },
+  8  => { name: 'featured', fullname: 'Featured',   size: -1,   update: true  },
+  9  => { name: 'top',      fullname: 'Top Weekly', size: 1000, update: true  },
+  11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
 }
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
@@ -221,18 +221,9 @@ class Userlevel < ActiveRecord::Base
   HEIGHT = DIM * (ROWS + 2)
   INVALID_NAMES = [nil, "null", ""]
 
-  # We implement 2 different ways to select the userlevels belonging to a specific tab
-  # This is done because depending on the other parameters of the query, one or the
-  # other might be faster.
   def self.tab(qt, mode = 0, slow = false)
-    query = Userlevel.where(mode: mode)
-    return query if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
-    return query.where("tab LIKE '%#{USERLEVEL_TABS[qt][:name][0]}%'")
-    #if USERLEVEL_TABS[qt][:size] >= 0
-    #  return query.where("#{USERLEVEL_TABS[qt][:name]} < #{USERLEVEL_TABS[qt][:size]}")
-    #else
-    #  return query.where("#{USERLEVEL_TABS[qt][:name]} IS NOT NULL")
-    #end
+    Userlevel.joins('INNER JOIN userlevel_tabs ON userlevel_tabs.userlevel_id = userlevels.id')
+             .where("userlevel_tabs.mode = #{mode} AND userlevel_tabs.qt = #{qt}")
   end
 
   def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
@@ -373,11 +364,11 @@ class Userlevel < ActiveRecord::Base
 
     ActiveRecord::Base.transaction do
       ids = levels[48 .. 48 + 44 * count - 1].scan(/./m).each_slice(44).to_a.each_with_index{ |l, i|
-        #Userlevel.find(parse_int(l[0..3])).update(tab => page * PART_SIZE + i) rescue nil
         index = page * PART_SIZE + i
         return false if USERLEVEL_TABS[qt][:size] != -1 && index >= USERLEVEL_TABS[qt][:size]
-        print("Updating #{USERLEVEL_TABS[qt][:name]} map #{index} / #{USERLEVEL_TABS[qt][:size]}...".ljust(80, " ") + "\r")
+        print("Updating #{MODES[mode].downcase} #{USERLEVEL_TABS[qt][:name]} map #{index + 1} / #{USERLEVEL_TABS[qt][:size]}...".ljust(80, " ") + "\r")
         UserlevelTab.find_or_create_by(mode: mode, qt: qt, index: index).update(userlevel_id: parse_int(l[0..3]))
+        return false if USERLEVEL_TABS[qt][:size] != -1 && index + 1 >= USERLEVEL_TABS[qt][:size] # Seems redundant, but prevents downloading a file for nothing
       }
     end
     return true
@@ -891,21 +882,22 @@ end
 # valid commands containing all the necessary info to figure out what the original
 # query was, so that we can reexecute it (identically, except with a different
 # page number modified by the parameter) and edit the original bot's message.
-def send_userlevel_browse(event, page: nil, order: nil)
+def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   
   # <------ Parse all message elements ------>
 
   bench(:start) if BENCHMARK
   # Determine whether this is the initial query (new post) or an interaction
   # query (edit post).
-  initial = page.nil? && order.nil?
+  initial = page.nil? && order.nil? && tab.nil?
+  reset_page = !order.nil? || !tab.nil?
   if initial
     msg = event.content
   else
     msg = event.message.content
     msg = msg.split("```").first # Everything before the actual userlevel names
   end
-  page   = (msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + page.to_i
+  page   = reset_page ? 1 : (msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + page.to_i
   search = msg[/(for|containing)\s*#{parse_term}/i, 3] || ""
   author = parse_userlevel_author(msg)
 
@@ -919,7 +911,7 @@ def send_userlevel_browse(event, page: nil, order: nil)
 
   # Determine the category / tab
   cat = 10 # newest
-  USERLEVEL_TABS.each{ |qt, v| cat = qt if !!(msg =~ /#{v[:name]}/i) }
+  USERLEVEL_TABS.each{ |qt, v| cat = qt if tab.nil? ? !!(msg =~ /#{v[:name]}/i) : tab == v[:name] }
   tab = USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(cat) ? USERLEVEL_TABS[cat][:name] : nil
 
   #<------ Fetch userlevels ------>
@@ -935,11 +927,12 @@ def send_userlevel_browse(event, page: nil, order: nil)
   offset = (page - 1) * PAGE_SIZE
   # Order userlevels
   order_str = Userlevel::sort(order, invert)
-  query = !order_str.empty? ? query.order(order_str) : (!tab.nil? ? query.order("#{tab} ASC") : query.order("id DESC"))
+  query = !order_str.empty? ? query.order(order_str) : (!tab.nil? ? query.order("`index` ASC") : query.order("id DESC"))
   # Fetch userlevels
   ids = query.offset(offset).limit(PAGE_SIZE).pluck(:id)
   maps = query.where(id: ids).all.to_a
-  # <------ Display userlevel ------>
+
+  # <------ Display userlevels ------>
 
   # CAREFUL reformatting the first two lines of the output message (the header),
   # since they are used for parsing the message. When someone interacts with it,
@@ -956,11 +949,11 @@ def send_userlevel_browse(event, page: nil, order: nil)
   output += format_userlevels(Userlevel::serial(maps), page, offset .. offset + 19)
   bench(:step) if BENCHMARK
 
-  msg_with_nav(event, output, page, pages, order_str, !initial)
+  msg_with_nav(event, output, page: page, pages: pages, order: order_str, tab: !tab.nil? ? tab : 'all', edit: !initial)
 rescue => e
   err(e)
   puts(e.backtrace)
-  err_str = "An error happened, try again, if it keeps failing, contact."
+  err_str = "An error happened, try again, if it keeps failing, contact the botmeister."
   if initial
     event << err_str
   else

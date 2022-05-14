@@ -84,7 +84,7 @@ UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-UPDATE_USER_TABS  = true  # Thread to regularly update userlevel tabs (best, featured, top, hardest)
+UPDATE_USER_TABS  = false # Thread to regularly update userlevel tabs (best, featured, top, hardest)
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
@@ -104,7 +104,7 @@ USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 *
 USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
 USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
-USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||            1 * 60 # daily
+USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      24 * 60 * 60 # daily
 USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
 
 def log(msg)
@@ -648,9 +648,10 @@ def update_userlevel_tabs
         page += 1
         break if !Userlevel::update_relationships(qt, page, m)
       end
-      ActiveRecord::Base.transaction do
-        #Userlevel.where(mode: m).where.not(tab => nil).update_all(tab => nil)
-        UserlevelTab.where(mode: m, qt: qt).where("`index` >= #{USERLEVEL_TABS[qt][:size]}").delete_all
+      if USERLEVEL_TABS[qt][:size] != -1
+        ActiveRecord::Base.transaction do
+          UserlevelTab.where(mode: m, qt: qt).where("`index` >= #{USERLEVEL_TABS[qt][:size]}").delete_all
+        end
       end
     }
   }
@@ -895,7 +896,6 @@ end
 
 $bot.button do |event|
   if event.custom_id[/\Abutton:nav/i]
-    #event.interaction.defer
     if !!event.message.content[/\ABrowsing /]
       send_userlevel_browse(event, page: event.custom_id.split(':').last.to_i)
     end
@@ -903,10 +903,12 @@ $bot.button do |event|
 end
 
 $bot.select_menu do |event|
-  if event.custom_id[/\Amenu:order/]
-    #event.interaction.defer
-    if !!event.message.content[/\ABrowsing /]
+  if !!event.message.content[/\ABrowsing /]
+    case event.custom_id.split(':')[1]
+    when 'order'
       send_userlevel_browse(event, order: event.values.first.split(':').last)
+    when 'tab'
+      send_userlevel_browse(event, tab: event.values.first.split(':').last)
     end
   end
 end

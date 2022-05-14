@@ -50,6 +50,12 @@ TABS = {
   }
 }
 
+MODES = {
+  0 => "Solo",
+  1 => "Coop",
+  2 => "Race"
+}
+
 # Type-wise max-min for average ranks
 TYPES = {
   "Episode" =>  [50],
@@ -258,25 +264,15 @@ end
 # receive is a ButtonEvent. If its false, then the message is being created,
 # and the event is probably either MentionEvent or PrivateMessageEvent.
 # These have different methods! So be careful.
-def msg_with_nav(event, msg, page, pages, order = nil, edit = false)
+def msg_with_nav(event, msg, page: 1, pages: 1, order: nil, tab: nil, edit: false)
   # Normalize order
   order = "default" if order.nil? || order.empty?
   order = order.downcase.split(" ").first
   order = "date" if order == "id"
+  # Normalize tab
+  tab = "all" if tab.nil? || tab.empty? || !USERLEVEL_TABS.map{ |t, v| v[:name] }.include?(tab)
   # Component collection (View)
   view = Discordrb::Webhooks::View.new{ |view|
-    # ActionRow builder with a Select Menu for the order
-    view.row{ |r|
-      r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
-        ["default", "title", "author", "date", "favs"].each{ |b|
-          m.option(label: "Sort by: #{b.capitalize}", value: "menu:order:#{b}", default: b == order)
-        }
-        #m.option(label: 'Sort by: Title',   value: 'menu:order:title')
-        #m.option(label: 'Sort by: Author',  value: 'menu:order:author')
-        #m.option(label: 'Sort by: Date',    value: 'menu:order:date')
-        #m.option(label: 'Sort by: ++\'s',   value: 'menu:order:favs')
-      }
-    }
     # ActionRow builder with Buttons for page navigation
     view.row{ |r|
       p = "#{page} / #{pages}"
@@ -285,6 +281,22 @@ def msg_with_nav(event, msg, page, pages, order = nil, edit = false)
       r.button(label: p,    style: :secondary, disabled: true,           custom_id: 'button:nav:page')
       r.button(label: "❯",  style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1')
       r.button(label: "❯❙", style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1000000000')
+    }
+    # ActionRow builder with a Select Menu for the tab
+    view.row{ |r|
+      r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab: All', max_values: 1){ |m|
+        USERLEVEL_TABS.each{ |t, v|
+          m.option(label: "Tab: #{v[:fullname]}", value: "menu:tab:#{v[:name]}", default: v[:name] == tab)
+        }
+      }
+    }
+    # ActionRow builder with a Select Menu for the order
+    view.row{ |r|
+      r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
+        ["default", "title", "author", "date", "favs"].each{ |b|
+          m.option(label: "Sort by: #{b.capitalize}", value: "menu:order:#{b}", default: b == order)
+        }
+      }
     }
   }
   if edit
