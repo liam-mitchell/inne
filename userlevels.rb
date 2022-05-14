@@ -897,9 +897,14 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
     msg = event.message.content
     msg = msg.split("```").first # Everything before the actual userlevel names
   end
-  page   = reset_page ? 1 : (msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + page.to_i
+  # The first thing we do is parse the title and author, which go in quotes
+  # Then, we remove all quoted strings from the original message
+  # This is so that the other parameters we parse cannot accidentally match them
   search = msg[/(for|containing)\s*#{parse_term}/i, 3] || ""
   author = parse_userlevel_author(msg)
+  msg.remove!(/#{parse_term}/i)
+  page   = reset_page ? 1 : (msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + page.to_i
+
 
   # Regex to determine the field to order by
   # Order may be inverted by specifying a "-" before, or a "desc" after, or both
