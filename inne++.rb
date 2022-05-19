@@ -886,14 +886,6 @@ $bot.message do |event|
   robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
 end
 
-$bot.reaction_add do |event| 
-  arrow_react(event)
-end
-
-$bot.reaction_remove do |event| 
-  arrow_react(event)
-end
-
 $bot.button do |event|
   if event.custom_id[/\Abutton:nav/i]
     if !!event.message.content[/\ABrowsing /]

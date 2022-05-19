@@ -15,8 +15,6 @@ Eddy's TODO list for inne:
 - Player alias table (e.g. "asleep at the wheel" and "drunk driver" for MaelstroM")
 - Level alias table (e.g. "cfl" for compendium for literates")
 - Add total <rank> score, and show total score and total 19th score gained daily and weekly.
-- Allow to add "rankings" to any userlevel query (browse) to instead perform rankings on the result set.
-- Add arrow navigation to rankings and other functions using buttons
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.

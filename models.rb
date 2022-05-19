@@ -631,8 +631,13 @@ class Level < ActiveRecord::Base
   has_many :scores, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :challenges
+  has_many :level_aliases
   belongs_to :episode
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+
+  def add_alias(a)
+    LevelAlias.find_or_create_by(level: self, alias: a)
+  end
 
   def format_name
     "#{longname} (#{name})"
@@ -941,6 +946,7 @@ class Player < ActiveRecord::Base
   has_many :rank_histories
   has_many :points_histories
   has_many :total_score_histories
+  has_many :player_aliases
 
   # Deprecated since it's slower, see Score::rank
   def self.rankings(&block)
@@ -1056,6 +1062,10 @@ class Player < ActiveRecord::Base
       }
     }
     ret
+  end
+
+  def add_alias(a)
+    PlayerAlias.find_or_create_by(player: self, alias: a)
   end
 
   def print_name
@@ -1253,6 +1263,14 @@ class Player < ActiveRecord::Base
       end
     end
   end
+end
+
+class LevelAlias < ActiveRecord::Base
+  belongs_to :level
+end
+
+class PlayerAlias < ActiveRecord::Base
+  belongs_to :player
 end
 
 class User < ActiveRecord::Base
