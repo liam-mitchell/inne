@@ -28,7 +28,6 @@ Eddy's TODO list for inne:
 
 - Usernames are being truncated.
 - We need to update all maps regularly, for the ++'s, etc.
-- Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
 - Userlevel of the day
 - Unify names: Authors who have changed username, group by author id and change all names to the most recent one. BUT keep old names in the alias table.
 - Add Metanet levels to the db.
@@ -39,7 +38,6 @@ Less priority:
 - Userlevel rankings by page (featured, best, hardest, etc.). Also, the special hardest rankings with point ponderation.
 - Imagesearch: Show pictures of results (miniature) instead of text.
 - Userlevel stats: How many unique authors, maps, averages, etc. Break down by mode and total.
-- Simplify author search by having a separate query for it: "userlevel from/by/made by <username>".
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
 - Store a daily list of all top 50 userlevels (just ID's for instance), so we can see how the hardest levels evolve.
 - When requiring an ID (download, screenshot, etc), we could also support a name, and then we perform a search in the database. If there's one result, we show it, otherwise, we show the list. (Note: When this is done, we'll have to update the way IDs are matched, since it's currently too general and could result in collisions).
@@ -132,7 +130,7 @@ Avatar:
 - One should relate levels to their episodes with has_many and belongs_to => Rebuild database, maybe by creating more indices. We could use this to create a "cleanliness" and an "ownage?" method for episodes.
 - Some methods are duplicated in messages and inne++ files, like 'send_screenshot' or 'send_diff', ¿what to do here, delete the one in inne++ (which is not being used)?
 
-- Search Metanet levels by name.
+- Search Metanet levels by name (regex too?)
 - Possibility to return lists in order of level and not rank.
 - For "splits", also download episode 0th replay and parse it to get the actual 0th splits, so that we can compare the 0th splits with the ideal splits we are currently producing by adding up the level 0ths. This isn't actually possible unless we assume G++, which we can check by adding up.
 - Implement "missing" in the "list" function, so that we could get "bottom 5 list for jirka that I don't already have".

@@ -1,13 +1,10 @@
 require 'ascii_charts'
 require 'gruff'
 require 'zlib'
+require_relative 'constants.rb'
 require_relative 'io.rb'
 require_relative 'models.rb'
 require_relative 'userlevels.rb'
-
-BENCH_MSGS   = true # benchmark functions in messages
-NUM_ENTRIES  = 20   # number of entries to show on diverse methods
-MAX_ENTRIES  = 20   # maximum number of entries on methods with user input, to avoid spam
 
 # Return total count of player's scores within a specific rank range
 def send_top_n_count(event)
@@ -1159,10 +1156,28 @@ def send_twitch(event)
   end
 end
 
+# Add custom player / level alias.
+def add_alias(event)
+  perm = check_permissions(event, [:botmaster])
+  raise perm[:error] if !perm[:granted]
+  
+  msg    = event.content
+  aka    = msg[/#{parse_term}/i, 2]
+  raise "You need to provide an alias in quotes." if aka.nil?
+
+  msg.remove!(/#{parse_term}/i)
+  type   = !!msg[/\blevel\b/i] ? 'level' : (!!msg[/\bplayer\b/i] ? 'player' : nil)
+  raise "You need to provide an alias type: level, player." if type.nil?
+
+  entry = type == 'level' ? parse_level_or_episode(msg) : parse_player(msg, event.user.name)
+  entry.add_alias(aka)
+  event << "Added alias \"#{aka}\" to #{type} #{entry.name}."
+end
+
 # Send custom player / level aliases.
 # ("type" has to be either 'level' or 'player' for now)
 def send_aliases(event, page: nil, type: nil)
-  # PARSE
+  # PARSE2
   initial    = page.nil? && type.nil?
   reset_page = !type.nil?
   msg        = fetch_message(event, initial)
@@ -1200,8 +1215,7 @@ def send_aliases(event, page: nil, type: nil)
   interaction_add_button_navigation(view, pag[:page], pag[:pages])
   interaction_add_select_menu_alias_type(view, type)
   send_message_with_interactions(event, output, view, !initial)
-rescue => e
-  err(e)
+rescue
   event << 'Error fetching aliases.'
 end
 
@@ -1294,6 +1308,7 @@ def respond(event)
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   send_twitch(event)         if msg =~ /\btwitch\b/i
   send_aliases(event)        if msg =~ /\baliases\b/i
+  add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 

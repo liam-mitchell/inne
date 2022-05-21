@@ -1,13 +1,5 @@
 require 'active_support/core_ext/integer/inflections' # ordinalize
-
-# This file contain methods to both parse and format crucial parts of messages,
-# like levels, players, tabs, types, times, etc.
-# Both messages.rb and userlevels.rb make use of it.
-
-LEVEL_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
-EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
-STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
-NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
+require_relative 'constants.rb'
 
 # Fetch message from an event. Depending on the event that was triggered, this is
 # accessed in a different way. We use the "initial" boolean to determine whether
@@ -57,7 +49,7 @@ def parse_player_explicit(name, playerClass = Player)
   player = Player.joins('INNER JOIN player_aliases ON players.id = player_aliases.player_id')
                  .where(["player_aliases.alias = ?", name])
                  .take rescue nil if player.nil?
-  raise "#{p} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad..." if player.nil?
+  raise "#{name} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad..." if player.nil?
   player
 end
 
@@ -173,13 +165,17 @@ def parse_level_or_episode(msg)
   story   = msg[STORY_PATTERN]
   name    = msg[NAME_PATTERN, 2]
   ret     = nil
+  str     = ""
 
   if level
-    ret = Level.find_by(name: normalize_name(level).upcase)
+    str = normalize_name(level)
+    ret = Level.find_by(name: str.upcase)
   elsif episode
-    ret = Episode.find_by(name: normalize_name(episode).upcase)
+    str = normalize_name(episode)
+    ret = Episode.find_by(name: str.upcase)
   elsif story
-    ret = Story.find_by(name: normalize_name(story).upcase)
+    str = normalize_name(story)
+    ret = Story.find_by(name: story.upcase)
   elsif !msg[/(level of the day|lotd)/i].nil?
     ret = get_current(Level)
   elsif !msg[/(episode of the week|eotw)/i].nil?
@@ -187,6 +183,7 @@ def parse_level_or_episode(msg)
   elsif !msg[/(column of the month|cotm)/i].nil?
     ret = get_current(Story)
   elsif name
+    str = name
     ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase) rescue nil
     ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
                .find_by("UPPER(level_aliases.alias) = ?", name.upcase) rescue nil if ret.nil?
@@ -196,7 +193,7 @@ def parse_level_or_episode(msg)
     raise msg
   end
 
-  raise "I couldn't find anything by that name :(" if ret.nil?
+  raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil?
   ret
 end
 

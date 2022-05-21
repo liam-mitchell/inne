@@ -1,23 +1,6 @@
+require_relative 'constants.rb'
 require_relative 'io.rb'
 require_relative 'models.rb'
-
-MIN_U_SCORES  = 20 # minimum number of userlevel highscores to appear in average rankings
-MIN_G_SCORES  = 500 # minimum number of userlevel highscores to appear in global average rankings
-PAGE_SIZE     = 10
-PART_SIZE     = 500 # number of userlevels per file returned by the server when querying levels
-MIN_ID        = 22715 # ID of the very first userlevel, to exclude Metanet levels
-
-# Mapping the qt (query type) to each userlevel tab.
-# Update refers to whether we update our db's tab info.
-# The limit refers to how many pages (of 500 maps each) we update the db with.
-# The size refers to how many maps we consider when performing stats from that tab.
-USERLEVEL_TABS = {
-  10 => { name: 'all',      fullname: 'All',        size: -1,   update: false }, # keep first
-  7  => { name: 'best',     fullname: 'Best',       size: 1000, update: true  },
-  8  => { name: 'featured', fullname: 'Featured',   size: -1,   update: true  },
-  9  => { name: 'top',      fullname: 'Top Weekly', size: 1000, update: true  },
-  11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
-}
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
 class UserlevelData < ActiveRecord::Base

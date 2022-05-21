@@ -38,74 +38,9 @@ require 'yaml'
 require 'byebug'
 
 # Import other source files
+require_relative 'constants.rb'
 require_relative 'models.rb'
 require_relative 'messages.rb'
-
-# Development variables
-TEST           = false # Switch to the local test bot
-TEST_REPORT    = false # Produces the report immediately once
-LOG            = false # Export logs and errors into external file
-LOG_REPORT     = true  # Log new weekly scores that appear in the report
-
-# Internal variables
-ATTEMPT_LIMIT  = 5     # Redownload attempts before skipping
-WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
-DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
-CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
-
-# Discord variables
-SERVER_ID      = 197765375503368192 # N++ Server
-CHANNEL_ID     = 210778111594332181 # #highscores
-USERLEVELS_ID  = 221721273405800458 # #mapping
-NV2_ID         = 197774025844457472 # #nv2
-CONTENT_ID     = 197793786389200896 # #content-creation
-TWITCH_ROLE    = "Voyeur"           # Discord role for those that want to be pinged when a new stream happens
-
-# Jokes
-POTATO         = true               # joke they have in the nv2 channel
-POTATO_RATE    = 1                  # seconds between potato checks
-POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
-MISHU          = true               # MishNUB joke
-MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
-
-# Individual flags for each thread / task
-OFFLINE_MODE      = false # Disables most intensive online functionalities
-OFFLINE_STRICT    = false # Disables all online functionalities of outte
-DO_NOTHING        = false # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
-UPDATE_STATUS     = false # Thread to regularly update the bot's status
-UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
-UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
-UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
-UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
-UPDATE_LEVEL      = false # Thread to regularly publish level of the day
-UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
-UPDATE_STORY      = false # Thread to regularly publish column of the month
-UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
-UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
-UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-UPDATE_USER_TABS  = false # Thread to regularly update userlevel tabs (best, featured, top, hardest)
-REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
-
-# Update frequencies for each task
-STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
-TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||                60 # every 1 min
-HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
-HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
-DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
-EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
-STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
-REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
-REPORT_UPDATE_SIZE          = CONFIG['report_update_size']          ||  7 * 24 * 60 * 60 # last 7 days
-SUMMARY_UPDATE_SIZE         = CONFIG['summary_update_size']         ||  1 * 24 * 60 * 60 # last day
-USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
-USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
-USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
-USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
-USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      24 * 60 * 60 # daily
-USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"

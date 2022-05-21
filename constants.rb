@@ -1,0 +1,251 @@
+# <--------------------------------------------------------------------------->
+# <------                  DEVBELOPMENT VARIABLES                       ------>
+# <--------------------------------------------------------------------------->
+
+TEST           = true  # Switch to the local test bot
+TEST_REPORT    = false # Produces the report immediately once
+SHOW_ERRORS    = true  # Log common error messages to the console
+LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
+LOG            = false # Export logs and errors into external file
+LOG_REPORT     = true  # Log new weekly scores that appear in the report
+
+# <--------------------------------------------------------------------------->
+# <------                     INTERNAL VARIABLES                        ------>
+# <--------------------------------------------------------------------------->
+
+WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
+BENCHMARK      = false # Benchmark and log functions (for optimization)
+BENCH_MSGS     = false # Benchmark functions _in messages_
+DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
+CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
+
+# <--------------------------------------------------------------------------->
+# <------                     NETWORK VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+RETRIES        = 50   # Redownload attempts for boards / demos
+ATTEMPT_LIMIT  = 5    # Redownload attempts in general (bigger files)
+INVALID_RESP   = '-1337'
+DEFAULT_TYPES  = ['Level', 'Episode']
+
+# <--------------------------------------------------------------------------->
+# <------                     DISCORD VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+BOTMASTER_ID   = 204332624288677890 # User ID of the bot manager (currently, Eddy)
+SERVER_ID      = 197765375503368192 # N++ Server
+CHANNEL_ID     = 210778111594332181 # #highscores
+USERLEVELS_ID  = 221721273405800458 # #mapping
+NV2_ID         = 197774025844457472 # #nv2
+CONTENT_ID     = 197793786389200896 # #content-creation
+TWITCH_ROLE    = "Voyeur"           # Discord role for those that want to be pinged when a new stream happens
+DISCORD_LIMIT  = 2000               # Message character limit
+
+# <--------------------------------------------------------------------------->
+# <------                   INPUT FORMAT VARIABLES                      ------>
+# <--------------------------------------------------------------------------->
+
+LEVEL_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
+EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
+STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
+NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
+MAX_ENTRIES     = 20 # maximum number of entries on methods with user input, to avoid spam
+
+# <--------------------------------------------------------------------------->
+# <------                  OUTPUT FORMAT VARIABLES                      ------>
+# <--------------------------------------------------------------------------->
+
+NUM_ENTRIES     = 20   # number of entries to show on most methods
+SCORE_PADDING   =  0   #         fixed    padding, 0 for no fixed padding
+DEFAULT_PADDING = 15   # default variable padding, never make 0
+MAX_PADDING     = 15   # max     variable padding, 0 for no maximum
+MAX_PAD_GEN     = 80   # max padding for general strings (not player names)
+TRUNCATE_NAME   = true # truncate name when it exceeds the maximum padding
+
+# <--------------------------------------------------------------------------->
+# <------                   USERLEVEL VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+MIN_U_SCORES = 20    # Minimum number of userlevel highscores to appear in average rankings
+MIN_G_SCORES = 500   # Minimum number of userlevel highscores to appear in global average rankings
+PAGE_SIZE    = 10    # Number of userlevels to show when browsing
+PART_SIZE    = 500   # Number of userlevels per file returned by the server when querying levels
+MIN_ID       = 22715 # ID of the very first userlevel, to exclude Metanet levels
+#   Mapping of the qt (query type) to each userlevel tab.
+#     'name'     - Internal name used to identify each tab.
+#     'fullname' - Display name of tab 
+#     'update'   - Determines whether we update our db's tab info.
+#     'size'     - Determines how many maps from each tab to update.
+USERLEVEL_REPORT_SIZE = 500
+USERLEVEL_TABS = {
+  10 => { name: 'all',      fullname: 'All',        size: -1,   update: false }, # keep first
+  7  => { name: 'best',     fullname: 'Best',       size: 1000, update: true  },
+  8  => { name: 'featured', fullname: 'Featured',   size: -1,   update: true  },
+  9  => { name: 'top',      fullname: 'Top Weekly', size: 1000, update: true  },
+  11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
+}
+
+# <--------------------------------------------------------------------------->
+# <------                       JOKE VARIABLES                          ------>
+# <--------------------------------------------------------------------------->
+
+POTATO         = true               # joke they have in the nv2 channel
+POTATO_RATE    = 1                  # seconds between potato checks
+POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
+MISHU          = true               # MishNUB joke
+MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
+COOL            = true              # Emoji for CKC in leaderboards
+
+# <--------------------------------------------------------------------------->
+# <------                       TASK VARIABLES                          ------>
+# <--------------------------------------------------------------------------->
+
+# Individual flags for each thread / task
+OFFLINE_MODE      = false # Disables most intensive online functionalities
+OFFLINE_STRICT    = false # Disables all online functionalities of outte
+DO_NOTHING        = true  # 'true' sets all the following ones to false
+DO_EVERYTHING     = false # 'true' sets all the following ones to true
+UPDATE_STATUS     = false # Thread to regularly update the bot's status
+UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
+UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
+UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
+UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
+UPDATE_LEVEL      = false # Thread to regularly publish level of the day
+UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
+UPDATE_STORY      = false # Thread to regularly publish column of the month
+UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
+UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
+UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
+UPDATE_USER_TABS  = false # Thread to regularly update userlevel tabs (best, featured, top, hardest)
+REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
+REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
+
+# Update frequencies for each task
+STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
+TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||                60 # every 1 min
+HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
+HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
+DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
+LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
+EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
+STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
+REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
+REPORT_UPDATE_SIZE          = CONFIG['report_update_size']          ||  7 * 24 * 60 * 60 # last 7 days
+SUMMARY_UPDATE_SIZE         = CONFIG['summary_update_size']         ||  1 * 24 * 60 * 60 # last day
+USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
+USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
+USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
+USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
+USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      24 * 60 * 60 # daily
+USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
+
+# <--------------------------------------------------------------------------->
+# <------                 HIGHSCORING VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+MIN_TIES = 3 # Minimum number of ties for 0th to be considered maxable
+
+# @par1: ID ranges for levels and episodes
+# @par2: Score limits to filter new hacked scores
+# @par3: Number of scores required to enter the average rank/point rankings of tab
+TABS = {
+  "Episode" => {
+    :SI => [ (  0.. 24).to_a, 400,  5],
+    :S  => [ (120..239).to_a, 950, 25],
+    :SL => [ (240..359).to_a, 650, 25],
+    :SU => [ (480..599).to_a, 650, 25]
+  },
+  "Level" => {
+    :SI  => [ (  0..  124).to_a,  298, 25],
+    :S   => [ ( 600..1199).to_a,  874, 50],
+    :SL  => [ (1200..1799).to_a,  400, 50],
+    :SS  => [ (1800..1919).to_a, 2462, 25],
+    :SU  => [ (2400..2999).to_a,  530, 50],
+    :SS2 => [ (3000..3119).to_a,  322, 25]
+  },
+  "Story" => {
+    :SI => [ ( 0..  4).to_a, 1000, 1],
+    :S  => [ (24.. 43).to_a, 2000, 5],
+    :SL => [ (48.. 67).to_a, 2000, 5],
+    :SU => [ (96..115).to_a, 1500, 5]
+  }
+}
+
+MODES = {
+  0 => "Solo",
+  1 => "Coop",
+  2 => "Race"
+}
+
+# Type-wise max-min for average ranks
+MAXMIN_SCORES = 100   # max-min number of highscores to appear in average point rankings
+TYPES = {
+  "Episode" =>  [50],
+  "Level"   => [100],
+  "Story"   =>  [10]
+}
+
+IGNORED_PLAYERS = [
+  "Kronogenics",
+  "BlueIsTrue",
+  "fiordhraoi",
+  "cheeseburgur101",
+  "Jey",
+  "jungletek",
+  "Hedgy",
+  "ᕈᘎᑕᒎᗩn ᙡiᗴᒪḰi",
+  "Venom",
+  "EpicGamer10075",
+  "Altii",
+  "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
+  "Floof The Goof",
+  "Prismo",
+  "Mishu",
+  "dimitry008",
+  "Chara",
+  "test8378",
+  "VexatiousCheff",
+  "vex",
+  "DBYT3",
+  "Yup_This_Is_My_Name",
+  "vorcazm",
+  "The_Mega_Force",
+  "Boringfish",
+  "cock unsucker"
+]
+
+# Problematic hackers? We get rid of them by banning their user IDs
+IGNORED_IDS = [
+   63944, # Kronogenics
+  115572, # Mishu
+  128613, # cock unsucker
+  201322, # dimitry008
+  146275, # Puce
+  243184, # Player
+  253161, # Chara
+  253072, # test8378
+  221472, # VexatiousCheff / vex
+  276273, # DBYT3
+  291743, # Yup_This_Is_My_Name
+   75839, # vorcazm
+  307030, # The_Mega_Force
+  298531  # Boringfish
+]
+
+# Individually patched runs from legitimate players because they were done
+# with older versions of levels and the scores are now incorrect.
+# @params: minimum replay id where legit scores start, score adjustment required
+PATCH_RUNS = {
+  :episode => {
+    182 => [695142, -42], # S-C-12
+    217 => [1165074, -8]  # S-C-19
+  },
+  :level => {
+    910  => [286360, -42], # S-C-12-00
+    1089 => [225710,  -8]  # S-C-19-04
+  },
+  :story => {
+  },
+  :userlevel => {
+  }
+}

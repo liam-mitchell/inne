@@ -1,132 +1,11 @@
-# coding: utf-8
 require 'active_record'
 require 'net/http'
 require 'chunky_png' # for screenshot generation
 #require 'oily_png'
+require_relative 'constants.rb'
 include ChunkyPNG::Color
 
-RETRIES         = 50    # redownload retries until we move on to the next level
-SHOW_ERRORS     = true  # log common error messages
-LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = false # benchmark and log functions (for optimization)
-INVALID_RESP    = '-1337'
-DEFAULT_TYPES   = ['Level', 'Episode']
-DISCORD_LIMIT   = 2000
-
-SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
-DEFAULT_PADDING = 15    # default variable padding, never make 0
-MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
-MAX_PAD_GEN     = 80    # max padding for general strings (not player names)
-TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
-COOL            = true  # show cool face for people in the ckc in the scores
-
-MIN_TIES        = 3     # minimum number of ties for 0th to be considered maxable
-MAXMIN_SCORES   = 100   # max-min number of highscores to appear in average point rankings
-USERLEVEL_REPORT_SIZE = 500
 ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
-
-# ID ranges for levels and episodes
-# Score limits to filter new hacked scores
-# Number of scores required to enter the average rank/point rankings of tab
-TABS = {
-  "Episode" => {
-    :SI => [ (  0.. 24).to_a, 400,  5],
-    :S  => [ (120..239).to_a, 950, 25],
-    :SL => [ (240..359).to_a, 650, 25],
-    :SU => [ (480..599).to_a, 650, 25]
-  },
-  "Level" => {
-    :SI  => [ (  0..  124).to_a,  298, 25],
-    :S   => [ ( 600..1199).to_a,  874, 50],
-    :SL  => [ (1200..1799).to_a,  400, 50],
-    :SS  => [ (1800..1919).to_a, 2462, 25],
-    :SU  => [ (2400..2999).to_a,  530, 50],
-    :SS2 => [ (3000..3119).to_a,  322, 25]
-  },
-  "Story" => {
-    :SI => [ ( 0..  4).to_a, 1000, 1],
-    :S  => [ (24.. 43).to_a, 2000, 5],
-    :SL => [ (48.. 67).to_a, 2000, 5],
-    :SU => [ (96..115).to_a, 1500, 5]
-  }
-}
-
-MODES = {
-  0 => "Solo",
-  1 => "Coop",
-  2 => "Race"
-}
-
-# Type-wise max-min for average ranks
-TYPES = {
-  "Episode" =>  [50],
-  "Level"   => [100],
-  "Story"   =>  [10]
-}
-
-IGNORED_PLAYERS = [
-  "Kronogenics",
-  "BlueIsTrue",
-  "fiordhraoi",
-  "cheeseburgur101",
-  "Jey",
-  "jungletek",
-  "Hedgy",
-  "ᕈᘎᑕᒎᗩn ᙡiᗴᒪḰi",
-  "Venom",
-  "EpicGamer10075",
-  "Altii",
-  "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
-  "Floof The Goof",
-  "Prismo",
-  "Mishu",
-  "dimitry008",
-  "Chara",
-  "test8378",
-  "VexatiousCheff",
-  "vex",
-  "DBYT3",
-  "Yup_This_Is_My_Name",
-  "vorcazm",
-  "The_Mega_Force",
-  "Boringfish"
-]
-
-# Problematic hackers? We get rid of them by banning their user IDs
-IGNORED_IDS = [
-   63944, # Kronogenics
-  115572, # Mishu
-  128613, # cock unsucker
-  201322, # dimitry008
-  146275, # Puce
-  243184, # Player
-  253161, # Chara
-  253072, # test8378
-  221472, # VexatiousCheff / vex
-  276273, # DBYT3
-  291743, # Yup_This_Is_My_Name
-   75839, # vorcazm
-  307030, # The_Mega_Force
-  298531  # Boringfish
-]
-
-# Individually patched runs from legitimate players because they were done
-# with older versions of levels and the scores are now incorrect.
-# @params: minimum replay id where legit scores start, score adjustment required
-PATCH_RUNS = {
-  :episode => {
-    182 => [695142, -42], # S-C-12
-    217 => [1165074, -8]  # S-C-19
-  },
-  :level => {
-    910  => [286360, -42], # S-C-12-00
-    1089 => [225710,  -8]  # S-C-19-04
-  },
-  :story => {
-  },
-  :userlevel => {
-  }
-}
 
 # Turn a little endian binary array into an integer
 def parse_int(bytes)
@@ -364,6 +243,35 @@ def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: n
   interaction_add_select_menu_order(view, order)
   # Send
   send_message_with_interactions(event, msg, view, edit)
+end
+
+# Permission system:
+#   Support for different roles (unrelated to Discord toles). Each role can
+#   be determined by whichever system we choose (Discord user IDs, Discord
+#   roles, etc.). We can restrict each function to only specific roles.
+#
+#   Currently implemented roles:
+#     1) botmaster: Only the manager of the bot can execute them (matches
+#                   Discord's user ID with a constant).
+#
+#   The following functions then check if the user who tried to execute a
+#   certain function belongs to any of the permitted roles for it.
+def check_permission(event, role)
+  case role
+  when :botmaster
+    {
+      granted: event.user.id == BOTMASTER_ID,
+      error:   'the botmasters'
+    }
+  end
+end
+
+def check_permissions(event, roles)
+  permissions = roles.map{ |role| check_permission(event, role) }
+  {
+    granted: permissions.map{ |p| p[:granted] }.count(true) > 0,
+    error:   "Sorry, only #{permissions.map{ |p| p[:error] }.join(', ')} are allowed to execute this command."
+  }
 end
 
 module HighScore
