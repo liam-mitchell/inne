@@ -1,139 +1,202 @@
-.v               x  ->00th SU-B-06-02 107.117
-.v              10th->01st SI-D-02-00 98.933
-Catfish          x  ->04th SU-D-17-02 113.283
-Catfish          x  ->05th SU-X-19    111.050
-Catfish          x  ->12th SU-X-19-04 84.317
-Catfish          x  ->13th SU-X-00-02 97.833
-Catfish          x  ->13th !-A-06     85.950
-Catfish          x  ->14th !-A-07     103.500
-Deunousen        x  ->02nd SU-X-18-02 127.267
-Deunousen        x  ->04th SU-B-19-03 140.317
-Deunousen        x  ->05th SU-A-19-00 137.283
-Deunousen        x  ->05th SU-C-19-00 109.017
-Deunousen        x  ->05th SU-C-19-04 92.783
-Deunousen        x  ->05th SU-D-19-01 151.017
-Deunousen        x  ->06th SU-A-19-01 150.050
-Deunousen        x  ->06th SU-X-18-03 136.217
-Deunousen        x  ->07th SU-D-19-00 143.400
-Deunousen        x  ->07th SU-X-18-00 115.533
-Deunousen        x  ->08th SU-A-19-03 75.867
-Deunousen        x  ->08th SU-A-19-04 128.117
-Deunousen        x  ->08th SU-B-19-02 127.050
-Deunousen        x  ->08th SU-B-19-04 110.500
-Deunousen        x  ->08th SU-D-19-02 94.100
-Deunousen        x  ->09th SU-B-19-01 166.950
-Deunousen        x  ->09th SU-C-19-01 109.550
-Deunousen        x  ->11th SU-A-19-02 159.050
-Deunousen        x  ->11th SU-C-19-03 153.767
-Deunousen       17th->12th SU-E-19-01 81.250
-Deunousen        x  ->12th SU-X-18-04 98.700
-EuroCremlin - r  x  ->15th !-E-01     68.800
-Frycek           x  ->04th !-X-19     225.283
-Frycek           x  ->06th !-E-15     61.883
-Frycek           x  ->11th !-C-17     109.433
-Frycek           x  ->12th !-X-14     114.683
-Frycek           x  ->15th !-B-18     103.167
-Frycek           x  ->18th !-B-19     7.917
-Frycek           x  ->18th !-X-13     54.150
-Gealx3           x  ->05th SU-00      342.267
-J a v 0          x  ->00th S-E-06-00  123.133
-J a v 0          x  ->00th S-E-06-02  121.217
-J a v 0         02nd->00th S-X-05-00  133.167
-J a v 0          x  ->00th SU-E-17-02 177.083
-J a v 0         02nd->02nd S-X-06-01  135.650
-J a v 0          x  ->02nd SL-C-16-00 141.350
-J a v 0          x  ->03rd S-E-13-04  97.650
-J a v 0          x  ->03rd SL-D-08-00 106.183
-J a v 0          x  ->04th SL-B-15-03 158.900
-J a v 0          x  ->05th S-D-07-01  107.183
-J a v 0          x  ->05th SL-A-16-01 111.800
-J a v 0          x  ->05th SU-B-18-03 119.433
-J a v 0          x  ->06th S-A-12-00  150.700
-J a v 0          x  ->06th S-B-12-02  115.600
-J a v 0          x  ->07th S-A-06-03  139.850
-J a v 0          x  ->07th S-B-07-01  115.467
-J a v 0          x  ->11th S-D-13-00  118.233
-J a v 0          x  ->12th S-A-06-00  110.183
-J a v 0          x  ->14th SI-D-02-00 98.917
-J a v 0          x  ->14th SL-D-15-00 113.017
-J a v 0          x  ->17th S-C-13-04  98.450
-Jamza15          x  ->10th SL-X-18-02 103.117
-NateyPooPoo     07th->00th SL-E-17-04 146.550
-NateyPooPoo     15th->01st SI-E-02-00 106.983
-NateyPooPoo     15th->01st S-A-03-02  109.850
-NateyPooPoo     16th->02nd SI-C-02-02 119.600
-NateyPooPoo     02nd->02nd S-X-13-00  115.450
-NateyPooPoo     15th->03rd SL-B-01-04 340.583
-NateyPooPoo     15th->03rd SL-D-19-04 105.683
-NateyPooPoo     14th->03rd SU-B-18-03 119.517
-NateyPooPoo     10th->03rd SU-X-02-01 111.717
-NateyPooPoo     15th->05th S-E-01-01  92.883
-NateyPooPoo     15th->05th S-B-09-01  120.133
-NateyPooPoo     16th->05th SU-E-14-00 100.433
-NateyPooPoo     15th->06th S-D-03-02  125.033
-NateyPooPoo     15th->06th SU-B-01-03 93.067
-NateyPooPoo     15th->07th SU-C-10-04 147.750
-NateyPooPoo     15th->07th SU-B-13-04 108.083
-NateyPooPoo     16th->08th S-B-04-02  123.217
-NateyPooPoo     15th->08th S-C-16-02  114.967
-NateyPooPoo     15th->08th SL-A-05-03 105.717
-NateyPooPoo     16th->09th S-B-04-01  98.117
-NateyPooPoo     15th->12th SU-E-13-03 103.700
-NateyPooPoo     15th->13th S-B-06-03  156.983
-NateyPooPoo     15th->14th SL-D-13-01 120.883
-Precarious       x  ->17th S-14       418.567
-Precarious       x  ->17th S-X-14-03  117.967
-SimVYo          01st->00th S-04       1121.733
-SimVYo          01st->00th S-06       801.983
-SimVYo           x  ->00th S-14       897.850
-SimVYo           x  ->00th S-E-15-02  130.817
-SimVYo           x  ->01st S-C-15     222.417
-SimVYo           x  ->02nd S-C-15-02  134.983
-SimVYo           x  ->02nd S-C-15-03  106.900
-SimVYo           x  ->03rd S-C-14-04  135.600
-SimVYo           x  ->04th S-C-15-01  119.700
-SimVYo           x  ->05th S-B-15-02  145.800
-SimVYo          07th->05th S-C-15-00  102.133
-SimVYo           x  ->06th S-C-14-03  136.817
-SimVYo           x  ->07th S-C-15-04  118.800
-SimVYo           x  ->07th S-E-15-04  139.983
-SimVYo           x  ->08th S-B-15-04  104.800
-SimVYo          11th->09th S-E-14-01  117.267
-SimVYo           x  ->11th S-B-15-00  99.400
-SimVYo           x  ->19th SL-B-10-02 93.483
-Skylighter      02nd->02nd SI-D-00-01 106.433
-Skylighter       x  ->13th SI-D-02-00 98.917
-Untamed Nim      x  ->12th SI-D-02-00 98.917
-WelderExp        x  ->11th SU-X-19    70.650
-Zawy             x  ->02nd SL-C-01-00 188.133
-Zawy             x  ->04th S-D-01     416.717
-Zawy             x  ->04th S-D-01-03  323.300
-Zawy             x  ->06th ?-B-04     86.483
-Zawy             x  ->07th S-C-06-01  115.217
-Zawy             x  ->08th S-E-13-04  96.733
-Zawy             x  ->09th S-A-00-00  126.950
-Zawy             x  ->09th SL-E-01-00 133.533
-Zawy             x  ->10th SL-E-01    185.817
-Zawy             x  ->10th SL-C-16-00 140.183
-Zawy             x  ->13th SU-E-01-00 118.800
-Zawy             x  ->14th SU-A-00-00 98.517
-Zawy             x  ->14th SU-B-00-02 107.233
-Zawy             x  ->15th SL-E-01-01 94.900
-Zawy             x  ->18th SL-E-01-02 102.950
-almost           x  ->00th SL-04      1248.683
-almost          06th->05th SL-B-04    364.100
-almost          14th->05th SL-C-04    287.167
-almost          09th->05th SL-E-04    500.383
-almost          10th->06th SL-D-04    266.300
-almost          14th->08th SL-C-05    278.083
-almost           x  ->09th SL-B-05    243.667
-almost           x  ->11th SL-A-05    424.383
-eboshidori       x  ->11th S-C-14-04  131.883
-golfkid          x  ->06th SL-C-06-00 126.933
-golfkid         18th->09th ?-B-04     86.300
-killingpepsi     x  ->08th SL-C-16-00 140.467
-killingpepsi     x  ->12th SL-C-01-00 187.367
-killingpepsi     x  ->16th SL-X-01-03 120.067
-notdocq          x  ->15th SI-D-02-00 98.917
-trance          16th->07th SU-X-15-02 100.983
-trance           x  ->10th !-X-19     225.233
+AlphaEspy        x  ->17th SU-E-19-02 95.567
+Catfish          x  ->05th ?-A-14     233.200
+Catfish          x  ->12th SL-X-14-02 140.083
+Catfish          x  ->18th ?-B-03     105.783
+Catfish          x  ->18th ?-E-10     159.633
+ChrisS97         x  ->00th SL-16      643.983
+ChrisS97         x  ->03rd SU-00      705.783
+ChrisS97         x  ->05th SU-X-19    226.950
+ChrisS97         x  ->08th S-A-04     369.233
+ChrisS97         x  ->09th SU-X-19-04 116.217
+ChrisS97         x  ->12th S-D-13-04  129.600
+ChrisS97         x  ->13th S-A-04-04  273.117
+ChrisS97         x  ->19th SU-E-04-03 105.600
+ChrisS97         x  ->19th SU-B-18-04 134.617
+ChrisS97         x  ->20th S-B-17-02  116.200
+Deunousen       02nd->02nd SL-B-00-04 134.667
+Deunousen        x  ->02nd SL-D-00-02 92.550
+Deunousen        x  ->02nd SL-E-00-00 122.650
+Deunousen        x  ->03rd SL-X-01-00 106.083
+Deunousen        x  ->03rd SU-X-19-02 82.983
+Deunousen        x  ->04th SL-X-00-01 115.450
+Deunousen        x  ->04th SL-X-00-02 187.650
+Deunousen        x  ->04th SL-X-00-04 151.300
+Deunousen        x  ->04th SU-D-19-04 89.317
+Deunousen       12th->04th SU-E-19-01 82.733
+Deunousen       11th->04th SU-E-19-03 164.200
+Deunousen        x  ->05th SL-D-00-04 185.050
+Deunousen        x  ->05th SU-E-19-02 97.933
+Deunousen        x  ->06th SL-C-00-04 123.483
+Deunousen        x  ->06th SL-X-00-03 205.300
+Deunousen        x  ->07th SL-B-00-00 166.517
+Deunousen        x  ->07th SU-D-19-03 99.833
+Deunousen       12th->07th SU-E-19-04 137.783
+Deunousen        x  ->09th SU-X-19-01 143.417
+Deunousen        x  ->10th SL-C-00-02 117.200
+Deunousen        x  ->12th SL-D-00-00 110.050
+Deunousen        x  ->12th SL-D-00-03 113.633
+Deunousen        x  ->13th SL-B-00-03 107.300
+Deunousen        x  ->13th SL-C-01-03 107.067
+Deunousen        x  ->14th SL-A-00-01 108.667
+Deunousen        x  ->14th SL-B-00-01 126.317
+Deunousen       17th->14th SL-C-00-00 114.467
+Deunousen        x  ->14th SL-D-00-01 118.250
+Deunousen        x  ->14th SL-C-01-01 119.633
+Deunousen       17th->15th SL-E-00-02 101.583
+Deunousen       15th->15th SL-E-00-03 106.483
+Deunousen        x  ->15th SL-C-01-02 113.150
+Deunousen        x  ->15th SU-X-19-00 107.000
+Deunousen        x  ->17th SL-E-00-04 100.767
+Deunousen        x  ->17th SL-A-01-01 124.717
+Deunousen       18th->18th SL-C-00-01 137.683
+Deunousen        x  ->19th SL-B-01-00 102.200
+EddyMataGallos   x  ->20th SU-X-19-04 1.667
+Emmoji           x  ->12th !-E-01     87.500
+EuroCremlin - r  x  ->10th SU-00      154.600
+Eviltim1700     13th->09th S-B-07-03  86.817
+Eviltim1700      x  ->10th S-C-07-01  118.367
+Eviltim1700     19th->11th S-C-07     192.000
+Frycek           x  ->12th !-D-19     50.083
+Frycek           x  ->18th !-A-14     62.200
+Grumple Stumpki  x  ->20th SU-X-19    28.867
+Horga            x  ->19th S-E-12-00  124.367
+J a v 0          x  ->02nd SI-B-02-00 130.633
+J a v 0          x  ->02nd SU-D-17-02 113.850
+J a v 0          x  ->04th SU-A-16-04 124.783
+J a v 0         08th->05th SU-A-17-03 112.533
+J a v 0          x  ->07th SI-B-03-00 128.800
+J a v 0          x  ->14th SI-B-02-01 106.150
+J a v 0          x  ->16th SL-D-12-00 142.917
+J a v 0          x  ->16th SU-A-18-00 113.567
+ManerYina        x  ->07th SU-00      198.917
+Muzgrob         19th->03rd SL-B-10    245.450
+Muzgrob         19th->09th SL-B-10-03 130.617
+Muzgrob         14th->09th SL-C-15-00 140.567
+Muzgrob         10th->10th SU-C-06-04 121.033
+Muzgrob          x  ->12th SL-C-15    284.750
+NateyPooPoo     12th->00th SI-E-02-03 99.017
+NateyPooPoo     14th->02nd SU-D-04-04 113.850
+NateyPooPoo     14th->02nd SU-A-17-01 94.483
+NateyPooPoo     14th->03rd S-E-08-02  130.933
+NateyPooPoo     14th->03rd SU-C-16-01 107.917
+NateyPooPoo     14th->03rd SU-D-17-01 197.367
+NateyPooPoo     14th->04th S-A-13-03  112.433
+NateyPooPoo     14th->04th S-A-16-04  149.800
+NateyPooPoo     14th->04th SU-B-11-00 109.933
+NateyPooPoo     14th->05th SL-B-13-02 179.867
+NateyPooPoo     14th->05th SU-E-12-03 115.967
+NateyPooPoo     14th->06th ?-A-10     219.617
+NateyPooPoo     14th->07th S-B-12-03  110.483
+NateyPooPoo     15th->07th SL-A-09-03 143.917
+NateyPooPoo     14th->07th SL-B-13-00 93.767
+NateyPooPoo     14th->07th SU-A-16-02 99.150
+NateyPooPoo     14th->07th SU-B-17-01 121.833
+NateyPooPoo     14th->08th SL-C-12-02 123.450
+NateyPooPoo     14th->08th SU-E-08-03 98.533
+NateyPooPoo     14th->09th SL-D-05-01 108.050
+NateyPooPoo     14th->09th SL-A-07-00 111.550
+NateyPooPoo     14th->09th SL-B-10-00 139.450
+NateyPooPoo     14th->09th SL-E-14-01 146.550
+NateyPooPoo     14th->10th S-B-18-03  130.033
+NateyPooPoo     15th->10th SL-D-02-01 124.350
+NateyPooPoo     14th->10th SU-B-13-03 110.700
+NateyPooPoo     14th->10th SU-C-15-02 111.117
+NateyPooPoo     10th->10th SU-A-17-03 112.433
+NateyPooPoo     14th->11th SI-E-02-02 94.483
+NateyPooPoo     18th->11th SU-X-14-02 92.617
+NateyPooPoo     14th->12th S-B-00-02  131.533
+NateyPooPoo     14th->12th ?-C-06     138.717
+NateyPooPoo     14th->13th SL-C-12-03 103.867
+NateyPooPoo     14th->13th ?-A-15     439.700
+Rallph82         x  ->03rd S-B-17-02  117.250
+Rallph82         x  ->03rd SL-A-02-00 149.400
+Rallph82         x  ->05th SU-C-07-02 99.217
+Rallph82         x  ->10th SU-B-17-00 130.600
+Rallph82         x  ->13th SU-C-07-00 95.733
+Rallph82         x  ->14th S-B-17-03  67.633
+Scully           x  ->13th !-D-12     51.867
+Scully           x  ->18th !-B-19     65.050
+SimVYo          15th->00th S-15       776.050
+SimVYo          04th->00th SU-00      1125.617
+SimVYo           x  ->00th S-E-15     226.883
+SimVYo          00th->00th S-E-15-02  130.933
+SimVYo          07th->00th S-E-15-04  149.333
+SimVYo          02nd->01st S-E-15-03  102.633
+SimVYo           x  ->03rd SU-D-00-02 471.417
+SimVYo           x  ->03rd SU-E-00-02 143.333
+SimVYo          06th->05th S-E-15-01  94.467
+SimVYo           x  ->05th SU-E-00-04 160.500
+SimVYo          14th->06th S-E-15-00  109.517
+SimVYo          13th->06th SU-B-00-01 113.283
+SimVYo           x  ->06th SU-B-00-02 107.333
+SimVYo           x  ->06th SU-B-00-03 117.083
+SimVYo           x  ->07th SU-A-00-02 163.317
+SimVYo           x  ->08th SU-D-00-04 85.117
+SimVYo           x  ->09th SU-C-00-01 79.283
+SimVYo           x  ->09th SU-E-00-03 119.550
+SimVYo           x  ->11th SU-D-00-03 114.600
+SimVYo           x  ->15th SU-D-00-00 144.083
+SimVYo           x  ->18th S-A-16-00  105.617
+SimVYo           x  ->19th SU-C-00-02 150.517
+VCM              x  ->00th SU-C-17-01 95.333
+VCM             06th->01st SL-A-00-01 109.000
+WheatyTruffles   x  ->02nd SU-17      353.850
+WheatyTruffles   x  ->16th SU-18      293.583
+Yoke300          x  ->12th SL-C-18-02 102.517
+Yoke300         18th->17th SL-D-15-02 112.450
+Zawy             x  ->02nd S-D-13-04  140.100
+Zawy             x  ->03rd S-B-01-04  145.467
+Zawy             x  ->04th S-X-08-02  131.533
+Zawy             x  ->05th SL-C-11-02 110.033
+Zawy             x  ->05th SU-A-08-04 108.100
+Zawy             x  ->06th S-D-02-03  126.200
+Zawy             x  ->07th S-B-17-02  117.100
+Zawy             x  ->07th SL-B-01-00 105.267
+Zawy            09th->09th S-X-10-03  122.300
+Zawy             x  ->10th SU-B-18-04 135.750
+Zawy             x  ->12th SL-B-01-02 98.517
+Zawy             x  ->12th SU-C-07-00 95.733
+ababab777        x  ->19th SU-A-12-04 132.750
+almost           x  ->00th SL-05      1190.083
+almost           x  ->02nd SL-C-06-04 161.167
+almost          06th->04th SL-C-06    312.167
+almost          07th->04th SL-D-06    419.833
+almost           x  ->04th SL-D-04-01 109.217
+almost          05th->05th SL-A-06    233.367
+almost           x  ->05th SL-E-02-02 119.950
+almost          12th->06th SL-D-05    350.750
+almost          11th->06th SL-E-05    348.733
+almost          06th->06th SL-B-06    225.367
+almost           x  ->07th SL-D-06-02 229.100
+almost           x  ->08th SL-C-06-03 111.433
+almost           x  ->15th S-C-19-02  118.183
+almost           x  ->17th S-B-17-02  116.317
+ekisacik         x  ->18th S-A-10-02  135.017
+gamingmaster200  x  ->09th SU-X-19    91.817
+gamingmaster200  x  ->12th SU-X-19-04 87.683
+golfkid          x  ->04th SU-B-18-04 136.633
+killingpepsi    16th->13th SL-C-06-00 126.567
+megajumpr        x  ->00th SU-E-05-04 99.850
+megajumpr        x  ->01st !-E-01     178.033
+origamialligato  x  ->14th SU-X-07-03 116.450
+trance           x  ->02nd S-E-08-03  141.450
+trance           x  ->02nd SL-A-16-00 113.433
+trance           x  ->04th S-D-05-00  92.183
+trance           x  ->05th SL-A-07-00 112.167
+trance           x  ->05th SU-X-04-00 111.800
+trance          13th->06th SL-A-03-04 103.300
+trance           x  ->06th SL-D-06-01 112.333
+trance           x  ->07th S-D-10-01  135.983
+trance           x  ->08th S-C-04-03  151.417
+trance           x  ->08th S-D-08-02  115.517
+trance           x  ->08th SU-E-19-04 136.633
+trance           x  ->09th SL-B-07-03 104.100
+trance           x  ->10th S-C-06-01  115.117
+trance           x  ->10th SU-X-03-02 122.633
+trance          13th->11th SL-B-06-01 140.050
+trance           x  ->11th SU-X-13-02 106.567
+trance           x  ->12th S-D-04-01  96.500
+trance           x  ->13th S-A-13-03  112.067
+trance           x  ->13th SL-B-05-03 122.050
+trance           x  ->15th S-D-11-01  132.250
+trance           x  ->16th SU-E-18-03 154.983
