@@ -9,8 +9,34 @@ EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
 STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
 NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
 
+# Fetch message from an event. Depending on the event that was triggered, this is
+# accessed in a different way. We use the "initial" boolean to determine whether
+# the post is going to be created (in which case the event that triggered it is
+# either a MentionEvent or a PrivateMessageEvent) or edited (in which case the
+# event that triggeredf it must have been either a ButtonEvent or a SelectMenuEvent,
+# or any other future interaction event).
+def fetch_message(event, initial)
+  if initial # MentionEvent / PrivateMessageEvent
+    event.content
+  else # ButtonEvent / SelectMenuEvent
+    msg = event.message.content
+    msg.split("```").first # Everything before the actual userlevel names
+  end
+end
+
+def compute_pages(msg, count = 1, page = 1)
+  pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
+  page   = page > pages ? pages : (page < 1 ? 1 : page)
+  offset = (page - 1) * PAGE_SIZE
+  { page: page, pages: pages, offset: offset }
+end
+
 def parse_type(msg)
   ((msg[/level/i] || msg[/lotd/i]) ? Level : ((msg[/episode/i] || msg[/eotw/i]) ? Episode : ((msg[/\bstory\b/i] || msg[/\bcolumn/i] || msg[/hard\s*core/i] || msg[/\bhc\b/i] || msg[/cotm/i]) ? Story : nil)))
+end
+
+def parse_alias_type(msg, type = nil)
+  ['level', 'player'].include?(type) ? type : (!!msg[/player/i] ? 'player' : 'level')
 end
 
 def normalize_name(name)
@@ -23,6 +49,16 @@ end
 
 def formalize_tab(tab)
   parse_tabs(tab)[0].to_s
+end
+
+# Auxiliary function for the following ones
+def parse_player_explicit(name, playerClass = Player)
+  player = playerClass.where.not(metanet_id: nil).find_by(name: name) rescue nil
+  player = Player.joins('INNER JOIN player_aliases ON players.id = player_aliases.player_id')
+                 .where(["player_aliases.alias = ?", name])
+                 .take rescue nil if player.nil?
+  raise "#{p} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad..." if player.nil?
+  player
 end
 
 # explicit: players will only be parsed if they appear explicitly, without inferring from their user, otherwise nil
@@ -38,9 +74,7 @@ def parse_player(msg, username, userlevel = false, explicit = false, enforce = f
     return player if !player.nil?
     user = User.find_by(username: username)
     raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
-    player = playerClass.where.not(metanet_id: nil).find_by(name: user.player.name)
-    raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
-    player
+    parse_player_explicit(user.player.name, playerClass)
   else
     if p.nil?
       if explicit
@@ -50,18 +84,14 @@ def parse_player(msg, username, userlevel = false, explicit = false, enforce = f
           nil
         end
       else
-        player = playerClass.where.not(metanet_id: nil).find_by(name: username)
+        player = playerClass.where.not(metanet_id: nil).find_by(name: username) rescue nil
         return player if !player.nil?
         user = User.find_by(username: username)
         raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
-        player = playerClass.where.not(metanet_id: nil).find_by(name: user.player.name)
-        raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
-        player
+        parse_player_explicit(user.player.name, playerClass)
       end
     else
-      player = playerClass.where.not(metanet_id: nil).find_by(name: p)
-      raise "#{p} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if player.nil?
-      player
+      parse_player_explicit(p, playerClass)
     end
   end
 end
@@ -76,14 +106,11 @@ def parse_players(msg, username, userlevel = false)
     p1 = parse_player(msg, username, userlevel, true, true, false)
     p2 = parse_player(msg, username, userlevel, false, false, true)
   when 1
-    p1 = playerClass.where.not(metanet_id: nil).find_by(name: p[0])
-    raise "#{p[0]} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if p1.nil?
+    p1 = parse_player_explicit(p[0], playerClass)
     p2 = parse_player(msg, username, userlevel, false, false, true)
   when 2
-    p1 = playerClass.where.not(metanet_id: nil).find_by(name: p[0])
-    raise "#{p[0]} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if p1.nil?
-    p2 = playerClass.where.not(metanet_id: nil).find_by(name: p[1])
-    raise "#{p[1]} doesn't have any high scores! Either you misspelled the name, or they're exceptionally bad..." if p2.nil?
+    p1 = parse_player_explicit(p[0], playerClass)
+    p2 = parse_player_explicit(p[1], playerClass)
   else
     raise "Too many players! Please enter either 1 or 2."
   end
@@ -141,11 +168,11 @@ def parse_steam_id(msg)
 end
 
 def parse_level_or_episode(msg)
-  level = msg[LEVEL_PATTERN]
+  level   = msg[LEVEL_PATTERN]
   episode = msg[EPISODE_PATTERN]
-  story = msg[STORY_PATTERN]
-  name = msg[NAME_PATTERN, 2]
-  ret = nil
+  story   = msg[STORY_PATTERN]
+  name    = msg[NAME_PATTERN, 2]
+  ret     = nil
 
   if level
     ret = Level.find_by(name: normalize_name(level).upcase)
@@ -160,7 +187,9 @@ def parse_level_or_episode(msg)
   elsif !msg[/(column of the month|cotm)/i].nil?
     ret = get_current(Story)
   elsif name
-    ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
+    ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase) rescue nil
+    ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
+               .find_by("UPPER(level_aliases.alias) = ?", name.upcase) rescue nil if ret.nil?
   else
     msg = "I couldn't figure out which level, episode or column you wanted scores for! You need to send either a level, " +
           "an episode or a column ID that looks like SI-A-00-00, SI-A-00 or SI-00; or a level name, using 'for <name>.'"
@@ -227,6 +256,22 @@ def parse_tabs(msg)
   ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
 
   ret
+end
+
+# This is used mainly for page navigation. We determine the current page,
+# and we also determine whether we need to add an offset to it (to navigate)
+# or reset it (when a different component, e.g. a select menu) was activated.
+def parse_page(msg, offset = 0, reset = false, components = nil)
+  page = nil
+  components.to_a.each{ |row|
+    row.each{ |component|
+      page = component.label.to_s[/\d+/i].to_i if component.custom_id.to_s == 'button:nav:page'
+    }
+  }
+  reset ? 1 : (page || msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + offset.to_i
+rescue => e
+  err(e)
+  1
 end
 
 # We're basically building a regex string similar to: /("|“|”)([^"“”]*)("|“|”)/i

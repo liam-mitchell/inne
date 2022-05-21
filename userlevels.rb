@@ -884,7 +884,7 @@ end
 # page number modified by the parameter) and edit the original bot's message.
 def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   
-  # <------ Parse all message elements ------>
+  # <------ PARSE all message elements ------>
 
   bench(:start) if BENCHMARK
   # Determine whether this is the initial query (new post) or an interaction
@@ -903,7 +903,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   search = msg[/(for|containing)\s*#{parse_term}/i, 3] || ""
   author = parse_userlevel_author(msg)
   msg.remove!(/#{parse_term}/i)
-  page   = reset_page ? 1 : (msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + page.to_i
+  page   = parse_page(msg, page, reset_page, event.message.components)
 
 
   # Regex to determine the field to order by
@@ -919,25 +919,23 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   USERLEVEL_TABS.each{ |qt, v| cat = qt if tab.nil? ? !!(msg =~ /#{v[:name]}/i) : tab == v[:name] }
   tab = USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(cat) ? USERLEVEL_TABS[cat][:name] : nil
 
-  #<------ Fetch userlevels ------>
+  #<------ FETCH userlevels ------>
 
   # Filter userlevels
-  query = tab.nil? ? Userlevel.where(mode: 0) : Userlevel::tab(cat, 0)
-  query = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
-  query = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
-  # Compute count, page number and offset
-  count  = query.count
-  pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
-  page   = page > pages ? pages : (page < 1 ? 1 : page)
-  offset = (page - 1) * PAGE_SIZE
+  query     = tab.nil? ? Userlevel.where(mode: 0) : Userlevel::tab(cat, 0)
+  query     = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
+  query     = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
+  # Compute count, page number, total pages, and offset
+  count     = query.count
+  pag       = compute_pages(msg, count, page)
   # Order userlevels
   order_str = Userlevel::sort(order, invert)
-  query = !order_str.empty? ? query.order(order_str) : (!tab.nil? ? query.order("`index` ASC") : query.order("id DESC"))
+  query     = !order_str.empty? ? query.order(order_str) : (!tab.nil? ? query.order("`index` ASC") : query.order("id DESC"))
   # Fetch userlevels
-  ids = query.offset(offset).limit(PAGE_SIZE).pluck(:id)
-  maps = query.where(id: ids).all.to_a
+  ids       = query.offset(pag[:offset]).limit(PAGE_SIZE).pluck(:id)
+  maps      = query.where(id: ids).all.to_a
 
-  # <------ Display userlevels ------>
+  # <------ FORMAT message ------>
 
   # CAREFUL reformatting the first two lines of the output message (the header),
   # since they are used for parsing the message. When someone interacts with it,
@@ -949,12 +947,12 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   output = "Browsing #{USERLEVEL_TABS[cat][:name]} maps"
   output += " by \"#{author[0..63]}\"" if !author.empty?
   output += " containing \"#{search[0..63]}\"" if !search.empty?
-  output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}.\n"
-  output += "Total results: **#{count}**. Page: **#{page}/#{pages}**."
-  output += format_userlevels(Userlevel::serial(maps), page, offset .. offset + 19)
+  output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}"
+  output += " (Total results: **#{count}**)."
+  output += format_userlevels(Userlevel::serial(maps), pag[:page], pag[:offset] .. pag[:offset] + 19)
   bench(:step) if BENCHMARK
 
-  msg_with_nav(event, output, page: page, pages: pages, order: order_str, tab: !tab.nil? ? tab : 'all', edit: !initial)
+  craft_userlevel_browse_msg(event, output, page: pag[:page], pages: pag[:pages], order: order_str, tab: !tab.nil? ? tab : 'all', edit: !initial)
 rescue => e
   err(e)
   puts(e.backtrace)

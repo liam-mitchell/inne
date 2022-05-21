@@ -11,15 +11,16 @@ class CreateAliases < ActiveRecord::Migration[5.1]
     end
 
     [
-      ['S-C-19-04',  '-++'  ],
-      ['S-X-19-04',  'clr'  ],
-      ['!-C-19',     'cfl'  ],
-      ['S-X-13-01',  'sqn'  ],
-      ['S-A-19-03',  'ils'  ],
-      ['!-A-18',     'eeny' ],
-      ['!-A-18',     'meeny'],
-      ['S-E-18-04',  '40k'  ],
-      ['SU-B-17-04', 'sss'  ]
+      ['S-C-19-04',  '-++'    ],
+      ['S-X-19-04',  'clr'    ],
+      ['!-C-19',     'cfl'    ],
+      ['S-X-13-01',  'sqn'    ],
+      ['S-A-19-03',  'ils'    ],
+      ['!-A-18',     'eeny'   ],
+      ['!-A-18',     'meeny'  ],
+      ['S-E-18-04',  '40k'    ],
+      ['SU-B-17-04', 'sss'    ],
+      ['?-C-06',     'slashes']
     ].each{ |l|
       Level.find_by(name: l[0]).add_alias(l[1])
     }

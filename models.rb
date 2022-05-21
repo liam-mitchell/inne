@@ -16,6 +16,7 @@ DISCORD_LIMIT   = 2000
 SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15    # default variable padding, never make 0
 MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
+MAX_PAD_GEN     = 80    # max padding for general strings (not player names)
 TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
 COOL            = true  # show cool face for people in the ckc in the scores
 
@@ -175,16 +176,22 @@ def bench(action)
   end
 end
 
-def format_string(str, padding = DEFAULT_PADDING)
+# Function to pad (and possibly truncate) a string according to different
+# padding methods, determined by the constants defined at the start.
+# It's a general function, but with a boolean we specify if we're formatting
+# player names for leaderboards in particular, in which case, the maximum
+# padding length is different.
+def format_string(str, padding = DEFAULT_PADDING, max_pad = MAX_PADDING, leaderboards = true)
+  max_pad = !max_pad.nil? ? max_pad : (leaderboards ? MAX_PADDING : MAX_PAD_GEN)
   if SCORE_PADDING > 0 # FIXED padding mode
     "%-#{"%d" % [SCORE_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, SCORE_PADDING) : str]
   else                 # VARIABLE padding mode
-    if MAX_PADDING > 0   # maximum padding supplied
+    if max_pad > 0   # maximum padding supplied
       if padding > 0       # valid padding
-        if padding <= MAX_PADDING 
+        if padding <= max_pad 
           "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding) : str]
         else
-          "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, MAX_PADDING) : str]
+          "%-#{"%d" % [max_pad]}s" % [TRUNCATE_NAME ? str.slice(0, max_pad) : str]
         end
       else                 # invalid padding
         "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING) : str]
@@ -197,6 +204,15 @@ def format_string(str, padding = DEFAULT_PADDING)
       end
     end
   end
+end
+
+def truncate_ellipsis(str, pad = DEFAULT_PADDING)
+  str if !str.is_a?(String) || !pad.is_a?(Integer) || pad < 0
+  str.length <= pad ? str : (pad > 3 ? str[0...pad - 3] + '...' : str[0...pad])
+end
+
+def pad_truncate_ellipsis(str, pad = DEFAULT_PADDING, max_pad = MAX_PAD_GEN)
+  truncate_ellipsis(format_string(str, pad, max_pad, false))
 end
 
 # sometimes we need to make sure there's exactly one valid type
@@ -263,54 +279,91 @@ def wavg(arr, w)
   arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
 end
 
-# Send a message to a channel with a navigation bar made with buttons.
-# The idea is to implement this in many functions that are "browseable",
-# e.g. userlevel search, leaderboards, screenshots, rankings (see more pages).
-#
-# If the boolean in true, then the meesage is being edited, and the event we
-# receive is a ButtonEvent. If its false, then the message is being created,
-# and the event is probably either MentionEvent or PrivateMessageEvent.
-# These have different methods! So be careful.
-def msg_with_nav(event, msg, page: 1, pages: 1, order: nil, tab: nil, edit: false)
-  # Normalize order
-  order = "default" if order.nil? || order.empty?
-  order = order.downcase.split(" ").first
-  order = "date" if order == "id"
-  # Normalize tab
-  tab = "all" if tab.nil? || tab.empty? || !USERLEVEL_TABS.map{ |t, v| v[:name] }.include?(tab)
-  # Component collection (View)
-  view = Discordrb::Webhooks::View.new{ |view|
-    # ActionRow builder with Buttons for page navigation
-    view.row{ |r|
-      p = "#{page} / #{pages}"
-      r.button(label: "❙❮", style: :primary,   disabled: page == 1,      custom_id: 'button:nav:-1000000000')
-      r.button(label: "❮",  style: :primary,   disabled: page == 1,      custom_id: 'button:nav:-1')
-      r.button(label: p,    style: :secondary, disabled: true,           custom_id: 'button:nav:page')
-      r.button(label: "❯",  style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1')
-      r.button(label: "❯❙", style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1000000000')
-    }
-    # ActionRow builder with a Select Menu for the tab
-    view.row{ |r|
-      r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab: All', max_values: 1){ |m|
-        USERLEVEL_TABS.each{ |t, v|
-          m.option(label: "Tab: #{v[:fullname]}", value: "menu:tab:#{v[:name]}", default: v[:name] == tab)
-        }
-      }
-    }
-    # ActionRow builder with a Select Menu for the order
-    view.row{ |r|
-      r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
-        ["default", "title", "author", "date", "favs"].each{ |b|
-          m.option(label: "Sort by: #{b.capitalize}", value: "menu:order:#{b}", default: b == order)
-        }
+# ActionRow builder with a Select Menu for the tab
+def interaction_add_select_menu_tab(view, tab = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab: All', max_values: 1){ |m|
+      USERLEVEL_TABS.each{ |t, v|
+        m.option(label: "Tab: #{v[:fullname]}", value: "menu:tab:#{v[:name]}", default: v[:name] == tab)
       }
     }
   }
-  if edit
+ensure
+  view
+end
+
+# ActionRow builder with a Select Menu for the order
+def interaction_add_select_menu_order(view, order = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
+      ["default", "title", "author", "date", "favs"].each{ |b|
+        m.option(label: "Sort by: #{b.capitalize}", value: "menu:order:#{b}", default: b == order)
+      }
+    }
+  }
+ensure
+  view
+end
+
+# ActionRow builder with a Select Menu for the alias type
+def interaction_add_select_menu_alias_type(view, type = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.select_menu(custom_id: 'menu:alias', placeholder: 'Alias type', max_values: 1){ |m|
+      ['level', 'player'].each{ |b|
+        m.option(label: "#{b.capitalize} aliases", value: "menu:alias:#{b}", default: b == type)
+      }
+    }
+  }
+ensure
+  view
+end
+
+# ActionRow builder with Buttons for page navigation
+def interaction_add_button_navigation(view, page = 1, pages = 1)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    p = "#{page} / #{pages}"
+    r.button(label: "❙❮", style: :primary,   disabled: page == 1,      custom_id: 'button:nav:-1000000000')
+    r.button(label: "❮",  style: :primary,   disabled: page == 1,      custom_id: 'button:nav:-1')
+    r.button(label: p,    style: :secondary, disabled: true,           custom_id: 'button:nav:page')
+    r.button(label: "❯",  style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1')
+    r.button(label: "❯❙", style: :primary,   disabled: page == pages,  custom_id: 'button:nav:1000000000')
+  }
+ensure
+  view
+end
+
+# Function to send messages specifically when they have interactions attached
+# (i.e. buttons or select menus). At the moment, there is no way to to attach
+# interactions to a message and use << to prevent rate limiting, so we need to
+# either send a new message, or edit the current one. Also, the originating
+# events are different (MentionEvent or PrivateMessageEvent if its a new
+# message, and ButtonEvent or SelectMenuEvent if its an existing message),
+# so we need to access different methods with different syntax.
+def send_message_with_interactions(event, msg, view = nil, edit = false)
+  if edit # ButtonEvent / SelectMenuEvent
     event.update_message(content: msg, components: view)
-  else
+  else # MentionEvent / PrivateMessageEvent
     event.channel.send_message(msg, false, nil, nil, nil, nil, view)
   end
+end
+
+def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: nil, edit: false)
+  # Normalize pars
+  order = "default" if order.nil? || order.empty?
+  order = order.downcase.split(" ").first
+  order = "date" if order == "id"
+  tab = "all" if tab.nil? || tab.empty? || !USERLEVEL_TABS.map{ |t, v| v[:name] }.include?(tab)
+  # Create and fill component collection (View)
+  view = Discordrb::Webhooks::View.new
+  interaction_add_button_navigation(view, page, pages)
+  interaction_add_select_menu_tab(view, tab)
+  interaction_add_select_menu_order(view, order)
+  # Send
+  send_message_with_interactions(event, msg, view, edit)
 end
 
 module HighScore

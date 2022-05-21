@@ -84,7 +84,7 @@ UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
 UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
 UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-UPDATE_USER_TABS  = true  # Thread to regularly update userlevel tabs (best, featured, top, hardest)
+UPDATE_USER_TABS  = false # Thread to regularly update userlevel tabs (best, featured, top, hardest)
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
@@ -104,7 +104,7 @@ USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 *
 USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
 USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
-USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      10 # daily
+USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      24 * 60 * 60 # daily
 USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
 
 def log(msg)
@@ -886,21 +886,57 @@ $bot.message do |event|
   robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
 end
 
+# Important notes for parsing interaction components:
+#
+# 1) We determine the origin of the interaction (the bot's source message) based
+#    on the first word of the message. Therefore, we have to format this first
+#    word (and, often, the first sentence) properly so that the bot can parse it.
+#
+# 2) We use the custom_id of the component (button, select menu) and of the
+#    component option (select menu option) to classify them and determine what
+#    they do. Therefore, they must ALL follow a specific pattern:
+#
+#    IDs will be strings composed by a series of keywords separated by colons.
+#    The first keyword specifies the type of component (button, menu).
+#    The second keyword specifies the category of the component (personal).
+#    The third keyword specifies the specific component (button, select menu option).
 $bot.button do |event|
-  if event.custom_id[/\Abutton:nav/i]
-    if !!event.message.content[/\ABrowsing /]
-      send_userlevel_browse(event, page: event.custom_id.split(':').last.to_i)
+  keys   = event.custom_id.to_s.split(':')                       # Component parameters
+  type   = event.message.content.strip.split(' ').first.downcase # Source message type
+  return if keys[0] != 'button' # Only listen to components of type "Button"
+
+  case type
+  when 'browsing'
+    case keys[1]
+    when 'nav'
+      send_userlevel_browse(event, page: keys[2])
+    end
+  when 'aliases'
+    case keys[1]
+    when 'nav'
+      send_aliases(event, page: keys[2])
     end
   end
 end
 
 $bot.select_menu do |event|
-  if !!event.message.content[/\ABrowsing /]
-    case event.custom_id.split(':')[1]
-    when 'order'
-      send_userlevel_browse(event, order: event.values.first.split(':').last)
-    when 'tab'
-      send_userlevel_browse(event, tab: event.values.first.split(':').last)
+  keys   = event.custom_id.to_s.split(':')                       # Component parameters
+  values = event.values.map{ |v| v.split(':') }                  # Component option parameters
+  type   = event.message.content.strip.split(' ').first.downcase # Source message type
+  return if keys[0] != 'menu' # Only listen to components of type "Select Menu"
+  
+  case type
+  when 'browsing' # Select Menus for the userlevel browse function
+    case keys[1]
+    when 'order' # Reorder userlevels
+      send_userlevel_browse(event, order: values.first.last)
+    when 'tab' # Change tab we're browsing
+      send_userlevel_browse(event, tab: values.first.last)
+    end
+  when 'aliases' # Select Menus for the alias list function
+    case keys[1]
+    when 'alias' # Change type of alias (level, player)
+      send_aliases(event, type: values.first.last)
     end
   end
 end

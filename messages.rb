@@ -1159,6 +1159,52 @@ def send_twitch(event)
   end
 end
 
+# Send custom player / level aliases.
+# ("type" has to be either 'level' or 'player' for now)
+def send_aliases(event, page: nil, type: nil)
+  # PARSE
+  initial    = page.nil? && type.nil?
+  reset_page = !type.nil?
+  msg        = fetch_message(event, initial)
+  type       = parse_alias_type(msg, type)
+  page       = parse_page(msg, page, reset_page, event.message.components)
+  case type
+  when 'level'
+    klass  = LevelAlias
+    klass2 = :level
+    name   = "`#{klass2.to_s.pluralize}`.`longname`"
+  when 'player'
+    klass  = PlayerAlias
+    klass2 = :player
+    name   = "`#{klass2.to_s.pluralize}`.`name`"
+  else
+    raise
+  end
+
+  # COMPUTE
+  count   = klass.count.to_i
+  pag     = compute_pages(msg, count, page)
+  aliases = klass.joins(klass2).order(:alias).offset(pag[:offset]).limit(PAGE_SIZE).pluck(:alias, name)
+
+  # FORMAT
+  pad     = aliases.map(&:first).map(&:length).max
+  block   = aliases.map{ |a|
+    name1 = pad_truncate_ellipsis(a[0], pad, 15)
+    name2 = truncate_ellipsis(a[1], 35)
+    "#{name1} #{name2}"
+  }.join("\n")
+  output  = "Aliases for #{type} names (total #{count}):\n#{format_block(block)}"
+
+  # SEND
+  view = Discordrb::Webhooks::View.new
+  interaction_add_button_navigation(view, pag[:page], pag[:pages])
+  interaction_add_select_menu_alias_type(view, type)
+  send_message_with_interactions(event, output, view, !initial)
+rescue => e
+  err(e)
+  event << 'Error fetching aliases.'
+end
+
 def testa(event)
   view = Discordrb::Webhooks::View.new{ |view|
     view.row{ |r|
@@ -1226,7 +1272,7 @@ def respond(event)
   send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
   send_top_n_count(event)    if msg =~ /how many/i && msg !~ /point/i
   send_table(event)          if msg =~ /\btable\b/i
-  send_comparison(event)     if msg =~ /compare/i
+  send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
   send_screenshot(event)     if msg =~ /screenshot/i
   send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
@@ -1247,6 +1293,7 @@ def respond(event)
   send_challenges(event)     if msg =~ /\bchallenges\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   send_twitch(event)         if msg =~ /\btwitch\b/i
+  send_aliases(event)        if msg =~ /\baliases\b/i
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 
