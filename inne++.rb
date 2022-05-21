@@ -18,7 +18,9 @@
 # 6) Install Ruby 2.6 to maximize compatibility, then run the Bundler to
 #    obtain the correct version of all gems (libraries), I recommend using rbenv.
 #    In particular, ensure you have Rails 5.1.x and Discordrb >= 3.4.2.
-# 7) Make sure you edit the source files in UTF8.
+# 7) Make sure you edit and save the source files in UTF8.
+# 8) You might want to look into 'constants.rb' and configure some variables,
+#    in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID.
 #
 # Contact: https://discord.gg/nplusplus
 

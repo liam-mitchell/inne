@@ -32,12 +32,12 @@ DEFAULT_TYPES  = ['Level', 'Episode']
 # <------                     DISCORD VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-BOTMASTER_ID   = 204332624288677890 # User ID of the bot manager (currently, Eddy)
-SERVER_ID      = 197765375503368192 # N++ Server
-CHANNEL_ID     = 210778111594332181 # #highscores
-USERLEVELS_ID  = 221721273405800458 # #mapping
-NV2_ID         = 197774025844457472 # #nv2
-CONTENT_ID     = 197793786389200896 # #content-creation
+BOTMASTER_ID   = 204332624288677890 # User ID of the bot manager (Eddy)
+SERVER_ID      = 197765375503368192 # Discord server/guild ID (N++ Server)
+CHANNEL_ID     = 210778111594332181 # Discord main channel ID (#highscores)
+USERLEVELS_ID  = 221721273405800458 # ... (#mapping)
+NV2_ID         = 197774025844457472 # ... (#nv2)
+CONTENT_ID     = 197793786389200896 # ... (#content-creation)
 TWITCH_ROLE    = "Voyeur"           # Discord role for those that want to be pinged when a new stream happens
 DISCORD_LIMIT  = 2000               # Message character limit
 
