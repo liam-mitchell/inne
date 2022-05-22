@@ -865,10 +865,12 @@ $bot.select_menu do |event|
   case type
   when 'browsing' # Select Menus for the userlevel browse function
     case keys[1]
-    when 'order' # Reorder userlevels
+    when 'order' # Reorder userlevels (by title, author, date, favs)
       send_userlevel_browse(event, order: values.first.last)
-    when 'tab' # Change tab we're browsing
+    when 'tab' # Change tab (all, best, featured, top, hardest)
       send_userlevel_browse(event, tab: values.first.last)
+    when 'mode' # Change mode (solo, coop, race)
+      send_userlevel_browse(event, mode: values.first.last)
     end
   when 'aliases' # Select Menus for the alias list function
     case keys[1]

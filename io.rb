@@ -23,6 +23,10 @@ def compute_pages(msg, count = 1, page = 1)
   { page: page, pages: pages, offset: offset }
 end
 
+def parse_mode(msg)
+  !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : 'solo')
+end
+
 def parse_type(msg)
   ((msg[/level/i] || msg[/lotd/i]) ? Level : ((msg[/episode/i] || msg[/eotw/i]) ? Episode : ((msg[/\bstory\b/i] || msg[/\bcolumn/i] || msg[/hard\s*core/i] || msg[/\bhc\b/i] || msg[/cotm/i]) ? Story : nil)))
 end
@@ -269,6 +273,19 @@ def parse_page(msg, offset = 0, reset = false, components = nil)
 rescue => e
   err(e)
   1
+end
+
+# Regex to determine the field to order by in userlevel searches
+# Order may be inverted by specifying a "-" before, or a "desc" after, or both
+# It then modifies the original message to remove the order query part
+def parse_order(msg, order = nil)
+  regex  = /(order|sort)(ed)?\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
+  order  = order || msg[regex, 4] || ""
+  desc   = msg[regex, 6] == "desc"
+  invert = (order.strip[/\A-*/i].length % 2 == 1) ^ desc
+  order.delete!("-")
+  msg.remove!(regex)
+  { msg: msg, order: order, invert: invert }
 end
 
 # We're basically building a regex string similar to: /("|“|”)([^"“”]*)("|“|”)/i

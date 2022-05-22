@@ -866,15 +866,15 @@ end
 #
 # Therefore, be CAREFUL when modifying the header of the message. It must still
 # be a valid regex command containing all info necessary.
-def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
+def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil)
   
   # <------ PARSE all message elements ------>
 
   bench(:start) if BENCHMARK
   # Determine whether this is the initial query (new post) or an interaction
   # query (edit post).
-  initial = page.nil? && order.nil? && tab.nil?
-  reset_page = !order.nil? || !tab.nil?
+  initial = page.nil? && order.nil? && tab.nil? && mode.nil?
+  reset_page = page.nil? && !initial
   if initial
     msg = event.content
   else
@@ -889,7 +889,9 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   # The first thing we do is parse the terms in quotes. Then we remove them from
   # the message and parse the potential non-quoted counterparts. Then we remove
   # these as well if found, and finish parsing the rest of the message, which
-  # is only keywords and hence poses no ambiguity.
+  # is only keywords and hence poses no ambiguity. In between these two we parse
+  # the order, since that also begins with "by".
+  h = nil # To store the order and modified msg returned by some function
   strs = [
     [ # Primary queries
       { str: /\bfor\s*#{parse_term}/i, term: 2 }, # Title
@@ -901,7 +903,11 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
     ]
   ]
   queries = [""] * strs.first.size
-  strs.each{ |q|
+  strs.each_with_index{ |q, j|
+    if j > 0
+      h = parse_order(msg, order)
+      msg = h[:msg]
+    end
     q.each_with_index{ |sq, i|
       if !msg[sq[:str]].nil?
         if queries[i].empty?
@@ -913,24 +919,10 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   }
   search = queries[0].strip
   author = queries[1].strip
-  puts "Search: #{search}"
-  puts "Author: #{author}"
-  return
-
-  search1 = msg[search_str1, 2]
-  search2 = msg[search_str2, 2]
-  author = msg[/by\s*#{parse_term}/i, 2] || ""
-  msg.remove!(/#{parse_term}/i)
   page   = parse_page(msg, page, reset_page, event.message.components)
-
-
-  # Regex to determine the field to order by
-  # Order may be inverted by specifying a "-" before, or a "desc" after, or both
-  regex  = /(order|sort)(ed)?\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
-  order  = order || msg[regex, 4] || ""
-  desc   = msg[regex, 6] == "desc"
-  invert = (order.strip[/\A-*/i].length % 2 == 1) ^ desc
-  order.delete!("-")
+  mode   = MODES.select{ |k, v| v == (mode || parse_mode(msg)) }.keys.first
+  order  = h[:order]
+  invert = h[:invert]
 
   # Determine the category / tab
   cat = 10 # newest
@@ -940,7 +932,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   #<------ FETCH userlevels ------>
 
   # Filter userlevels
-  query     = tab.nil? ? Userlevel.where(mode: 0) : Userlevel::tab(cat, 0)
+  query     = tab.nil? ? Userlevel.where(mode: mode) : Userlevel::tab(cat, mode)
   query     = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
   query     = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
   # Compute count, page number, total pages, and offset
@@ -962,7 +954,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   # the original query was, by parsing it exactly as though it were a user
   # message, so it needs to have a format compatible with the regex we use to
   # parse commands. I know, genius implementation.
-  output = "Browsing #{USERLEVEL_TABS[cat][:name]} maps"
+  output = "Browsing #{USERLEVEL_TABS[cat][:name]} #{MODES[mode]} maps"
   output += " by \"#{author[0..63]}\"" if !author.empty?
   output += " for \"#{search[0..63]}\"" if !search.empty?
   output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}"
@@ -970,7 +962,18 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   output += format_userlevels(Userlevel::serial(maps), pag[:page], pag[:offset] .. pag[:offset] + 19)
   bench(:step) if BENCHMARK
 
-  craft_userlevel_browse_msg(event, output, page: pag[:page], pages: pag[:pages], order: order_str, tab: !tab.nil? ? tab : 'all', edit: !initial)
+  # <------ SEND message ------>
+
+  craft_userlevel_browse_msg(
+    event,
+    output,
+    page:  pag[:page],
+    pages: pag[:pages],
+    order: order_str,
+    tab:   !tab.nil? ? tab : 'all',
+    mode:  MODES[mode],
+    edit:  !initial
+  )
 rescue => e
   err(e)
   puts(e.backtrace)

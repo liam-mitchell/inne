@@ -158,6 +158,20 @@ def wavg(arr, w)
   arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
 end
 
+# ActionRow builder with a Select Menu for the mode
+def interaction_add_select_menu_mode(view, mode = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.select_menu(custom_id: 'menu:mode', placeholder: 'Mode: Solo', max_values: 1){ |m|
+      MODES.each{ |k, v|
+        m.option(label: "Mode: #{v.capitalize}", value: "menu:mode:#{v}", default: v == mode)
+      }
+    }
+  }
+ensure
+  view
+end
+  
 # ActionRow builder with a Select Menu for the tab
 def interaction_add_select_menu_tab(view, tab = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
@@ -230,17 +244,19 @@ def send_message_with_interactions(event, msg, view = nil, edit = false)
   end
 end
 
-def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: nil, edit: false)
+def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: nil, mode: nil, edit: false)
   # Normalize pars
   order = "default" if order.nil? || order.empty?
   order = order.downcase.split(" ").first
   order = "date" if order == "id"
-  tab = "all" if tab.nil? || tab.empty? || !USERLEVEL_TABS.map{ |t, v| v[:name] }.include?(tab)
+  tab = "all" if !USERLEVEL_TABS.map{ |t, v| v[:name] }.include?(tab)
+  mode = "solo" if !MODES.values.include?(mode.to_s.downcase)
   # Create and fill component collection (View)
   view = Discordrb::Webhooks::View.new
   interaction_add_button_navigation(view, page, pages)
-  interaction_add_select_menu_tab(view, tab)
   interaction_add_select_menu_order(view, order)
+  interaction_add_select_menu_tab(view, tab)
+  interaction_add_select_menu_mode(view, mode)
   # Send
   send_message_with_interactions(event, msg, view, edit)
 end
