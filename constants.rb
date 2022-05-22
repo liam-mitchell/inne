@@ -8,6 +8,8 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = true  # Log new weekly scores that appear in the report
+DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
+DO_EVERYTHING  = false # Execute all threads
 
 # <--------------------------------------------------------------------------->
 # <------                     INTERNAL VARIABLES                        ------>
@@ -103,8 +105,6 @@ COOL            = true              # Emoji for CKC in leaderboards
 # Individual flags for each thread / task
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
-DO_NOTHING        = true  # 'true' sets all the following ones to false
-DO_EVERYTHING     = false # 'true' sets all the following ones to true
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores

@@ -856,15 +856,16 @@ def format_userlevels(maps, page, range)
 end
 
 # The next function queries userlevels from the database based on a number of
-# parameters, like the title, the author, and the tab:
-# ---
-# The parameter is used specifically in the feature that allows people to react
-# with arrows in order to move on to a different page in the result set. In this
-# case, we will parse THE BOT'S message as though it was a user command, or more
-# specifically, the first and last lines, which have been crafted so that they are
-# valid commands containing all the necessary info to figure out what the original
-# query was, so that we can reexecute it (identically, except with a different
-# page number modified by the parameter) and edit the original bot's message.
+# parameters, like the title, the author, the tab and the mode, as well as
+# allowing for arbitrary orders.
+# 
+# The parameters are only used when the function has been called by interacting
+# with a pre-existing post, in which case we parse the header of the message as
+# though it was a user command, to figure out the original query, and then modify
+# it by the values of the parameters (e.g. incrementing the page).
+#
+# Therefore, be CAREFUL when modifying the header of the message. It must still
+# be a valid regex command containing all info necessary.
 def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   
   # <------ PARSE all message elements ------>
@@ -880,11 +881,45 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
     msg = event.message.content
     msg = msg.split("```").first # Everything before the actual userlevel names
   end
-  # The first thing we do is parse the title and author, which go in quotes
-  # Then, we remove all quoted strings from the original message
-  # This is so that the other parameters we parse cannot accidentally match them
-  search = msg[/(for|containing)\s*#{parse_term}/i, 3] || ""
-  author = parse_userlevel_author(msg)
+  # Supports querying for both titles and author names. If both are present, at
+  # least one must go in quotes, to distinguish between them. The one without
+  # quotes must go at the end, so that everything after the particle is taken to
+  # be the title/author name.
+  #
+  # The first thing we do is parse the terms in quotes. Then we remove them from
+  # the message and parse the potential non-quoted counterparts. Then we remove
+  # these as well if found, and finish parsing the rest of the message, which
+  # is only keywords and hence poses no ambiguity.
+  strs = [
+    [ # Primary queries
+      { str: /\bfor\s*#{parse_term}/i, term: 2 }, # Title
+      { str: /\bby\s*#{parse_term}/i,  term: 2 }  # Author
+    ],
+    [ # Secondary queries
+      { str: /\bfor (.*)/i,            term: 1 }, # Title
+      { str: /\bby (.*)/i,             term: 1 }  # Author
+    ]
+  ]
+  queries = [""] * strs.first.size
+  strs.each{ |q|
+    q.each_with_index{ |sq, i|
+      if !msg[sq[:str]].nil?
+        if queries[i].empty?
+          queries[i] = msg[sq[:str], sq[:term]]
+        end
+        msg.remove!(sq[:str])
+      end
+    }
+  }
+  search = queries[0].strip
+  author = queries[1].strip
+  puts "Search: #{search}"
+  puts "Author: #{author}"
+  return
+
+  search1 = msg[search_str1, 2]
+  search2 = msg[search_str2, 2]
+  author = msg[/by\s*#{parse_term}/i, 2] || ""
   msg.remove!(/#{parse_term}/i)
   page   = parse_page(msg, page, reset_page, event.message.components)
 
@@ -929,7 +964,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil)
   # parse commands. I know, genius implementation.
   output = "Browsing #{USERLEVEL_TABS[cat][:name]} maps"
   output += " by \"#{author[0..63]}\"" if !author.empty?
-  output += " containing \"#{search[0..63]}\"" if !search.empty?
+  output += " for \"#{search[0..63]}\"" if !search.empty?
   output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (!tab.nil? ? "default" : "date")}"
   output += " (Total results: **#{count}**)."
   output += format_userlevels(Userlevel::serial(maps), pag[:page], pag[:offset] .. pag[:offset] + 19)
