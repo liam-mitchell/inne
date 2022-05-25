@@ -24,7 +24,7 @@ def compute_pages(msg, count = 1, page = 1)
 end
 
 def parse_mode(msg)
-  !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : 'solo')
+  !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : (!!msg[/solo/i] ? 'solo' : 'all'))
 end
 
 def parse_type(msg)
@@ -279,29 +279,141 @@ end
 # Order may be inverted by specifying a "-" before, or a "desc" after, or both
 # It then modifies the original message to remove the order query part
 def parse_order(msg, order = nil)
-  regex  = /(order|sort)(ed)?\s*(by)?\s*((\w|\+|-)*)\s*(asc|desc)?/i
-  order  = order || msg[regex, 4] || ""
-  desc   = msg[regex, 6] == "desc"
+  regex  = /(order|sort)(ed)?\s*by\s*((\w|\+|-)*)\s*(asc|desc)?/i
+  order  = order || msg[regex, 3] || ""
+  desc   = msg[regex, 5] == "desc"
   invert = (order.strip[/\A-*/i].length % 2 == 1) ^ desc
   order.delete!("-")
   msg.remove!(regex)
   { msg: msg, order: order, invert: invert }
 end
 
-# We're basically building a regex string similar to: /("|“|”)([^"“”]*)("|“|”)/i
-# Which parses a term in between different types of quotes
-def parse_term
+# The following function is supposed to modify the message!
+#
+# Supports querying for both titles and author names. If both are present, at
+# least one must go in quotes, to distinguish between them. The one without
+# quotes must go at the end, so that everything after the particle is taken to
+# be the title/author name.
+#
+# The first thing we do is parse the terms in quotes. Then we remove them from
+# the message and parse the potential non-quoted counterparts. Then we remove
+# these as well if found, and finish parsing the rest of the message, which
+# is only keywords and hence poses no ambiguity. In between these two we parse
+# the order, since that also begins with "by".
+def parse_title_and_author(msg)
+  strs = [
+    [ # Primary queries
+      { str: /\bfor\s*#{parse_term}/i, term: 2 }, # Title
+      { str: /\bby\s*#{parse_term}/i,  term: 2 }  # Author
+    ],
+    [ # Secondary queries
+      { str: /\bfor (.*)/i,            term: 1 }, # Title
+      { str: /\bby (.*)/i,             term: 1 }  # Author
+    ]
+  ]
+  queries = [""] * strs.first.size
+  strs.each_with_index{ |q, j|
+    q.each_with_index{ |sq, i|
+      if !msg[sq[:str]].nil?
+        if queries[i].empty?
+          queries[i] = msg[sq[:str], sq[:term]]
+        end
+        msg.remove!(sq[:str])
+      end
+    }
+  }
+  { msg: msg, search: queries[0].strip, author: queries[1].strip }
+end
+
+def clean_userlevel_message(msg)
+  msg.sub(/(for)?\s*\w*userlevel\w*/i, '')
+end
+
+def parse_userlevel(msg)
+  # --- PARSE message elements
+
+  # Parse author and remove from message, if exists
+  author_regex = /by\s*#{parse_term}/i
+  author = msg[author_regex, 2] || ""
+  msg.remove!(author_regex)
+
+  # Parse title, first in quotes, and if that doesn't exist, then everything remaining
+  title = msg[/#{parse_term}/i, 2]
+  if title.nil?
+    title = msg.strip[/(for)?\s*(.*)/i, 2]
+    # If the "title" is just numbers (and not quoted), then it's actually the ID
+    id    = title == title[/\d+/i] ? title.to_i : -1
+  else
+    id = -1
+  end
+
+  # --- FETCH userlevel(s)
+  query = nil
+  err   = ""
+  count = 0
+  if id != -1
+    query = Userlevel.where(id: id)
+    err = "No userlevel with ID `#{id}` found."
+  elsif !title.empty?
+    query = Userlevel.where(Userlevel.sanitize("title LIKE ?", "%" + title[0..63] + "%"))
+    query = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
+    err = "No userlevel with title `#{title}`#{" by author `#{author}`" if !author.empty?} found."
+  else
+    return {
+      query: nil,
+      msg:   "You need to provide a map's title or ID.",
+      count: 0
+    }
+  end
+
+  # --- Prepare return depending on map count
+  ret   = ""
+  count = query.count
+  case count
+  when 0
+    ret = err
+  when 1
+    query = query.first
+  else
+    ret = "Multiple matching maps found. Please refine terms or use the userlevel ID:"
+  end
+  { query: query, msg: ret, count: count, title: title, author: author }
+end
+
+# The palette may or may not be quoted, but it MUST go at the end of the command
+# if it's not quoted
+def parse_palette(msg)
+  err = ""
+  regex1 = /\b(using|with|in)?(the)?\s*pall?ett?e\s*#{parse_term}/i
+  regex2 = /\b(using|with|in)?\s*pall?ett?e\s*(.*)/i
+  pal1 = msg[regex1, 4]
+  pal2 = msg[regex2, 2]
+  pal = nil
+  if !pal1.nil?
+    if Userlevel::THEMES.include?(pal1)
+      pal = pal1
+    else
+      err = "The palette `" + pal1 + "` doesn't exit. Using default: `" + Userlevel::DEFAULT_PALETTE + "`."
+    end
+    msg.remove!(regex1)
+  elsif !pal2.nil?
+    if Userlevel::THEMES.include?(pal2)
+      pal = pal2
+    else
+      err = "The palette `" + pal2 + "` doesn't exit. Using default: `" + Userlevel::DEFAULT_PALETTE + "`."
+    end
+    msg.remove!(regex2)
+  end
+  pal = Userlevel::DEFAULT_PALETTE if pal.nil?
+  err += "\n" if !err.empty?
+  { msg: msg, palette: pal, error: err }
+end
+
+# We build the regex: /("|“|”)([^"“”]*)("|“|”)/i
+# which parses a term in between different types of quotes
+def parse_term(opt = false)
   quotes = ["\"", "“", "”"]
-  string = "("
-  quotes.each{ |quote| string += quote + "|" }
-  string = string[0..-2] unless quotes.length == 0
-  string += ")([^"
-  quotes.each{ |quote| string += quote }
-  string += "]*)("  
-  quotes.each{ |quote| string += quote + "|" }
-  string = string[0..-2] unless quotes.length == 0
-  string += ")"
-  string
+  "(#{quotes.join('|')})([^#{quotes.join}]*)(#{quotes.join('|')})"
 end
 
 def parse_userlevel_author(msg)

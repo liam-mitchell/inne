@@ -162,7 +162,7 @@ end
 def interaction_add_select_menu_mode(view, mode = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    r.select_menu(custom_id: 'menu:mode', placeholder: 'Mode: Solo', max_values: 1){ |m|
+    r.select_menu(custom_id: 'menu:mode', placeholder: 'Mode: All', max_values: 1){ |m|
       MODES.each{ |k, v|
         m.option(label: "Mode: #{v.capitalize}", value: "menu:mode:#{v}", default: v == mode)
       }
@@ -288,6 +288,10 @@ def check_permissions(event, roles)
     granted: permissions.map{ |p| p[:granted] }.count(true) > 0,
     error:   "Sorry, only #{permissions.map{ |p| p[:error] }.join(', ')} are allowed to execute this command."
   }
+end
+
+def remove_word_first(msg, word)
+  msg.sub(/\w*#{word}\w*/i, '')
 end
 
 module HighScore

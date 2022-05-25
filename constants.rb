@@ -172,9 +172,10 @@ TABS = {
 }
 
 MODES = {
-  0 => "solo",
-  1 => "coop",
-  2 => "race"
+  -1 => "all",
+   0 => "solo",
+   1 => "coop",
+   2 => "race"
 }
 
 # Type-wise max-min for average ranks

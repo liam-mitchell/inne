@@ -869,7 +869,7 @@ $bot.select_menu do |event|
       send_userlevel_browse(event, order: values.first.last)
     when 'tab' # Change tab (all, best, featured, top, hardest)
       send_userlevel_browse(event, tab: values.first.last)
-    when 'mode' # Change mode (solo, coop, race)
+    when 'mode' # Change mode (all, solo, coop, race)
       send_userlevel_browse(event, mode: values.first.last)
     end
   when 'aliases' # Select Menus for the alias list function
