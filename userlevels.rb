@@ -1021,38 +1021,6 @@ def send_userlevel_screenshot(event, userlevel = nil)
   }
 end
 
-def send_userlevel_screenshot2(event, userlevel = nil)
-  msg = event.content
-  id = userlevel.nil? ? (msg[/\d+/i] || -1) : userlevel.id
-  palette = userlevel.nil? ? msg[/#{parse_term}/i, 2] || Userlevel::DEFAULT_PALETTE : Userlevel::DEFAULT_PALETTE
-
-  if id == -1
-    event << "You need to specify the name or the numerical ID of the map (e.g. `screenshot of userlevel 78414`).\n"
-    event << "If you don't know it, you can **search** it (e.g. `userlevel search for \"the end\"`)."
-  else
-    map = Userlevel::where(id: id)
-    if map.nil? || map.empty?
-      event << "The map with the specified ID is not present in the database."
-    else
-      index = Userlevel::THEMES.map(&:downcase).index(palette.downcase)
-      if index.nil?
-        event << "The palette `" + palette + "` doesn't exit. Using default: `" + Userlevel::DEFAULT_PALETTE + "`."
-        palette = Userlevel::DEFAULT_PALETTE
-        index = Userlevel::THEMES.index(Userlevel::DEFAULT_PALETTE)
-      else 
-        palette = Userlevel::THEMES[index]
-      end
-      map = map[0]
-      file = map.screenshot(Userlevel::THEMES[index])
-      output = "Screenshot of userlevel `" + map.title + "` with ID `" + map.id.to_s
-      output += "` by `" + (map.author.to_s.empty? ? " " : map.author.to_s) + "` using palette `"
-      output += palette + "` on " + Time.now.to_s + ".\n"
-      event << output
-      send_file(event, file, map.id.to_s + ".png", true)
-    end
-  end
-end
-
 def send_userlevel_scores(event)
   msg = clean_userlevel_message(event.content)
   msg = remove_word_first(msg, 'scores')
