@@ -872,7 +872,7 @@ end
 #
 # Therefore, be CAREFUL when modifying the header of the message. It must still
 # be a valid regex command containing all info necessary.
-def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, query: query)
+def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, query: nil)
   
   # <------ PARSE all message elements ------>
 

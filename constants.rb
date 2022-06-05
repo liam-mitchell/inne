@@ -2,14 +2,14 @@
 # <------                  DEVBELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = true  # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
-LOG_REPORT     = true  # Log new weekly scores that appear in the report
-DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = false # Execute all threads
+LOG_REPORT     = false # Log new weekly scores that appear in the report
+DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
+DO_EVERYTHING  = true  # Execute all threads
 
 # <--------------------------------------------------------------------------->
 # <------                     INTERNAL VARIABLES                        ------>

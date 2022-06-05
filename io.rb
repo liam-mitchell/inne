@@ -340,7 +340,7 @@ def parse_userlevel(msg)
   # Parse title, first in quotes, and if that doesn't exist, then everything remaining
   title = msg[/#{parse_term}/i, 2]
   if title.nil?
-    title = msg.strip[/(for)?\s*(.*)/i, 2]
+    title = msg.strip[/(for|of)?\s*(.*)/i, 2]
     # If the "title" is just numbers (and not quoted), then it's actually the ID
     id    = title == title[/\d+/i] ? title.to_i : -1
   else
