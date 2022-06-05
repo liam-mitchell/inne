@@ -734,9 +734,9 @@ end
 class Score < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
-  belongs_to :level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: 'highscoreable_id'
+  belongs_to :level,   -> { where(scores: {highscoreable_type: 'Level'}) },   foreign_key: 'highscoreable_id'
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
-  belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
+  belongs_to :story,   -> { where(scores: {highscoreable_type: 'Story'}) },   foreign_key: 'highscoreable_id'
 #  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
   enum tab:  [ :SI, :S, :SU, :SL, :SS, :SS2 ]
 
@@ -1092,9 +1092,10 @@ class Player < ActiveRecord::Base
     range_ns(a, b, type, tabs, ties).count
   end
 
-  def scores_by_rank(type, tabs)
+  def scores_by_rank(type, tabs, r1 = 0, r2 = 20)
     bench(:start) if BENCHMARK
-    ret = scores_by_type_and_tabs(type, tabs).group_by(&:rank).sort_by(&:first)
+    ret = scores_by_type_and_tabs(type, tabs, :name).where("rank >= #{r1} AND rank < #{r2}")
+                                                    .order('rank, highscoreable_type DESC, highscoreable_id')
     bench(:step) if BENCHMARK
     ret
   end
@@ -1115,9 +1116,8 @@ class Player < ActiveRecord::Base
     bench(:start) if BENCHMARK
     scores = [type].flatten.map{ |t|
       ids = top_ns(n, t, tabs, ties).pluck(:highscoreable_id)
-      (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).pluck(:name)
+      (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).order(:id).pluck(:name)
     }.flatten
-#    scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name)
     bench(:step) if BENCHMARK
     scores
   end
@@ -1161,13 +1161,13 @@ class Player < ActiveRecord::Base
     req = Score.where(highscoreable_type: type.to_s)
     req = req.where(tab: tabs) if !tabs.empty?
     ids = req.where("rank = 1 AND tied_rank = #{plural ? 0 : 1}").pluck(:highscoreable_id)
-    scores_by_type_and_tabs(type, tabs).where(rank: 0, highscoreable_id: ids)
+    scores_by_type_and_tabs(type, tabs, :name).where(rank: 0, highscoreable_id: ids)
   end
 
   def singular(type, tabs, plural = false)
     bench(:start) if BENCHMARK
     type = type.nil? ? DEFAULT_TYPES : [type.to_s]
-    ret = type.map{ |t| singular_(t, tabs, plural) }.flatten.group_by(&:rank)
+    ret = type.map{ |t| singular_(t, tabs, plural) }.flatten#.group_by(&:rank)
     bench(:step) if BENCHMARK
     ret
   end

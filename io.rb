@@ -511,7 +511,7 @@ def format_sentence(e)
 end
 
 def format_list_score(s)
-  "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name} (#{"%.3f" % [s.score]})"
+  "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name.ljust(10, " ")} - #{"%7.3f" % [s.score]}"
 end
 
 def send_file(event, data, name = "result.txt", binary = false)

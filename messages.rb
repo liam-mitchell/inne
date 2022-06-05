@@ -303,20 +303,23 @@ def send_list(event)
   rank   = parse_rank(msg) || 20
   bott   = parse_bottom_rank(msg) || 0
   sing   = !!(msg =~ /\bsingular\b/i)
-  plur   = !!(msg =~ /\bplural\b/i)  
-  all    =  sing ? player.singular(type, tabs, false) :
-           (plur ? player.singular(type, tabs, true) :
-            player.scores_by_rank(type, tabs))
-
+  plur   = !!(msg =~ /\bplural\b/i)
   if rank == 20 && bott == 0 && !!msg[/0th/i]
     rank = 1
     bott = 0
   end
+  all    =  sing ? player.singular(type, tabs, false) :
+           (plur ? player.singular(type, tabs, true) :
+            player.scores_by_rank(type, tabs, bott, rank))
 
-  list = all.select{ |r, s| (bott...rank).cover?(r) }
-            .map{ |r, s| "#{r}:\n" + s.map{ |ss| "  " + format_list_score(ss) }.join("\n") }
-            .join("\n")
-  send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
+  list = all.map{ |s| format_list_score(s) }
+  count = list.count
+  list = list.join("\n")
+  if count <= 20
+    event << format_block(list)
+  else
+    send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
+  end
 end
 
 def send_community(event)
@@ -430,14 +433,14 @@ def send_missing(event)
   rank = parse_rank(msg) || 20
   ties = !!(msg =~ /ties/i)
 
-  missing = player.missing_top_ns(type, tabs, rank, ties).join("\n")
-
-  tmpfile = File.join(Dir.tmpdir, "missing-#{player.print_name.delete(":")}.txt")
-  File::open(tmpfile, "w", crlf_newline: true) do |f|
-    f.write(missing)
+  missing = player.missing_top_ns(type, tabs, rank, ties)
+  count = missing.count
+  missing = missing.join("\n")
+  if count <= 20
+    event << format_block(missing)
+  else
+    send_file(event, missing, "missing-#{player.print_name.delete(":")}.txt", false)
   end
-
-  event.attach_file(File::open(tmpfile))
 end
 
 def send_suggestions(event)
@@ -766,11 +769,7 @@ def send_analysis(event)
   result += "```#{key_result}```" unless analysis.sum{ |a| a['analysis'].size } > 1080
   if result.size > DISCORD_LIMIT then result = result[0..DISCORD_LIMIT - 7] + "...```" end
   event << "#{result}"
-  tmpfile = File.join(Dir.tmpdir, "analysis-#{scores.name}.txt")
-  File::open(tmpfile, "w", crlf_newline: true) do |f|
-    f.write(table_result)
-  end
-  event.attach_file(File::open(tmpfile))
+  send_file(event, table_result, "analysis-#{scores.name}.txt")
 end
 
 def send_history(event)

@@ -16,7 +16,7 @@ DO_EVERYTHING  = false # Execute all threads
 # <--------------------------------------------------------------------------->
 
 WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
-BENCHMARK      = false # Benchmark and log functions (for optimization)
+BENCHMARK      = true # Benchmark and log functions (for optimization)
 BENCH_MSGS     = false # Benchmark functions _in messages_
 DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
