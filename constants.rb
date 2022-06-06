@@ -2,14 +2,14 @@
 # <------                  DEVBELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = false # Switch to the local test bot
+TEST           = true  # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = true  # Execute all threads
+DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
+DO_EVERYTHING  = false # Execute all threads
 
 # <--------------------------------------------------------------------------->
 # <------                     INTERNAL VARIABLES                        ------>
@@ -47,7 +47,7 @@ DISCORD_LIMIT  = 2000               # Message character limit
 # <------                   INPUT FORMAT VARIABLES                      ------>
 # <--------------------------------------------------------------------------->
 
-LEVEL_PATTERN   = /(S[ILU]?)-([ABCDEX])-([0-9][0-9]?)-([0-9][0-9]?)|([?!])-([ABCDEX])-([0-9][0-9]?)/i
+LEVEL_PATTERN   = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
 EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
 STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
 NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i
