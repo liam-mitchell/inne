@@ -47,7 +47,7 @@ DISCORD_LIMIT  = 2000               # Message character limit
 # <------                   INPUT FORMAT VARIABLES                      ------>
 # <--------------------------------------------------------------------------->
 
-LEVEL_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
+LEVEL_PATTERN   = /(S[ILU]?)-([ABCDEX])-([0-9][0-9]?)-([0-9][0-9]?)|([?!])-([ABCDEX])-([0-9][0-9]?)/i
 EPISODE_PATTERN = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
 STORY_PATTERN   = /S[ILU]?-[0-9][0-9]?/i
 NAME_PATTERN    = /(for|of) (.*)[\.\?]?/i

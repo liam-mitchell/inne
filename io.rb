@@ -164,7 +164,7 @@ def parse_steam_id(msg)
 end
 
 def parse_level_or_episode(msg)
-  level   = msg[LEVEL_PATTERN]
+  level   = msg.match(LEVEL_PATTERN)
   episode = msg[EPISODE_PATTERN]
   story   = msg[STORY_PATTERN]
   name    = msg[NAME_PATTERN, 2]
@@ -172,7 +172,7 @@ def parse_level_or_episode(msg)
   str     = ""
 
   if level
-    str = normalize_name(level)
+    str = normalize_name(level.captures.compact.join('-'))
     ret = Level.find_by(name: str.upcase)
   elsif episode
     str = normalize_name(episode)
