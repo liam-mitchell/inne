@@ -173,7 +173,6 @@ def parse_level_or_episode(msg)
 
   if level
     str = normalize_name(level.captures.compact.join('-'))
-    puts str
     ret = Level.find_by(name: str.upcase)
   elsif episode
     str = normalize_name(episode)

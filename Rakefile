@@ -5,8 +5,8 @@ require 'rails'
 require 'yaml'
 require 'yaml_db'
 
-require_relative 'models.rb'
-require_relative 'messages.rb'
+require_relative 'src/models.rb'
+require_relative 'src/messages.rb'
 
 module Rails
   def Rails.env
@@ -37,7 +37,7 @@ namespace :db do
   end
 
   task :migrate => :configure_connection do
-    require_relative 'models.rb'
+    require_relative 'src/models.rb'
     ActiveRecord::Migrator.migrate(MIGRATIONS_DIR, ENV['VERSION'] ? ENV['VERSION'].to_i : nil)
   end
 
@@ -46,7 +46,7 @@ namespace :db do
   end
 
   task :seed => :configure_connection do
-    require_relative 'models.rb'
+    require_relative 'src/models.rb'
     require_relative 'db/seeds.rb'
   end
 

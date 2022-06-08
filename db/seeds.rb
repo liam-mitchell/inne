@@ -66,7 +66,9 @@ ActiveRecord::Base.transaction do
     Level.where(name: completed['levels']).update_all(completed: true)
   end
 
-  names = get_names('names-SI.txt', 0).merge(get_names('names-S.txt', 600)).merge(get_names('names-SL.txt', 1200))
+  names = get_names('db/names/names-SI.txt', 0)
+          .merge(get_names('db/names/names-S.txt', 600))
+          .merge(get_names('db/names/names-SL.txt', 1200))
   Level.update(names.keys, names.values)
 
   now = Time.now

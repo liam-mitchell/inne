@@ -1,4 +1,8 @@
+require 'chunky_png' # for screenshot generation
+#require 'oily_png'
+include ChunkyPNG::Color
 require_relative 'constants.rb'
+require_relative 'utils.rb'
 require_relative 'io.rb'
 require_relative 'models.rb'
 

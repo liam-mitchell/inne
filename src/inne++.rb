@@ -41,17 +41,18 @@ require 'byebug'
 
 # Import other source files
 require_relative 'constants.rb'
+require_relative 'utils.rb'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
-  open('LOG', 'a') { |f| f.puts "[INFO] [#{Time.now}] #{msg}" } if LOG
+  open('../LOG', 'a') { |f| f.puts "[INFO] [#{Time.now}] #{msg}" } if LOG
 end
 
 def err(msg)
   STDERR.puts "[ERROR] [#{Time.now}] #{msg}"
-  open('LOG', 'a') { |f| f.puts "[ERROR] [#{Time.now}] #{msg}" } if LOG
+  open('../LOG', 'a') { |f| f.puts "[ERROR] [#{Time.now}] #{msg}" } if LOG
 end
 
 def get_current(type)
@@ -300,7 +301,7 @@ def send_report
         name[0..14].ljust(15, " ") + " " + (s[1] == 20 ? " x  " : s[1].ordinalize).rjust(4, "0") + "->" + s[2].ordinalize.rjust(4, "0") + " " + s[3].name.ljust(10, " ") + " " + ("%.3f" % (s[4].to_f / 60.0))
       }.join("\n")
     }.join("\n")
-    File.write("report_log", log_text)
+    File.write("../report_log", log_text)
   end
 
   sleep(1)
