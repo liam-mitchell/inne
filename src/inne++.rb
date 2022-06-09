@@ -42,6 +42,7 @@ require 'byebug'
 # Import other source files
 require_relative 'constants.rb'
 require_relative 'utils.rb'
+require_relative 'interactions.rb'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
@@ -824,61 +825,12 @@ $bot.message do |event|
   robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
 end
 
-# Important notes for parsing interaction components:
-#
-# 1) We determine the origin of the interaction (the bot's source message) based
-#    on the first word of the message. Therefore, we have to format this first
-#    word (and, often, the first sentence) properly so that the bot can parse it.
-#
-# 2) We use the custom_id of the component (button, select menu) and of the
-#    component option (select menu option) to classify them and determine what
-#    they do. Therefore, they must ALL follow a specific pattern:
-#
-#    IDs will be strings composed by a series of keywords separated by colons.
-#    The first keyword specifies the type of component (button, menu).
-#    The second keyword specifies the category of the component (personal).
-#    The third keyword specifies the specific component (button, select menu option).
 $bot.button do |event|
-  keys   = event.custom_id.to_s.split(':')                       # Component parameters
-  type   = event.message.content.strip.split(' ').first.downcase # Source message type
-  return if keys[0] != 'button' # Only listen to components of type "Button"
-
-  case type
-  when 'browsing'
-    case keys[1]
-    when 'nav'
-      send_userlevel_browse(event, page: keys[2])
-    end
-  when 'aliases'
-    case keys[1]
-    when 'nav'
-      send_aliases(event, page: keys[2])
-    end
-  end
+  respond_interaction_button(event)
 end
 
 $bot.select_menu do |event|
-  keys   = event.custom_id.to_s.split(':')                       # Component parameters
-  values = event.values.map{ |v| v.split(':') }                  # Component option parameters
-  type   = event.message.content.strip.split(' ').first.downcase # Source message type
-  return if keys[0] != 'menu' # Only listen to components of type "Select Menu"
-  
-  case type
-  when 'browsing' # Select Menus for the userlevel browse function
-    case keys[1]
-    when 'order' # Reorder userlevels (by title, author, date, favs)
-      send_userlevel_browse(event, order: values.first.last)
-    when 'tab' # Change tab (all, best, featured, top, hardest)
-      send_userlevel_browse(event, tab: values.first.last)
-    when 'mode' # Change mode (all, solo, coop, race)
-      send_userlevel_browse(event, mode: values.first.last)
-    end
-  when 'aliases' # Select Menus for the alias list function
-    case keys[1]
-    when 'alias' # Change type of alias (level, player)
-      send_aliases(event, type: values.first.last)
-    end
-  end
+  respond_interaction_menu(event)
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
