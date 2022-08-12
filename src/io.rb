@@ -39,6 +39,10 @@ def normalize_name(name)
   name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
 end
 
+def redash_name(matches)
+  !!matches ? matches.captures.compact.join('-') : nil
+end
+
 def normalize_tab(tab)
   format_tab(parse_tabs(tab)[0])
 end
@@ -164,22 +168,41 @@ def parse_steam_id(msg)
 end
 
 def parse_level_or_episode(msg)
-  level   = msg.match(LEVEL_PATTERN)
-  episode = msg[EPISODE_PATTERN]
-  story   = msg[STORY_PATTERN]
-  name    = msg[NAME_PATTERN, 2]
-  ret     = nil
-  str     = ""
+  level     = msg[LEVEL_PATTERN]
+  level_d   = msg.match(LEVEL_PATTERN_D) # dashless
+  episode   = msg[EPISODE_PATTERN]
+  episode_d = msg.match(EPISODE_PATTERN_D)
+  story     = msg.match(STORY_PATTERN) # no need for dashed (no ambiguity)
+  name      = msg[NAME_PATTERN, 2]
+  ret       = nil
+  str       = ""
 
+  # 1) First we check dashed versions for levels and episodes
+  # 2) Then dashless for levels and episodes (together)
+  #     (Thus SU-A-10 will be parsed as the episode, not as the level SU-A-1-0
+  #      missing some dashes, and SUA15 will be parsed as the episode SU-A-15,
+  #      even though it also fits the dashless level SU-A-1-5, because no such
+  #      level exists).
+  # 3) Then parse columns (no ambiguity as they don't have row letter).
+  # 4) Finally parse other specific strings (lotd, eotw, cotm, level names).
   if level
-    str = normalize_name(level.captures.compact.join('-'))
-    ret = Level.find_by(name: str.upcase)
+    str = normalize_name(level)
+    ret = Level.find_by(name: str)
   elsif episode
     str = normalize_name(episode)
-    ret = Episode.find_by(name: str.upcase)
+    ret = Episode.find_by(name: str)
+  elsif level_d || episode_d
+    if level_d
+      str = normalize_name(redash_name(level_d))
+      ret = Level.find_by(name: str)
+    end
+    if episode_d && !ret
+      str = normalize_name(redash_name(episode_d))
+      ret = Episode.find_by(name: str)
+    end
   elsif story
-    str = normalize_name(story)
-    ret = Story.find_by(name: story.upcase)
+    str = normalize_name(redash_name(story))
+    ret = Story.find_by(name: str)
   elsif !msg[/(level of the day|lotd)/i].nil?
     ret = get_current(Level)
   elsif !msg[/(episode of the week|eotw)/i].nil?
