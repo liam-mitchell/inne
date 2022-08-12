@@ -264,7 +264,6 @@ module HighScore
   end
 
   def find_coolness
-    bench(:start) if BENCHMARK
     max   = scores.map(&:score).max.to_i.to_s.length + 4
     s1    = scores.first.score.to_s
     s2    = scores.last.score.to_s
@@ -275,7 +274,6 @@ module HighScore
     else
       cools = 0
     end
-    bench(:step) if BENCHMARK
     cools
   rescue => e
     puts e.backtrace
@@ -336,6 +334,23 @@ class Level < ActiveRecord::Base
   def format_challenges
     pad = challenges.map{ |c| c.count }.max
     challenges.map{ |c| c.format(pad) }.join("\n")
+  end
+
+  # The next 4 methods navigate to the next/previous level/tab
+  def next_h
+    Level.find(nav_highscoreable(self, 1))
+  end
+
+  def prev_h
+    Level.find(nav_highscoreable(self, -1))
+  end
+
+  def next_t
+    Level.find(nav_highscoreable(self, 2))
+  end
+
+  def prev_t
+    Level.find(nav_highscoreable(self, -2))
   end
 end
 
@@ -427,6 +442,23 @@ class Episode < ActiveRecord::Base
   rescue
     nil
   end
+
+  # The next 4 methods navigate to the next/previous episode/tab
+  def next_h
+    Episode.find(nav_highscoreable(self, 1))
+  end
+
+  def prev_h
+    Episode.find(nav_highscoreable(self, -1))
+  end
+
+  def next_t
+    Episode.find(nav_highscoreable(self, 2))
+  end
+
+  def prev_t
+    Episode.find(nav_highscoreable(self, -2))
+  end
 end
 
 class Story < ActiveRecord::Base
@@ -437,6 +469,23 @@ class Story < ActiveRecord::Base
 
   def format_name
     "#{name}"
+  end
+
+  # The next 4 methods navigate to the next/previous story/tab
+  def next_h
+    Story.find(nav_highscoreable(self, 1))
+  end
+
+  def prev_h
+    Story.find(nav_highscoreable(self, -1))
+  end
+
+  def next_t
+    Story.find(nav_highscoreable(self, 2))
+  end
+
+  def prev_t
+    Story.find(nav_highscoreable(self, -2))
   end
 end
 

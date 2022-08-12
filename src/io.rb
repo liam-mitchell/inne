@@ -5,14 +5,14 @@ require_relative 'constants.rb'
 # accessed in a different way. We use the "initial" boolean to determine whether
 # the post is going to be created (in which case the event that triggered it is
 # either a MentionEvent or a PrivateMessageEvent) or edited (in which case the
-# event that triggeredf it must have been either a ButtonEvent or a SelectMenuEvent,
+# event that triggered it must have been either a ButtonEvent or a SelectMenuEvent,
 # or any other future interaction event).
 def fetch_message(event, initial)
   if initial # MentionEvent / PrivateMessageEvent
     event.content
   else # ButtonEvent / SelectMenuEvent
     msg = event.message.content
-    msg.split("```").first # Everything before the actual userlevel names
+    msg.split("```").first # Only header of message
   end
 end
 

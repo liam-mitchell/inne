@@ -48,6 +48,7 @@ def bench(action)
     @total += int
     @t = Time.now
     log("Benchmark #{@step}: #{"%.3fms" % (int * 1000)} (Total: #{"%.3fms" % (@total * 1000)}).")
+    byebug
   end
 end
 
@@ -185,4 +186,39 @@ end
 
 def remove_word_first(msg, word)
   msg.sub(/\w*#{word}\w*/i, '')
+end
+
+  # The next function navigates through highscoreables.
+  # @par1: Highscoreable (instance of class Level/Episode/Story).
+  # @par2: Offset (1 = next, -1 = prev, 2 = next tab, -2 = prev tab).
+  #
+  # Note:
+  #   We deal with edge cases separately because we change the natural order
+  #   of tabs, so the ID is not always what we want (the internal order of
+  #   tabs is SI, S, SL, ?, SU, !, but we want SI, S, SU, SL, ?, !, as it
+  #   appears in the game).
+def nav_highscoreable(h, c)
+  return nil if !["Level", "Episode", "Story"].include?(h.class.to_s)
+
+  tabs    = h.class.to_s == "Level" ? 6 : 4
+  ids     = [:SI, :S, :SU, :SL, :SS, :SS2][0.. tabs - 1].map{ |t| [ TABS[h.class.to_s][t][0][0], TABS[h.class.to_s][t][0][-1] ] }
+  new_id  = nil
+  new_id2 = nil
+
+  ids.each_with_index{ |t, i|
+    case c
+    when 1
+      new_id  = ids[(i + 1) % tabs][0] if h.id == t[1]
+      new_id2 = h.class.where("id > #{h.id}").pluck("MIN(id)").first.to_i
+    when -1
+      new_id  = ids[(i - 1) % tabs][1] if h.id == t[0]
+      new_id2 = h.class.where("id < #{h.id}").pluck("MAX(id)").first.to_i
+    when 2
+      new_id = ids[(i + 1) % tabs][0] if h.id >= t[0] && h.id <= t[1]
+    when -2
+      new_id = ids[(i - 1) % tabs][0] if h.id >= t[0] && h.id <= t[1]
+    end
+  }
+
+  new_id || new_id2
 end

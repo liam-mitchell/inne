@@ -116,10 +116,10 @@ end
 #    component option (select menu option) to classify them and determine what
 #    they do. Therefore, they must ALL follow a specific pattern:
 #
-#    IDs will be strings composed by a series of keywords separated by colons.
-#    The first keyword specifies the type of component (button, menu).
-#    The second keyword specifies the category of the component (personal).
-#    The third keyword specifies the specific component (button, select menu option).
+#    IDs will be strings composed by a series of keywords separated by colons:
+#      The first keyword specifies the type of component (button, menu).
+#      The second keyword specifies the category of the component (personal).
+#      The third keyword specifies the specific component (button, select menu option).
 def respond_interaction_button(event)
   keys   = event.custom_id.to_s.split(':')                       # Component parameters
   type   = event.message.content.strip.split(' ').first.downcase # Source message type

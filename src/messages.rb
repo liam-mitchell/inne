@@ -166,6 +166,12 @@ end
 
 def send_scores(event, map = nil, ret = false)
   msg     = event.content
+  # Navigating scores goes into a different method (see below this one)
+  if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i]
+    send_nav_scores(event)
+    return
+  end
+
   offline = !!(msg[/offline/i])
   scores = map.nil? ? parse_level_or_episode(msg) : map
   if OFFLINE_STRICT
@@ -195,6 +201,30 @@ def send_scores(event, map = nil, ret = false)
   if scores.is_a?(Episode)
     Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores) if !offline && !OFFLINE_STRICT
   end
+end
+
+# Navigating scores: Main differences:
+# - Does not update the scores.
+# - Adds navigating between levels.
+# - Adds navigating between dates.
+def send_nav_scores(event, id: nil, date: nil)
+  initial = id.nil? && date.nil?
+  msg     = fetch_message(event, initial)
+  scores  = parse_level_or_episode(msg)
+
+  str = "Current high scores for #{scores.format_name}:\n"
+  str += format_block(scores.format_scores(scores.max_name_length)) rescue ""
+  str += "Warning: Navigating scores does not update them."
+
+  str += "\nThe next #{scores.class.to_s.downcase} is #{scores.next_h.name}"
+  str += "\nThe prev #{scores.class.to_s.downcase} is #{scores.prev_h.name}"
+  str += "\nThe last #{scores.class.to_s.downcase} is #{scores.next_t.name}"
+  str += "\nThe firs #{scores.class.to_s.downcase} is #{scores.prev_t.name}"
+  event << str
+
+  #view = Discordrb::Webhooks::View.new
+  #interaction_add_button_navigation(view, pag[:page], pag[:pages])
+  #send_message_with_interactions(event, output, view, !initial)
 end
 
 def send_screenshot(event, map = nil, ret = false)
@@ -1177,7 +1207,7 @@ end
 # Send custom player / level aliases.
 # ("type" has to be either 'level' or 'player' for now)
 def send_aliases(event, page: nil, type: nil)
-  # PARSE2
+  # PARSE
   initial    = page.nil? && type.nil?
   reset_page = !type.nil?
   msg        = fetch_message(event, initial)
