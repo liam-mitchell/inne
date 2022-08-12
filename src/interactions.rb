@@ -59,19 +59,38 @@ ensure
   view
 end
 
-# ActionRow builder with Buttons for page navigation
-def interaction_add_button_navigation(view, page = 1, pages = 1, offset = 1000000000)
+# Template ActionRow builder with Buttons for navigation
+def interaction_add_navigation(view, labels: [], disabled: [], ids: [])
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    p = "#{page} / #{pages}"
-    r.button(label: "❙❮", style: :primary,   disabled: page == 1,      custom_id: "button:nav:#{-offset}")
-    r.button(label: "❮",  style: :primary,   disabled: page == 1,      custom_id: "button:nav:-1")
-    r.button(label: p,    style: :secondary, disabled: true,           custom_id: "button:nav:page")
-    r.button(label: "❯",  style: :primary,   disabled: page == pages,  custom_id: "button:nav:1")
-    r.button(label: "❯❙", style: :primary,   disabled: page == pages,  custom_id: "button:nav:#{offset}")
+    r.button(label: labels[0], style: :primary,   disabled: disabled[0], custom_id: ids[0])
+    r.button(label: labels[1], style: :primary,   disabled: disabled[1], custom_id: ids[1])
+    r.button(label: labels[2], style: :secondary, disabled: disabled[2], custom_id: ids[2])
+    r.button(label: labels[3], style: :primary,   disabled: disabled[3], custom_id: ids[3])
+    r.button(label: labels[4], style: :primary,   disabled: disabled[4], custom_id: ids[4])
   }
 ensure
   view
+end
+
+# ActionRow builder with Buttons for standard page navigation
+def interaction_add_button_navigation(view, page = 1, pages = 1, offset = 1000000000)
+  interaction_add_navigation(
+    view,
+    labels: ["❙❮", "❮", "#{page} / #{pages}", "❯", "❯❙"],
+    disabled: [page == 1, page == 1, true, page == pages, page == pages],
+    ids: ["button:nav:#{-offset}", "button:nav:-1", "button:nav:page", "button:nav:1", "button:nav:#{offset}"]
+  )
+end
+
+# ActionRow builder with Buttons for level/episode/story navigation
+def interaction_add_level_navigation(view, name)
+  interaction_add_navigation(
+    view,
+    labels: ["❮❮", "❮", name, "❯", "❯❯"],
+    disabled: [false, false, true, false, false],
+    ids: ["button:id:-2", "button:id:-1", "button:id:page", "button:id:1", "button:id:2"]
+  )
 end
 
 # Function to send messages specifically when they have interactions attached
@@ -135,6 +154,11 @@ def respond_interaction_button(event)
     case keys[1]
     when 'nav'
       send_aliases(event, page: keys[2])
+    end
+  when 'navigating'
+    case keys[1]
+    when 'id'
+      send_nav_scores(event, offset: keys[2])
     end
   end
 end

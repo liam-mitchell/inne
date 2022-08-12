@@ -207,24 +207,18 @@ end
 # - Does not update the scores.
 # - Adds navigating between levels.
 # - Adds navigating between dates.
-def send_nav_scores(event, id: nil, date: nil)
-  initial = id.nil? && date.nil?
+def send_nav_scores(event, offset: nil, date: nil)
+  initial = offset.nil? && date.nil?
   msg     = fetch_message(event, initial)
-  scores  = parse_level_or_episode(msg)
+  scores  = parse_level_or_episode(msg).nav(offset.to_i)
 
-  str = "Current high scores for #{scores.format_name}:\n"
+  str = "Navigating high scores for #{scores.format_name}:\n"
   str += format_block(scores.format_scores(scores.max_name_length)) rescue ""
   str += "Warning: Navigating scores does not update them."
 
-  str += "\nThe next #{scores.class.to_s.downcase} is #{scores.next_h.name}"
-  str += "\nThe prev #{scores.class.to_s.downcase} is #{scores.prev_h.name}"
-  str += "\nThe last #{scores.class.to_s.downcase} is #{scores.next_t.name}"
-  str += "\nThe firs #{scores.class.to_s.downcase} is #{scores.prev_t.name}"
-  event << str
-
-  #view = Discordrb::Webhooks::View.new
-  #interaction_add_button_navigation(view, pag[:page], pag[:pages])
-  #send_message_with_interactions(event, output, view, !initial)
+  view = Discordrb::Webhooks::View.new
+  interaction_add_level_navigation(view, scores.name)
+  send_message_with_interactions(event, str, view, !initial)
 end
 
 def send_screenshot(event, map = nil, ret = false)

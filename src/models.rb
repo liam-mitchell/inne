@@ -312,6 +312,58 @@ module HighScore
       "#{o[:score].format(name_padding, score_padding)} (#{diff})"
     }.join("\n")
   end
+
+  # The next function navigates through highscoreables.
+  # @par1: Offset (1 = next, -1 = prev, 2 = next tab, -2 = prev tab).
+  #
+  # Note:
+  #   We deal with edge cases separately because we change the natural order
+  #   of tabs, so the ID is not always what we want (the internal order of
+  #   tabs is SI, S, SL, ?, SU, !, but we want SI, S, SU, SL, ?, !, as it
+  #   appears in the game).
+  def nav(c)
+    tabs    = self.class.to_s == "Level" ? 6 : 4
+    ids     = [:SI, :S, :SU, :SL, :SS, :SS2][0.. tabs - 1].map{ |t| [ TABS[self.class.to_s][t][0][0], TABS[self.class.to_s][t][0][-1] ] }
+    new_id  = nil
+    new_id2 = nil
+
+    ids.each_with_index{ |t, i|
+      case c
+      when 1
+        new_id  = ids[(i + 1) % tabs][0] if self.id == t[1]
+        new_id2 = self.class.where("id > #{self.id}").pluck("MIN(id)").first.to_i
+      when -1
+        new_id  = ids[(i - 1) % tabs][1] if self.id == t[0]
+        new_id2 = self.class.where("id < #{self.id}").pluck("MAX(id)").first.to_i
+      when 2
+        new_id = ids[(i + 1) % tabs][0] if self.id >= t[0] && self.id <= t[1]
+      when -2
+        new_id = ids[(i - 1) % tabs][0] if self.id >= t[0] && self.id <= t[1]
+      else
+        new_id = self.id
+      end
+    }
+    self.class.find(new_id || new_id2)
+  rescue
+    self
+  end
+
+  # Shorcuts for the above
+  def next_h
+    nav(1)
+  end
+
+  def prev_h
+    nav(-1)
+  end
+
+  def next_t
+    nav(2)
+  end
+
+  def prev_t
+    nav(-2)
+  end
 end
 
 class Level < ActiveRecord::Base
@@ -334,23 +386,6 @@ class Level < ActiveRecord::Base
   def format_challenges
     pad = challenges.map{ |c| c.count }.max
     challenges.map{ |c| c.format(pad) }.join("\n")
-  end
-
-  # The next 4 methods navigate to the next/previous level/tab
-  def next_h
-    Level.find(nav_highscoreable(self, 1))
-  end
-
-  def prev_h
-    Level.find(nav_highscoreable(self, -1))
-  end
-
-  def next_t
-    Level.find(nav_highscoreable(self, 2))
-  end
-
-  def prev_t
-    Level.find(nav_highscoreable(self, -2))
   end
 end
 
@@ -442,23 +477,6 @@ class Episode < ActiveRecord::Base
   rescue
     nil
   end
-
-  # The next 4 methods navigate to the next/previous episode/tab
-  def next_h
-    Episode.find(nav_highscoreable(self, 1))
-  end
-
-  def prev_h
-    Episode.find(nav_highscoreable(self, -1))
-  end
-
-  def next_t
-    Episode.find(nav_highscoreable(self, 2))
-  end
-
-  def prev_t
-    Episode.find(nav_highscoreable(self, -2))
-  end
 end
 
 class Story < ActiveRecord::Base
@@ -469,23 +487,6 @@ class Story < ActiveRecord::Base
 
   def format_name
     "#{name}"
-  end
-
-  # The next 4 methods navigate to the next/previous story/tab
-  def next_h
-    Story.find(nav_highscoreable(self, 1))
-  end
-
-  def prev_h
-    Story.find(nav_highscoreable(self, -1))
-  end
-
-  def next_t
-    Story.find(nav_highscoreable(self, 2))
-  end
-
-  def prev_t
-    Story.find(nav_highscoreable(self, -2))
   end
 end
 
