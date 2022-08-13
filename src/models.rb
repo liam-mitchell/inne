@@ -1156,13 +1156,36 @@ class Archive < ActiveRecord::Base
   # Return a list of all dates where a highscoreable changed
   # We consider dates less than MAX_SECS apart to be the same
   def self.changes(highscoreable)
-    # Extract different unique dates
     dates = self.where(highscoreable: highscoreable)
                 .select('unix_timestamp(date)')
                 .distinct
                 .pluck('unix_timestamp(date)')
                 .sort
     dates[0..-2].each_with_index.select{ |d, i| dates[i + 1] - d > MAX_SECS }.map(&:first).push(dates.last)
+  end
+
+  # Return a list of all 0th holders in history on a specific highscoreable
+  # until a certain date (nil = present)
+  # Care must be taken when the 0th was improved multiple times in the same update
+  def self.zeroths(highscoreable, date = nil)
+    dates = changes(highscoreable)
+    return [] if dates.size == 0
+    prev_date = dates[0]
+    zeroth = scores(highscoreable, prev_date).first
+    zeroths = [zeroth]
+    date = Time.now.to_i if date.nil?
+
+    dates[0..-2].reject{ |d| d > date }.each_with_index{ |d, i|
+      a = self.where(highscoreable: highscoreable)
+              .where("unix_timestamp(date) > #{d} AND unix_timestamp(date) <= #{dates[i + 1]}")
+              .order('score DESC')
+              .first
+      if a.score > zeroth[1]
+        zeroth = [a.metanet_id, a.score]
+        zeroths.push(zeroth)
+      end
+    }
+    zeroths
   end
   
   def self.format_scores(board)

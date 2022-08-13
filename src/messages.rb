@@ -1254,7 +1254,9 @@ rescue
 end
 
 def testa(event)
-  event << format_block(Archive.format_scores(Archive.scores(Level.find(0), Time.new(2021,12,01).to_i)))
+  lvl = parse_level_or_episode(event.content)
+  event << format_block(Archive.zeroths(lvl).map{ |a| "#{"%.3f" % (a[1].to_f / 60.0)} #{Player.find_by(metanet_id: a[0]).name}" }.join("\n"))
+  #event << format_block(Archive.format_scores(Archive.scores(Level.find(0), Time.new(2021,12,01).to_i)))
 end
 
 # TODO set level of the day on startup
@@ -1339,7 +1341,7 @@ def respond(event)
   send_aliases(event)        if msg =~ /\baliases\b/i
   add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
   faceswap(event)            if msg =~ /faceswap/i
-  #testa(event) if msg =~ /testa/i
+  testa(event) if msg =~ /testa/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
