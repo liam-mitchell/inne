@@ -48,7 +48,6 @@ def bench(action)
     @total += int
     @t = Time.now
     log("Benchmark #{@step}: #{"%.3fms" % (int * 1000)} (Total: #{"%.3fms" % (@total * 1000)}).")
-    byebug
   end
 end
 

@@ -93,6 +93,16 @@ def interaction_add_level_navigation(view, name)
   )
 end
 
+# ActionRow builder with Buttons for date navigation
+def interaction_add_date_navigation(view, page = 1, pages = 1, date = 0, label = "")
+  interaction_add_navigation(
+    view,
+    labels: ["❙❮", "❮", label, "❯", "❯❙"],
+    disabled: [page == 1, page == 1, true, page == pages, page == pages],
+    ids: ["button:date:-1000000000", "button:date:-1", "button:date:#{date}", "button:date:1", "button:date:1000000000"]
+  )
+end
+
 # Function to send messages specifically when they have interactions attached
 # (i.e. buttons or select menus). At the moment, there is no way to to attach
 # interactions to a message and use << to prevent rate limiting, so we need to
@@ -159,6 +169,8 @@ def respond_interaction_button(event)
     case keys[1]
     when 'id'
       send_nav_scores(event, offset: keys[2])
+    when 'date'
+      send_nav_scores(event, date: keys[2])
     end
   end
 end

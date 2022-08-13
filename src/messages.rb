@@ -211,13 +211,23 @@ def send_nav_scores(event, offset: nil, date: nil)
   initial = offset.nil? && date.nil?
   msg     = fetch_message(event, initial)
   scores  = parse_level_or_episode(msg).nav(offset.to_i)
+  dates   = Archive.changes(scores).sort.reverse
+  
+  if initial || date.nil?
+    new_index = 0
+  else
+    old_date  = event.message.components[1].to_a[2].custom_id.to_s.split(':').last.to_i
+    new_index = (dates.find_index{ |d| d == old_date } + date.to_i).clamp(0, dates.size - 1)
+  end
+  date = dates[new_index] || 0
 
   str = "Navigating high scores for #{scores.format_name}:\n"
-  str += format_block(scores.format_scores(scores.max_name_length)) rescue ""
-  str += "Warning: Navigating scores does not update them."
+  str += format_block(Archive.format_scores(Archive.scores(scores, date))) rescue ""
+  str += "*Warning: Navigating scores does not update them.*"
 
   view = Discordrb::Webhooks::View.new
-  interaction_add_level_navigation(view, scores.name)
+  interaction_add_level_navigation(view, scores.name.center(11, ' '))
+  interaction_add_date_navigation(view, new_index + 1, dates.size, date, date == 0 ? " " * 11 : Time.at(date).strftime("%Y-%b-%d"))
   send_message_with_interactions(event, str, view, !initial)
 end
 
@@ -1244,12 +1254,7 @@ rescue
 end
 
 def testa(event)
-  view = Discordrb::Webhooks::View.new{ |view|
-    view.row{ |r|
-      r.button(label: "➤❙", style: :primary, emoji: nil, custom_id: 'test_button:1')
-    }
-  }
-  event.send_message("1", false, nil, nil, nil, nil, view)
+  event << format_block(Archive.format_scores(Archive.scores(Level.find(0), Time.new(2021,12,01).to_i)))
 end
 
 # TODO set level of the day on startup

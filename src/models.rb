@@ -1153,6 +1153,25 @@ class Archive < ActiveRecord::Base
         }
   end
 
+  # Return a list of all dates where a highscoreable changed
+  # We consider dates less than MAX_SECS apart to be the same
+  def self.changes(highscoreable)
+    # Extract different unique dates
+    dates = self.where(highscoreable: highscoreable)
+                .select('unix_timestamp(date)')
+                .distinct
+                .pluck('unix_timestamp(date)')
+                .sort
+    dates[0..-2].each_with_index.select{ |d, i| dates[i + 1] - d > MAX_SECS }.map(&:first).push(dates.last)
+  end
+  
+  def self.format_scores(board)
+    pad = board.map{ |s| ("%.3f" % (s[1].to_f / 60.0)).length.to_i }.max
+    board.each_with_index.map{ |s, i|
+      "#{"%02d" % i}: #{format_string(Player.find_by(metanet_id: s[0]).print_name)} - #{"%#{pad}.3f" % (s[1].to_f / 60.0)}"
+    }.join("\n")
+  end
+
   # Returns the rank of the player at a particular point in time
   def find_rank(time)
     old_score = Archive.scores(self.highscoreable, time)

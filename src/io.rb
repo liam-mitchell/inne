@@ -524,6 +524,7 @@ def format_pair(arr)
 end
 
 def format_block(str)
+  str = " " if str.empty?
   "```\n#{str}```"
 end
 

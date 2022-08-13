@@ -146,6 +146,7 @@ USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||          
 # <--------------------------------------------------------------------------->
 
 MIN_TIES = 3 # Minimum number of ties for 0th to be considered maxable
+MAX_SECS = 5 # Difference in seconds to consider two dates equal (for navigation)
 
 # @par1: ID ranges for levels and episodes
 # @par2: Score limits to filter new hacked scores
