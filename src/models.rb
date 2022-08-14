@@ -280,9 +280,10 @@ module HighScore
     raise
   end
 
-  def format_scores(padding = DEFAULT_PADDING)
+  def format_scores(padding = DEFAULT_PADDING, zeroths = [])
     max = scores.map(&:score).max.to_i.to_s.length + 4
-    scores.each_with_index.map{ |s, i| s.format(padding, max, i < find_coolness) }.join("\n")
+    coolness = find_coolness
+    scores.each_with_index.map{ |s, i| s.format(padding, max, i < coolness, zeroths) }.join("\n")
   end
 
   def difference(old)
@@ -674,8 +675,9 @@ class Score < ActiveRecord::Base
     Demo.find_by(replay_id: replay_id, htype: Demo.htypes[highscoreable.class.to_s.downcase.to_sym])
   end
 
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0, cool = false)
-    "#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{cool ? " 😎" : ""}"
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, cool = false, zeroths = [])
+    star = zeroths.include?(player.metanet_id) ? "*" : ' '
+    "#{star}#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{cool ? " 😎" : ""}"
   end
 end
 
@@ -1175,7 +1177,7 @@ class Archive < ActiveRecord::Base
     zeroths = [zeroth]
     date = Time.now.to_i if date.nil?
 
-    dates[0..-2].reject{ |d| d > date }.each_with_index{ |d, i|
+    dates[0..-2].each_with_index.reject{ |d, i| dates[i + 1] > date }.each{ |d, i|
       a = self.where(highscoreable: highscoreable)
               .where("unix_timestamp(date) > #{d} AND unix_timestamp(date) <= #{dates[i + 1]}")
               .order('score DESC')
@@ -1185,13 +1187,14 @@ class Archive < ActiveRecord::Base
         zeroths.push(zeroth)
       end
     }
-    zeroths
+    zeroths.map(&:first)
   end
   
-  def self.format_scores(board)
+  def self.format_scores(board, zeroths = [])
     pad = board.map{ |s| ("%.3f" % (s[1].to_f / 60.0)).length.to_i }.max
     board.each_with_index.map{ |s, i|
-      "#{"%02d" % i}: #{format_string(Player.find_by(metanet_id: s[0]).print_name)} - #{"%#{pad}.3f" % (s[1].to_f / 60.0)}"
+      star = zeroths.include?(s[0]) ? '*' : ' '
+      "#{star}#{"%02d" % i}: #{format_string(Player.find_by(metanet_id: s[0]).print_name)} - #{"%#{pad}.3f" % (s[1].to_f / 60.0)}"
     }.join("\n")
   end
 

@@ -180,7 +180,7 @@ def send_scores(event, map = nil, ret = false)
     event << "Connection to the server failed, sending local cached scores.\n"
   end
 
-  str = "Current high scores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length)) rescue ""}"
+  str = "Current high scores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length, Archive.zeroths(scores))) rescue ""}"
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
     str += "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
@@ -222,7 +222,7 @@ def send_nav_scores(event, offset: nil, date: nil)
   date = dates[new_index] || 0
 
   str = "Navigating high scores for #{scores.format_name}:\n"
-  str += format_block(Archive.format_scores(Archive.scores(scores, date))) rescue ""
+  str += format_block(Archive.format_scores(Archive.scores(scores, date), Archive.zeroths(scores, date))) rescue ""
   str += "*Warning: Navigating scores does not update them.*"
 
   view = Discordrb::Webhooks::View.new
@@ -1255,7 +1255,7 @@ end
 
 def testa(event)
   lvl = parse_level_or_episode(event.content)
-  event << format_block(Archive.zeroths(lvl).map{ |a| "#{"%.3f" % (a[1].to_f / 60.0)} #{Player.find_by(metanet_id: a[0]).name}" }.join("\n"))
+  event << format_block(Archive.zeroths(lvl, Time.new(2021,12,10,0,0,0,"+00:00").to_i).map{ |a| "#{"%.3f" % (a[1].to_f / 60.0)} #{Player.find_by(metanet_id: a[0]).name}" }.join("\n"))
   #event << format_block(Archive.format_scores(Archive.scores(Level.find(0), Time.new(2021,12,01).to_i)))
 end
 
@@ -1341,7 +1341,7 @@ def respond(event)
   send_aliases(event)        if msg =~ /\baliases\b/i
   add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
   faceswap(event)            if msg =~ /faceswap/i
-  testa(event) if msg =~ /testa/i
+  #testa(event) if msg =~ /testa/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
