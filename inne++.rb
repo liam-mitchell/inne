@@ -762,10 +762,11 @@ end
 def mishnub(event)
   youmean = ["More like ", "You mean ", "Mish... oh, ", "Better known as ", "A.K.A. ", "Also known as "]
   amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
+  mishu   = ["MishNUB,", "MishWho?,"]
   fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
   laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
   if rand < 0.05 && (event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN)
-    event.send_message(youmean.sample + "MishNUB," + amirite.sample + fellas.sample + laugh.sample) 
+    event.send_message(youmean.sample + mishu.sample + amirite.sample + fellas.sample + laugh.sample) 
     $last_mishu = Time.now.to_i unless event.channel.type == 1
   end
 end

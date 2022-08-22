@@ -251,6 +251,11 @@ end
 
 module HighScore
 
+  # Overwrite Rails default definition to sort by rank (rather than ID)
+  def scores
+    scores.sort_by{ |s| s.rank }
+  end
+
   def self.format_rank(rank)
     "#{rank < 10 ? '0' : ''}#{rank}"
   end
