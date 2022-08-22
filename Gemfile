@@ -1,6 +1,6 @@
 source 'https://rubygems.org' do
   gem 'ascii_charts'
-  gem 'discordrb'
+  gem 'discordrb', github: "shardlab/discordrb", branch: "main"
   gem 'activerecord'
   gem 'yaml_db'
   gem 'gruff'

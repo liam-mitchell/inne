@@ -1,6 +1,7 @@
 Eddy's TODO list for inne:
 
 - ADD NEW COMMANDS TO HELP / README
+- In "parse_player", we should check for an identified player name for a given user first, and THEN for the actual user name. This is because, if someone identifies, we should give priority to that name, even if it differs from their actual username.
 - Restart process when it gets killed, maybe even restart it daily to prevent the memory leak.
 - Distribution of scores: top20 episode distribution = first show some stats regarding top20s per episode (most top20s in an ep, least, average, etc), then a file with all episodes sorted by # of top20s). Parameters: type, rank (top20, 0th, etc), distribution type (by episodes, by rows, by tabs).
 - Restrict display names to ASCII only
@@ -29,6 +30,17 @@ Eddy's TODO list for inne:
 - Metanet level search: When looking for a level name, perform a search and if there are multiple matches, show a list, otherwise return the level, akin to userlevels.
 - Add another fruit for potatoing nv2
 - Make a tool to auto-patch npp.dll and MITM so that we can e.g. send custom userlevel searches.
+- Add amount of scores each board has (we can find this out with LittleNinjaThatTried and similar ideas).
+- Add other versions? (v1.4, v2.0, etc)
+- Use OilyPNG for screenshot generation rather than ChunkPNG for faster speeds (look into other gems too, as well as vector graphics).
+- "nubs" command to show ignored hackers and cheaters
+- Allow to add "rankings" to any userlevel query (browse) to instead perform rankings on the result set.
+- Add arrow navigation to rankings and other functions using buttons
+- Userlevels: find full author name (instead of 16 char truncation), and add exact matching when browsing
+- Use author IDs for userlevel functions as well (asking for scores, ranks, etc), without using quotes to distinguish. Perhaps the same could be done for Metanet functions, although since we don't use quotes by default, we'd first do an author lookup, and if it doesn't exist and the string is purely a number, we do a player ID search.
+- Add regex to functions (userlevel search, etc)
+- Add search to Metanet levels too (regex? include in userlevel db?)
+- Expand permissions system: Add a function to assign roles to users, which only the botmasters can execute. Roles could be stored in a table relating users-roles, each user could have multiple roles and each role multiple users.
 
 \\ ------------------------ Cool ------------------------
 
@@ -49,9 +61,7 @@ Eddy's TODO list for inne:
 
 - Usernames are being truncated.
 - We need to update all maps regularly, for the ++'s, etc.
-- Unify "search" and "browse" for ease of use.
-- Search using the local database (we would have to code a search function, it could consist on taking the search string into downcase, and separating each word by spaces/underscores/etc, and then the titles must match each word, regardless of order).
-- Userlevel of the day
+- Userlevel of the day (filter by levels with at least n scores and at least a certain delta of scores to prevent impossible and maxed levels)
 - Unify names: Authors who have changed username, group by author id and change all names to the most recent one. BUT keep old names in the alias table.
 - Add Metanet levels to the db.
 
@@ -61,7 +71,6 @@ Less priority:
 - Userlevel rankings by page (featured, best, hardest, etc.). Also, the special hardest rankings with point ponderation.
 - Imagesearch: Show pictures of results (miniature) instead of text.
 - Userlevel stats: How many unique authors, maps, averages, etc. Break down by mode and total.
-- Simplify author search by having a separate query for it: "userlevel from/by/made by <username>".
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
 - Store a daily list of all top 50 userlevels (just ID's for instance), so we can see how the hardest levels evolve.
 - When requiring an ID (download, screenshot, etc), we could also support a name, and then we perform a search in the database. If there's one result, we show it, otherwise, we show the list. (Note: When this is done, we'll have to update the way IDs are matched, since it's currently too general and could result in collisions).
@@ -76,11 +85,9 @@ Less priority:
 Database:
 
 - Change format of stored dates to be UNIX time, or something consistent.
-- Code versions of already made queries (browse, search) to use the local database.
 - Make option to switch between an online search to N++ server, and an offline search in the local database. Make local default, since it faster, but have a parameter to switch to online mode.
 
 Others:
-- Filter results by any field.
 - Add the possibility of making secondary orders (to break ties).
 
 \\ ------------------------ Scores ------------------------
@@ -155,7 +162,6 @@ Avatar:
 - Charts with colors.
 - Some methods are duplicated in messages and inne++ files, like 'send_screenshot' or 'send_diff', ¿what to do here, delete the one in inne++ (which is not being used)?
 
-- Search Metanet levels by name.
 - Possibility to return lists in order of level and not rank.
 - For "splits", also download episode 0th replay and parse it to get the actual 0th splits, so that we can compare the 0th splits with the ideal splits we are currently producing by adding up the level 0ths. This isn't actually possible unless we assume G++, which we can check by adding up.
 - Implement "missing" in the "list" function, so that we could get "bottom 5 list for jirka that I don't already have".

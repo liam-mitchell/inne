@@ -49,7 +49,9 @@ class AddUltimateAndSecrets < ActiveRecord::Migration[5.1]
     ss = ["?"].product((0..23).to_a).product(["A", "B", "C", "D", "E"]).map(&:flatten).map { |l| shortname(l[0], l[2], l[1]) }
     ss2 = ["!"].product((0..23).to_a).product(["A", "B", "C", "D", "E"]).map(&:flatten).map { |l| shortname(l[0], l[2], l[1]) }
 
-    attrs = get_attributes('names-SU.txt', ue, 2400) + get_attributes('names-SS.txt', ss, 1800) + get_attributes('names-SS2.txt', ss2, 3000)
+    attrs = get_attributes('db/names/names-SU.txt', ue, 2400)
+          + get_attributes('db/names/names-SS.txt', ss, 1800)
+          + get_attributes('db/names/names-SS2.txt', ss2, 3000)
 
     Level.create(attrs)
 

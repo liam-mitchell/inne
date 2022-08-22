@@ -12,95 +12,48 @@
 # 3) Configure the "outte" environment of the config file in ./db/config.yml,
 #    or create a new one and rename the DATABASE_ENV variable down below.
 # 4) Configure the "outte_test" environment of the config file (optional).
-# 5) Create, migrate and seed a database named "inne". Make sure to use MySQL
+# 5) Create, migrate and seed a database named "inne". Make sure to use MySQL 5.7
 #    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
 #    care of the bot for a copy of the database (see Contact).
-# 6) Install Ruby 2.7 to maximize compatibility, then run the Bundler to
-#    obtain the correct version of all gems (libraries).
+# 6) Install Ruby 2.6 to maximize compatibility, then run the Bundler to
+#    obtain the correct version of all gems (libraries), I recommend using rbenv.
+#    In particular, ensure you have Rails 5.1.x and Discordrb >= 3.4.2.
+# 7) Make sure you edit and save the source files in UTF8.
+# 8) You might want to look into 'constants.rb' and configure some variables,
+#    in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID.
 #
 # Contact: https://discord.gg/nplusplus
 
+# We use some gems directly from Github repositories (in particular, Discordrb,
+# so that we can use the latest features, not present in the outdated RubyGems
+# version). This is supported by Bundler but not by RubyGems directly. The next
+# two lines makes makes these gems available / visible.
+require 'rubygems'
+require 'bundler/setup'
+
+# Included gems
 require 'discordrb'
 require 'json'
 require 'net/http'
 require 'thread'
 require 'yaml'
 require 'byebug'
+
+# Import other source files
+require_relative 'constants.rb'
+require_relative 'utils.rb'
+require_relative 'interactions.rb'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 
-# Development variables
-TEST           = true  # Switch to the local test bot
-TEST_REPORT    = false # Produces the report immediately once
-LOG            = false # Export logs and errors into external file
-LOG_REPORT     = true  # Log new weekly scores that appear in the report
-
-# Internal variables
-ATTEMPT_LIMIT  = 5     # Redownload attempts before skipping
-WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
-DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
-CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
-
-# Discord variables
-SERVER_ID      = 197765375503368192 # N++ Server
-CHANNEL_ID     = 210778111594332181 # #highscores
-USERLEVELS_ID  = 221721273405800458 # #mapping
-NV2_ID         = 197774025844457472 # #nv2
-CONTENT_ID     = 197793786389200896 # #content-creation
-TWITCH_ROLE    = "Voyeur"           # Discord role for those that want to be pinged when a new stream happens
-
-# Jokes
-POTATO         = true               # joke they have in the nv2 channel
-POTATO_RATE    = 1                  # seconds between potato checks
-POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
-MISHU          = true               # MishNUB joke
-MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
-
-# Individual flags for each thread / task
-OFFLINE_MODE      = false # Disables most intensive online functionalities
-OFFLINE_STRICT    = false # Disables all online functionalities of outte
-DO_NOTHING        = true  # 'true' sets all the following ones to false
-DO_EVERYTHING     = true  # 'true' sets all the following ones to true
-UPDATE_STATUS     = false # Thread to regularly update the bot's status
-UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
-UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
-UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
-UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
-UPDATE_LEVEL      = false # Thread to regularly publish level of the day
-UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
-UPDATE_STORY      = false # Thread to regularly publish column of the month
-UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
-UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
-UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
-
-# Update frequencies for each task
-STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
-TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||                60 # every 1 min
-HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
-HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
-DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
-EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
-STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
-REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
-REPORT_UPDATE_SIZE          = CONFIG['report_update_size']          ||  7 * 24 * 60 * 60 # last 7 days
-SUMMARY_UPDATE_SIZE         = CONFIG['summary_update_size']         ||  1 * 24 * 60 * 60 # last day
-USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
-USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
-USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
-USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
-USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
-
 def log(msg)
   puts "[INFO] [#{Time.now}] #{msg}"
-  open('LOG', 'a') { |f| f.puts "[INFO] [#{Time.now}] #{msg}" } if LOG
+  open('../LOG', 'a') { |f| f.puts "[INFO] [#{Time.now}] #{msg}" } if LOG
 end
 
 def err(msg)
   STDERR.puts "[ERROR] [#{Time.now}] #{msg}"
-  open('LOG', 'a') { |f| f.puts "[ERROR] [#{Time.now}] #{msg}" } if LOG
+  open('../LOG', 'a') { |f| f.puts "[ERROR] [#{Time.now}] #{msg}" } if LOG
 end
 
 def get_current(type)
@@ -349,7 +302,7 @@ def send_report
         name[0..14].ljust(15, " ") + " " + (s[1] == 20 ? " x  " : s[1].ordinalize).rjust(4, "0") + "->" + s[2].ordinalize.rjust(4, "0") + " " + s[3].name.ljust(10, " ") + " " + ("%.3f" % (s[4].to_f / 60.0))
       }.join("\n")
     }.join("\n")
-    File.write("report_log", log_text)
+    File.write("../report_log", log_text)
   end
 
   sleep(1)
@@ -624,6 +577,44 @@ rescue => e
   retry
 end
 
+def update_userlevel_tabs
+  log("updating userlevel tabs")
+  ["solo", "coop", "race"].each_with_index{ |mode, m|
+    [7, 8, 9, 11].each { |qt|
+      tab = USERLEVEL_TABS[qt][:name]
+      page = -1
+      while true
+        page += 1
+        break if !Userlevel::update_relationships(qt, page, m)
+      end
+      if USERLEVEL_TABS[qt][:size] != -1
+        ActiveRecord::Base.transaction do
+          UserlevelTab.where(mode: m, qt: qt).where("`index` >= #{USERLEVEL_TABS[qt][:size]}").delete_all
+        end
+      end
+    }
+  }
+  print(" " * 80 + "\r")
+  log("updated userlevel tabs")
+  return true   
+rescue => e
+  err("error updating userlevel tabs: #{e}")
+  return false
+end
+
+def start_userlevel_tabs
+  while true
+    next_userlevel_tab_update = correct_time(get_next_update('userlevel_tab'), USERLEVEL_TAB_FREQUENCY)
+    set_next_update('userlevel_tab', next_userlevel_tab_update)
+    delay = next_userlevel_tab_update - Time.now
+    sleep(delay) unless delay < 0
+    next if !update_userlevel_tabs
+  end
+rescue => e
+  err("error updating userlevel tabs: #{e}")
+  retry
+end
+
 def send_channel_screenshot(name, caption)
   name = name.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
   screenshot = "screenshots/#{name}.jpg"
@@ -799,7 +790,11 @@ def watchdog
 end
 
 #$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
-$bot = Discordrb::Bot.new token: (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']), client_id: CONFIG['client_id']
+$bot = Discordrb::Bot.new(
+  token:     (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']),
+  client_id: CONFIG['client_id'],
+  intents:   :unprivileged
+)
 $config          = CONFIG
 $channel         = nil
 $mapping_channel = nil
@@ -831,6 +826,14 @@ $bot.message do |event|
   robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
 end
 
+$bot.button do |event|
+  respond_interaction_button(event)
+end
+
+$bot.select_menu do |event|
+  respond_interaction_menu(event)
+end
+
 puts "the bot's URL is #{$bot.invite_url}"
 
 startup
@@ -859,6 +862,7 @@ $threads << Thread.new { start_level_of_the_day }    # No checks here because th
 $threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+$threads << Thread.new { start_userlevel_tabs }      if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { potato }                    if POTATO

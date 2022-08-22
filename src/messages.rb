@@ -1,13 +1,11 @@
 require 'ascii_charts'
 require 'gruff'
 require 'zlib'
+require_relative 'constants.rb'
+require_relative 'utils.rb'
 require_relative 'io.rb'
 require_relative 'models.rb'
 require_relative 'userlevels.rb'
-
-BENCH_MSGS   = true # benchmark functions in messages
-NUM_ENTRIES  = 20   # number of entries to show on diverse methods
-MAX_ENTRIES  = 20   # maximum number of entries on methods with user input, to avoid spam
 
 # Return total count of player's scores within a specific rank range
 def send_top_n_count(event)
@@ -168,6 +166,12 @@ end
 
 def send_scores(event, map = nil, ret = false)
   msg     = event.content
+  # Navigating scores goes into a different method (see below this one)
+  if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i]
+    send_nav_scores(event)
+    return
+  end
+
   offline = !!(msg[/offline/i])
   scores = map.nil? ? parse_level_or_episode(msg) : map
   if OFFLINE_STRICT
@@ -176,7 +180,7 @@ def send_scores(event, map = nil, ret = false)
     event << "Connection to the server failed, sending local cached scores.\n"
   end
 
-  str = "Current high scores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length)) rescue ""}"
+  str = "Current high scores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length, Archive.zeroths(scores))) rescue ""}"
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
     str += "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
@@ -197,6 +201,34 @@ def send_scores(event, map = nil, ret = false)
   if scores.is_a?(Episode)
     Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores) if !offline && !OFFLINE_STRICT
   end
+end
+
+# Navigating scores: Main differences:
+# - Does not update the scores.
+# - Adds navigating between levels.
+# - Adds navigating between dates.
+def send_nav_scores(event, offset: nil, date: nil)
+  initial = offset.nil? && date.nil?
+  msg     = fetch_message(event, initial)
+  scores  = parse_level_or_episode(msg).nav(offset.to_i)
+  dates   = Archive.changes(scores).sort.reverse
+  
+  if initial || date.nil?
+    new_index = 0
+  else
+    old_date  = event.message.components[1].to_a[2].custom_id.to_s.split(':').last.to_i
+    new_index = (dates.find_index{ |d| d == old_date } + date.to_i).clamp(0, dates.size - 1)
+  end
+  date = dates[new_index] || 0
+
+  str = "Navigating high scores for #{scores.format_name}:\n"
+  str += format_block(Archive.format_scores(Archive.scores(scores, date), Archive.zeroths(scores, date))) rescue ""
+  str += "*Warning: Navigating scores does not update them.*"
+
+  view = Discordrb::Webhooks::View.new
+  interaction_add_level_navigation(view, scores.name.center(11, ' '))
+  interaction_add_date_navigation(view, new_index + 1, dates.size, date, date == 0 ? " " * 11 : Time.at(date).strftime("%Y-%b-%d"))
+  send_message_with_interactions(event, str, view, !initial)
 end
 
 def send_screenshot(event, map = nil, ret = false)
@@ -306,20 +338,23 @@ def send_list(event)
   rank   = parse_rank(msg) || 20
   bott   = parse_bottom_rank(msg) || 0
   sing   = !!(msg =~ /\bsingular\b/i)
-  plur   = !!(msg =~ /\bplural\b/i)  
-  all    =  sing ? player.singular(type, tabs, false) :
-           (plur ? player.singular(type, tabs, true) :
-            player.scores_by_rank(type, tabs))
-
+  plur   = !!(msg =~ /\bplural\b/i)
   if rank == 20 && bott == 0 && !!msg[/0th/i]
     rank = 1
     bott = 0
   end
+  all    =  sing ? player.singular(type, tabs, false) :
+           (plur ? player.singular(type, tabs, true) :
+            player.scores_by_rank(type, tabs, bott, rank))
 
-  list = all.select{ |r, s| (bott...rank).cover?(r) }
-            .map{ |r, s| "#{r}:\n" + s.map{ |ss| "  " + format_list_score(ss) }.join("\n") }
-            .join("\n")
-  send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
+  list = all.map{ |s| format_list_score(s) }
+  count = list.count
+  list = list.join("\n")
+  if count <= 20
+    event << format_block(list)
+  else
+    send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
+  end
 end
 
 def send_community(event)
@@ -433,14 +468,14 @@ def send_missing(event)
   rank = parse_rank(msg) || 20
   ties = !!(msg =~ /ties/i)
 
-  missing = player.missing_top_ns(type, tabs, rank, ties).join("\n")
-
-  tmpfile = File.join(Dir.tmpdir, "missing-#{player.print_name.delete(":")}.txt")
-  File::open(tmpfile, "w", crlf_newline: true) do |f|
-    f.write(missing)
+  missing = player.missing_top_ns(type, tabs, rank, ties)
+  count = missing.count
+  missing = missing.join("\n")
+  if count <= 20
+    event << format_block(missing)
+  else
+    send_file(event, missing, "missing-#{player.print_name.delete(":")}.txt", false)
   end
-
-  event.attach_file(File::open(tmpfile))
 end
 
 def send_suggestions(event)
@@ -769,11 +804,7 @@ def send_analysis(event)
   result += "```#{key_result}```" unless analysis.sum{ |a| a['analysis'].size } > 1080
   if result.size > DISCORD_LIMIT then result = result[0..DISCORD_LIMIT - 7] + "...```" end
   event << "#{result}"
-  tmpfile = File.join(Dir.tmpdir, "analysis-#{scores.name}.txt")
-  File::open(tmpfile, "w", crlf_newline: true) do |f|
-    f.write(table_result)
-  end
-  event.attach_file(File::open(tmpfile))
+  send_file(event, table_result, "analysis-#{scores.name}.txt")
 end
 
 def send_history(event)
@@ -1159,8 +1190,73 @@ def send_twitch(event)
   end
 end
 
+# Add custom player / level alias.
+def add_alias(event)
+  perm = check_permissions(event, [:botmaster])
+  raise perm[:error] if !perm[:granted]
+  
+  msg    = event.content
+  aka    = msg[/#{parse_term}/i, 2]
+  raise "You need to provide an alias in quotes." if aka.nil?
+
+  msg.remove!(/#{parse_term}/i)
+  type   = !!msg[/\blevel\b/i] ? 'level' : (!!msg[/\bplayer\b/i] ? 'player' : nil)
+  raise "You need to provide an alias type: level, player." if type.nil?
+
+  entry = type == 'level' ? parse_level_or_episode(msg) : parse_player(msg, event.user.name)
+  entry.add_alias(aka)
+  event << "Added alias \"#{aka}\" to #{type} #{entry.name}."
+end
+
+# Send custom player / level aliases.
+# ("type" has to be either 'level' or 'player' for now)
+def send_aliases(event, page: nil, type: nil)
+  # PARSE
+  initial    = page.nil? && type.nil?
+  reset_page = !type.nil?
+  msg        = fetch_message(event, initial)
+  type       = parse_alias_type(msg, type)
+  page       = parse_page(msg, page, reset_page, event.message.components)
+  case type
+  when 'level'
+    klass  = LevelAlias
+    klass2 = :level
+    name   = "`#{klass2.to_s.pluralize}`.`longname`"
+  when 'player'
+    klass  = PlayerAlias
+    klass2 = :player
+    name   = "`#{klass2.to_s.pluralize}`.`name`"
+  else
+    raise
+  end
+
+  # COMPUTE
+  count   = klass.count.to_i
+  pag     = compute_pages(msg, count, page)
+  aliases = klass.joins(klass2).order(:alias).offset(pag[:offset]).limit(PAGE_SIZE).pluck(:alias, name)
+
+  # FORMAT
+  pad     = aliases.map(&:first).map(&:length).max
+  block   = aliases.map{ |a|
+    name1 = pad_truncate_ellipsis(a[0], pad, 15)
+    name2 = truncate_ellipsis(a[1], 35)
+    "#{name1} #{name2}"
+  }.join("\n")
+  output  = "Aliases for #{type} names (total #{count}):\n#{format_block(block)}"
+
+  # SEND
+  view = Discordrb::Webhooks::View.new
+  interaction_add_button_navigation(view, pag[:page], pag[:pages])
+  interaction_add_select_menu_alias_type(view, type)
+  send_message_with_interactions(event, output, view, !initial)
+rescue
+  event << 'Error fetching aliases.'
+end
+
 def testa(event)
-  puts Userlevel.find_max(:score, true)
+  lvl = parse_level_or_episode(event.content)
+  event << format_block(Archive.zeroths(lvl, Time.new(2021,12,10,0,0,0,"+00:00").to_i).map{ |a| "#{"%.3f" % (a[1].to_f / 60.0)} #{Player.find_by(metanet_id: a[0]).name}" }.join("\n"))
+  #event << format_block(Archive.format_scores(Archive.scores(Level.find(0), Time.new(2021,12,01).to_i)))
 end
 
 # TODO set level of the day on startup
@@ -1221,7 +1317,7 @@ def respond(event)
   send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
   send_top_n_count(event)    if msg =~ /how many/i && msg !~ /point/i
   send_table(event)          if msg =~ /\btable\b/i
-  send_comparison(event)     if msg =~ /compare/i
+  send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
   send_screenshot(event)     if msg =~ /screenshot/i
   send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
@@ -1242,6 +1338,8 @@ def respond(event)
   send_challenges(event)     if msg =~ /\bchallenges\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   send_twitch(event)         if msg =~ /\btwitch\b/i
+  send_aliases(event)        if msg =~ /\baliases\b/i
+  add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 

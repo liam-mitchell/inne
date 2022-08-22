@@ -1,253 +1,7 @@
-# coding: utf-8
 require 'active_record'
 require 'net/http'
-require 'chunky_png' # for screenshot generation
-include ChunkyPNG::Color
-
-RETRIES         = 50    # redownload retries until we move on to the next level
-SHOW_ERRORS     = true  # log common error messages
-LOG_SQL         = false # log _all_ SQL queries (for debugging)
-BENCHMARK       = true  # benchmark and log functions (for optimization)
-INVALID_RESP    = '-1337'
-DEFAULT_TYPES   = ['Level', 'Episode']
-DISCORD_LIMIT   = 2000
-
-SCORE_PADDING   =  0    #         fixed    padding, 0 for no fixed padding
-DEFAULT_PADDING = 15    # default variable padding, never make 0
-MAX_PADDING     = 15    # max     variable padding, 0 for no maximum
-TRUNCATE_NAME   = true  # truncate name when it exceeds the maximum padding
-COOL            = true  # show cool face for people in the ckc in the scores
-
-MIN_TIES        = 3     # minimum number of ties for 0th to be considered maxable
-MAXMIN_SCORES   = 100   # max-min number of highscores to appear in average point rankings
-USERLEVEL_REPORT_SIZE = 500
-ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
-
-# ID ranges for levels and episodes
-# Score limits to filter new hacked scores
-# Number of scores required to enter the average rank/point rankings of tab
-TABS = {
-  "Episode" => {
-    :SI => [ (  0.. 24).to_a, 400,  5],
-    :S  => [ (120..239).to_a, 950, 25],
-    :SL => [ (240..359).to_a, 650, 25],
-    :SU => [ (480..599).to_a, 650, 25]
-  },
-  "Level" => {
-    :SI  => [ (  0..  124).to_a,  298, 25],
-    :S   => [ ( 600..1199).to_a,  874, 50],
-    :SL  => [ (1200..1799).to_a,  400, 50],
-    :SS  => [ (1800..1919).to_a, 2462, 25],
-    :SU  => [ (2400..2999).to_a,  530, 50],
-    :SS2 => [ (3000..3119).to_a,  322, 25]
-  },
-  "Story" => {
-    :SI => [ ( 0..  4).to_a, 1000, 1],
-    :S  => [ (24.. 43).to_a, 2000, 5],
-    :SL => [ (48.. 67).to_a, 2000, 5],
-    :SU => [ (96..115).to_a, 1500, 5]
-  }
-}
-
-# Type-wise max-min for average ranks
-TYPES = {
-  "Episode" =>  [50],
-  "Level"   => [100],
-  "Story"   =>  [10]
-}
-
-IGNORED_PLAYERS = [
-  "Kronogenics",
-  "BlueIsTrue",
-  "fiordhraoi",
-  "cheeseburgur101",
-  "Jey",
-  "jungletek",
-  "Hedgy",
-  "ᕈᘎᑕᒎᗩn ᙡiᗴᒪḰi",
-  "Venom",
-  "EpicGamer10075",
-  "Altii",
-  "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
-  "Floof The Goof",
-  "Prismo",
-  "Mishu",
-  "dimitry008",
-  "Chara",
-  "test8378",
-  "VexatiousCheff",
-  "vex",
-  "DBYT3",
-  "Yup_This_Is_My_Name",
-  "vorcazm"
-]
-
-# Problematic hackers? We get rid of them by banning their user IDs
-IGNORED_IDS = [
-  115572, # Mishu
-  201322, # dimitry008
-  146275, # Puce
-  253161, # Chara
-  253072, # test8378
-  221472, # VexatiousCheff / vex
-  276273, # DBYT3
-  291743, # Yup_This_Is_My_Name
-   75839  # vorcazm
-]
-
-# Individually patched runs from legitimate players because they were done
-# with older versions of levels and the scores are now incorrect.
-# @params: minimum replay id where legit scores start, score adjustment required
-PATCH_RUNS = {
-  :episode => {
-    182 => [695142, -42], # S-C-12
-    217 => [1165074, -8]  # S-C-19
-  },
-  :level => {
-    910  => [286360, -42], # S-C-12-00
-    1089 => [225710,  -8]  # S-C-19-04
-  },
-  :story => {
-  },
-  :userlevel => {
-  }
-}
-
-# Turn a little endian binary array into an integer
-def parse_int(bytes)
-  if bytes.is_a?(Array) then bytes = bytes.join end
-  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
-end
-
-# Reformat date strings received by queries to the server
-def format_date(date)
-  date.gsub!(/-/,"/")
-  date[-6] = " "
-  date = date[2..-1]
-  date[0..7].split("/").reverse.join("/") + date[-6..-1]
-end
-
-def to_ascii(s)
-  s.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
-end
-
-# Convert an integer into a little endian binary string of 'size' bytes and back
-def _pack(n, size)
-  n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
-    [b].pack('H*')[0]
-  }.join.force_encoding("ascii-8bit")
-end
-
-def _unpack(bytes)
-  if bytes.is_a?(Array) then bytes = bytes.join end
-  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
-end
-
-def bench(action)
-  @t ||= Time.now
-  @total ||= 0
-  @step ||= 0
-  case action
-  when :start
-    @step = 0
-    @total = 0
-    @t = Time.now
-  when :step
-    @step += 1
-    int = Time.now - @t
-    @total += int
-    @t = Time.now
-    log("Benchmark #{@step}: #{"%.3fms" % (int * 1000)} (Total: #{"%.3fms" % (@total * 1000)}).")
-  end
-end
-
-def format_string(str, padding = DEFAULT_PADDING)
-  if SCORE_PADDING > 0 # FIXED padding mode
-    "%-#{"%d" % [SCORE_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, SCORE_PADDING) : str]
-  else                 # VARIABLE padding mode
-    if MAX_PADDING > 0   # maximum padding supplied
-      if padding > 0       # valid padding
-        if padding <= MAX_PADDING 
-          "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding) : str]
-        else
-          "%-#{"%d" % [MAX_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, MAX_PADDING) : str]
-        end
-      else                 # invalid padding
-        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING) : str]
-      end
-    else                 # maximum padding not supplied
-      if padding > 0       # valid padding
-        "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding) : str]
-      else                 # invalid padding
-        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING) : str]
-      end
-    end
-  end
-end
-
-# sometimes we need to make sure there's exactly one valid type
-def ensure_type(type)
-  (type.nil? || type.is_a?(Array)) ? Level : type
-end
-
-# find the optimal score / amount of whatever rankings or stat
-def find_max_type(rank, type, tabs)
-  case rank
-  when :points
-    (tabs.empty? ? type : type.where(tab: tabs)).count * 20
-  when :avg_points
-    20
-  when :avg_rank
-    0
-  when :maxable
-    HighScore.ties(type, tabs, nil, false, true).size
-  when :maxed
-    HighScore.ties(type, tabs, nil, true, true).size
-  when :clean
-    0.0
-  when :score
-    query = Score.where(highscoreable_type: type.to_s, rank: 0)
-    query = query.where(tab: tabs) if !tabs.empty?
-    query = query.sum(:score)
-    query = query
-    query
-  else
-    (tabs.empty? ? type : type.where(tab: tabs)).count
-  end
-end
-
-# Finds the maximum value a player can reach in a certain ranking
-def find_max(rank, types, tabs)
-  types = [Level, Episode] if types.nil?
-  maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
-  [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
-end
-
-# Finds the minimum number of scores required to appear in a certain
-# average rank/point rankings
-def min_scores(type, tabs)
-  type = [Level, Episode] if type.nil?
-  mins = [type].flatten.map{ |t|
-    if tabs.empty?
-      type_min = TABS[t.to_s].sum{ |k, v| v[2] }
-    else
-      type_min = tabs.map{ |tab| TABS[t.to_s][tab][2] if TABS[t.to_s].key?(tab) }.compact.sum
-    end
-    [type_min, TYPES[t.to_s][0]].min
-  }.sum
-  [mins, MAXMIN_SCORES].min
-end
-
-# round float to nearest frame
-def round_score(score)
-  (score * 60).round / 60.0
-end
-
-# weighed average
-def wavg(arr, w)
-  return -1 if arr.size != w.size
-  arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
-end
+require_relative 'constants.rb'
+require_relative 'utils.rb'
 
 module HighScore
 
@@ -354,10 +108,10 @@ module HighScore
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
   end
 
-  def get_data(uri_proc, data_proc, err)
+  def self.get_data(uri_proc, data_proc, err, *vargs)
     attempts ||= 0
     initial_id = get_last_steam_id
-    response = Net::HTTP.get_response(uri_proc.call(initial_id))
+    response = Net::HTTP.get_response(uri_proc.call(initial_id, *vargs))
     while response.body == INVALID_RESP
       deactivate_last_steam_id
       update_last_steam_id
@@ -383,14 +137,14 @@ module HighScore
     uri  = Proc.new { |steam_id| scores_uri(steam_id) }
     data = Proc.new { |data| correct_ties(clean_scores(JSON.parse(data)['scores'])) }
     err  = "error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}"
-    get_data(uri, data, err)
+    HighScore::get_data(uri, data, err)
   end
 
   def get_replay(replay_id)
     uri  = Proc.new { |steam_id| replay_uri(steam_id, replay_id) }
     data = Proc.new { |data| data }
     err  = "error getting replay with id #{replay_id} for #{self.class.to_s.downcase} with id #{self.id.to_s}"
-    get_data(uri, data, err)
+    HighScore::get_data(uri, data, err)
   end
 
   # Remove hackers and cheaters both by implementing the ignore lists and the score thresholds.
@@ -515,7 +269,6 @@ module HighScore
   end
 
   def find_coolness
-    bench(:start) if BENCHMARK
     max   = scores.map(&:score).max.to_i.to_s.length + 4
     s1    = scores.first.score.to_s
     s2    = scores.last.score.to_s
@@ -526,16 +279,16 @@ module HighScore
     else
       cools = 0
     end
-    bench(:step) if BENCHMARK
     cools
   rescue => e
     puts e.backtrace
     raise
   end
 
-  def format_scores(padding = DEFAULT_PADDING)
+  def format_scores(padding = DEFAULT_PADDING, zeroths = [])
     max = scores.map(&:score).max.to_i.to_s.length + 4
-    scores.each_with_index.map{ |s, i| s.format(padding, max, i < find_coolness) }.join("\n")
+    coolness = find_coolness
+    scores.each_with_index.map{ |s, i| s.format(padding, max, i < coolness, zeroths) }.join("\n")
   end
 
   def difference(old)
@@ -565,6 +318,58 @@ module HighScore
       "#{o[:score].format(name_padding, score_padding)} (#{diff})"
     }.join("\n")
   end
+
+  # The next function navigates through highscoreables.
+  # @par1: Offset (1 = next, -1 = prev, 2 = next tab, -2 = prev tab).
+  #
+  # Note:
+  #   We deal with edge cases separately because we change the natural order
+  #   of tabs, so the ID is not always what we want (the internal order of
+  #   tabs is SI, S, SL, ?, SU, !, but we want SI, S, SU, SL, ?, !, as it
+  #   appears in the game).
+  def nav(c)
+    tabs    = self.class.to_s == "Level" ? 6 : 4
+    ids     = [:SI, :S, :SU, :SL, :SS, :SS2][0.. tabs - 1].map{ |t| [ TABS[self.class.to_s][t][0][0], TABS[self.class.to_s][t][0][-1] ] }
+    new_id  = nil
+    new_id2 = nil
+
+    ids.each_with_index{ |t, i|
+      case c
+      when 1
+        new_id  = ids[(i + 1) % tabs][0] if self.id == t[1]
+        new_id2 = self.class.where("id > #{self.id}").pluck("MIN(id)").first.to_i
+      when -1
+        new_id  = ids[(i - 1) % tabs][1] if self.id == t[0]
+        new_id2 = self.class.where("id < #{self.id}").pluck("MAX(id)").first.to_i
+      when 2
+        new_id = ids[(i + 1) % tabs][0] if self.id >= t[0] && self.id <= t[1]
+      when -2
+        new_id = ids[(i - 1) % tabs][0] if self.id >= t[0] && self.id <= t[1]
+      else
+        new_id = self.id
+      end
+    }
+    self.class.find(new_id || new_id2)
+  rescue
+    self
+  end
+
+  # Shorcuts for the above
+  def next_h
+    nav(1)
+  end
+
+  def prev_h
+    nav(-1)
+  end
+
+  def next_t
+    nav(2)
+  end
+
+  def prev_t
+    nav(-2)
+  end
 end
 
 class Level < ActiveRecord::Base
@@ -572,8 +377,13 @@ class Level < ActiveRecord::Base
   has_many :scores, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :challenges
+  has_many :level_aliases
   belongs_to :episode
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+
+  def add_alias(a)
+    LevelAlias.find_or_create_by(level: self, alias: a)
+  end
 
   def format_name
     "#{longname} (#{name})"
@@ -689,9 +499,9 @@ end
 class Score < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
-  belongs_to :level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: 'highscoreable_id'
+  belongs_to :level,   -> { where(scores: {highscoreable_type: 'Level'}) },   foreign_key: 'highscoreable_id'
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
-  belongs_to :story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: 'highscoreable_id'
+  belongs_to :story,   -> { where(scores: {highscoreable_type: 'Story'}) },   foreign_key: 'highscoreable_id'
 #  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
   enum tab:  [ :SI, :S, :SU, :SL, :SS, :SS2 ]
 
@@ -870,8 +680,9 @@ class Score < ActiveRecord::Base
     Demo.find_by(replay_id: replay_id, htype: Demo.htypes[highscoreable.class.to_s.downcase.to_sym])
   end
 
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0, cool = false)
-    "#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{cool ? " 😎" : ""}"
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, cool = false, zeroths = [])
+    star = zeroths.include?(player.metanet_id) ? "*" : ' '
+    "#{star}#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{cool ? " 😎" : ""}"
   end
 end
 
@@ -882,6 +693,7 @@ class Player < ActiveRecord::Base
   has_many :rank_histories
   has_many :points_histories
   has_many :total_score_histories
+  has_many :player_aliases
 
   # Deprecated since it's slower, see Score::rank
   def self.rankings(&block)
@@ -999,6 +811,10 @@ class Player < ActiveRecord::Base
     ret
   end
 
+  def add_alias(a)
+    PlayerAlias.find_or_create_by(player: self, alias: a)
+  end
+
   def print_name
     user = User.where(playername: name).where.not(displayname: nil)
     (user.empty? ? name : user.first.displayname).remove("`")
@@ -1042,9 +858,10 @@ class Player < ActiveRecord::Base
     range_ns(a, b, type, tabs, ties).count
   end
 
-  def scores_by_rank(type, tabs)
+  def scores_by_rank(type, tabs, r1 = 0, r2 = 20)
     bench(:start) if BENCHMARK
-    ret = scores_by_type_and_tabs(type, tabs).group_by(&:rank).sort_by(&:first)
+    ret = scores_by_type_and_tabs(type, tabs, :name).where("rank >= #{r1} AND rank < #{r2}")
+                                                    .order('rank, highscoreable_type DESC, highscoreable_id')
     bench(:step) if BENCHMARK
     ret
   end
@@ -1065,9 +882,8 @@ class Player < ActiveRecord::Base
     bench(:start) if BENCHMARK
     scores = [type].flatten.map{ |t|
       ids = top_ns(n, t, tabs, ties).pluck(:highscoreable_id)
-      (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).pluck(:name)
+      (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).order(:id).pluck(:name)
     }.flatten
-#    scores = (tabs.empty? ? type : type.where(tab: tabs)).where.not(id: ids).pluck(:name)
     bench(:step) if BENCHMARK
     scores
   end
@@ -1111,13 +927,13 @@ class Player < ActiveRecord::Base
     req = Score.where(highscoreable_type: type.to_s)
     req = req.where(tab: tabs) if !tabs.empty?
     ids = req.where("rank = 1 AND tied_rank = #{plural ? 0 : 1}").pluck(:highscoreable_id)
-    scores_by_type_and_tabs(type, tabs).where(rank: 0, highscoreable_id: ids)
+    scores_by_type_and_tabs(type, tabs, :name).where(rank: 0, highscoreable_id: ids)
   end
 
   def singular(type, tabs, plural = false)
     bench(:start) if BENCHMARK
     type = type.nil? ? DEFAULT_TYPES : [type.to_s]
-    ret = type.map{ |t| singular_(t, tabs, plural) }.flatten.group_by(&:rank)
+    ret = type.map{ |t| singular_(t, tabs, plural) }.flatten#.group_by(&:rank)
     bench(:step) if BENCHMARK
     ret
   end
@@ -1194,6 +1010,14 @@ class Player < ActiveRecord::Base
       end
     end
   end
+end
+
+class LevelAlias < ActiveRecord::Base
+  belongs_to :level
+end
+
+class PlayerAlias < ActiveRecord::Base
+  belongs_to :player
 end
 
 class User < ActiveRecord::Base
@@ -1334,6 +1158,49 @@ class Archive < ActiveRecord::Base
         .map{ |s|
           [s.metanet_id.to_i, s['max(score)'].to_i]
         }
+  end
+
+  # Return a list of all dates where a highscoreable changed
+  # We consider dates less than MAX_SECS apart to be the same
+  def self.changes(highscoreable)
+    dates = self.where(highscoreable: highscoreable)
+                .select('unix_timestamp(date)')
+                .distinct
+                .pluck('unix_timestamp(date)')
+                .sort
+    dates[0..-2].each_with_index.select{ |d, i| dates[i + 1] - d > MAX_SECS }.map(&:first).push(dates.last)
+  end
+
+  # Return a list of all 0th holders in history on a specific highscoreable
+  # until a certain date (nil = present)
+  # Care must be taken when the 0th was improved multiple times in the same update
+  def self.zeroths(highscoreable, date = nil)
+    dates = changes(highscoreable)
+    return [] if dates.size == 0
+    prev_date = dates[0]
+    zeroth = scores(highscoreable, prev_date).first
+    zeroths = [zeroth]
+    date = Time.now.to_i if date.nil?
+
+    dates[0..-2].each_with_index.reject{ |d, i| dates[i + 1] > date }.each{ |d, i|
+      a = self.where(highscoreable: highscoreable)
+              .where("unix_timestamp(date) > #{d} AND unix_timestamp(date) <= #{dates[i + 1]}")
+              .order('score DESC')
+              .first
+      if a.score > zeroth[1]
+        zeroth = [a.metanet_id, a.score]
+        zeroths.push(zeroth)
+      end
+    }
+    zeroths.map(&:first)
+  end
+  
+  def self.format_scores(board, zeroths = [])
+    pad = board.map{ |s| ("%.3f" % (s[1].to_f / 60.0)).length.to_i }.max
+    board.each_with_index.map{ |s, i|
+      star = zeroths.include?(s[0]) ? '*' : ' '
+      "#{star}#{"%02d" % i}: #{format_string(Player.find_by(metanet_id: s[0]).print_name)} - #{"%#{pad}.3f" % (s[1].to_f / 60.0)}"
+    }.join("\n")
   end
 
   # Returns the rank of the player at a particular point in time
