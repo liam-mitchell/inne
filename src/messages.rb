@@ -233,7 +233,11 @@ end
 
 def send_screenshot(event, map = nil, ret = false)
   msg = event.content
-  scores = map.nil? ? parse_level_or_episode(msg) : map
+  scores = map.nil? ? parse_level_or_episode(msg, partial: true) : map
+  if scores.is_a?(Array)
+    event << "```\n" + scores.map(&:longname).join("\n") + "```"
+    return
+  end
   name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
 
   screenshot = "screenshots/#{name}.jpg"

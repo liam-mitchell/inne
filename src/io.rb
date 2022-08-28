@@ -167,7 +167,13 @@ def parse_steam_id(msg)
   return id
 end
 
-def parse_level_or_episode(msg)
+# If 'partial' is activated, then after testing for all possible ways to parse
+# the level (e.g. level ID, level name, etc) we will also perform other kinds of
+# searches (e.g. partial, word distance, etc) using a different function.
+# We use a parameter instead of making this a default because it might return
+# multiple results in an array, rather than a single Level instance, and so this
+# would break all the many prior uses of this function.
+def parse_level_or_episode(msg, partial: false)
   level     = msg[LEVEL_PATTERN]
   level_d   = msg.match(LEVEL_PATTERN_D) # dashless
   episode   = msg[EPISODE_PATTERN]
@@ -211,16 +217,31 @@ def parse_level_or_episode(msg)
     ret = get_current(Story)
   elsif name
     str = name
-    ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase) rescue nil
+    # Parse exact name
+    if !partial # allow single match
+      ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
+    else # allow multiple matches (there are duplicate level names)
+      ret = Level.where("UPPER(longname) LIKE ?", name.upcase).to_a
+      ret = ret.first if ret.size == 1
+    end
+    # Parse level alias
     ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
-               .find_by("UPPER(level_aliases.alias) = ?", name.upcase) rescue nil if ret.nil?
+               .find_by("UPPER(level_aliases.alias) = ?", name.upcase) rescue nil if ret.nil? || ret.is_a?(Array) && ret.empty?
+    # If activated, parse partial coincidence
+    ret = search_level(msg) rescue nil if partial && (ret.nil? || ret.is_a?(Array) && ret.empty?)
   else
-    msg = "I couldn't figure out which level, episode or column you wanted scores for! You need to send either a level, " +
-          "an episode or a column ID that looks like SI-A-00-00, SI-A-00 or SI-00; or a level name, using 'for <name>.'"
-    raise msg
+    raise "Couldn't find the level, episode or story you were looking for :("
   end
 
-  raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil?
+  raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil? || ret.is_a?(Array) && ret.empty?
+  ret
+end
+
+# Completes previous function by adding optional partial searches and more
+def search_level(msg)
+  name = msg[NAME_PATTERN, 2]
+  ret = Level.where("UPPER(longname) LIKE ?", '%' + name.upcase + '%').to_a if name
+  ret = ret.first if ret.size == 1
   ret
 end
 
