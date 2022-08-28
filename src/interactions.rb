@@ -172,6 +172,11 @@ def respond_interaction_button(event)
     when 'date'
       send_nav_scores(event, date: keys[2])
     end
+  when 'screenshot'
+    case keys[1]
+    when 'nav'
+      send_screenshot(event, page: keys[2])
+    end
   end
 end
 

@@ -16,7 +16,10 @@ def fetch_message(event, initial)
   end
 end
 
-def compute_pages(msg, count = 1, page = 1)
+# Given an amount and a page number, will make sure that it is a valid
+# page number (given the page size), or clamp it otherwise, as well as
+# find the offset index where the page begins.
+def compute_pages(count = 1, page = 1)
   pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
   page   = page > pages ? pages : (page < 1 ? 1 : page)
   offset = (page - 1) * PAGE_SIZE
@@ -179,7 +182,7 @@ def parse_level_or_episode(msg, partial: false)
   episode   = msg[EPISODE_PATTERN]
   episode_d = msg.match(EPISODE_PATTERN_D)
   story     = msg.match(STORY_PATTERN) # no need for dashed (no ambiguity)
-  name      = msg[NAME_PATTERN, 2]
+  name      = msg.split("\n")[0][NAME_PATTERN, 2]
   ret       = nil
   str       = ""
 
@@ -557,6 +560,11 @@ end
 
 def format_list_score(s)
   "#{HighScore.format_rank(s.rank)}: #{s.highscoreable.name.ljust(10, " ")} - #{"%7.3f" % [s.score]}"
+end
+
+def format_level_list(levels)
+  pad = levels.map{ |l| l.name.length }.max + 1
+  format_block(levels.map{ |s| s.name.ljust(pad, ' ') + s.longname }.join("\n"))
 end
 
 def send_file(event, data, name = "result.txt", binary = false)

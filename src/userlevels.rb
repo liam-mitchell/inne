@@ -928,7 +928,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   end
   # Compute count, page number, total pages, and offset
   count     = query.count
-  pag       = compute_pages(msg, count, page)
+  pag       = compute_pages(count, page)
   # Order userlevels
   order_str = Userlevel::sort(order, invert)
   query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))

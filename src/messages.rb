@@ -231,15 +231,31 @@ def send_nav_scores(event, offset: nil, date: nil)
   send_message_with_interactions(event, str, view, !initial)
 end
 
-def send_screenshot(event, map = nil, ret = false)
-  msg = event.content
-  scores = map.nil? ? parse_level_or_episode(msg, partial: true) : map
+# Make sure the first output word is "Screenshot", and make sure the header
+# of the message still contains the level ID, for when it's parsed.
+def send_screenshot(event, map = nil, ret = false, page: nil)
+  initial = page.nil?
+  msg     = fetch_message(event, initial)
+  scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
+
+  # Multiple matches
   if scores.is_a?(Array)
-    event << "```\n" + scores.map(&:longname).join("\n") + "```"
+    page = parse_page(msg, page, false, event.message.components)
+    pag  = compute_pages(scores.size, page)
+    list = scores[pag[:offset]...pag[:offset] + PAGE_SIZE]
+    str  = "Screenshot - Multiple matches found for #{msg[NAME_PATTERN, 2]}\n#{format_level_list(list)}"
+    if scores.size > PAGE_SIZE
+      view = Discordrb::Webhooks::View.new
+      interaction_add_button_navigation(view, pag[:page], pag[:pages])
+      send_message_with_interactions(event, str, view, !initial)
+    else
+      event << str
+    end
     return
   end
-  name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
 
+  # Single match
+  name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
   screenshot = "screenshots/#{name}.jpg"
 
   if File.exist? screenshot
@@ -1236,7 +1252,7 @@ def send_aliases(event, page: nil, type: nil)
 
   # COMPUTE
   count   = klass.count.to_i
-  pag     = compute_pages(msg, count, page)
+  pag     = compute_pages(count, page)
   aliases = klass.joins(klass2).order(:alias).offset(pag[:offset]).limit(PAGE_SIZE).pluck(:alias, name)
 
   # FORMAT

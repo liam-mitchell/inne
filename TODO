@@ -42,6 +42,7 @@ Eddy's TODO list for inne:
 - Add search to Metanet levels too (regex? include in userlevel db?)
 - Expand permissions system: Add a function to assign roles to users, which only the botmasters can execute. Roles could be stored in a table relating users-roles, each user could have multiple roles and each role multiple users.
 - Add access to all functions using slash commands
+- Damerau-Levenshtein for level names
 
 \\ ------------------------ Cool ------------------------
 
