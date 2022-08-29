@@ -221,17 +221,18 @@ def parse_level_or_episode(msg, partial: false)
   elsif name
     str = name
     # Parse exact name
-    if !partial # allow single match
-      ret = Level.find_by("UPPER(longname) LIKE ?", name.upcase)
-    else # allow multiple matches (there are duplicate level names)
-      ret = Level.where("UPPER(longname) LIKE ?", name.upcase).to_a
-      ret = ret.first if ret.size == 1
-    end
+    ret = Level.where("UPPER(longname) LIKE ?", name.upcase).to_a
+    ret = ret.first if !partial || ret.size == 1
     # Parse level alias
-    ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
-               .find_by("UPPER(level_aliases.alias) = ?", name.upcase) rescue nil if ret.nil? || ret.is_a?(Array) && ret.empty?
-    # If activated, parse partial coincidence
-    ret = search_level(msg) rescue nil if partial && (ret.nil? || ret.is_a?(Array) && ret.empty?)
+    if ret.nil? || ret.is_a?(Array) && ret.empty?
+      ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
+                 .find_by("UPPER(level_aliases.alias) = ?", name.upcase) 
+    end
+    # If specified, perform extra searches
+    if ret.nil? || ret.is_a?(Array) && ret.empty?
+      ret = search_level(msg) 
+      ret = ret.first if !partial || ret.size == 1
+    end
   else
     raise "Couldn't find the level, episode or story you were looking for :("
   end
@@ -240,12 +241,24 @@ def parse_level_or_episode(msg, partial: false)
   ret
 end
 
-# Completes previous function by adding optional partial searches and more
+# Completes previous function by adding extra level searching functionality
+# 1) First, look for partial matches (i.e. using wildcards at start and end)
+# 2) Then, minimize Damerau-Levenshtein string distance
 def search_level(msg)
   name = msg[NAME_PATTERN, 2]
-  ret = Level.where("UPPER(longname) LIKE ?", '%' + name.upcase + '%').to_a if name
-  ret = ret.first if ret.size == 1
+  if name
+    # Partial matches
+    ret = Level.where("UPPER(longname) LIKE ?", '%' + name.upcase + '%').to_a
+    # If no result, minimize string distance
+    if ret.empty?
+      
+    end
+  else
+    ret = []
+  end
   ret
+rescue
+  []
 end
 
 def parse_rank(msg)

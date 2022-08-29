@@ -1,4 +1,5 @@
 require 'ascii_charts'
+require 'damerau-levenshtein'
 require 'gruff'
 require 'zlib'
 require_relative 'constants.rb'
@@ -1274,9 +1275,10 @@ rescue
 end
 
 def testa(event)
-  lvl = parse_level_or_episode(event.content)
-  event << format_block(Archive.zeroths(lvl, Time.new(2021,12,10,0,0,0,"+00:00").to_i).map{ |a| "#{"%.3f" % (a[1].to_f / 60.0)} #{Player.find_by(metanet_id: a[0]).name}" }.join("\n"))
-  #event << format_block(Archive.format_scores(Archive.scores(Level.find(0), Time.new(2021,12,01).to_i)))
+  str = event.content.split(' ')[1..-1].join
+  list = Level.all.pluck(:name, :longname)
+  matches = string_distance_list_mixed(str, list)
+  event << format_block(matches.map{ |m| "#{m[0].ljust(10, ' ')} #{m[1]}" }.join("\n"))
 end
 
 # TODO set level of the day on startup

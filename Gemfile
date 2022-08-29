@@ -7,6 +7,7 @@ source 'https://rubygems.org' do
   gem 'rails', '~> 5.1.5'
   gem 'mysql2'
   gem 'chunky_png'
+  gem 'damerau-levenshtein'
 
   group :debug, :test do
     gem 'byebug'

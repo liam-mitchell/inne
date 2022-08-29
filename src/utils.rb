@@ -186,3 +186,83 @@ end
 def remove_word_first(msg, word)
   msg.sub(/\w*#{word}\w*/i, '')
 end
+
+# DISTANCE BETWEEN STRINGS
+# * Find distance between two strings using the classic Damerau-Levenshtein
+# * Returns nil if the threshold is surpassed
+# * Read 'string_distance_list_mixed' for detailed docs
+def string_distance(word1, word2, max: 3, th: nil)
+  d = DamerauLevenshtein.distance(word1, word2, 1, max)
+  (d - [word1.length, word2.length].min).abs < th ? nil : d
+end
+
+# DISTANCE BETWEEN STRING AND PHRASE
+# Same as before, but compares a word with a phrase, but comparing word by word
+#   and taking the MINIMUM (for single-word matches, which is common)
+# Returns nil if the threshold is surpassed for EVERY word
+def string_distance_chunked(word, phrase, max: 3, th: nil)
+  phrase.split(/\W|_/i).reject{ |chunk| chunk.strip.empty? }.map{ |chunk|
+    string_distance(word, chunk, max: max, th: th)
+  }.compact.min
+end
+
+# DISTANCE BETWEEN WORD AND LIST
+# (read 'string_distance_list_mixed' for docs)
+def string_distance_list(word, list, max: 3, th: nil, chunked: false)
+  # Determine if IDs have been provided
+  ids = list[0].is_a?(Array)
+  # Sort and group by distance, rejecting invalids
+  list = list.each_with_index.map{ |n, i|
+                if chunked
+                  [string_distance_chunked(word, ids ? n[1] : n, max: max, th: th), n]
+                else
+                  [string_distance(word, ids ? n[1] : n, max: max, th: th), n]
+                end
+              }
+              .reject{ |d, n| d.nil? || d > max || (!th.nil? && (d - (ids ? n[1] : n).length).abs < th) }
+              .group_by{ |d, n| d }
+              .sort_by{ |g| g[0] }
+              .map{ |g| [g[0], g[1].map(&:last)] }
+              .to_h
+  # Complete the hash with the distance values that might not have appeared
+  # (this allows for more consistent use of the list, e.g., when zipping)
+  (0..max).each{ |i| list[i] = [] if !list.key?(i) }
+  list
+end
+
+# DISTANCE-MATCH A STRING IN A LIST
+#   --- Description ---
+# Sort list of strings based on a Damerau-Levenshtein-ish distance to a string.
+#
+# The list may be provided as:
+#   A list of strings
+#   A list of pairs, where the string is the second element
+# This is used when there may be duplicate strings that we don't want to
+# ditch, in which case the first element would be the ID that makes them
+# unique. Obviously, this is done with level and player names in mind, that
+# may have duplicates.
+#
+# The comparison between strings will be performed both normally and 'chunked',
+# which splits the strings in the list in words. These resulting lists are then
+# zipped (i.e. first distance 0, then chunked distance 0, the distance 1, etc.)
+#   --- Parameters ---
+# word       - String to match in the list
+# list       - List of strings / pairs to match in
+# min        - Minimum distance, all matches below this distance are keepies
+# max        - Maximum distance, all matches above this distance are ignored
+# th         - Threshold of maximum difference between the calculated distance
+#              and the string length to consider. The reason we do this is to
+#              ignore trivial results, eg, the distance between 'old' and 'new'
+#              is 3, not because the words are similar, but because they're only
+#              3 characters long
+# soft_limit - Limit of matches to show, assuming there aren't more keepies
+# hard_limit - Limit of matches to show, even if there are more keepies
+# Returns nil if the threshold is surpassed
+def string_distance_list_mixed(word, list, min: 1, max: 3, th: 3, soft_limit: 10, hard_limit: 20)
+  matches1 = string_distance_list(word, list, max: max, th: th, chunked: false)
+  matches2 = string_distance_list(word, list, max: max, th: th, chunked: true)
+  matches = (0..max).map{ |i| [i, (matches1[i] + matches2[i]).uniq(&:first)] }.to_h
+  keepies = matches.select{ |k, v| k <= min }.values.map(&:size).sum
+  to_take = [[keepies, soft_limit].max, hard_limit].min
+  matches.values.flatten(1).take(to_take)
+end
