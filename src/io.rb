@@ -54,7 +54,8 @@ def formalize_tab(tab)
   parse_tabs(tab)[0].to_s
 end
 
-# Auxiliary function for the following ones
+# The following are 2 auxiliary functions for the next ones
+#   Parse a single player when a name has been provided
 def parse_player_explicit(name, playerClass = Player)
   player = playerClass.where.not(metanet_id: nil).find_by(name: name) rescue nil
   player = Player.joins('INNER JOIN player_aliases ON players.id = player_aliases.player_id')
@@ -62,6 +63,17 @@ def parse_player_explicit(name, playerClass = Player)
                  .take rescue nil if player.nil?
   raise "#{name} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad..." if player.nil?
   player
+end
+
+#   Parse a single player when a username has been provided
+def parse_player_implicit(username, playerClass = Player)
+  # Check if player with username exists
+  player = playerClass.where.not(metanet_id: nil).find_by(name: username) rescue nil
+  return player if !player.nil?
+  # Check if user identified with another name
+  user = User.find_by(username: username) rescue nil
+  raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
+  parse_player_explicit(user.player.name, playerClass)
 end
 
 # explicit: players will only be parsed if they appear explicitly, without inferring from their user, otherwise nil
@@ -73,11 +85,7 @@ def parse_player(msg, username, userlevel = false, explicit = false, enforce = f
 
   # We make sure to only return players with metanet_ids, ie., with highscores.
   if implicit
-    player = playerClass.where.not(metanet_id: nil).find_by(name: username)
-    return player if !player.nil?
-    user = User.find_by(username: username)
-    raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
-    parse_player_explicit(user.player.name, playerClass)
+    parse_player_implicit(username, playerClass)
   else
     if p.nil?
       if explicit
@@ -87,11 +95,7 @@ def parse_player(msg, username, userlevel = false, explicit = false, enforce = f
           nil
         end
       else
-        player = playerClass.where.not(metanet_id: nil).find_by(name: username) rescue nil
-        return player if !player.nil?
-        user = User.find_by(username: username)
-        raise "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
-        parse_player_explicit(user.player.name, playerClass)
+        parse_player_implicit(username, playerClass)
       end
     else
       parse_player_explicit(p, playerClass)

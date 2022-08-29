@@ -216,11 +216,19 @@ end
 # - Does not update the scores.
 # - Adds navigating between levels.
 # - Adds navigating between dates.
-def send_nav_scores(event, offset: nil, date: nil)
-  initial = offset.nil? && date.nil?
+def send_nav_scores(event, offset: nil, date: nil, page: nil)
+  initial = offset.nil? && date.nil? && page.nil?
   msg     = fetch_message(event, initial)
-  scores  = parse_level_or_episode(msg).nav(offset.to_i)
-  dates   = Archive.changes(scores).sort.reverse
+  scores  = parse_level_or_episode(msg, partial: true)
+
+  # Multiple matches
+  if scores.is_a?(Array)
+    format_level_matches(event, msg, page, initial, scores, 'navigating')
+    return
+  end
+
+  scores = scores.nav(offset.to_i)
+  dates  = Archive.changes(scores).sort.reverse
   
   if initial || date.nil?
     new_index = 0
