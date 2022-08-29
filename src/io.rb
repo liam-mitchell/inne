@@ -194,6 +194,10 @@ def parse_level_or_episode(msg, partial: false)
   #      level exists).
   # 3) Then parse columns (no ambiguity as they don't have row letter).
   # 4) Finally parse other specific strings (lotd, eotw, cotm, level names).
+  # For the last step, a list with multiple matches might be returned instead.
+  # It will be returned in the format:
+  # [String, Array<Level>]
+  # Where the string is a message, because the origin of the list might differ
   if level
     str = normalize_name(level)
     ret = Level.find_by(name: str)
@@ -221,23 +225,23 @@ def parse_level_or_episode(msg, partial: false)
   elsif name
     str = name
     # Parse exact name
-    ret = Level.where("UPPER(longname) LIKE ?", name.upcase).to_a
-    ret = ret.first if !partial || ret.size == 1
+    ret = ["Multiple matches found for #{name}", Level.where("UPPER(longname) LIKE ?", name.upcase).to_a]
+    ret = ret[1][0] if !partial || ret[1].size == 1
     # Parse level alias
-    if ret.nil? || ret.is_a?(Array) && ret.empty?
+    if ret.nil? || ret.is_a?(Array) && ret[1].empty?
       ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
                  .find_by("UPPER(level_aliases.alias) = ?", name.upcase) 
     end
     # If specified, perform extra searches
-    if ret.nil? || ret.is_a?(Array) && ret.empty?
+    if ret.nil? || ret.is_a?(Array) && ret[1].empty?
       ret = search_level(msg) 
-      ret = ret.first if !partial || ret.size == 1
+      ret = ret[1][0] if !partial || ret[1].size == 1
     end
   else
     raise "Couldn't find the level, episode or story you were looking for :("
   end
 
-  raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil? || ret.is_a?(Array) && ret.empty?
+  raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil? || ret.is_a?(Array) && ret[1].empty?
   ret
 end
 
@@ -248,17 +252,25 @@ def search_level(msg)
   name = msg[NAME_PATTERN, 2]
   if name
     # Partial matches
-    ret = Level.where("UPPER(longname) LIKE ?", '%' + name.upcase + '%').to_a
+    ret = [
+      "Multiple partial matches found for #{name}",
+      Level.where("UPPER(longname) LIKE ?", '%' + name.upcase + '%').to_a
+    ]
     # If no result, minimize string distance
-    if ret.empty?
-      
+    if ret[1].empty?
+        list = Level.all.pluck(:name, :longname)
+        matches = string_distance_list_mixed(name, list)
+        ret = [
+          "No matches found for `#{name}`. Did you mean...",
+          matches.map{ |m| Level.find_by(name: m[0]) }
+        ]
     end
   else
-    ret = []
+    ret = ["", []]
   end
   ret
 rescue
-  []
+  ["", []]
 end
 
 def parse_rank(msg)
@@ -578,6 +590,25 @@ end
 def format_level_list(levels)
   pad = levels.map{ |l| l.name.length }.max + 1
   format_block(levels.map{ |s| s.name.ljust(pad, ' ') + s.longname }.join("\n"))
+end
+
+def format_level_matches(event, msg, page, initial, matches, func)
+  exact = matches[0].split(' ')[0] == "Multiple"
+  if exact  # Multiple partial matches
+    page = parse_page(msg, page, false, event.message.components)
+    pag  = compute_pages(matches[1].size, page)
+    list = matches[1][pag[:offset]...pag[:offset] + PAGE_SIZE]
+  else # No partial matches, but suggestions based on string distance
+    list = matches[1][0..PAGE_SIZE - 1]
+  end
+  str  = "#{func.capitalize} - #{matches[0]}\n#{format_level_list(list)}"
+  if exact && matches[1].size > PAGE_SIZE
+    view = Discordrb::Webhooks::View.new
+    interaction_add_button_navigation(view, pag[:page], pag[:pages])
+    send_message_with_interactions(event, str, view, !initial)
+  else
+    event << str
+  end
 end
 
 def send_file(event, data, name = "result.txt", binary = false)

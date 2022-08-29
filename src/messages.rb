@@ -165,23 +165,31 @@ def send_spreads(event)
   event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player.print_name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
 end
 
-def send_scores(event, map = nil, ret = false)
-  msg     = event.content
+def send_scores(event, map = nil, ret = false, page: nil)
+  initial = page.nil?
+  msg     = fetch_message(event, initial)
+  scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
+  offline = !!(msg[/offline/i])
+
   # Navigating scores goes into a different method (see below this one)
   if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i]
     send_nav_scores(event)
     return
   end
 
-  offline = !!(msg[/offline/i])
-  scores = map.nil? ? parse_level_or_episode(msg) : map
+  # Multiple matches
+  if scores.is_a?(Array)
+    format_level_matches(event, msg, page, initial, scores, 'highscores')
+    return
+  end
+
   if OFFLINE_STRICT
     event << "Strict offline mode is ON, sending local cached scores.\n"
   elsif !offline && scores.update_scores == -1
     event << "Connection to the server failed, sending local cached scores.\n"
   end
 
-  str = "Current high scores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length, Archive.zeroths(scores))) rescue ""}"
+  str = "Highscores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length, Archive.zeroths(scores))) rescue ""}"
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
     str += "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
@@ -241,17 +249,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil)
 
   # Multiple matches
   if scores.is_a?(Array)
-    page = parse_page(msg, page, false, event.message.components)
-    pag  = compute_pages(scores.size, page)
-    list = scores[pag[:offset]...pag[:offset] + PAGE_SIZE]
-    str  = "Screenshot - Multiple matches found for #{msg[NAME_PATTERN, 2]}\n#{format_level_list(list)}"
-    if scores.size > PAGE_SIZE
-      view = Discordrb::Webhooks::View.new
-      interaction_add_button_navigation(view, pag[:page], pag[:pages])
-      send_message_with_interactions(event, str, view, !initial)
-    else
-      event << str
-    end
+    format_level_matches(event, msg, page, initial, scores, 'screenshot')
     return
   end
 

@@ -165,6 +165,11 @@ def respond_interaction_button(event)
     when 'nav'
       send_aliases(event, page: keys[2])
     end
+  when 'highscores'
+    case keys[1]
+    when 'nav'
+      send_scores(event, page: keys[2])
+    end
   when 'navigating'
     case keys[1]
     when 'id'

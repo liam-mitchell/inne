@@ -258,10 +258,11 @@ end
 # soft_limit - Limit of matches to show, assuming there aren't more keepies
 # hard_limit - Limit of matches to show, even if there are more keepies
 # Returns nil if the threshold is surpassed
-def string_distance_list_mixed(word, list, min: 1, max: 3, th: 3, soft_limit: 10, hard_limit: 20)
-  matches1 = string_distance_list(word, list, max: max, th: th, chunked: false)
-  matches2 = string_distance_list(word, list, max: max, th: th, chunked: true)
-  matches = (0..max).map{ |i| [i, (matches1[i] + matches2[i]).uniq(&:first)] }.to_h
+def string_distance_list_mixed(word, list, min: 1, max: 3, max2: 2, th: 3, soft_limit: 10, hard_limit: 20)
+  matches1 = string_distance_list(word, list, max: max,  th: th, chunked: false)
+  matches2 = string_distance_list(word, list, max: max2, th: th, chunked: true)
+  max = [max, max2].max
+  matches = (0..max).map{ |i| [i, ((matches1[i] || []) + (matches2[i] || [])).uniq(&:first)] }.to_h
   keepies = matches.select{ |k, v| k <= min }.values.map(&:size).sum
   to_take = [[keepies, soft_limit].max, hard_limit].min
   matches.values.flatten(1).take(to_take)
