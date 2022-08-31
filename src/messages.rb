@@ -1312,7 +1312,7 @@ def send_dmmc(event)
         response.edit("Creating screenshot #{i + 1} of #{count}...")
       end
       palette = palettes.sample
-      zip.put_next_entry(u.id.to_s + '.png')
+      zip.put_next_entry(sanitize_filename(u.author) + ' - ' + sanitize_filename(u.title) + '.png')
       zip.write(u.screenshot(palette))
       palettes.delete(palette)
     }

@@ -21,6 +21,10 @@ def to_ascii(s)
   s.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
 end
 
+def sanitize_filename(s)
+  s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
+end
+
 # Convert an integer into a little endian binary string of 'size' bytes and back
 def _pack(n, size)
   n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
