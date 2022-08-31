@@ -2,7 +2,7 @@
 # <------                  DEVBELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = true  # Switch to the local test bot
+TEST           = false  # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)

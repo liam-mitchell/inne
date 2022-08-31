@@ -149,9 +149,9 @@ def parse_discord_user(msg)
   when 0
     raise "No user named #{user} found in the server."
   when 1
-    return users.values.first
+    return users.first
   else
-    list = users.map{ |id, u| u.username + '#' + u.tag }.join("\n")
+    list = users.map{ |u| u.username + '#' + u.tag }.join("\n")
     raise "Multiple users named #{parts[0]} found, please include the numerical tag as well:\n#{format_block(list)}"
   end
 end

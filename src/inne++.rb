@@ -793,7 +793,23 @@ end
 $bot = Discordrb::Bot.new(
   token:     (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']),
   client_id: CONFIG['client_id'],
-  intents:   :unprivileged
+  intents:   [
+    :servers,
+    :server_members,
+    :server_bans,
+    :server_emojis,
+    :server_integrations,
+    :server_webhooks,
+    :server_invites,
+    :server_voice_states,
+    #:server_presences,
+    :server_messages,
+    :server_message_reactions,
+    :server_message_typing,
+    :direct_messages,
+    :direct_message_reactions,
+    :direct_message_typing
+  ]
 )
 $config          = CONFIG
 $channel         = nil

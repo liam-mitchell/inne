@@ -1047,7 +1047,7 @@ class User < ActiveRecord::Base
   end
 
   def self.search(name, tag = nil)
-    $bot.users.select{ |id, u| u.username == name && (!tag.nil? ? u.tag == tag : true) }
+    $bot.servers[SERVER_ID].users.select{ |u| u.username == name && (!tag.nil? ? u.tag == tag : true) }
   end
 end
 
