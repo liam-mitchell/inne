@@ -138,6 +138,24 @@ def parse_many_players(msg, userlevel = false)
   players
 end
 
+# The username can include the tag after a hash
+def parse_discord_user(msg)
+  user = msg[NAME_PATTERN, 2]
+  raise "You need to provide a user." if user.nil?
+
+  parts = user.split('#')
+  users = User.search(parts[0], !parts[1].nil? ? parts[1] : nil)
+  case users.size
+  when 0
+    raise "No user named #{user} found in the server."
+  when 1
+    return users.values.first
+  else
+    list = users.map{ |id, u| u.username + '#' + u.tag }.join("\n")
+    raise "Multiple users named #{parts[0]} found, please include the numerical tag as well:\n#{format_block(list)}"
+  end
+end
+
 def parse_video_author(msg)
   return msg[/by (.*)[\.\?]?\Z/i, 1]
 end

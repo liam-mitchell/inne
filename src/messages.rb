@@ -1217,13 +1217,26 @@ def send_twitch(event)
   end
 end
 
+# Add role to player (internal, for permission system, not related to Discord roles)
+def add_role(event)
+  perm = assert_permissions(event, ['botmaster'])
+
+  msg  = event.content
+  user = parse_discord_user(msg)
+
+  role = msg[/#{parse_term}/i, 2]
+  raise "You need to provide a role in quotes." if role.nil?
+
+  Role.add(user, role)
+  event << "Added role \"#{role}\" to #{user.username}."
+end
+
 # Add custom player / level alias.
 def add_alias(event)
-  perm = check_permissions(event, [:botmaster])
-  raise perm[:error] if !perm[:granted]
+  perm = assert_permissions(event) # Only the botmaster can execute this
   
-  msg    = event.content
-  aka    = msg[/#{parse_term}/i, 2]
+  msg = event.content
+  aka = msg[/#{parse_term}/i, 2]
   raise "You need to provide an alias in quotes." if aka.nil?
 
   msg.remove!(/#{parse_term}/i)
@@ -1278,6 +1291,10 @@ def send_aliases(event, page: nil, type: nil)
   send_message_with_interactions(event, output, view, !initial)
 rescue
   event << 'Error fetching aliases.'
+end
+
+def send_dmmc(event)
+  assert_permissions(event, ['dmmc'])
 end
 
 def testa(event)
@@ -1366,8 +1383,10 @@ def respond(event)
   send_challenges(event)     if msg =~ /\bchallenges\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i
   send_twitch(event)         if msg =~ /\btwitch\b/i
+  add_role(event)            if msg =~ /\badd\s*role\b/i
   send_aliases(event)        if msg =~ /\baliases\b/i
   add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
+  send_dmmc(event)           if msg =~ /\bdmmcize\b/i
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 

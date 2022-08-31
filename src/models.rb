@@ -1020,14 +1020,34 @@ class PlayerAlias < ActiveRecord::Base
   belongs_to :player
 end
 
+class Role < ActiveRecord::Base
+  def self.exists(discord_id, role)
+    !self.find_by(discord_id: discord_id, role: role).nil?
+  end
+
+  def self.add(user, role)
+    self.find_or_create_by(discord_id: user.id, role: role)
+    User.find_or_create_by(username: user.username).update(discord_id: user.id)
+  end
+
+  def self.owners(role)
+    User.where(discord_id: self.where(role: role).pluck(:discord_id))
+  end
+end
+
 class User < ActiveRecord::Base
   def player
     Player.find_by(name: playername)
   end
+
   def player=(person)
     name = person.class == Player ? person.name : person.to_s
     self.playername = name
     self.save
+  end
+
+  def self.search(name, tag = nil)
+    $bot.users.select{ |id, u| u.username == name && (!tag.nil? ? u.tag == tag : true) }
   end
 end
 

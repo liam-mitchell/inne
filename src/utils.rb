@@ -167,20 +167,25 @@ end
 #   certain function belongs to any of the permitted roles for it.
 def check_permission(event, role)
   case role
-  when :botmaster
+  when 'botmaster'
     {
       granted: event.user.id == BOTMASTER_ID,
-      error:   'the botmasters'
+      allowed: 'botmasters'
+    }
+  else
+    {
+      granted: Role.exists(event.user.id, role),
+      allowed: Role.owners(role).pluck(:username)
     }
   end
 end
 
-def check_permissions(event, roles)
+def assert_permissions(event, roles = [])
+  roles.push('botmaster') # Can do everything
   permissions = roles.map{ |role| check_permission(event, role) }
-  {
-    granted: permissions.map{ |p| p[:granted] }.count(true) > 0,
-    error:   "Sorry, only #{permissions.map{ |p| p[:error] }.join(', ')} are allowed to execute this command."
-  }
+  granted = permissions.map{ |p| p[:granted] }.count(true) > 0
+  error = "Sorry, only #{permissions.map{ |p| p[:allowed] }.join(', ')} are allowed to execute this command."
+  raise error if !granted
 end
 
 def remove_word_first(msg, word)
