@@ -1293,8 +1293,17 @@ rescue
   event << 'Error fetching aliases.'
 end
 
+# Function to autogenerate screenshots of the userlevels for the dMMc contest
+# in random palettes, zip them, and upload them.
 def send_dmmc(event)
   assert_permissions(event, ['dmmc'])
+  msg = event.content.remove('dmmcize').strip
+  levels = Userlevel.where(Userlevel.sanitize("UPPER(title) LIKE ?", "%" + msg.upcase + "%")).to_a[0..29]
+  count = levels.count
+  levels.each_with_index{ |u, i|
+    puts "#{i + 1} / #{count}"
+    File.binwrite(u.id.to_s + '.png', u.screenshot(THEMES.sample))
+  }
 end
 
 def testa(event)
