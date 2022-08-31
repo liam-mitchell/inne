@@ -2,6 +2,7 @@ require 'ascii_charts'
 require 'damerau-levenshtein'
 require 'gruff'
 require 'zlib'
+require 'zip'
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'io.rb'
@@ -1297,13 +1298,28 @@ end
 # in random palettes, zip them, and upload them.
 def send_dmmc(event)
   assert_permissions(event, ['dmmc'])
-  msg = event.content.remove('dmmcize').strip
-  levels = Userlevel.where(Userlevel.sanitize("UPPER(title) LIKE ?", "%" + msg.upcase + "%")).to_a[0..29]
-  count = levels.count
-  levels.each_with_index{ |u, i|
-    puts "#{i + 1} / #{count}"
-    File.binwrite(u.id.to_s + '.png', u.screenshot(THEMES.sample))
+  msg        = event.content.remove('dmmcize').strip
+  limit      = 30
+  levels     = Userlevel.where(Userlevel.sanitize("UPPER(title) LIKE ?", "%" + msg.upcase + "%")).to_a[0..limit - 1]
+  count      = levels.count
+  palettes   = Userlevel::THEMES.dup
+  response   = nil
+  zip_buffer = Zip::OutputStream.write_buffer{ |zip|
+    levels.each_with_index{ |u, i|
+      if i == 0
+        response = event.channel.send_message("Creating screenshot 1 of #{count}...")
+      else
+        response.edit("Creating screenshot #{i + 1} of #{count}...")
+      end
+      palette = palettes.sample
+      zip.put_next_entry(u.id.to_s + '.png')
+      zip.write(u.screenshot(palette))
+      palettes.delete(palette)
+    }
   }
+  zip = zip_buffer.string
+  response.delete
+  send_file(event, zip, 'dmmc.zip', true)
 end
 
 def testa(event)

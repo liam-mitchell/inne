@@ -8,6 +8,7 @@ source 'https://rubygems.org' do
   gem 'mysql2'
   gem 'chunky_png'
   gem 'damerau-levenshtein'
+  gem 'rubyzip'
 
   group :debug, :test do
     gem 'byebug'
