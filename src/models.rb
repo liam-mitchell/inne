@@ -1253,20 +1253,20 @@ class Archive < ActiveRecord::Base
 
     # Patch archives
     # ONLY EXECUTE THIS ONCE!! Otherwise, the scores will be altered multiple times
-    s = Archive.find_by(highscoreable_type: "Level", replay_id: 3758900)
-    s.score -= 6 * 60;
-    s.save
-    s = Archive.find_by(highscoreable_type: "Episode", replay_id: 5067031)
-    s.score -= 6 * 60;
-    s.save
-    PATCH_RUNS.each{ |mode, entries|
-      entries.each{ |id, entry|
-        Archive.where(highscoreable_type: mode.to_s.capitalize, highscoreable_id: id).where("replay_id <= ?", entry[0]).each{ |a|
-          a.score += entry[1] * 60
-          a.save
-        }
-      }
-    }
+    #s = Archive.find_by(highscoreable_type: "Level", replay_id: 3758900)
+    #s.score -= 6 * 60;
+    #s.save
+    #s = Archive.find_by(highscoreable_type: "Episode", replay_id: 5067031)
+    #s.score -= 6 * 60;
+    #s.save
+    #PATCH_RUNS.each{ |mode, entries|
+    #  entries.each{ |id, entry|
+    #    Archive.where(highscoreable_type: mode.to_s.capitalize, highscoreable_id: id).where("replay_id <= ?", entry[0]).each{ |a|
+    #      a.score += entry[1] * 60
+    #      a.save
+    #    }
+    #  }
+    #}
 
     ret
   end
