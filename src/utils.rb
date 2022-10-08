@@ -22,6 +22,7 @@ def to_ascii(s)
 end
 
 def sanitize_filename(s)
+  return '' if s.nil?
   s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
 end
 

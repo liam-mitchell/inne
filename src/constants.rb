@@ -2,21 +2,21 @@
 # <------                  DEVBELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = true  # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = false # Execute all threads
+DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
+DO_EVERYTHING  = true  # Execute all threads
 
 # <--------------------------------------------------------------------------->
 # <------                     INTERNAL VARIABLES                        ------>
 # <--------------------------------------------------------------------------->
 
 WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
-BENCHMARK      = true # Benchmark and log functions (for optimization)
+BENCHMARK      = false # Benchmark and log functions (for optimization)
 BENCH_MSGS     = false # Benchmark functions _in messages_
 DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]

@@ -183,7 +183,7 @@ def update_twitch
       if old_streams.key?(game)
         list.each{ |stream|
           if !old_streams[game].map{ |s| s['id'] }.include?(stream['id'])
-            $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>")
+            $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>") if !(stream['user_name'] == "eblan4ikof")
           end
         }
       end
