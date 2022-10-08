@@ -1234,7 +1234,7 @@ end
 
 # Add custom player / level alias.
 def add_alias(event)
-  perm = assert_permissions(event) # Only the botmaster can execute this
+  assert_permissions(event) # Only the botmaster can execute this
   
   msg = event.content
   aka = msg[/#{parse_term}/i, 2]
@@ -1320,6 +1320,18 @@ def send_dmmc(event)
   zip = zip_buffer.string
   response.delete
   send_file(event, zip, 'dmmc.zip', true)
+end
+
+# Remove cheated / incorrect archives on command
+# This can happen when scores get incorporated as archives before being ignored
+# Should probably be restricted to botmasters
+def sanitize_archives(event)
+  assert_permissions(event)
+  counts = Archive::sanitize
+  event << "Sanitized database:"
+  event << "* Removed #{counts['archive_del']} archives by ignored players." if counts.key?('archive_del')
+  event << "* Removed #{counts['archive_ind_del']} individual archives." if counts.key?('archive_ind_del')
+  event << "* Removed #{counts['orphan_demos']} orphaned demos." if counts.key?('orphan_demos')
 end
 
 def testa(event)
@@ -1412,6 +1424,7 @@ def respond(event)
   send_aliases(event)        if msg =~ /\baliases\b/i
   add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
   send_dmmc(event)           if msg =~ /\bdmmcize\b/i
+  sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 

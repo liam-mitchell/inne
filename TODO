@@ -9,7 +9,6 @@ Eddy's TODO list for inne:
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
 - Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.
 - "nevermind": delete last inne message prompted by that user.
-- Implement NReality's asterisk to previous 0th holders using the new Archives feature.
 - Implement "index" (maybe "tally"): Outputs file with a list (like "list") of something, like all 0ths. With a parameter we specify what, for instance, 0th scores or 0th frames. With another parameter we specify the order, like the natural one, or by score in descending order...
 - Compare local scores (nprofile) vs server scores to find differences, a la NReality Score Comparer.
 - Player alias table (e.g. "asleep at the wheel" and "drunk driver" for MaelstroM")
@@ -47,6 +46,9 @@ Eddy's TODO list for inne:
   * In levels, add a pure searching function, rather than depending on scores or something
   * Add for player names
   * kk's suggestion: nav bar for matches, navigate screenies etc
+- Asterisks are missing from boards when lotd/eotw/cotm are posted.
+- Userlevel tabs not working correctly? (dupped levels in top weekly, what about featured, etc)
+- Handle cheaters within database (rather than via hardcoding in source code), have botmaster function to add cheaters, etc
 
 \\ ------------------------ Cool ------------------------
 

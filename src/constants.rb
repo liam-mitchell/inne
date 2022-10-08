@@ -209,13 +209,16 @@ IGNORED_PLAYERS = [
   "Chara",
   "test8378",
   "VexatiousCheff",
-  "vex",
+  "vex", # VexatiousCheff
   "DBYT3",
   "Yup_This_Is_My_Name",
   "vorcazm",
+  "Treagus", # vorcazm
   "The_Mega_Force",
   "Boringfish",
-  "cock unsucker"
+  "cock unsucker",
+  "TylerDC",
+  "Staticwork"
 ]
 
 # Problematic hackers? We get rid of them by banning their user IDs
@@ -231,25 +234,55 @@ IGNORED_IDS = [
   221472, # VexatiousCheff / vex
   276273, # DBYT3
   291743, # Yup_This_Is_My_Name
-   75839, # vorcazm
+   75839, # vorcazm / Treagus
   307030, # The_Mega_Force
-  298531  # Boringfish
+  298531, # Boringfish
+   76223, # TylerDC
+  325245  # Staticwork
 ]
 
-# Individually patched runs from legitimate players because they were done
+# Patched runs from legitimate players because they were done
 # with older versions of levels and the scores are now incorrect.
-# @params: minimum replay id where legit scores start, score adjustment required
+# @params: maximum replay id of incorrect scores, score adjustment required
 PATCH_RUNS = {
   :episode => {
-    182 => [695142, -42], # S-C-12
-    217 => [1165074, -8]  # S-C-19
+    182 => [695142, -42], #  S-C-12
+    217 => [1165074, -8], #  S-C-19
+    509 => [2010381, -6]  # SU-E-05
   },
   :level => {
-    910  => [286360, -42], # S-C-12-00
-    1089 => [225710,  -8]  # S-C-19-04
+     910 => [286360, -42], #  S-C-12-00
+    1089 => [225710,  -8], #  S-C-19-04
+    2549 => [2000000, -6]  # SU-E-05-04
   },
   :story => {
   },
   :userlevel => {
   }
+}
+
+# Delete individual runs
+PATCH_IND_DEL = {
+  :episode   => [
+    5035576, # proxy17585's SI-C-00
+    5073211  # HamSandwich's SI-D-00
+  ],
+  :level     => [
+    3572785, # SuperVolcano's S-B-00-01
+    3622469  # HamSandwich's S-B-00-02
+  ],
+  :story     => [],
+  :userlevel => []
+}
+
+# Patch individual runs (by changing score)
+PATCH_IND_CHG = {
+  :episode   => {
+    5067031 => -6 # trance's SU-E-05
+  },
+  :level     => {
+    3758900 => -6 # trance's SU-E-05-04
+  },
+  :story     => {},
+  :userlevel => {}
 }

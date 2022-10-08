@@ -160,19 +160,24 @@ module HighScore
       TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
     end
 
-    # Filter out cheated/hacked runs
+    # Filter out cheated/hacked runs, or accidentally incorrect scores
+    k = self.class.to_s.downcase.to_sym
     boards.reject!{ |s|
-      IGNORED_PLAYERS.include?(s['user_name']) || IGNORED_IDS.include?(s['user_id']) || s['score'] / 1000.0 >= limit
+      IGNORED_PLAYERS.include?(s['user_name']) || IGNORED_IDS.include?(s['user_id']) || PATCH_IND_DEL[k].include?(s['replay_id']) || s['score'] / 1000.0 >= limit
     }
 
-    # Patch old incorrect runs
-    k = self.class.to_s.downcase.to_sym
+    # Batch patch old incorrect runs
     if PATCH_RUNS[k].key?(self.id)
       boards.each{ |s|
         entry = PATCH_RUNS[k][self.id]
         s['score'] += 1000 * entry[1] if s['replay_id'] <= entry[0]
       }
     end
+
+    # Individually patch old incorrect runs
+    boards.each{ |s|
+      s['score'] += 1000 * PATCH_IND_CHG[k][s['replay_id']] if PATCH_IND_CHG[k].key?(s['replay_id'])
+    }
 
     boards
   rescue
@@ -1223,6 +1228,49 @@ class Archive < ActiveRecord::Base
     }.join("\n")
   end
 
+  # Clean archive of cheated scores
+  def self.sanitize
+    # Store results to print summary after sanitization
+    ret = {}
+
+    # Delete archives by ignored players
+    query = Archive.where(metanet_id: IGNORED_IDS)
+    ret['archive_del'] = query.count.to_i
+    query.each(&:wipe)
+
+    # Delete individual archives
+    ret['archive_ind_del'] = 0
+    ["Level", "Episode", "Story"].each{ |mode|
+      query = Archive.where(highscoreable_type: mode, replay_id: PATCH_IND_DEL[mode.downcase.to_sym])
+      ret['archive_ind_del'] += query.count.to_i
+      query.each(&:wipe)
+    }
+
+    # Delete demos with missing archives
+    query = Demo.where.not(replay_id: Archive.all.pluck(:replay_id))
+    ret['orphan_demos'] = query.count.to_i
+    query.each(&:destroy)
+
+    # Patch archives
+    # ONLY EXECUTE THIS ONCE!! Otherwise, the scores will be altered multiple times
+    s = Archive.find_by(highscoreable_type: "Level", replay_id: 3758900)
+    s.score -= 6 * 60;
+    s.save
+    s = Archive.find_by(highscoreable_type: "Episode", replay_id: 5067031)
+    s.score -= 6 * 60;
+    s.save
+    PATCH_RUNS.each{ |mode, entries|
+      entries.each{ |id, entry|
+        Archive.where(highscoreable_type: mode.to_s.capitalize, highscoreable_id: id).where("replay_id <= ?", entry[0]).each{ |a|
+          a.score += entry[1] * 60
+          a.save
+        }
+      }
+    }
+
+    ret
+  end
+
   # Returns the rank of the player at a particular point in time
   def find_rank(time)
     old_score = Archive.scores(self.highscoreable, time)
@@ -1240,6 +1288,11 @@ class Archive < ActiveRecord::Base
     Demo.find(self.id).demo
   end
 
+  # Remove both the archive and its demo from the DB
+  def wipe
+    Demo.find(self.id).destroy
+    self.destroy
+  end
 end
 
 class Demo < ActiveRecord::Base
