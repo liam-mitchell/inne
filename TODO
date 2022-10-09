@@ -41,7 +41,6 @@ Eddy's TODO list for inne:
 - Multiple matches:
   * Add for player names
   * kk's suggestion: nav bar for matches, navigate screenies etc
-- Asterisks are missing from boards when lotd/eotw/cotm are posted.
 - Userlevel tabs not working correctly? (dupped levels in top weekly, what about featured, etc)
 - Handle cheaters within database (rather than via hardcoding in source code), have botmaster function to add cheaters, etc
 

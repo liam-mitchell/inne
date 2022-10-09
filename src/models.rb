@@ -309,7 +309,7 @@ module HighScore
     end
   end
 
-  def format_difference(old)
+  def format_difference(old, zeroths = [])
     diffs = difference(old)
 
     name_padding = scores.map{ |s| s.player.name.length }.max
@@ -320,7 +320,7 @@ module HighScore
     difference(old).map { |o|
       c = o[:change]
       diff = c ? "#{"++-"[c[:rank] <=> 0]}#{"%#{rank_padding}d" % [c[:rank].abs]}, +#{"%#{change_padding}.3f" % [c[:score]]}" : "new"
-      "#{o[:score].format(name_padding, score_padding)} (#{diff})"
+      "#{o[:score].format(name_padding, score_padding, false, zeroths)} (#{diff})"
     }.join("\n")
   end
 

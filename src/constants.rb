@@ -8,7 +8,7 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
+DO_NOTHING     = false  # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 
 # <--------------------------------------------------------------------------->
@@ -112,7 +112,7 @@ UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
-UPDATE_LEVEL      = false # Thread to regularly publish level of the day
+UPDATE_LEVEL      = true # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
@@ -128,7 +128,7 @@ TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||          
 HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
 HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
 DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
+LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      60 # daily
 EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
 STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
 REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily

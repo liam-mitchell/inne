@@ -628,7 +628,7 @@ end
 def send_channel_diff(level, old_scores, since)
   return if level.nil? || old_scores.nil?
 
-  diff = level.format_difference(old_scores)
+  diff = level.format_difference(old_scores, Archive.zeroths(level))
   $channel.send_message("Score changes on #{level.format_name} since #{since}:\n```#{diff}```")
 end
 
@@ -671,7 +671,7 @@ def send_channel_next(type)
 
   caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
   send_channel_screenshot(current.name, caption)
-  $channel.send_message("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores(current.max_name_length)}```")
+  $channel.send_message("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores(current.max_name_length, Archive.zeroths(current))}```")
 
   if !OFFLINE_STRICT
     send_channel_diff(last, get_saved_scores(type), since)
