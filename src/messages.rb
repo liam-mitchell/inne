@@ -180,7 +180,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
 
   # Multiple matches
   if scores.is_a?(Array)
-    format_level_matches(event, msg, page, initial, scores, 'highscores')
+    format_level_matches(event, msg, page, initial, scores, 'search')
     return
   end
 
@@ -224,7 +224,7 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
 
   # Multiple matches
   if scores.is_a?(Array)
-    format_level_matches(event, msg, page, initial, scores, 'navigating')
+    format_level_matches(event, msg, page, initial, scores, 'search')
     return
   end
 
@@ -258,7 +258,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil)
 
   # Multiple matches
   if scores.is_a?(Array)
-    format_level_matches(event, msg, page, initial, scores, 'screenshot')
+    format_level_matches(event, msg, page, initial, scores, 'search')
     return
   end
 
@@ -521,8 +521,18 @@ def send_suggestions(event)
   event << "Most improvable #{tabs}#{type} scores for #{player.print_name}:\n#{format_block(improvable)}"
 end
 
-def send_level_id(event)
-  level = parse_level_or_episode(event.content)
+def send_level_id(event, page: nil)
+  initial = page.nil?
+  msg     = fetch_message(event, initial)
+  level  = parse_level_or_episode(msg, partial: true)
+
+  # Multiple matches
+  if level.is_a?(Array)
+    format_level_matches(event, msg, page, initial, level, 'search')
+    return
+  end
+
+  # Single match
   raise "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.longname} is level #{level.name}."
 end
@@ -728,12 +738,28 @@ def send_random(event)
   end
 end
 
-def send_challenges(event)
-  msg = event.content
-  lvl = parse_level_or_episode(msg)
+def send_challenges(event, page: nil)
+  initial = page.nil?
+  msg     = fetch_message(event, initial)
+  lvl     = parse_level_or_episode(msg, partial: true)
+
+  # Multiple matches
+  if lvl.is_a?(Array)
+    format_level_matches(event, msg, page, initial, lvl, 'search')
+    return
+  end
+
+  # Single match
   raise "#{lvl.class.to_s.pluralize.capitalize} don't have challenges!" if lvl.class != Level
   raise "#{lvl.tab.to_s} levels don't have challenges!" if ["SI", "SL"].include?(lvl.tab.to_s)
   event << "Challenges for #{lvl.longname} (#{lvl.name}):\n#{format_block(lvl.format_challenges)}"
+end
+
+def send_query(event, page: nil)
+  initial = page.nil?
+  msg     = fetch_message(event, initial)
+  lvl     = parse_level_or_episode(msg, partial: true, array: true)
+  format_level_matches(event, msg, page, initial, lvl, 'search')
 end
 
 def send_diff(event)
@@ -1425,6 +1451,7 @@ def respond(event)
   add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
   send_dmmc(event)           if msg =~ /\bdmmcize\b/i
   sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
+  send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 

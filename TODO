@@ -11,8 +11,6 @@ Eddy's TODO list for inne:
 - "nevermind": delete last inne message prompted by that user.
 - Implement "index" (maybe "tally"): Outputs file with a list (like "list") of something, like all 0ths. With a parameter we specify what, for instance, 0th scores or 0th frames. With another parameter we specify the order, like the natural one, or by score in descending order...
 - Compare local scores (nprofile) vs server scores to find differences, a la NReality Score Comparer.
-- Player alias table (e.g. "asleep at the wheel" and "drunk driver" for MaelstroM")
-- Level alias table (e.g. "cfl" for compendium for literates")
 - Add total <rank> score, and show total score and total 19th score gained daily and weekly.
 - Compile usage stats (number of pings, most used commands, data uploaded / downloaded, etc).
 - Screenscores for userlevels.
@@ -39,11 +37,8 @@ Eddy's TODO list for inne:
 - Use author IDs for userlevel functions as well (asking for scores, ranks, etc), without using quotes to distinguish. Perhaps the same could be done for Metanet functions, although since we don't use quotes by default, we'd first do an author lookup, and if it doesn't exist and the string is purely a number, we do a player ID search.
 - Add regex to functions (userlevel search, etc)
 - Add search to Metanet levels too (regex? include in userlevel db?)
-- Expand permissions system: Add a function to assign roles to users, which only the botmasters can execute. Roles could be stored in a table relating users-roles, each user could have multiple roles and each role multiple users.
 - Add access to all functions using slash commands
 - Multiple matches:
-  * In levels, add for "challenges"
-  * In levels, add a pure searching function, rather than depending on scores or something
   * Add for player names
   * kk's suggestion: nav bar for matches, navigate screenies etc
 - Asterisks are missing from boards when lotd/eotw/cotm are posted.

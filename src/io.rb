@@ -198,7 +198,9 @@ end
 # We use a parameter instead of making this a default because it might return
 # multiple results in an array, rather than a single Level instance, and so this
 # would break all the many prior uses of this function.
-def parse_level_or_episode(msg, partial: false)
+# If 'array' is true, then even if there's a single result, it will be returned
+# as an array.
+def parse_level_or_episode(msg, partial: false, array: false)
   level     = msg[LEVEL_PATTERN]
   level_d   = msg.match(LEVEL_PATTERN_D) # dashless
   episode   = msg[EPISODE_PATTERN]
@@ -264,6 +266,7 @@ def parse_level_or_episode(msg, partial: false)
   end
 
   raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil? || ret.is_a?(Array) && ret[1].empty?
+  ret = ["Single match found for #{name}", [ret]] if !ret.is_a?(Array) && array
   ret
 end
 

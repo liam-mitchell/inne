@@ -165,24 +165,17 @@ def respond_interaction_button(event)
     when 'nav'
       send_aliases(event, page: keys[2])
     end
-  when 'highscores'
-    case keys[1]
-    when 'nav'
-      send_scores(event, page: keys[2])
-    end
   when 'navigating'
     case keys[1]
     when 'id'
       send_nav_scores(event, offset: keys[2])
     when 'date'
       send_nav_scores(event, date: keys[2])
-    when 'nav'
-      send_nav_scores(event, page: keys[2])
     end
-  when 'screenshot'
+  when 'search'
     case keys[1]
     when 'nav'
-      send_screenshot(event, page: keys[2])
+      send_query(event, page: keys[2])
     end
   end
 end
