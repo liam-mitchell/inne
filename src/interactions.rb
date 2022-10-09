@@ -177,6 +177,11 @@ def respond_interaction_button(event)
     when 'nav'
       send_query(event, page: keys[2])
     end
+  when 'rankings'
+    case keys[1]
+    when 'nav'
+      send_rankings(event, page: keys[2])
+    end
   end
 end
 

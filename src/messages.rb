@@ -48,15 +48,19 @@ def send_top_n_count(event)
   event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{range} scores#{ties}."
 end
 
-def send_rankings(event)
-  msg = event.content
+def send_rankings(event, page: nil)
+  # PARSE ranking parameters
+  initial = page.nil?
+  msg  = fetch_message(event, initial)
   type = parse_type(msg)
   tabs = parse_tabs(msg)
   rank = parse_rank(msg) || 1
-  full = parse_global(msg) || parse_full(msg)
   ties = !!(msg =~ /ties/i)
   play = parse_many_players(msg)
+  nav  = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
+  full = parse_global(msg) || parse_full(msg) || nav
 
+  # EXECUTE specific rankings
   if msg =~ /average/i
     if msg =~ /point/i
       rankings = Score.rank(:avg_points, type, tabs, ties, nil, full, play)
@@ -109,24 +113,43 @@ def send_rankings(event)
     header   = "#{rank} rankings #{ties}"
   end
 
-  min  = "Minimum number of scores required: #{min_scores(type, tabs)}" if !avg_msg.nil?
+  # PAGINATION
+  page = parse_page(msg, page, false, event.message.components)
+  pag  = compute_pages(rankings.size, page, 20)
+
+  # FORMAT message
+  min = "Minimum number of scores required: #{min_scores(type, tabs)}" if !avg_msg.nil?
+  #   Header
   type = format_type(type)
   tabs = format_tabs(tabs)
+  header = "Rankings - #{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header}#{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
+  #   Rankings
+  score_padding = rankings.map{ |r| r[1].to_i.to_s.length }.max
+  name_padding = rankings.map{ |r| r[0].print_name.length }.max
+  format = rankings[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f" if !rankings.empty?
+  if rankings.empty?
+    rankings = "```These boards are empty!```"
+  else
+    rankings = rankings.each_with_index.to_a
+    rankings = rankings[pag[:offset]...pag[:offset] + 20] if !full || nav
+    rankings = rankings.map{ |r, i|
+      "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}"
+    }.join("\n")
+    rankings = format_block(rankings)
+  end
+  #   Footer
+  rankings.concat(min) if !min.nil? && (!full || nav)
 
-  top = rankings
-  score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
-  name_padding = top.map{ |r| r[0].print_name.length }.max
-  format = top.empty? ? "" : (top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f")
-
-  header = "#{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header}#{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
-  top    = top.empty? ? "```These boards are empty!```" : ("```" + top.each_with_index
-              .map { |r, i| "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}" }
-              .join("\n") + "```")
-  top.concat(min) if !min.nil?
-
-  length = header.length + top.length
-  event << header
-  length < DISCORD_LIMIT && !full ? event << top : send_file(event, top[3..-4], "rankings.txt")
+  # SEND message
+  if nav
+    view = Discordrb::Webhooks::View.new
+    interaction_add_button_navigation(view, pag[:page], pag[:pages])
+    send_message_with_interactions(event, header + "\n" + rankings, view, !initial)
+  else
+    length = header.length + rankings.length
+    event << header
+    length < DISCORD_LIMIT && !full ? event << rankings : send_file(event, rankings[4..-4], "rankings.txt")
+  end
 end
 
 def send_total_score(event)

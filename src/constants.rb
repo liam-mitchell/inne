@@ -8,7 +8,7 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = false  # Don't execute any threads (see below for ind flags)
+DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 
 # <--------------------------------------------------------------------------->
@@ -112,7 +112,7 @@ UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
-UPDATE_LEVEL      = true # Thread to regularly publish level of the day
+UPDATE_LEVEL      = false # Thread to regularly publish level of the day
 UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
 UPDATE_STORY      = false # Thread to regularly publish column of the month
 UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores

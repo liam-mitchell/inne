@@ -16,13 +16,29 @@ def fetch_message(event, initial)
   end
 end
 
+# This is used mainly for page navigation. We determine the current page,
+# and we also determine whether we need to add an offset to it (to navigate)
+# or reset it (when a different component, e.g. a select menu) was activated.
+def parse_page(msg, offset = 0, reset = false, components = nil)
+  page = nil
+  components.to_a.each{ |row|
+    row.each{ |component|
+      page = component.label.to_s[/\d+/i].to_i if component.custom_id.to_s == 'button:nav:page'
+    }
+  }
+  reset ? 1 : (page || msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + offset.to_i
+rescue => e
+  err(e)
+  1
+end
+
 # Given an amount and a page number, will make sure that it is a valid
 # page number (given the page size), or clamp it otherwise, as well as
 # find the offset index where the page begins.
-def compute_pages(count = 1, page = 1)
-  pages  = [(count.to_f / PAGE_SIZE).ceil, 1].max
+def compute_pages(count = 1, page = 1, pagesize = PAGE_SIZE)
+  pages  = [(count.to_f / pagesize).ceil, 1].max
   page   = page > pages ? pages : (page < 1 ? 1 : page)
-  offset = (page - 1) * PAGE_SIZE
+  offset = (page - 1) * pagesize
   { page: page, pages: pages, offset: offset }
 end
 
@@ -354,22 +370,6 @@ def parse_tabs(msg)
   ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
 
   ret
-end
-
-# This is used mainly for page navigation. We determine the current page,
-# and we also determine whether we need to add an offset to it (to navigate)
-# or reset it (when a different component, e.g. a select menu) was activated.
-def parse_page(msg, offset = 0, reset = false, components = nil)
-  page = nil
-  components.to_a.each{ |row|
-    row.each{ |component|
-      page = component.label.to_s[/\d+/i].to_i if component.custom_id.to_s == 'button:nav:page'
-    }
-  }
-  reset ? 1 : (page || msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + offset.to_i
-rescue => e
-  err(e)
-  1
 end
 
 # Regex to determine the field to order by in userlevel searches
