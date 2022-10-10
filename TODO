@@ -32,7 +32,8 @@ Eddy's TODO list for inne:
 - Use OilyPNG for screenshot generation rather than ChunkPNG for faster speeds (look into other gems too, as well as vector graphics).
 - "nubs" command to show ignored hackers and cheaters
 - Allow to add "rankings" to any userlevel query (browse) to instead perform rankings on the result set.
-- Add arrow navigation to rankings and other functions using buttons
+- Arrow button navigation to screenshot and others
+- Select menu for ranking types in navigation
 - Userlevels: find full author name (instead of 16 char truncation), and add exact matching when browsing
 - Use author IDs for userlevel functions as well (asking for scores, ranks, etc), without using quotes to distinguish. Perhaps the same could be done for Metanet functions, although since we don't use quotes by default, we'd first do an author lookup, and if it doesn't exist and the string is purely a number, we do a player ID search.
 - Add regex to functions (userlevel search, etc)

@@ -45,6 +45,57 @@ ensure
   view
 end
 
+# ActionRow builder with a Select Menu for the highscoreable type
+# (All, Level, Episode, Story)
+def interaction_add_select_menu_type(view, type = nil)
+  type = 'overall' if type.nil? || type.empty?
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.select_menu(custom_id: 'menu:type', placeholder: 'Type', max_values: 1){ |m|
+      ['overall', 'level', 'episode', 'story'].each{ |b|
+        label = b == 'overall' ? 'Levels + Episodes' : b.capitalize.pluralize
+        m.option(label: "Type: #{label}", value: "menu:type:#{b}", default: b == type)
+      }
+    }
+  }
+ensure
+  view
+end
+
+# ActionRow builder with a Select menu for the highscorable tabs
+# (All, SI, S, SU, SL, SS, SS2)
+def interaction_add_select_menu_metanet_tab(view, tab = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab', max_values: 1){ |m|
+      ['all', 'si', 's', 'su', 'sl', 'ss', 'ss2'].each{ |t|
+        label = t == 'all' ? 'All' : format_tab(t.upcase.to_sym)
+        m.option(label: "Tab: #{label}", value: "menu:tab:#{t}", default: t == tab)
+      }
+    }
+  }
+ensure
+  view
+end
+
+# ActionRow builder with a Select menu for the ranking types
+# (0th, Top5, Top10, Top20, Average rank,
+# 0th (w/ ties), Tied 0ths, Singular 0ths, Plural 0ths, Average 0th lead
+# Maxed, Maxable, Score, Points, Average points)
+def interaction_add_select_menu_rank(view, rank = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.select_menu(custom_id: 'menu:rank', placeholder: 'Ranking type', max_values: 1){ |m|
+      ['all', 'si', 's', 'su', 'sl', 'ss', 'ss2'].each{ |t|
+        label = t == 'all' ? 'All' : format_tab(t.upcase.to_sym)
+        m.option(label: "Tab: #{label}", value: "menu:tab:#{t}", default: t == tab)
+      }
+    }
+  }
+ensure
+  view
+end
+
 # ActionRow builder with a Select Menu for the alias type
 def interaction_add_select_menu_alias_type(view, type = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
@@ -205,6 +256,13 @@ def respond_interaction_menu(event)
     case keys[1]
     when 'alias' # Change type of alias (level, player)
       send_aliases(event, type: values.first.last)
+    end
+  when 'rankings'# Select Menus for the rankings function
+    case keys[1]
+    when 'type' # Change highscoreable type (overall, level, episode, story)
+      send_rankings(event, type: values.first.last)
+    when 'tab' # Change highscoreable tab (all, si, s, su, sl, ss, ss2)
+      send_rankings(event, tab: values.first.last)
     end
   end
 end

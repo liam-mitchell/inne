@@ -46,8 +46,20 @@ def parse_mode(msg)
   !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : (!!msg[/solo/i] ? 'solo' : 'all'))
 end
 
-def parse_type(msg)
-  ((msg[/level/i] || msg[/lotd/i]) ? Level : ((msg[/episode/i] || msg[/eotw/i]) ? Episode : ((msg[/\bstory\b/i] || msg[/\bcolumn/i] || msg[/hard\s*core/i] || msg[/\bhc\b/i] || msg[/cotm/i]) ? Story : nil)))
+def parse_type(msg, type = nil)
+  if ['level', 'episode', 'story'].include?(type)
+    type.capitalize.constantize
+  else
+    if !!msg[/level/i] || !!msg[/lotd/i]
+      Level
+    elsif !!msg[/episode/i] || !!msg[/eotw/i]
+      Episode
+    elsif !!msg[/\bstory\b/i] || !!msg[/\bcolumn/i] || !!msg[/hard\s*core/i] || !!msg[/\bhc\b/i] || !!msg[/cotm/i]
+      Story
+    else
+      nil
+    end
+  end
 end
 
 def parse_alias_type(msg, type = nil)
@@ -359,17 +371,50 @@ def parse_range(msg)
   [bott, rank, valid]
 end
 
-def parse_tabs(msg)
-  ret = []
+# Parse a message for tabs
+# If 'tab' is passed, we're in a select menu, and we
+# include either one tab or none (all)
+def parse_tabs(msg, tab = nil)
+  if !tab.nil?
+    if ['si', 's', 'su', 'sl', 'ss', 'ss2'].include?(tab)
+      [tab.upcase.to_sym]
+    else
+      []
+    end
+  else
+    ret = []
+    ret << :SI  if msg =~ /\b(intro|SI)\b/i
+    ret << :S   if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
+    ret << :SU  if msg =~ /\b(SU|UE|ultimate)\b/i
+    ret << :SL  if msg =~ /\b(legacy|SL)\b/i
+    ret << :SS  if msg =~ /(\A|\s)(secret|\?)(\Z|\s)/i
+    ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
+    ret
+  end
+end
 
-  ret << :SI if msg =~ /\b(intro|SI)\b/i
-  ret << :S if msg =~ /(\b|\A|\s)(N++|S|solo)(\b|\Z|\s)/i
-  ret << :SU if msg =~ /\b(SU|UE|ultimate)\b/i
-  ret << :SL if msg =~ /\b(legacy|SL)\b/i
-  ret << :SS if msg =~ /(\A|\s)(secret|\?)(\Z|\s)/i
-  ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
-
-  ret
+# Used for Metanet rankings
+# If 'rank' is provided, then we're in a select menu
+# Digest:
+# -1 - Other
+#  0 - 0th rankings (default)
+#  1 - Top5 rankings
+#  2 - Top10 rankings
+#  3 - Top20 rankings
+#  4 - Average rank rankings
+#  5 - 0th rankings (w/ ties)
+#  6 - Tied 0th rankings
+#  7 - Singular 0th rankings
+#  8 - Plural 0th rankings
+#  9 - Average 0th lead
+# 10 - Maxed 0th rankings
+# 11 - Maxable 0th rankings
+# 12 - Total score rankings
+# 13 - Total point rankings
+# 14 - Average point rankings
+def parse_ranking_type(msg, rank = nil)
+  if !rank.nil?
+  end
 end
 
 # Regex to determine the field to order by in userlevel searches

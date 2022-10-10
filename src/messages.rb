@@ -48,17 +48,19 @@ def send_top_n_count(event)
   event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{range} scores#{ties}."
 end
 
-def send_rankings(event, page: nil)
+def send_rankings(event, page: nil, type: nil, tab: nil)
   # PARSE ranking parameters
-  initial = page.nil?
+  initial    = page.nil? && type.nil? && tab.nil?
+  reset_page = !type.nil? || !tab.nil?
   msg  = fetch_message(event, initial)
-  type = parse_type(msg)
-  tabs = parse_tabs(msg)
+  type = parse_type(msg, type)
+  tabs = parse_tabs(msg, tab)
   rank = parse_rank(msg) || 1
   ties = !!(msg =~ /ties/i)
   play = parse_many_players(msg)
   nav  = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
   full = parse_global(msg) || parse_full(msg) || nav
+  tab  = tabs.empty? ? 'all' : tabs[0].to_s.downcase
 
   # EXECUTE specific rankings
   if msg =~ /average/i
@@ -114,7 +116,7 @@ def send_rankings(event, page: nil)
   end
 
   # PAGINATION
-  page = parse_page(msg, page, false, event.message.components)
+  page = parse_page(msg, page, reset_page, event.message.components)
   pag  = compute_pages(rankings.size, page, 20)
 
   # FORMAT message
@@ -144,6 +146,8 @@ def send_rankings(event, page: nil)
   if nav
     view = Discordrb::Webhooks::View.new
     interaction_add_button_navigation(view, pag[:page], pag[:pages])
+    interaction_add_select_menu_metanet_tab(view, tab)
+    interaction_add_select_menu_type(view, type.downcase)
     send_message_with_interactions(event, header + "\n" + rankings, view, !initial)
   else
     length = header.length + rankings.length
