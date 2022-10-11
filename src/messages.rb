@@ -48,71 +48,56 @@ def send_top_n_count(event)
   event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{range} scores#{ties}."
 end
 
-def send_rankings(event, page: nil, type: nil, tab: nil)
+def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil)
   # PARSE ranking parameters
-  initial    = page.nil? && type.nil? && tab.nil?
-  reset_page = !type.nil? || !tab.nil?
+  initial    = page.nil? && type.nil? && tab.nil? && rtype.nil?
+  reset_page = !type.nil? || !tab.nil? || !rtype.nil?
   msg  = fetch_message(event, initial)
   type = parse_type(msg, type)
   tabs = parse_tabs(msg, tab)
-  rank = parse_rank(msg) || 1
-  ties = !!(msg =~ /ties/i)
+  rtype = rtype || parse_rtype(msg)
+  rank = parse_rank(rtype) || parse_rank(msg) || 1
+  ties = parse_ties(msg, rtype)
   play = parse_many_players(msg)
   nav  = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
   full = parse_global(msg) || parse_full(msg) || nav
   tab  = tabs.empty? ? 'all' : tabs[0].to_s.downcase
 
   # EXECUTE specific rankings
-  if msg =~ /average/i
-    if msg =~ /point/i
-      rankings = Score.rank(:avg_points, type, tabs, ties, nil, full, play)
-      header   = "average point rankings "
-      max      = find_max(:avg_points, type, tabs)
-      avg_msg  = true
-    elsif msg =~ /lead/i
-      rankings = Score.rank(:avg_lead, type, tabs, nil, nil, full, play)
-      header   = "average lead rankings "
-      max      = nil
-    else
-      rankings = Score.rank(:avg_rank, type, tabs, ties, nil, full, play)
-      header   = "average rank rankings "
-      max      = find_max(:avg_rank, type, tabs)
-      avg_msg  = true
-    end
-  elsif msg =~ /point/i
+  case rtype
+  when 'average_point'
+    rankings = Score.rank(:avg_points, type, tabs, ties, nil, full, play)
+    max      = find_max(:avg_points, type, tabs)
+  when 'average_top1_lead'
+    rankings = Score.rank(:avg_lead, type, tabs, nil, nil, full, play)
+    max      = nil
+  when 'average_rank'
+    rankings = Score.rank(:avg_rank, type, tabs, ties, nil, full, play)
+    max      = find_max(:avg_rank, type, tabs)
+  when 'point'
     rankings = Score.rank(:points, type, tabs, ties, nil, full, play)
-    header   = "point rankings "
     max      = find_max(:points, type, tabs)
-  elsif msg =~ /score/i
+  when 'score'
     rankings = Score.rank(:score, type, tabs, nil, nil, full, play)
-    header   = "score rankings "
     max      = find_max(:score, type, tabs)
-  elsif msg =~ /singular/i
+  when 'singular_top1'
     rankings = Score.rank(:singular, type, tabs, nil, 1, full, play)
-    header   = "singular 0th rankings "
     max      = find_max(:rank, type, tabs)
-  elsif msg =~ /plural/i
+  when 'plural_top1'
     rankings = Score.rank(:singular, type, tabs, nil, 0, full, play)
-    header   = "plural 0th rankings "
     max      = find_max(:rank, type, tabs)
-  elsif msg =~ /tied/i
+  when 'tied_top1'
     rankings = Score.rank(:tied_rank, type, tabs, true, rank - 1, full, play)
-    header   = "tied #{format_rank(rank)} rankings "
     max      = find_max(:rank, type, tabs)
-  elsif msg =~ /maxed/i
+  when 'maxed_top1'
     rankings = Score.rank(:maxed, type, tabs, nil, nil, full, play)
-    header   = "maxed score rankings "
     max      = find_max(:maxed, type, tabs)
-  elsif msg =~ /maxable/i
+  when 'maxable_top1'
     rankings = Score.rank(:maxable, type, tabs, nil, nil, full, play)
-    header   = "maxable score rankings "
     max      = find_max(:maxable, type, tabs)
   else
     rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full, play)
-    rank     = format_rank(rank)
     max      = find_max(:rank, type, tabs)
-    ties     = (ties ? "with ties " : "")
-    header   = "#{rank} rankings #{ties}"
   end
 
   # PAGINATION
@@ -120,11 +105,11 @@ def send_rankings(event, page: nil, type: nil, tab: nil)
   pag  = compute_pages(rankings.size, page, 20)
 
   # FORMAT message
-  min = "Minimum number of scores required: #{min_scores(type, tabs)}" if !avg_msg.nil?
+  min = "Minimum number of scores required: #{min_scores(type, tabs)}" if ['average_rank', 'average_point'].include?(rtype)
   #   Header
   type = format_type(type)
   tabs = format_tabs(tabs)
-  header = "Rankings - #{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{header}#{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
+  header = "Rankings - #{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{format_rtype(rtype)}#{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
   #   Rankings
   score_padding = rankings.map{ |r| r[1].to_i.to_s.length }.max
   name_padding = rankings.map{ |r| r[0].print_name.length }.max
@@ -146,6 +131,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil)
   if nav
     view = Discordrb::Webhooks::View.new
     interaction_add_button_navigation(view, pag[:page], pag[:pages])
+    interaction_add_select_menu_rtype(view, rtype)
     interaction_add_select_menu_metanet_tab(view, tab)
     interaction_add_select_menu_type(view, type.downcase)
     send_message_with_interactions(event, header + "\n" + rankings, view, !initial)

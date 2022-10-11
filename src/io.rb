@@ -393,27 +393,30 @@ def parse_tabs(msg, tab = nil)
   end
 end
 
-# Used for Metanet rankings
-# If 'rank' is provided, then we're in a select menu
-# Digest:
-# -1 - Other
-#  0 - 0th rankings (default)
-#  1 - Top5 rankings
-#  2 - Top10 rankings
-#  3 - Top20 rankings
-#  4 - Average rank rankings
-#  5 - 0th rankings (w/ ties)
-#  6 - Tied 0th rankings
-#  7 - Singular 0th rankings
-#  8 - Plural 0th rankings
-#  9 - Average 0th lead
-# 10 - Maxed 0th rankings
-# 11 - Maxable 0th rankings
-# 12 - Total score rankings
-# 13 - Total point rankings
-# 14 - Average point rankings
-def parse_ranking_type(msg, rank = nil)
-  if !rank.nil?
+# Ranking type
+def parse_rtype(msg)
+  if !!msg[/average/i] && !!msg[/point/i]
+    'average_point'
+  elsif !!msg[/average/i] && !!msg[/lead/i]
+    'average_top1_lead'
+  elsif !!msg[/average/i]
+    'average_rank'
+  elsif !!msg[/point/i]
+    'point'
+  elsif !!msg[/score/i]
+    'score'
+  elsif !!msg[/singular/i]
+    'singular_top1'
+  elsif !!msg[/plural/i]
+    'plural_top1'
+  elsif !!msg[/tied/i]
+    'tied_top1'
+  elsif !!msg[/maxed/i]
+    'maxed_top1'
+  elsif !!msg[/maxable/i]
+    'maxable_top1'
+  else
+    'top'
   end
 end
 
@@ -574,8 +577,20 @@ def parse_newest(msg)
   !!msg[/newest/i]
 end
 
+def parse_ties(msg, rtype = nil)
+  !rtype.nil? && rtype[-2..-1] == '_t' || !!msg[/ties/i]
+end
+
 def format_rank(rank)
-  rank == 1 ? "0th" : "top #{rank}"
+  rank.to_i == 1 ? "0th" : "top #{rank}"
+end
+
+def format_rtype(rtype, rank = nil)
+  ties = rtype[-2..-1] == '_t'
+  rtype = rtype[0..-3] if ties
+  rtype = format_rank(rank || rtype[/\d+/i] || 1) if rtype[0..2] == 'top'
+  rtype = rtype.gsub('top1', '0th').tr('_', ' ')
+  "#{rtype} rankings#{format_ties(ties)}"
 end
 
 def format_bottom_rank(rank)
@@ -599,7 +614,7 @@ def format_type(type)
 end
 
 def format_ties(ties)
-  ties ? " with ties" : ""
+  ties ? " (w/ ties)" : ""
 end
 
 def format_tied(tied)

@@ -174,6 +174,27 @@ TABS = {
   }
 }
 
+# Different ranking types
+# * For parsing, 'top1' (i.e. 0th) will be removed (default)
+# * For formatting, 'top1' will be changed to '0th'
+RTYPES = [
+  'top1',
+  'top5',
+  'top10',
+  'top20',
+  'average_rank',
+  'top1_t',
+  'tied_top1',
+  'singular_top1',
+  'plural_top1',
+  'average_top1_lead',
+  'maxed_top1',
+  'maxable_top1',
+  'score',
+  'point',
+  'average_point'
+]
+
 MODES = {
   -1 => "all",
    0 => "solo",

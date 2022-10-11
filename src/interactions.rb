@@ -82,13 +82,16 @@ end
 # (0th, Top5, Top10, Top20, Average rank,
 # 0th (w/ ties), Tied 0ths, Singular 0ths, Plural 0ths, Average 0th lead
 # Maxed, Maxable, Score, Points, Average points)
-def interaction_add_select_menu_rank(view, rank = nil)
+def interaction_add_select_menu_rtype(view, rtype = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    r.select_menu(custom_id: 'menu:rank', placeholder: 'Ranking type', max_values: 1){ |m|
-      ['all', 'si', 's', 'su', 'sl', 'ss', 'ss2'].each{ |t|
-        label = t == 'all' ? 'All' : format_tab(t.upcase.to_sym)
-        m.option(label: "Tab: #{label}", value: "menu:tab:#{t}", default: t == tab)
+    r.select_menu(custom_id: 'menu:rtype', placeholder: 'Ranking type', max_values: 1){ |m|
+      RTYPES.each{ |t|
+        m.option(
+          label:   "#{format_rtype(t).titleize}",
+          value:   "menu:rtype:#{t}",
+          default: t == rtype
+        )
       }
     }
   }
@@ -259,10 +262,12 @@ def respond_interaction_menu(event)
     end
   when 'rankings'# Select Menus for the rankings function
     case keys[1]
-    when 'type' # Change highscoreable type (overall, level, episode, story)
-      send_rankings(event, type: values.first.last)
+    when 'rtype' # Change rankings type (0th rankings, top20 rankings, etc)
+      send_rankings(event, rtype: values.first.last)
     when 'tab' # Change highscoreable tab (all, si, s, su, sl, ss, ss2)
       send_rankings(event, tab: values.first.last)
+    when 'type' # Change highscoreable type (overall, level, episode, story)
+      send_rankings(event, type: values.first.last)
     end
   end
 end
