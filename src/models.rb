@@ -61,7 +61,7 @@ module HighScore
   def self.ties(type, tabs, player_id = nil, maxed = nil, rank = false)
     type = ensure_type(type)
     bench(:start) if BENCHMARK
-    # retrieve most tied for 0th leves
+    # retrieve most tied for 0th levels
     ret = Score.where(highscoreable_type: type.to_s, tied_rank: 0)
     ret = ret.where(tab: tabs) if !tabs.empty?
     ret = ret.group(:highscoreable_id)
@@ -514,8 +514,12 @@ class Score < ActiveRecord::Base
   # since we leave all the heavy lifting to the SQL interface instead of Ruby.
   def self.rank(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
     return rank_exclude(ranking, type, tabs, ties, n, full, players) if !players.empty? && [:rank, :tied_rank, :points, :avg_points, :avg_rank, :avg_lead].include?(ranking)
-    type = Level if ranking == :avg_lead && (type.nil? || type.is_a?(Array)) # avg lead only works with 1 type
-    scores = self.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
+    if [:avg_lead, :maxed, :maxable].include?(ranking)
+      type = ensure_type(type)
+    else
+      type = type.nil? ? DEFAULT_TYPES : (!type.is_a?(Array) ? [type] : type)
+    end
+    scores = self.where(highscoreable_type: type)
     scores = scores.where(tab: tabs) if !tabs.empty?
     scores = scores.where.not(player: players) if !players.empty?
     bench(:start) if BENCHMARK
@@ -538,7 +542,7 @@ class Score < ActiveRecord::Base
       scores = scores_w.map{ |id, count| [id, count - scores_wo[id].to_i] }
                        .sort_by{ |id, c| -c }
     when :singular
-      types = (type.nil? ? DEFAULT_TYPES : [type.to_s]).map{ |t|
+      types = type.map{ |t|
         ids = scores.where(rank: 1, tied_rank: n, highscoreable_type: t)
                     .pluck(:highscoreable_id)
         scores.where(rank: 0, highscoreable_type: t, highscoreable_id: ids)

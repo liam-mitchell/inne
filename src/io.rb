@@ -46,20 +46,20 @@ def parse_mode(msg)
   !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : (!!msg[/solo/i] ? 'solo' : 'all'))
 end
 
-def parse_type(msg, type = nil)
-  if ['level', 'episode', 'story'].include?(type)
-    type.capitalize.constantize
-  else
-    if !!msg[/level/i] || !!msg[/lotd/i]
-      Level
-    elsif !!msg[/episode/i] || !!msg[/eotw/i]
-      Episode
-    elsif !!msg[/\bstory\b/i] || !!msg[/\bcolumn/i] || !!msg[/hard\s*core/i] || !!msg[/\bhc\b/i] || !!msg[/cotm/i]
-      Story
-    else
-      nil
-    end
+# Optionally allow to parse multiple types, for retrocompat
+def parse_type(msg, type = nil, multiple = false, initial = false)
+  type = type.capitalize.constantize unless type.nil?
+  return type if !multiple && ['level', 'episode', 'story'].include?(type.to_s.downcase)
+  ret = []
+  multiple ? ret << Level :   (return Level)   if !!msg[/level/i] || !!msg[/lotd/i]
+  multiple ? ret << Episode : (return Episode) if !!msg[/episode/i] || !!msg[/eotw/i]
+  multiple ? ret << Story :   (return Story)   if !!msg[/\bstory\b/i] || !!msg[/\bcolumn/i] || !!msg[/hard\s*core/i] || !!msg[/\bhc\b/i] || !!msg[/cotm/i]
+  if multiple
+    ret.push(*DEFAULT_TYPES.map(&:constantize)) if !!msg[/\boverall\b/i] || initial && ret.empty?
+    ret.include?(type) ? ret.delete(type) : ret.push(type) if !type.nil?
+    ret.uniq!
   end
+  return multiple ? ret : nil
 end
 
 def parse_alias_type(msg, type = nil)
@@ -389,7 +389,7 @@ def parse_tabs(msg, tab = nil)
     ret << :SL  if msg =~ /\b(legacy|SL)\b/i
     ret << :SS  if msg =~ /(\A|\s)(secret|\?)(\Z|\s)/i
     ret << :SS2 if msg =~ /(\A|\s)(ultimate secret|!)(\Z|\s)/i
-    ret
+    ret.size == 6 ? [] : ret
   end
 end
 
@@ -418,6 +418,12 @@ def parse_rtype(msg)
   else
     'top'
   end
+end
+
+# Complete rtype with additional rank and ties info
+def fix_rtype(rtype, rank)
+  rtype += rank.to_s if rtype == 'top'
+  rtype
 end
 
 # Regex to determine the field to order by in userlevel searches
@@ -585,9 +591,7 @@ def format_rank(rank)
   rank.to_i == 1 ? "0th" : "top #{rank}"
 end
 
-def format_rtype(rtype, rank = nil)
-  ties = rtype[-2..-1] == '_t'
-  rtype = rtype[0..-3] if ties
+def format_rtype(rtype, rank = nil, ties = false)
   rtype = format_rank(rank || rtype[/\d+/i] || 1) if rtype[0..2] == 'top'
   rtype = rtype.gsub('top1', '0th').tr('_', ' ')
   "#{rtype} rankings#{format_ties(ties)}"
@@ -609,8 +613,26 @@ def format_range(bott, rank)
   end
 end
 
-def format_type(type)
-  (type || 'Overall').to_s
+# Support for any single and multiple types
+# 'empty' allows for no type, otherwise it's 'overall',
+# which defaults to levels and episodes
+def format_type(type, empty = false)
+  return 'Overall' if type.nil?
+  return type.to_s if !type.is_a?(Array) 
+  case type.size
+  when 0
+    empty ? '' : 'Overall'
+  when 1
+    type.first.to_s
+  when 2
+    if type.include?(Level) && type.include?(Episode)
+      'Overall'
+    else
+      type.map{ |t| t.to_s.downcase }.join(" and ").capitalize
+    end
+  when 3
+    'Overall (w/ HC)'
+  end
 end
 
 def format_ties(ties)

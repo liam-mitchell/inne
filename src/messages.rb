@@ -48,68 +48,72 @@ def send_top_n_count(event)
   event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{range} scores#{ties}."
 end
 
-def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil)
+def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   # PARSE ranking parameters
-  initial    = page.nil? && type.nil? && tab.nil? && rtype.nil?
-  reset_page = !type.nil? || !tab.nil? || !rtype.nil?
+  initial    = page.nil? && type.nil? && tab.nil? && rtype.nil? && ties.nil?
+  reset_page = !type.nil? || !tab.nil? || !rtype.nil? || !ties.nil?
   msg  = fetch_message(event, initial)
-  type = parse_type(msg, type)
+  type = parse_type(msg, type, true, initial)
   tabs = parse_tabs(msg, tab)
   rtype = rtype || parse_rtype(msg)
   rank = parse_rank(rtype) || parse_rank(msg) || 1
-  ties = parse_ties(msg, rtype)
+  ties = !ties.nil? ? ties : parse_ties(msg, rtype)
   play = parse_many_players(msg)
   nav  = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
   full = parse_global(msg) || parse_full(msg) || nav
-  tab  = tabs.empty? ? 'all' : tabs[0].to_s.downcase
+  tab  = tabs.empty? ? 'all' : (tabs.size == 1 ? tabs[0].to_s.downcase : 'tab')
+  rtype = fix_rtype(rtype, rank)
 
   # EXECUTE specific rankings
   case rtype
   when 'average_point'
     rankings = Score.rank(:avg_points, type, tabs, ties, nil, full, play)
-    max      = find_max(:avg_points, type, tabs)
+    max      = find_max(:avg_points, type, tabs, !initial)
   when 'average_top1_lead'
     rankings = Score.rank(:avg_lead, type, tabs, nil, nil, full, play)
     max      = nil
   when 'average_rank'
     rankings = Score.rank(:avg_rank, type, tabs, ties, nil, full, play)
-    max      = find_max(:avg_rank, type, tabs)
+    max      = find_max(:avg_rank, type, tabs, !initial)
   when 'point'
     rankings = Score.rank(:points, type, tabs, ties, nil, full, play)
-    max      = find_max(:points, type, tabs)
+    max      = find_max(:points, type, tabs, !initial)
   when 'score'
     rankings = Score.rank(:score, type, tabs, nil, nil, full, play)
-    max      = find_max(:score, type, tabs)
+    max      = find_max(:score, type, tabs, !initial)
   when 'singular_top1'
     rankings = Score.rank(:singular, type, tabs, nil, 1, full, play)
-    max      = find_max(:rank, type, tabs)
+    max      = find_max(:rank, type, tabs, !initial)
   when 'plural_top1'
     rankings = Score.rank(:singular, type, tabs, nil, 0, full, play)
-    max      = find_max(:rank, type, tabs)
+    max      = find_max(:rank, type, tabs, !initial)
   when 'tied_top1'
     rankings = Score.rank(:tied_rank, type, tabs, true, rank - 1, full, play)
-    max      = find_max(:rank, type, tabs)
+    max      = find_max(:rank, type, tabs, !initial)
   when 'maxed_top1'
     rankings = Score.rank(:maxed, type, tabs, nil, nil, full, play)
-    max      = find_max(:maxed, type, tabs)
+    max      = find_max(:maxed, type, tabs, !initial)
   when 'maxable_top1'
     rankings = Score.rank(:maxable, type, tabs, nil, nil, full, play)
-    max      = find_max(:maxable, type, tabs)
+    max      = find_max(:maxable, type, tabs, !initial)
   else
     rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full, play)
-    max      = find_max(:rank, type, tabs)
+    max      = find_max(:rank, type, tabs, !initial)
   end
 
   # PAGINATION
   page = parse_page(msg, page, reset_page, event.message.components)
-  pag  = compute_pages(rankings.size, page, 20)
+  pag  = compute_pages(rankings.size, page)
 
   # FORMAT message
-  min = "Minimum number of scores required: #{min_scores(type, tabs)}" if ['average_rank', 'average_point'].include?(rtype)
+  min = "Minimum number of scores required: #{min_scores(type, tabs, !initial)}" if ['average_rank', 'average_point'].include?(rtype)
   #   Header
-  type = format_type(type)
   tabs = format_tabs(tabs)
-  header = "Rankings - #{format_full(full).capitalize}#{full ? type.downcase : type} #{tabs}#{format_rtype(rtype)}#{format_max(max)}#{!play.empty? ? " without " + format_sentence(play.map(&:name)) : ""} #{format_time}:"
+  header = "Rankings - #{format_full(full).capitalize}"
+  header += full ? format_type(type, true).downcase : format_type(type, true)
+  header += " #{tabs}#{format_rtype(rtype, nil, ties)}#{format_max(max)}"
+  header += " without " + format_sentence(play.map(&:name)) if !play.empty?
+  header += " #{format_time}:"
   #   Rankings
   score_padding = rankings.map{ |r| r[1].to_i.to_s.length }.max
   name_padding = rankings.map{ |r| r[0].print_name.length }.max
@@ -118,7 +122,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil)
     rankings = "```These boards are empty!```"
   else
     rankings = rankings.each_with_index.to_a
-    rankings = rankings[pag[:offset]...pag[:offset] + 20] if !full || nav
+    rankings = rankings[pag[:offset]...pag[:offset] + PAGE_SIZE] if !full || nav
     rankings = rankings.map{ |r, i|
       "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}"
     }.join("\n")
@@ -131,9 +135,9 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil)
   if nav
     view = Discordrb::Webhooks::View.new
     interaction_add_button_navigation(view, pag[:page], pag[:pages])
+    interaction_add_type_buttons(view, type, ties)
     interaction_add_select_menu_rtype(view, rtype)
     interaction_add_select_menu_metanet_tab(view, tab)
-    interaction_add_select_menu_type(view, type.downcase)
     send_message_with_interactions(event, header + "\n" + rankings, view, !initial)
   else
     length = header.length + rankings.length
@@ -430,7 +434,6 @@ def send_maxable(event)
   tabs   = parse_tabs(msg)
 
   ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, false)
-            .select { |s| s[1] < s[2] }
             .take(NUM_ENTRIES)
             .map { |s| "#{"%-10s" % s[0]} - #{"%2d" % s[1]} - #{format_string(s[3])}" }
             .join("\n")
@@ -438,7 +441,7 @@ def send_maxable(event)
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
   player = player.nil? ? "" : " without " + player.print_name
-  event << "#{tabs}#{type}s with the most ties for 0th#{format_max(20)} #{format_time}#{player}:\n```\n#{ties}```"
+  event << "#{tabs}#{type.pluralize} with the most ties for 0th #{format_time}#{player}:\n#{format_block(ties)}"
 end
 
 def send_maxed(event)
@@ -448,7 +451,6 @@ def send_maxed(event)
   tabs   = parse_tabs(msg)
 
   ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, true)
-                    .select { |s| s[1] == s[2] }
                     .map { |s| "#{"%10s" % s[0]} - #{format_string(s[3])}" }
   count  = ties.count{ |s| s.length > 1 }
   block  = ties.join("\n")
@@ -456,11 +458,10 @@ def send_maxed(event)
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
   player = player.nil? ? "" : " without " + player.print_name
-  header = "#{tabs}potentially maxed #{type}s (with all scores tied for 0th) #{format_time}#{player}:"
-  footer = "There's a total of #{count} potentially maxed #{type}s."
+  header = "#{tabs}potentially maxed #{type.pluralize} #{format_time}#{player}:"
+  footer = "There's a total of #{count} potentially maxed #{type.pluralize}."
   event << header
-  count <= 20 ? event << "```#{block}```" : send_file(event, block, "maxed-#{type}s.txt", false)
-  event << footer
+  count <= 20 ? event << format_block(block) + footer : send_file(event, block, "maxed-#{type.pluralize}.txt", false)
 end
 
 def send_cleanliness(event)

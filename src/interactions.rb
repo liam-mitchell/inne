@@ -69,8 +69,11 @@ def interaction_add_select_menu_metanet_tab(view, tab = nil)
   view.row{ |r|
     r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab', max_values: 1){ |m|
       ['all', 'si', 's', 'su', 'sl', 'ss', 'ss2'].each{ |t|
-        label = t == 'all' ? 'All' : format_tab(t.upcase.to_sym)
-        m.option(label: "Tab: #{label}", value: "menu:tab:#{t}", default: t == tab)
+        m.option(
+          label:   t == 'all' ? 'All tabs' : format_tab(t.upcase.to_sym) + ' tab',
+          value:   "menu:tab:#{t}",
+          default: t == tab
+        )
       }
     }
   }
@@ -157,6 +160,24 @@ def interaction_add_date_navigation(view, page = 1, pages = 1, date = 0, label =
   )
 end
 
+# ActionRow builder with Buttons to specify type (Level, Episode, Story)
+# in Rankings, also button to include ties.
+def interaction_add_type_buttons(view, types = [], ties = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    TYPES.each{ |t, v|
+      r.button(
+        label: t.pluralize,
+        style: types.include?(t.constantize) ? :success : :danger,
+        custom_id: "button:type:#{t.downcase}"
+      )
+    }
+    r.button(label: 'Ties', style: ties ? :success : :danger, custom_id: "button:ties:#{!ties}")
+  }
+ensure
+  view
+end
+
 # Function to send messages specifically when they have interactions attached
 # (i.e. buttons or select menus). At the moment, there is no way to to attach
 # interactions to a message and use << to prevent rate limiting, so we need to
@@ -235,6 +256,10 @@ def respond_interaction_button(event)
     case keys[1]
     when 'nav'
       send_rankings(event, page: keys[2])
+    when 'ties'
+      send_rankings(event, ties: keys[2] == 'true')
+    when 'type'
+      send_rankings(event, type: keys[2])
     end
   end
 end
@@ -266,8 +291,6 @@ def respond_interaction_menu(event)
       send_rankings(event, rtype: values.first.last)
     when 'tab' # Change highscoreable tab (all, si, s, su, sl, ss, ss2)
       send_rankings(event, tab: values.first.last)
-    when 'type' # Change highscoreable type (overall, level, episode, story)
-      send_rankings(event, type: values.first.last)
     end
   end
 end

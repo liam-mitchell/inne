@@ -183,7 +183,6 @@ RTYPES = [
   'top10',
   'top20',
   'average_rank',
-  'top1_t',
   'tied_top1',
   'singular_top1',
   'plural_top1',
@@ -205,8 +204,8 @@ MODES = {
 # Type-wise max-min for average ranks
 MAXMIN_SCORES = 100   # max-min number of highscores to appear in average point rankings
 TYPES = {
-  "Episode" =>  [50],
   "Level"   => [100],
+  "Episode" =>  [50],
   "Story"   =>  [10]
 }
 

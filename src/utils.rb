@@ -97,7 +97,7 @@ end
 
 # sometimes we need to make sure there's exactly one valid type
 def ensure_type(type)
-  (type.nil? || type.is_a?(Array)) ? Level : type
+  type.nil? ? Level : (type.is_a?(Array) ? (type.include?(Level) ? Level : type.flatten.first) : type)
 end
 
 # find the optimal score / amount of whatever rankings or stat
@@ -127,16 +127,18 @@ def find_max_type(rank, type, tabs)
 end
 
 # Finds the maximum value a player can reach in a certain ranking
-def find_max(rank, types, tabs)
-  types = [Level, Episode] if types.nil?
+# If 'empty' we allow no types, otherwise default to Level and Episode
+def find_max(rank, types, tabs, empty = false)
+  types = DEFAULT_TYPES.map(&:constantize) if types.nil? || !empty && types.empty?
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
 end
 
 # Finds the minimum number of scores required to appear in a certain
 # average rank/point rankings
-def min_scores(type, tabs)
-  type = [Level, Episode] if type.nil?
+# If 'empty' we allow no types, otherwise default to Level and Episode
+def min_scores(type, tabs, empty = false)
+  type = DEFAULT_TYPES.map(&:constantize) if type.nil? || !empty && type.empty?
   mins = [type].flatten.map{ |t|
     if tabs.empty?
       type_min = TABS[t.to_s].sum{ |k, v| v[2] }
