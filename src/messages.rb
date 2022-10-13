@@ -102,8 +102,9 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   end
 
   # PAGINATION
+  pagesize = nav ? PAGE_SIZE : 20
   page = parse_page(msg, page, reset_page, event.message.components)
-  pag  = compute_pages(rankings.size, page)
+  pag  = compute_pages(rankings.size, page, pagesize)
 
   # FORMAT message
   min = "Minimum number of scores required: #{min_scores(type, tabs, !initial)}" if ['average_rank', 'average_point'].include?(rtype)
@@ -122,7 +123,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     rankings = "```These boards are empty!```"
   else
     rankings = rankings.each_with_index.to_a
-    rankings = rankings[pag[:offset]...pag[:offset] + PAGE_SIZE] if !full || nav
+    rankings = rankings[pag[:offset]...pag[:offset] + pagesize] if !full || nav
     rankings = rankings.map{ |r, i|
       "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}"
     }.join("\n")
@@ -268,36 +269,38 @@ end
 
 # Make sure the first output word is "Screenshot", and make sure the header
 # of the message still contains the level ID, for when it's parsed.
-def send_screenshot(event, map = nil, ret = false, page: nil)
-  initial = page.nil?
+def send_screenshot(event, map = nil, ret = false, offset: nil)
+  initial = true
   msg     = fetch_message(event, initial)
   scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
+  nav     = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
 
   # Multiple matches
   if scores.is_a?(Array)
-    format_level_matches(event, msg, page, initial, scores, 'search')
+    format_level_matches(event, msg, page, true, scores, 'search')
     return
   end
 
   # Single match
+  scores = scores.nav(offset.to_i)
   name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
   screenshot = "screenshots/#{name}.jpg"
 
-  if File.exist? screenshot
-    str  = "Screenshot for " + (scores.class == Level ? "#{scores.longname} (#{scores.name})" : scores.name)
-    file = File::open(screenshot)
-    if ret
-      return [file, str]
-    else
-      event.send_file(file, caption: str)
-    end
-  else
+  if !File.exist?(screenshot)
     str = "I don't have a screenshot for #{scores.format_name}... :("
-    if ret
-      return [nil, str]
-    else
-      event.send_message(str)
-    end
+    return [nil, str] if ret
+    return event.send_message(str)
+  end
+  
+  str  = "Screenshot for #{scores.format_name}"
+  file = File::open(screenshot)
+  return [file, str] if ret
+  if nav
+    # Attachments can't be modified so we're stuck for now
+    send_message_with_interactions(event, str, nil, false, [file])
+  else
+    event << str
+    event.attach_file(file)
   end
 end
 

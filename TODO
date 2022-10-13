@@ -21,10 +21,8 @@ Eddy's TODO list for inne:
 - Use "parse_range" for rankings, and maybe others too.
 - Report: Add # of 0ths, i.e., "• There were 23 new scores by 9 players in 18 levels, making the boards 15.083 seconds harder including X new 0ths increasing the total 0th score by 1.050 seconds."
 - Save how many times each streamer has streamed the game, and perhaps indicate it somehow if it's among the top ones (dope gamer alert!)
-- Store scores that fall off the top20, they might be imprecise since we don't really know what's going on below 19th, but for archival it's better than nothing.
 - For secret levels, also parse old level names (e.g. ?-X-02-03), probably using a new field, filled only for secret levels.
 - Command to update certain userlevels (e.g. within a range, from a author, etc., with some hard limit e.g. 50, perhaps a cooldown).
-- Metanet level search: When looking for a level name, perform a search and if there are multiple matches, show a list, otherwise return the level, akin to userlevels.
 - Add another fruit for potatoing nv2
 - Make a tool to auto-patch npp.dll and MITM so that we can e.g. send custom userlevel searches.
 - Add amount of scores each board has (we can find this out with LittleNinjaThatTried and similar ideas).
@@ -36,13 +34,13 @@ Eddy's TODO list for inne:
 - Userlevels: find full author name (instead of 16 char truncation), and add exact matching when browsing
 - Use author IDs for userlevel functions as well (asking for scores, ranks, etc), without using quotes to distinguish. Perhaps the same could be done for Metanet functions, although since we don't use quotes by default, we'd first do an author lookup, and if it doesn't exist and the string is purely a number, we do a player ID search.
 - Add regex to functions (userlevel search, etc)
-- Add search to Metanet levels too (regex? include in userlevel db?)
 - Add access to all functions using slash commands
 - Multiple matches:
   * Add for player names
   * kk's suggestion: nav bar for matches, navigate screenies etc
 - Userlevel tabs not working correctly? (dupped levels in top weekly, what about featured, etc)
 - Handle cheaters within database (rather than via hardcoding in source code), have botmaster function to add cheaters, etc
+- Fix secondary order for rankings (e.g. alphabetical or ID), otherwise weird things can happen during page navigation (since rankings get re-computed)
 
 \\ ------------------------ Cool ------------------------
 
