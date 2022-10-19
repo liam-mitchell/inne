@@ -129,7 +129,7 @@ end
 # Finds the maximum value a player can reach in a certain ranking
 # If 'empty' we allow no types, otherwise default to Level and Episode
 def find_max(rank, types, tabs, empty = false)
-  types = DEFAULT_TYPES.map(&:constantize) if types.nil? || !empty && types.empty?
+  types = DEFAULT_TYPES.map(&:constantize) if types.nil? || !empty && types.is_a?(Array) && types.empty?
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
 end

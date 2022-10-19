@@ -41,6 +41,8 @@ Eddy's TODO list for inne:
 - Userlevel tabs not working correctly? (dupped levels in top weekly, what about featured, etc)
 - Handle cheaters within database (rather than via hardcoding in source code), have botmaster function to add cheaters, etc
 - Fix secondary order for rankings (e.g. alphabetical or ID), otherwise weird things can happen during page navigation (since rankings get re-computed)
+- If no author results, truncate to first 16 chars and try again.
+- Histograms of userlevels played by ID (perhaps also chart anything, e.g. 0ths, top10s, parse_range)
 
 \\ ------------------------ Cool ------------------------
 
