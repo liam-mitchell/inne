@@ -1378,10 +1378,18 @@ def sanitize_archives(event)
 end
 
 def testa(event)
-  str = event.content.split(' ')[1..-1].join
-  list = Level.all.pluck(:name, :longname)
-  matches = string_distance_list_mixed(str, list)
-  event << format_block(matches.map{ |m| "#{m[0].ljust(10, ' ')} #{m[1]}" }.join("\n"))
+  golds = Score.where(rank: 0, highscoreable_type: 'Level')
+               .joins("INNER JOIN levels ON levels.id = scores.highscoreable_id")
+               .joins("INNER JOIN archives ON archives.replay_id = scores.replay_id")
+               .where("archives.gold > -1")
+               .order('archives.framecount')
+               .pluck('levels.name', 'archives.framecount', 'archives.gold')
+  event << format_block(golds.take(20).map{ |name, frames, gold|
+    "#{name.ljust(10)} #{frames}"
+  }.join("\n"))
+  event << format_block(golds.reverse.take(20).map{ |name, frames, gold|
+    "#{name.ljust(10)} #{frames}"
+  }.join("\n"))
 end
 
 # TODO set level of the day on startup

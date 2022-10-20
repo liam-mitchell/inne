@@ -1391,12 +1391,25 @@ class Demo < ActiveRecord::Base
     offset = {level: 0, episode: 24, story: 108}[htype.to_sym]
     count  = {level: 1, episode:  5, story:  25}[htype.to_sym]
 
+    framecounts = []
     lengths = (0..count - 1).map{ |d| _unpack(data[header + 4 * d..header + 4 * (d + 1) - 1]) }
     lengths = [_unpack(data[1..4])] if htype.to_sym == :level
-    (0..count - 1).map{ |d|
+    demos = (0..count - 1).map{ |d|
       offset += lengths[d - 1] unless d == 0
-      data[offset..offset + lengths[d] - 1][30..-1]
+      raw_replay = data[offset..offset + lengths[d] - 1]
+      framecounts << _unpack(raw_replay[9..12])
+      raw_replay[30..-1]
     }
+    # Add framecount and goldcount to corresponding archive
+    # before Zlibbing later
+    if !score.nil?
+      framecount = framecounts.sum
+      score.update(
+        framecount: framecount,
+        gold: framecount != -1 ? (((score.score + framecount).to_f / 60 - 90) / 2).round : -1
+      )
+    end
+    demos
   end
 
   def encode_demo(replay)
@@ -1408,6 +1421,14 @@ class Demo < ActiveRecord::Base
     return nil if demo.nil?
     demos = Zlib::Inflate.inflate(demo).split('&')
     return (demos.size == 1 ? demos.first.scan(/./m).map(&:ord) : demos.map{ |d| d.scan(/./m).map(&:ord) })
+  end
+
+  # Do not delete, it's not redundant, the field in Archive uses this for its
+  # first computation
+  def framecount
+    return -1 if demo.nil?
+    demos = decode_demo
+    return (htype.to_sym == :level ? demos.size : demos.map(&:size).sum)
   end
 
   def update_demo

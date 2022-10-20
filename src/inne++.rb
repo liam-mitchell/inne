@@ -20,7 +20,8 @@
 #    In particular, ensure you have Rails 5.1.x and Discordrb >= 3.4.2.
 # 7) Make sure you edit and save the source files in UTF8.
 # 8) You might want to look into 'constants.rb' and configure some variables,
-#    in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID.
+#    in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID. For testing,
+#    also look into TEST, DO_NOTHING, and DO_EVERYTHING.
 #
 # Contact: https://discord.gg/nplusplus
 
