@@ -267,22 +267,22 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
   send_message_with_interactions(event, str, view, !initial)
 end
 
-# Make sure the first output word is "Screenshot", and make sure the header
-# of the message still contains the level ID, for when it's parsed.
-def send_screenshot(event, map = nil, ret = false, offset: nil)
-  initial = true
+# Prepared for navigation, but it's not possible to edit attachments for now,
+# so commented that functionality and 'offset' not being used.
+def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
+  initial = page.nil?
   msg     = fetch_message(event, initial)
   scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
   nav     = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
 
   # Multiple matches
   if scores.is_a?(Array)
-    format_level_matches(event, msg, page, true, scores, 'search')
+    format_level_matches(event, msg, page, initial, scores, 'search')
     return
   end
 
   # Single match
-  scores = scores.nav(offset.to_i)
+  #scores = scores.nav(offset.to_i)
   name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
   screenshot = "screenshots/#{name}.jpg"
 
