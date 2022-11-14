@@ -780,6 +780,7 @@ def send_query(event, page: nil)
 end
 
 def send_diff(event)
+  assert_permissions(event)
   type = parse_type(event.content) || Level
   current = get_current(type)
   old_scores = get_saved_scores(type)
@@ -1199,6 +1200,7 @@ def send_story(event)
 end
 
 def dump(event)
+  assert_permissions(event)
   log("current level/episode/story: #{get_current(Level).format_name}, #{get_current(Episode).format_name}, #{get_current(Story).format_name}") unless get_current(Level).nil?
   log("next updates: scores #{get_next_update('score')}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}, story #{get_next_update(Story)}")
 
