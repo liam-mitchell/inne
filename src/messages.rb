@@ -116,16 +116,23 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   header += " without " + format_sentence(play.map(&:name)) if !play.empty?
   header += " #{format_time}:"
   #   Rankings
-  score_padding = rankings.map{ |r| r[1].to_i.to_s.length }.max
-  name_padding = rankings.map{ |r| r[0].print_name.length }.max
-  format = rankings[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f" if !rankings.empty?
   if rankings.empty?
     rankings = "```These boards are empty!```"
   else
-    rankings = rankings.each_with_index.to_a
+    order = rtype == 'average_rank' ? 1 : -1
+    bench(:start)
+    rankings = rankings.map{ |r| [r[0].print_name, r[1]] }
+    # We sort again to add the alphabetical tie-breaker
+    # Since it's already sorted, the primary order hardly takes time,
+    # and only the secondary order becomes relevant
+    rankings = rankings.sort_by{ |r| [order * r[1], r[0].downcase] }
+    bench(:step)
     rankings = rankings[pag[:offset]...pag[:offset] + pagesize] if !full || nav
-    rankings = rankings.map{ |r, i|
-      "#{HighScore.format_rank(i)}: #{r[0].format_name(name_padding)} - #{format % r[1]}"
+    score_padding = rankings.map{ |r| r[1].to_i.to_s.length }.max
+    name_padding = rankings.map{ |r| r[0].length }.max
+    format_str = rankings[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
+    rankings = rankings.each_with_index.map{ |r, i|
+      "#{HighScore.format_rank(i)}: #{format_string(r[0], name_padding)} - #{format_str % r[1]}"
     }.join("\n")
     rankings = format_block(rankings)
   end

@@ -222,7 +222,7 @@ end
 #
 #    IDs will be strings composed by a series of keywords separated by colons:
 #      The first keyword specifies the type of component (button, menu).
-#      The second keyword specifies the category of the component (personal).
+#      The second keyword specifies the category of the component (up to you).
 #      The third keyword specifies the specific component (button, select menu option).
 def respond_interaction_button(event)
   keys   = event.custom_id.to_s.split(':')                       # Component parameters
