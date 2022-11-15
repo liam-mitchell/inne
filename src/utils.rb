@@ -161,6 +161,14 @@ def wavg(arr, w)
   arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
 end
 
+def get_avatar
+  GlobalProperty.find_by(key: 'avatar').value
+end
+
+def set_avatar(str)
+  GlobalProperty.find_by(key: 'avatar').update(value: str)
+end
+
 # Permission system:
 #   Support for different roles (unrelated to Discord toles). Each role can
 #   be determined by whichever system we choose (Discord user IDs, Discord

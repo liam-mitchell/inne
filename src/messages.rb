@@ -1041,11 +1041,19 @@ def thanks(event)
 end
 
 def faceswap(event)
-  filename = Dir.entries("images/avatars").select{ |f| File.file?("images/avatars/" + f) }.sample
-  file = File.open("images/avatars/" + filename)
-  $bot.profile.avatar = file
-  file.close
-  event << "Remember changing the avatar has a 10 minute cooldown!"
+  avatars    = Dir.entries("images/avatars").select{ |f| File.file?("images/avatars/" + f) }
+  old_avatar = get_avatar
+  new_avatar = old_avatar
+  while new_avatar == old_avatar
+    new_avatar = avatars.sample
+  end
+  File::open("images/avatars/" + new_avatar) do |f|
+    $bot.profile.avatar = f
+  end
+rescue
+  event << "Failed to change avatar, try again later. The avatar can only be changed 4 times every 10 minutes."
+else
+  set_avatar(new_avatar)
 end
 
 def send_level_time(event)
@@ -1272,7 +1280,7 @@ end
 
 # Add role to player (internal, for permission system, not related to Discord roles)
 def add_role(event)
-  perm = assert_permissions(event, ['botmaster'])
+  assert_permissions(event)
 
   msg  = event.content
   user = parse_discord_user(msg)
