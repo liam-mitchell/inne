@@ -150,7 +150,8 @@ module HighScore
   # Remove hackers and cheaters both by implementing the ignore lists and the score thresholds.
   def clean_scores(boards)
     # Remove potential duplicates
-    boards.uniq!{ |s| s['user_name'] }
+    # Edit: Commented because now we're storing Metanet IDs, names can repeat
+    #boards.uniq!{ |s| s['user_name'] }
 
     # Compute score upper limit
     if self.class == Userlevel
@@ -199,7 +200,7 @@ module HighScore
           player:    player,
           tied_rank: updated.find_index { |s| s['score'] == score['score'] }
         )
-        # Update class-specific values
+        # Updates for non-userlevels (tab, archive, demos)
         scores.find_by(rank: i).update(tab: self.tab) if self.class != Userlevel
         # Update the archive if the run is new
         if self.class != Userlevel && Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
@@ -219,8 +220,12 @@ module HighScore
           demo.update_demo
         end
       end
+      # Userlevel-specific
       self.update(last_update: Time.now) if self.class == Userlevel
-      self.update(scored:       true)    if self.class == Userlevel && updated.size > 0
+      self.update(scored:      true)     if self.class == Userlevel && updated.size > 0
+      # Update coolness and star attributes
+      scores.where("rank < #{find_coolness}").update_all(cool: true)
+      scores.find_by(rank: 0).update(star: true)
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
     end
@@ -290,10 +295,9 @@ module HighScore
     raise
   end
 
-  def format_scores(padding = DEFAULT_PADDING, zeroths = [])
+  def format_scores(padding = max_name_length)
     max = scores.map(&:score).max.to_i.to_s.length + 4
-    coolness = find_coolness
-    scores.each_with_index.map{ |s, i| s.format(padding, max, i < coolness, zeroths) }.join("\n")
+    scores.each_with_index.map{ |s, i| s.format(padding, max) }.join("\n")
   end
 
   def difference(old)
@@ -309,7 +313,7 @@ module HighScore
     end
   end
 
-  def format_difference(old, zeroths = [])
+  def format_difference(old)
     diffs = difference(old)
 
     name_padding = scores.map{ |s| s.player.name.length }.max
@@ -320,7 +324,7 @@ module HighScore
     difference(old).map { |o|
       c = o[:change]
       diff = c ? "#{"++-"[c[:rank] <=> 0]}#{"%#{rank_padding}d" % [c[:rank].abs]}, +#{"%#{change_padding}.3f" % [c[:score]]}" : "new"
-      "#{o[:score].format(name_padding, score_padding, false, zeroths)} (#{diff})"
+      "#{o[:score].format(name_padding, score_padding, false)} (#{diff})"
     }.join("\n")
   end
 
@@ -689,9 +693,8 @@ class Score < ActiveRecord::Base
     Demo.find_by(replay_id: replay_id, htype: Demo.htypes[highscoreable.class.to_s.downcase.to_sym])
   end
 
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0, cool = false, zeroths = [])
-    star = zeroths.include?(player.metanet_id) ? "*" : ' '
-    "#{star}#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{cool ? " 😎" : ""}"
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true)
+    "#{star ? "*" : ' '}#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{show_cools && cool ? " 😎" : ""}"
   end
 end
 

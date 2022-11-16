@@ -215,7 +215,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
     event << "Connection to the server failed, sending local cached scores.\n"
   end
 
-  str = "Highscores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length, Archive.zeroths(scores))) rescue ""}"
+  str = "Highscores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length)) rescue ""}"
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
     str += "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
