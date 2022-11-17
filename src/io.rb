@@ -341,9 +341,11 @@ def parse_ranks(msg)
   ranks.empty? ? [0] : ranks
 end
 
-# We parse a complex variery of ranges here, from individual ranks, to tops,
+# We parse a complex variety of ranges here, from individual ranks, to tops,
 # bottoms, intermediate ranges, etc.
-def parse_range(msg)
+# 'full' means that if no range has been explicitly provided, then we default
+# to 0th-19th, otherwise we default to 0th-1st.
+def parse_range(msg, full = false)
   rank   = parse_rank(msg) || 20
   bott   = parse_bottom_rank(msg) || 0
   ind    = nil
@@ -353,8 +355,13 @@ def parse_range(msg)
 
   # If no range is provided, default to 0th count
   if dflt
-    bott = 0
-    rank = 1
+    if full
+      bott = 0
+      rank = 20
+    else
+      bott = 0
+      rank = 1
+    end
   end
 
   # If an individual rank is provided, the range has width 1
@@ -587,6 +594,17 @@ def parse_ties(msg, rtype = nil)
   !rtype.nil? && rtype[-2..-1] == '_t' || !!msg[/ties/i]
 end
 
+# 'strict' means the emoji must be separated from text
+# intended to ignore users with it in the name
+def parse_cool(msg, strict = false)
+  !!msg[/\bcool(s|(ness))?\b/i] || !!msg[/\bckc'?s?\b/i] || !!msg[/#{strict ? "(\A|\W)" : ""}😎'?s?#{strict ? "(\z|\W)" : ""}/i]
+end
+
+# see parse_cool for 'strict'
+def parse_star(msg, strict = false)
+  !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i]
+end
+
 def format_rank(rank)
   rank.to_i == 1 ? "0th" : "top #{rank}"
 end
@@ -611,6 +629,14 @@ def format_range(bott, rank)
   else
     header = "#{bott.ordinalize}-#{(rank - 1).ordinalize}"
   end
+end
+
+def format_cool(cool)
+  cool ? 'cool ' : ''
+end
+
+def format_star(star)
+  star ? '* ' : ''
 end
 
 # Support for any single and multiple types

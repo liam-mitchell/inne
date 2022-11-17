@@ -11,12 +11,16 @@ require_relative 'userlevels.rb'
 
 # Return total count of player's scores within a specific rank range
 def send_top_n_count(event)
+  # Parse message parameters
   msg    = event.content
   player = parse_player(msg, event.user.name)
+  msg    = msg.remove!(player.name)
+  cool   = parse_cool(msg)
+  star   = parse_star(msg)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
-  range  = parse_range(msg)
-  ties   = !!(msg =~ /ties/i)
+  range  = parse_range(msg, cool || star ? true : false)
+  ties   = !!(msg =~ /\bties\b/i)
   tied   = !!(msg =~ /\btied\b/i)
   sing   = !!(msg =~ /\bsingular\b/i)
   plur   = !!(msg =~ /\bplural\b/i)
@@ -27,25 +31,61 @@ def send_top_n_count(event)
     return
   end
 
-  # Retrieve score count in specified range
+  # Retrieve score count with specified characteristics
   if sing
-    count = player.singular(type, tabs, false).values.map(&:size).sum
+    count = player.singular(type, tabs, false).size
   elsif plur
-    count = player.singular(type, tabs, true).values.map(&:size).sum
+    count = player.singular(type, tabs, true).size
   elsif tied
-    count = player.range_n_count(range[0], range[1], type, tabs, true) - player.range_n_count(range[0], range[1], type, tabs, false)
+    count = player.range_n_count(range[0], range[1], type, tabs, true)
+          - player.range_n_count(range[0], range[1], type, tabs, false)
+  elsif cool
+    count = player.cools(type, tabs, range[0], range[1], ties)
+  elsif star
+    count = player.stars(type, tabs, range[0], range[1], ties)
   else
     count = player.range_n_count(range[0], range[1], type, tabs, ties)
   end
 
+  # Format response
   max   = find_max(:rank, type, tabs)
   type  = format_type(type).downcase
   tabs  = format_tabs(tabs)
   range = sing ? 'singular' : (plur ? 'plural' : format_range(range[0], range[1]))
   ties  = format_ties(ties)
   tied  = format_tied(tied)
+  cool  = format_cool(cool)
+  star  = format_star(star)
 
-  event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{range} scores#{ties}."
+  # Send response
+  event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{cool}#{star}#{range} scores#{ties}."
+end
+
+def send_list(event)
+  msg    = event.content
+  player = parse_player(msg, event.user.name)
+  type   = parse_type(msg)
+  tabs   = parse_tabs(msg)
+  rank   = parse_rank(msg) || 20
+  bott   = parse_bottom_rank(msg) || 0
+  sing   = !!(msg =~ /\bsingular\b/i)
+  plur   = !!(msg =~ /\bplural\b/i)
+  if rank == 20 && bott == 0 && !!msg[/0th/i]
+    rank = 1
+    bott = 0
+  end
+  all    =  sing ? player.singular(type, tabs, false) :
+           (plur ? player.singular(type, tabs, true) :
+            player.scores_by_rank(type, tabs, bott, rank))
+
+  list = all.map{ |s| format_list_score(s) }
+  count = list.count
+  list = list.join("\n")
+  if count <= 20
+    event << format_block(list)
+  else
+    send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
+  end
 end
 
 def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
@@ -382,33 +422,6 @@ def send_stats(event)
   else
     event.send_message(msg1 + "```")
     event.send_message("```" + msg2)
-  end
-end
-
-def send_list(event)
-  msg    = event.content
-  player = parse_player(msg, event.user.name)
-  type   = parse_type(msg)
-  tabs   = parse_tabs(msg)
-  rank   = parse_rank(msg) || 20
-  bott   = parse_bottom_rank(msg) || 0
-  sing   = !!(msg =~ /\bsingular\b/i)
-  plur   = !!(msg =~ /\bplural\b/i)
-  if rank == 20 && bott == 0 && !!msg[/0th/i]
-    rank = 1
-    bott = 0
-  end
-  all    =  sing ? player.singular(type, tabs, false) :
-           (plur ? player.singular(type, tabs, true) :
-            player.scores_by_rank(type, tabs, bott, rank))
-
-  list = all.map{ |s| format_list_score(s) }
-  count = list.count
-  list = list.join("\n")
-  if count <= 20
-    event << format_block(list)
-  else
-    send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
   end
 end
 

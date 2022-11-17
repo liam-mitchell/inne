@@ -950,6 +950,14 @@ class Player < ActiveRecord::Base
     ret
   end
 
+  def cools(type, tabs, r1 = 0, r2 = 20, ties = false)
+    range_ns(r1, r2, type, tabs, ties).where(cool: true).count
+  end
+
+  def stars(type, tabs, r1 = 0, r2 = 20, ties = false)
+    range_ns(r1, r2, type, tabs, ties).where(star: true).count
+  end
+
   def average_lead(type, tabs)
     type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
