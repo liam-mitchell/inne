@@ -156,14 +156,7 @@ def parse_many_players(msg, userlevel = false)
   playerClass = userlevel ? UserlevelPlayer : Player
   msg = msg[/without (.*)/i, 1] || ""  
   players = msg.split(/,|\band\b|\bor\b/i).flatten.map(&:strip).reject(&:empty?)
-  #pl = msg.scan(/#{parse_term}/i).map(&:second)
-  players.map!{ |name|
-    p = playerClass.where.not(metanet_id: nil).find_by(name: name)
-    p.nil? ? name : p
-  }
-  errors = players.select{ |p| p.is_a?(String) }
-  raise "#{format_sentence(errors)} #{errors.size == 1 ? "doesn't" : "don't"} have any high scores! Either you misspelled the name, or they're exceptionally bad... " if errors.size > 0
-  players
+  players.map{ |name|parse_player_explicit(name) }
 end
 
 # The username can include the tag after a hash
@@ -591,7 +584,19 @@ def parse_newest(msg)
 end
 
 def parse_ties(msg, rtype = nil)
-  !rtype.nil? && rtype[-2..-1] == '_t' || !!msg[/ties/i]
+  !rtype.nil? && rtype[-2..-1] == '_t' || !!msg[/\bties\b/i]
+end
+
+def parse_tied(msg)
+  !!msg[/\btied\b/i]
+end
+
+def parse_singular(msg)
+  !!msg[/\bsingular\b/i]
+end
+
+def parse_plural(msg)
+  !!msg[/\bplural\b/i]
 end
 
 # 'strict' means the emoji must be separated from text
@@ -606,20 +611,24 @@ def parse_star(msg, strict = false)
 end
 
 def format_rank(rank)
-  rank.to_i == 1 ? "0th" : "top #{rank}"
+  rank.to_i == 1 ? '0th' : "top #{rank}"
 end
 
 def format_rtype(rtype, rank = nil, ties = false)
   rtype = format_rank(rank || rtype[/\d+/i] || 1) if rtype[0..2] == 'top'
   rtype = rtype.gsub('top1', '0th').tr('_', ' ')
-  "#{rtype} rankings#{format_ties(ties)}"
+  "#{rtype} rankings #{format_ties(ties)}"
 end
 
 def format_bottom_rank(rank)
   "bottom #{20 - rank}"
 end
 
-def format_range(bott, rank)
+# 'empty' means we print nothing
+# This is used for when the calling function actually has other parameters
+# that make is unnecessary to actually print the range 
+def format_range(bott, rank, empty)
+  return '' if empty
   if bott == rank - 1
     header = "#{bott.ordinalize}"
   elsif bott == 0
@@ -631,12 +640,20 @@ def format_range(bott, rank)
   end
 end
 
+def format_singular(sing)
+  sing ? 'singular' : ''
+end
+
+def format_plural(plur)
+  plur ? 'plural' : ''
+end
+
 def format_cool(cool)
-  cool ? 'cool ' : ''
+  cool ? 'cool' : ''
 end
 
 def format_star(star)
-  star ? '* ' : ''
+  star ? '*' : ''
 end
 
 # Support for any single and multiple types
@@ -662,11 +679,11 @@ def format_type(type, empty = false)
 end
 
 def format_ties(ties)
-  ties ? " (w/ ties)" : ""
+  ties ? '(w/ ties)' : ''
 end
 
 def format_tied(tied)
-  tied ? "tied " : ""
+  tied ? 'tied' : ''
 end
 
 def format_tab(tab)
@@ -674,7 +691,7 @@ def format_tab(tab)
 end
 
 def format_tabs(tabs)
-  tabs.map { |t| format_tab(t) }.to_sentence + (tabs.empty? ? "" : " ")
+  tabs.map { |t| format_tab(t) }.to_sentence
 end   
 
 def format_time
@@ -682,19 +699,19 @@ def format_time
 end
 
 def format_global(full)
-  full ? "global " : "newest "
+  full ? 'global' : 'newest'
 end
 
 def format_full(full)
-  full ? "full " : ""
+  full ? 'full' : ''
 end
 
 def format_max(max)
-  !max.nil? ? " [MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ""
+  !max.nil? ? " [MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ''
 end
 
 def format_author(name)
-  !name.empty? ? "on maps by #{name}" : ""
+  !name.empty? ? "on maps by #{name}" : ''
 end
 
 def format_entry(arr)

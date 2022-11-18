@@ -30,10 +30,16 @@ Eddy's TODO list for inne:
 - Use OilyPNG for screenshot generation rather than ChunkPNG for faster speeds (look into other gems too, as well as vector graphics).
 - "nubs" command to show ignored hackers and cheaters
 - Allow to add "rankings" to any userlevel query (browse) to instead perform rankings on the result set.
-- Arrow button navigation to screenshot and others
 - Userlevels: find full author name (instead of 16 char truncation), and add exact matching when browsing
 - Use author IDs for userlevel functions as well (asking for scores, ranks, etc), without using quotes to distinguish. Perhaps the same could be done for Metanet functions, although since we don't use quotes by default, we'd first do an author lookup, and if it doesn't exist and the string is purely a number, we do a player ID search.
 - Add regex to functions (userlevel search, etc)
+- aliases: Make sure they cannot be repeated. Add edit/remove alias functions only for botmaster.
+- In spread function, if rank == 19, assume it means "last", so that it works in boards with hacked scores. Perhaps do that for 18 (2nd from last), etc. At some point the pattern needs to break, though.
+- Personal demo analysis function (for when a run is not in the global leaderboard)
+- Browse uncleared userlevels (levels with no completions)
+- Unmaxed missing (ignore maxes in missing)
+- Add "graphic" / "screenshot" parameter to many commands which output level lists, so that instead of the list, we get images with thumbnails of 5/10 levels, with arrow button navigation to move, a-la userlevel browse.
+- Fix dashless ids (episodes starting with 10/11 are being recognized as level 1-0 and 1-1 instead).
 - Add access to all functions using slash commands
 - Multiple matches:
   * Add for player names
@@ -43,6 +49,21 @@ Eddy's TODO list for inne:
 - Fix secondary order for rankings (e.g. alphabetical or ID), otherwise weird things can happen during page navigation (since rankings get re-computed)
 - If no author results, truncate to first 16 chars and try again.
 - Histograms of userlevels played by ID (perhaps also chart anything, e.g. 0ths, top10s, parse_range)
+- Analysis:
+  * Use framecount and gold fields from archives table, rather than computing it again
+  * Implement for episodes and stories
+- "percent" for table
+- maxed table doesn't show zenny, so missing ? and ! perhaps
+- cool and star in rank, table, missing, worst...
+- bottom (i.e. parse_range) in rank, table...
+- add header to missing...
+- fix hc replays in db (I'm only saving the first 25, but deaths are included)
+- hc cleanliness and others
+- maybe modify function 'nav' from 'HighScore' module to allow for arbitrary offsets, and have some special sign to denote 'first' and 'last'
+- modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names
+- change all "format_something" to NOT include spaces, then in each function that uses it, simply always add spaces between them, and squish it
+- add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
+- HIGHSCORE UNMAXED SU-B-15-04
 
 \\ ------------------------ Cool ------------------------
 
@@ -75,7 +96,6 @@ Less priority:
 - Userlevel stats: How many unique authors, maps, averages, etc. Break down by mode and total.
 - When an ID is not in the database, if it's close (or always), download newest, but without printing it.
 - Store a daily list of all top 50 userlevels (just ID's for instance), so we can see how the hardest levels evolve.
-- When requiring an ID (download, screenshot, etc), we could also support a name, and then we perform a search in the database. If there's one result, we show it, otherwise, we show the list. (Note: When this is done, we'll have to update the way IDs are matched, since it's currently too general and could result in collisions).
 - Map Steam ID's to player names by looking it up in the database, so that they can be used when searching the server / database.
 - Browse user dependant categories
 - Browse other (made up but interesting) categories
@@ -83,6 +103,7 @@ Less priority:
 - Add a command to the browse/search function, that formats level names with underscores instead of spaces, so that they can be readily copied and pasted to N++.
 - Upload maps to accounts (need to figure out request by using proxy first)
 - Map editor with slots for each user
+- Comparison function (like for Metanet scores). Be able to filter maps by author, name, etc.
 
 Database:
 
@@ -152,6 +173,7 @@ Avatar:
 - Maybe also store the date of the avatar change to avoid the cooldown.
 
 \\ ------------------------ General ------------------------
+
 - Tie breaker for rankings: Average rank, instead of random.
 - Add coop and race for some functions, like screenshots
 - Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
@@ -170,6 +192,10 @@ Avatar:
 - Unique 0th holders.
 - 0th rankings ignoring certain players.
 - Add relaxed episode ownages (without episode), and ownages with ties.
+
+\\ ------------------------ NPC ------------------------
+
+- Add 2 color boxes, to change every instance of color 1 in the palette by color 2.
 
 
 \\ ------------------------ Notes ------------------------

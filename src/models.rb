@@ -92,7 +92,7 @@ module HighScore
       lnames = type.where(id: ret.keys)
                    .pluck(:id, :name)
                    .to_h
-      ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+      ret = ret.map{ |id, c| [lnames[id], c, pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
     end
     bench(:step) if BENCHMARK
     ret
@@ -836,9 +836,12 @@ class Player < ActiveRecord::Base
     format_string(print_name, padding)
   end
 
-  # truncate name
-  def tname(length = MAX_PADDING)
+  def truncate_name(length = MAX_PADDING)
     TRUNCATE_NAME ? print_name[0..length] : print_name
+  end
+
+  def sanitize_name
+    sanitize_filename(print_name)
   end
 
   def scores_by_type_and_tabs(type, tabs, include = nil)
@@ -858,16 +861,22 @@ class Player < ActiveRecord::Base
     scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} < #{n}")
   end
 
-  def range_ns(a, b, type, tabs, ties)
-    scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
+  def range_ns(a, b, type, tabs, ties, tied = false)
+    if tied
+      q = "tied_rank >= #{a} AND tied_rank < #{b} AND NOT (rank >= #{a} AND rank < #{b})"
+    else
+      rank_type = ties ? "tied_rank" : "rank"
+      q = "#{rank_type} >= #{a} AND #{rank_type} < #{b}"
+    end
+    scores_by_type_and_tabs(type, tabs).where(q)
   end
 
-  def top_n_count(n, type, tabs, ties)
-    top_ns(n, type, tabs, ties).count
+  def cools(type, tabs, r1 = 0, r2 = 20, ties = false)
+    range_ns(r1, r2, type, tabs, ties).where(cool: true)
   end
 
-  def range_n_count(a, b, type, tabs, ties)
-    range_ns(a, b, type, tabs, ties).count
+  def stars(type, tabs, r1 = 0, r2 = 20, ties = false)
+    range_ns(r1, r2, type, tabs, ties).where(star: true)
   end
 
   def scores_by_rank(type, tabs, r1 = 0, r2 = 20)
@@ -948,14 +957,6 @@ class Player < ActiveRecord::Base
     ret = type.map{ |t| singular_(t, tabs, plural) }.flatten#.group_by(&:rank)
     bench(:step) if BENCHMARK
     ret
-  end
-
-  def cools(type, tabs, r1 = 0, r2 = 20, ties = false)
-    range_ns(r1, r2, type, tabs, ties).where(cool: true).count
-  end
-
-  def stars(type, tabs, r1 = 0, r2 = 20, ties = false)
-    range_ns(r1, r2, type, tabs, ties).where(star: true).count
   end
 
   def average_lead(type, tabs)

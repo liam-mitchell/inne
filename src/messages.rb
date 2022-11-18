@@ -9,21 +9,23 @@ require_relative 'io.rb'
 require_relative 'models.rb'
 require_relative 'userlevels.rb'
 
-# Return total count of player's scores within a specific rank range
-def send_top_n_count(event)
+# Prints list of scores for a specific player within the specified range
+# If 'file' is true, we return the list in a file, otherwise, we just
+# print the score count (see next method)
+def send_list(event, file = true)
   # Parse message parameters
   msg    = event.content
   player = parse_player(msg, event.user.name)
   msg    = msg.remove!(player.name)
-  cool   = parse_cool(msg)
-  star   = parse_star(msg)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
+  cool   = parse_cool(msg)
+  star   = parse_star(msg)
   range  = parse_range(msg, cool || star ? true : false)
-  ties   = !!(msg =~ /\bties\b/i)
-  tied   = !!(msg =~ /\btied\b/i)
-  sing   = !!(msg =~ /\bsingular\b/i)
-  plur   = !!(msg =~ /\bplural\b/i)
+  ties   = parse_ties(msg)
+  tied   = parse_tied(msg)
+  sing   = parse_singular(msg)
+  plur   = parse_plural(msg)
 
   # The range must make sense
   if !range[2]
@@ -33,59 +35,45 @@ def send_top_n_count(event)
 
   # Retrieve score count with specified characteristics
   if sing
-    count = player.singular(type, tabs, false).size
+    list = player.singular(type, tabs, false)
   elsif plur
-    count = player.singular(type, tabs, true).size
-  elsif tied
-    count = player.range_n_count(range[0], range[1], type, tabs, true)
-          - player.range_n_count(range[0], range[1], type, tabs, false)
+    list = player.singular(type, tabs, true)
   elsif cool
-    count = player.cools(type, tabs, range[0], range[1], ties)
+    list = player.cools(type, tabs, range[0], range[1], ties)
   elsif star
-    count = player.stars(type, tabs, range[0], range[1], ties)
+    list = player.stars(type, tabs, range[0], range[1], ties)
   else
-    count = player.range_n_count(range[0], range[1], type, tabs, ties)
+    list = player.range_ns(range[0], range[1], type, tabs, ties, tied)
   end
 
   # Format response
   max   = find_max(:rank, type, tabs)
   type  = format_type(type).downcase
   tabs  = format_tabs(tabs)
-  range = sing ? 'singular' : (plur ? 'plural' : format_range(range[0], range[1]))
-  ties  = format_ties(ties)
-  tied  = format_tied(tied)
+  range = format_range(range[0], range[1], sing || plur)
+  sing  = format_singular(sing)
+  plur  = format_plural(plur)
   cool  = format_cool(cool)
   star  = format_star(star)
+  ties  = format_ties(ties)
+  tied  = format_tied(tied)
+  count = list.count
 
-  # Send response
-  event << "#{player.print_name} has #{count} out of #{max} #{tied}#{tabs}#{type} #{cool}#{star}#{range} scores#{ties}."
+  # Print count and possibly export list in file
+  event << "#{player.print_name} has #{count} out of #{max} #{tied} #{tabs} #{type} #{cool} #{star} #{range} scores #{ties}".squish + '.'
+  if file
+    list = list.map{ |s| format_list_score(s) }.join("\n")
+    if count <= 20
+      event << format_block(list)
+    else
+      send_file(event, list, "scores-#{player.sanitize_name}.txt", false)
+    end
+  end
 end
 
-def send_list(event)
-  msg    = event.content
-  player = parse_player(msg, event.user.name)
-  type   = parse_type(msg)
-  tabs   = parse_tabs(msg)
-  rank   = parse_rank(msg) || 20
-  bott   = parse_bottom_rank(msg) || 0
-  sing   = !!(msg =~ /\bsingular\b/i)
-  plur   = !!(msg =~ /\bplural\b/i)
-  if rank == 20 && bott == 0 && !!msg[/0th/i]
-    rank = 1
-    bott = 0
-  end
-  all    =  sing ? player.singular(type, tabs, false) :
-           (plur ? player.singular(type, tabs, true) :
-            player.scores_by_rank(type, tabs, bott, rank))
-
-  list = all.map{ |s| format_list_score(s) }
-  count = list.count
-  list = list.join("\n")
-  if count <= 20
-    event << format_block(list)
-  else
-    send_file(event, list, "scores-#{player.print_name.delete(":")}.txt", false)
-  end
+# Prints total count of player's scores within a specific rank range
+def send_top_n_count(event)
+  send_list(event, false)
 end
 
 def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
@@ -152,9 +140,10 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   tabs = format_tabs(tabs)
   header = "Rankings - #{format_full(full).capitalize}"
   header += full ? format_type(type, true).downcase : format_type(type, true)
-  header += " #{tabs}#{format_rtype(rtype, nil, ties)}#{format_max(max)}"
-  header += " without " + format_sentence(play.map(&:name)) if !play.empty?
+  header += " #{tabs} #{format_rtype(rtype, nil, ties)} #{format_max(max)}"
+  header += " without " + play.map(&:name).to_sentence if !play.empty?
   header += " #{format_time}:"
+  header.squish!
   #   Rankings
   if rankings.empty?
     rankings = "```These boards are empty!```"
@@ -205,7 +194,7 @@ def send_total_score(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
 
-  event << "#{player.print_name}'s total #{tabs}#{type.to_s.downcase} score is #{"%.3f" % [score]} out of #{"%.3f" % max}."
+  event << "#{player.print_name}'s total #{tabs} #{type.to_s.downcase} score is #{"%.3f" % [score]} out of #{"%.3f" % max}.".squish
 end
 
 def send_spreads(event)
@@ -228,7 +217,8 @@ def send_spreads(event)
   rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
   type   = format_type(type).downcase
   tabs   = tabs.empty? ? "All " : format_tabs(tabs)
-  event << "#{tabs}#{type}s #{!player.nil? ? "owned by #{player.print_name} " : ""}with the #{spread} spread between 0th and #{rank}:\n```#{spreads}```"
+  event << "#{tabs} #{type.pluralize} #{!player.nil? ? "owned by #{player.print_name} " : ""} with the #{spread} spread between 0th and #{rank}:\n".squish
+  event << format_block(spreads)
 end
 
 def send_scores(event, map = nil, ret = false, page: nil)
@@ -439,52 +429,61 @@ def send_community(event)
   # 4 of the 5 individual levels give you at the start to be able
   # to compare an episode score with the sum of its level scores.
 
-  text << "Total level score: #{"%.3f" % levels[0]}\n"
-  text << "Total episode score: #{"%.3f" % episodes[0]}\n"
-  text << (condition ? "Total level score (w/o secrets): #{"%.3f" % levels_no_secrets[0]}\n" : "")
-  text << "Difference between level and episode 0ths: #{"%.3f" % [difference]}\n\n"
-  text << "Average level score: #{"%.3f" % [levels[0]/levels[1]]}\n"
-  text << "Average episode score: #{"%.3f" % [episodes[0]/episodes[1]]}\n"
-  text << "Average difference between level and episode 0ths: #{"%.3f" % [difference/episodes[1]]}\n"
+  pad = ("%.3f" % levels[0]).length
+  text << "Total level score (TLS):   #{"%#{pad}.3f" % levels[0]}\n"
+  text << "Total episode score (TES): #{"%#{pad}.3f" % episodes[0]}\n"
+  text << "TLS (w/o secrets):         #{"%#{pad}.3f" % levels_no_secrets[0]}\n" if condition
+  text << "Difference (TLS - TES):    #{"%#{pad}.3f" % [difference]}\n\n"
+  text << "Average level score:       #{"%#{pad}.3f" % [levels[0]/levels[1]]}\n"
+  text << "Average episode score:     #{"%#{pad}.3f" % [episodes[0]/episodes[1]]}\n"
+  text << "Average difference:        #{"%#{pad}.3f" % [difference/episodes[1]]}\n"
 
-  event << "Community's total #{format_tabs(tabs)}scores #{format_time}:\n```#{text}```"
+  event << "Community's total #{format_tabs(tabs)} scores #{format_time}:\n".squish
+  event << format_block(text)
 end
 
-def send_maxable(event)
+def send_maxable(event, maxed = false)
+  # Parse message parameters
   msg    = event.content
   player = parse_player(msg, nil, false, true, false)
   type   = parse_type(msg) || Level
   tabs   = parse_tabs(msg)
 
-  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, false)
-            .take(NUM_ENTRIES)
-            .map { |s| "#{"%-10s" % s[0]} - #{"%2d" % s[1]} - #{format_string(s[3])}" }
-            .join("\n")
+  # Retrieve maxed/maxable scores
+  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, maxed)
+  ties   = ties.take(NUM_ENTRIES) if !maxed
+  pad1   = ties.map{ |s| s[0].length }.max
+  pad2   = ties.map{ |s| s[1].to_s.length }.max
+  count  = ties.size
+  ties   = ties.map { |s|
+    if maxed
+      "#{"%-#{pad1}s" % s[0]} - #{format_string(s[2])}"
+    else
+      "#{"%-#{pad1}s" % s[0]} - #{"%#{pad2}d" % s[1]} - #{format_string(s[2])}"
+    end
+  }.join("\n")
 
+  # Format response
   type   = format_type(type).downcase
-  tabs   = tabs.empty? ? "All " : format_tabs(tabs)
-  player = player.nil? ? "" : " without " + player.print_name
-  event << "#{tabs}#{type.pluralize} with the most ties for 0th #{format_time}#{player}:\n#{format_block(ties)}"
+  tabs   = tabs.empty? ? 'All' : format_tabs(tabs)
+  player = player.nil? ? '' : 'without ' + player.print_name
+  if maxed
+    footer = "There's a total of #{count} potentially maxed #{type.pluralize}."
+    event << "#{tabs} potentially maxed #{type.pluralize} #{format_time} #{player}".squish + ":"
+    if count <= 20
+      event << format_block(ties) + footer
+    else
+      send_file(event, ties, "maxed-#{type.pluralize}.txt", false)
+      event << footer
+    end
+  else
+    event << "#{tabs} #{type.pluralize} with the most ties for 0th #{format_time} #{player}".squish + ":"
+    event << format_block(ties)
+  end
 end
 
 def send_maxed(event)
-  msg    = event.content
-  player = parse_player(msg, nil, false, true, false)
-  type   = parse_type(msg) || Level
-  tabs   = parse_tabs(msg)
-
-  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, true)
-                    .map { |s| "#{"%10s" % s[0]} - #{format_string(s[3])}" }
-  count  = ties.count{ |s| s.length > 1 }
-  block  = ties.join("\n")
-
-  type   = format_type(type).downcase
-  tabs   = tabs.empty? ? "All " : format_tabs(tabs)
-  player = player.nil? ? "" : " without " + player.print_name
-  header = "#{tabs}potentially maxed #{type.pluralize} #{format_time}#{player}:"
-  footer = "There's a total of #{count} potentially maxed #{type.pluralize}."
-  event << header
-  count <= 20 ? event << format_block(block) + footer : send_file(event, block, "maxed-#{type.pluralize}.txt", false)
+  send_maxable(event, true)
 end
 
 def send_cleanliness(event)
@@ -539,7 +538,7 @@ def send_missing(event)
   if count <= 20
     event << format_block(missing)
   else
-    send_file(event, missing, "missing-#{player.print_name.delete(":")}.txt", false)
+    send_file(event, missing, "missing-#{player.sanitize_name}.txt", false)
   end
 end
 
@@ -722,12 +721,12 @@ def send_comparison(event)
   comp   = Player.comparison(type, tabs, p1, p2)
   counts = comp.map{ |t| t.map{ |r, s| s.size }.sum }
 
-  header = "#{format_type(type)} #{format_tabs(tabs)}comparison between #{p1.tname} and #{p2.tname} #{format_time}:"
-  rows = ["Scores with only #{p1.tname}"]
-  rows << "Scores where #{p1.tname} > #{p2.tname}"
-  rows << "Scores where #{p1.tname} = #{p2.tname}"
-  rows << "Scores where #{p1.tname} < #{p2.tname}"
-  rows << "Scores with only #{p2.tname}"
+  header = "#{format_type(type)} #{format_tabs(tabs)}comparison between #{p1.truncate_name} and #{p2.truncate_name} #{format_time}:"
+  rows = ["Scores with only #{p1.truncate_name}"]
+  rows << "Scores where #{p1.truncate_name} > #{p2.truncate_name}"
+  rows << "Scores where #{p1.truncate_name} = #{p2.truncate_name}"
+  rows << "Scores where #{p1.truncate_name} < #{p2.truncate_name}"
+  rows << "Scores with only #{p2.truncate_name}"
   l = rows.map(&:length).max
   table = rows.zip(counts).map{ |r, c| r.ljust(l) + " - " + c.to_s.rjust(4) }.join("\n")
   list = (0..4).map{ |i|
@@ -739,7 +738,7 @@ def send_comparison(event)
          }.join("\n")
 
   event << header + "```" + table + "```"
-  send_file(event, list, "comparison-#{p1.tname}-#{p2.tname}.txt")
+  send_file(event, list, "comparison-#{p1.sanitize_name}-#{p2.sanitize_name}.txt")
 end
 
 def send_splits(event)
