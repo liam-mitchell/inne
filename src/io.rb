@@ -74,10 +74,12 @@ def redash_name(matches)
   !!matches ? matches.captures.compact.join('-') : nil
 end
 
+# Transform tab into [SI, S, SU, SL, ?, !] format
 def normalize_tab(tab)
   format_tab(parse_tabs(tab)[0])
 end
 
+# Transform tab into [SI, S, SU, SL, SS, SS2] format
 def formalize_tab(tab)
   parse_tabs(tab)[0].to_s
 end
@@ -332,6 +334,14 @@ end
 def parse_ranks(msg)
   ranks = msg.scan(/\s+([0-9][0-9]?)/).map{ |r| r[0].to_i }.reject{ |r| r < 0 || r > 19 }
   ranks.empty? ? [0] : ranks
+end
+
+def parse_nav(msg)
+  !!msg[/\bnav((igat)((e)|(ing)))?\b/i]
+end
+
+def parse_offline(msg)
+  !!msg[/\boffline\b/i]
 end
 
 # We parse a complex variety of ranges here, from individual ranks, to tops,
@@ -627,7 +637,7 @@ end
 # 'empty' means we print nothing
 # This is used for when the calling function actually has other parameters
 # that make is unnecessary to actually print the range 
-def format_range(bott, rank, empty)
+def format_range(bott, rank, empty = false)
   return '' if empty
   if bott == rank - 1
     header = "#{bott.ordinalize}"
@@ -712,14 +722,6 @@ end
 
 def format_author(name)
   !name.empty? ? "on maps by #{name}" : ''
-end
-
-def format_entry(arr)
-  arr[0].to_s.rjust(2, "0") + ": " + arr[2].ljust(10) + " - " + ("%.3f" % [arr[3]]).rjust(8)
-end
-
-def format_pair(arr)
-  "[" + format_entry(arr[0]) + "] vs. [" + format_entry(arr[1]) + "]"
 end
 
 def format_block(str)

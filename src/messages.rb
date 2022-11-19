@@ -76,20 +76,30 @@ def send_top_n_count(event)
   send_list(event, false)
 end
 
+# Return list of players sorted by a number of different ranking types
+# Navigation controls are optional
+# The named parameters are ALL for the navigation:
+#   'page'  Controls the page of the rankings button navigation
+#   'type'  Type buttons (i.e., Level, Episode, Story)
+#   'tab'   Tab select menu option (All, SI, S, SU, SL, ?, !)
+#   'rtype' Ranking type select menu option
+#   'ties'  Ties button
+# When a named parameter is not nil, then that button/select menu was pressed,
+# so it takes preference, and is used instead of parsing it from the message
 def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
-  # PARSE ranking parameters
+  # PARSE ranking parameters (from function arguments and message)
   initial    = page.nil? && type.nil? && tab.nil? && rtype.nil? && ties.nil?
   reset_page = !type.nil? || !tab.nil? || !rtype.nil? || !ties.nil?
-  msg  = fetch_message(event, initial)
-  type = parse_type(msg, type, true, initial)
-  tabs = parse_tabs(msg, tab)
+  msg   = fetch_message(event, initial)
+  type  = parse_type(msg, type, true, initial)
+  tabs  = parse_tabs(msg, tab)
   rtype = rtype || parse_rtype(msg)
-  rank = parse_rank(rtype) || parse_rank(msg) || 1
-  ties = !ties.nil? ? ties : parse_ties(msg, rtype)
-  play = parse_many_players(msg)
-  nav  = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
-  full = parse_global(msg) || parse_full(msg) || nav
-  tab  = tabs.empty? ? 'all' : (tabs.size == 1 ? tabs[0].to_s.downcase : 'tab')
+  rank  = parse_rank(rtype) || parse_rank(msg) || 1
+  ties  = !ties.nil? ? ties : parse_ties(msg, rtype)
+  play  = parse_many_players(msg)
+  nav   = parse_nav(msg) || !initial
+  full  = parse_global(msg) || parse_full(msg) || nav
+  tab   = tabs.empty? ? 'all' : (tabs.size == 1 ? tabs[0].to_s.downcase : 'tab')
   rtype = fix_rtype(rtype, rank)
 
   # EXECUTE specific rankings
@@ -183,49 +193,68 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   end
 end
 
+# Return a player's total score (sum of scores) in specified tabs and type
 def send_total_score(event)
+  # Parse messsage parameters
   player = parse_player(event.content, event.user.name)
-  type = parse_type(event.content)
-  tabs = parse_tabs(event.content)
+  type   = parse_type(event.content)
+  tabs   = parse_tabs(event.content)
 
+  # Retrieve total score
   score = player.total_score(type, tabs)
 
+  # Format response
   max  = find_max(:score, type, tabs)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-
-  event << "#{player.print_name}'s total #{tabs} #{type.to_s.downcase} score is #{"%.3f" % [score]} out of #{"%.3f" % max}.".squish
+  event << "#{player.print_name}'s total #{tabs} #{type} score is #{"%.3f" % [score]} out of #{"%.3f" % max}.".squish
 end
 
+# Return list of levels/episodes with largest/smallest score difference between
+# 0th and Nth rank
 def send_spreads(event)
-  msg = event.content
-  n = (parse_rank(msg) || 2) - 1
-  type = parse_type(msg) || Level
-  tabs = parse_tabs(msg)
+  # Parse message parameters
+  msg    = event.content
+  n      = (parse_rank(msg) || 2) - 1
+  type   = parse_type(msg) || Level
+  tabs   = parse_tabs(msg)
   player = parse_player(msg, nil, false, true, false)
-  smallest = !!(msg =~ /smallest/)
+  small  = !!(msg =~ /smallest/)
   raise "I can't show you the spread between 0th and 0th..." if n == 0
 
-  spreads  = HighScore.spreads(n, type, tabs, smallest, player.nil? ? nil : player.id)
+  # Retrieve and format spreads
+  spreads  = HighScore.spreads(n, type, tabs, small, player.nil? ? nil : player.id)
   namepad  = spreads.map{ |s| s[0].length }.max
   scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
   spreads  = spreads.each_with_index
                     .map { |s, i| "#{"%02d" % i}: #{"%-#{namepad}s" % s[0]} - #{"%#{scorepad}.3f" % s[1]} - #{s[2]}"}
                     .join("\n")
 
-  spread = smallest ? "smallest" : "largest"
-  rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
-  type   = format_type(type).downcase
-  tabs   = tabs.empty? ? "All " : format_tabs(tabs)
-  event << "#{tabs} #{type.pluralize} #{!player.nil? ? "owned by #{player.print_name} " : ""} with the #{spread} spread between 0th and #{rank}:\n".squish
+  # Format response
+  spread = small ? 'smallest' : 'largest'
+  rank   = n.ordinalize
+  type   = format_type(type).downcase.pluralize
+  tabs   = tabs.empty? ? 'All ' : format_tabs(tabs)
+  player = !player.nil? ? "owned by #{player.print_name} " : ''
+  event << "#{tabs} #{type} #{player} with the #{spread} spread between 0th and #{rank}:".squish
   event << format_block(spreads)
 end
 
+# Send highscore leaderboard for a highscoreable.
+#   'map'  means the highscoreable will be sent as a parameter, rather than
+#          being parsed from the message (used, e.g., for lotd)
+#   'ret'  means the leaderboards will be returned to be used in another
+#          function (e.g., screenscores), rather than sent
+#   'page' is used to navigate when there are multiple pages of matching levels
 def send_scores(event, map = nil, ret = false, page: nil)
+  # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
   scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
-  offline = !!(msg[/offline/i])
+  msg     = msg.remove(scores.class == Level ? scores.longname : scores.name)
+  offline = parse_offline(msg)
+  nav     = parse_nav(msg)
+  res     = ""
 
   # Navigating scores goes into a different method (see below this one)
   if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i]
@@ -233,36 +262,37 @@ def send_scores(event, map = nil, ret = false, page: nil)
     return
   end
 
-  # Multiple matches
+  # Multiple matches, send match list
   if scores.is_a?(Array)
     format_level_matches(event, msg, page, initial, scores, 'search')
     return
   end
 
+  # Update scores, unless we're in offline mode or the connection fails
   if OFFLINE_STRICT
-    event << "Strict offline mode is ON, sending local cached scores.\n"
+    res << "Strict offline mode is ON, sending local cached scores.\n"
   elsif !offline && scores.update_scores == -1
-    event << "Connection to the server failed, sending local cached scores.\n"
+    res << "Connection to the server failed, sending local cached scores.\n"
   end
 
-  str = "Highscores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length)) rescue ""}"
+  # Format response, add cleanliness if it's an episode
+  res << "Highscores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length)) rescue ""}"
   if scores.is_a?(Episode)
     clean = scores.cleanliness[1]
-    str += "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
+    res << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
   end
-  event << str
 
-  # Send immediately here - using << delays sending until after the event has been processed,
-  # and we want to download the scores for the episode in the background after sending since it
-  # takes a few seconds.
-  res = ""
-  res = event.drain_into(res)
+  # Send response or return it
   if ret
     return res
   else
     event.send_message(res)
   end
 
+  # If it's an episode, update all 5 level scores in the background
+  #   (note we used "event.send_message" rather than "event <<",
+  #   which means it got sent immediately so we don't have to wait
+  #   for these 5 level updates)
   if scores.is_a?(Episode)
     Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores) if !offline && !OFFLINE_STRICT
   end
@@ -273,19 +303,20 @@ end
 # - Adds navigating between levels.
 # - Adds navigating between dates.
 def send_nav_scores(event, offset: nil, date: nil, page: nil)
+  # Parse message parameters
   initial = offset.nil? && date.nil? && page.nil?
   msg     = fetch_message(event, initial)
   scores  = parse_level_or_episode(msg, partial: true)
 
-  # Multiple matches
+  # Multiple matches, send match list
   if scores.is_a?(Array)
     format_level_matches(event, msg, page, initial, scores, 'search')
     return
   end
 
+  # Single match, retrieve scores for specified date and highscoreable
   scores = scores.nav(offset.to_i)
   dates  = Archive.changes(scores).sort.reverse
-  
   if initial || date.nil?
     new_index = 0
   else
@@ -294,31 +325,36 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
   end
   date = dates[new_index] || 0
 
+  # Format response
   str = "Navigating high scores for #{scores.format_name}:\n"
   str += format_block(Archive.format_scores(Archive.scores(scores, date), Archive.zeroths(scores, date))) rescue ""
   str += "*Warning: Navigating scores does not update them.*"
 
+  # Send response
   view = Discordrb::Webhooks::View.new
   interaction_add_level_navigation(view, scores.name.center(11, ' '))
   interaction_add_date_navigation(view, new_index + 1, dates.size, date, date == 0 ? " " * 11 : Time.at(date).strftime("%Y-%b-%d"))
   send_message_with_interactions(event, str, view, !initial)
 end
 
+# Send a screenshot of a level/episode/story
+#
 # Prepared for navigation, but it's not possible to edit attachments for now,
-# so commented that functionality and 'offset' not being used.
+# so commented that functionality, and 'offset' is not being used.
 def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
+  # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
   scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
-  nav     = !!msg[/\bnav((igat)((e)|(ing)))?\b/i] || !initial
+  nav     = parse_nav(msg) || !initial
 
-  # Multiple matches
+  # Multiple matches, send match list
   if scores.is_a?(Array)
     format_level_matches(event, msg, page, initial, scores, 'search')
     return
   end
 
-  # Single match
+  # Single match, retrieve screenshot
   #scores = scores.nav(offset.to_i)
   name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
   screenshot = "screenshots/#{name}.jpg"
@@ -329,6 +365,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
     return event.send_message(str)
   end
   
+  # Send response
   str  = "Screenshot for #{scores.format_name}"
   file = File::open(screenshot)
   return [file, str] if ret
@@ -341,34 +378,44 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   end
 end
 
+# One command to return a screenshot and then the scores,
+# since it's a very common combination
 def send_screenscores(event)
+  # Parse message parameters
   msg = event.content
   map = parse_level_or_episode(msg)
+
+  # Return both screenshot and scores, without sending them
   ss  = send_screenshot(event, map, true)
   s   = send_scores(event, map, true)
 
+  # Send screenshot, if available
   if ss[0].nil?
     event.send_message(ss[1])
   else
     event.send_file(ss[0], caption: ss[1])
   end
 
+  # Wait a bit to prevent an order change, and send scores
   sleep(0.05)
-
   event.send_message(s)
-
 end
 
+# Same, but sending the scores first and the screenshot second
 def send_scoreshot(event)
+  # Parse message parameters
   msg = event.content
   map = parse_level_or_episode(msg)
+
+  # Retrieve both screenshot and scores, without sending them
   s   = send_scores(event, map, true)
   ss  = send_screenshot(event, map, true)
 
+  # Send scores
   event.send_message(s)
 
+  # Wait a bit to prevent an order change, and send screenshot, if available
   sleep(0.05)
-
   if ss[0].nil?
     event.send_message(ss[1])
   else
@@ -376,12 +423,23 @@ def send_scoreshot(event)
   end
 end
 
+# Returns rank distribution of a player's scores, in both table and histogram form
 def send_stats(event)
+  # Parse message parameters
   msg    = event.content
   player = parse_player(msg, event.user.name)
   tabs   = parse_tabs(msg)
-  ties   = !!(msg =~ /ties/i)
+  ties   = parse_ties(msg)
+
+  # Retrieve counts and generate table and histogram
   counts = player.score_counts(tabs, ties)
+
+  full_counts = (0..19).map{ |r|
+    l = counts[:levels][r].to_i
+    e = counts[:episodes][r].to_i
+    s = counts[:stories][r].to_i
+    [l + e, l, e, s]
+  }
 
   histogram = AsciiCharts::Cartesian.new(
     (0..19).map{ |r| [r, counts[:levels][r].to_i + counts[:episodes][r].to_i] },
@@ -391,13 +449,7 @@ def send_stats(event)
     title: 'Score histogram'
   ).draw
 
-  full_counts = (0..19).map{ |r|
-    l = counts[:levels][r].to_i
-    e = counts[:episodes][r].to_i
-    s = counts[:stories][r].to_i
-    [l + e, l, e, s]
-  }
-
+  # Format response
   totals  = full_counts.each_with_index.map{ |c, r| "#{HighScore.format_rank(r)}: #{"   %4d  %4d    %4d   %4d" % c}" }.join("\n\t")
   overall = "Totals:    %4d  %4d    %4d   %4d" % full_counts.reduce([0, 0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
   maxes   = [Level, Episode, Story].map{ |t| find_max(:rank, t, tabs) }
@@ -406,6 +458,7 @@ def send_stats(event)
   msg1    = "Player high score counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}\n#{maxes}"
   msg2    = "#{histogram}```"
 
+  # Send response (careful, it can go over the char limit)
   if msg1.length + msg2.length <= DISCORD_LIMIT
     event << msg1
     event << msg2
@@ -415,33 +468,40 @@ def send_stats(event)
   end
 end
 
+# Returns community's overal total and average scores
+#   * The total score is the sum of all 0th scores
+#   * The average score is the total score over the number of scores
+#   * The difference between level and episode scores is computed by adding
+#     the 5 corresponding level 0ths, subtracting the 4 * 90 additional
+#     seconds one gets at the start of each individual level (bar level 0),
+#     and then subtracting the episode 0th score.
 def send_community(event)
-  msg = event.content
+  # Parse message parameters
+  msg  = event.content
   tabs = parse_tabs(msg)
-  condition = !(tabs&[:SS, :SS2]).empty? || tabs.empty?
-  text = ""
+  cond = !(tabs&[:SS, :SS2]).empty? || tabs.empty?
 
+  # Retrieve community's total and average scores
   levels = Score.total_scores(Level, tabs, true)
   episodes = Score.total_scores(Episode, tabs, false)
-  levels_no_secrets = (condition ? Score.total_scores(Level, tabs, false) : levels)
+  levels_no_secrets = (cond ? Score.total_scores(Level, tabs, false) : levels)
   difference = levels_no_secrets[0] - 4 * 90 * episodes[1] - episodes[0]
-  # For every episode, we subtract the additional 90 seconds
-  # 4 of the 5 individual levels give you at the start to be able
-  # to compare an episode score with the sum of its level scores.
 
+  # Format response
   pad = ("%.3f" % levels[0]).length
-  text << "Total level score (TLS):   #{"%#{pad}.3f" % levels[0]}\n"
-  text << "Total episode score (TES): #{"%#{pad}.3f" % episodes[0]}\n"
-  text << "TLS (w/o secrets):         #{"%#{pad}.3f" % levels_no_secrets[0]}\n" if condition
-  text << "Difference (TLS - TES):    #{"%#{pad}.3f" % [difference]}\n\n"
-  text << "Average level score:       #{"%#{pad}.3f" % [levels[0]/levels[1]]}\n"
-  text << "Average episode score:     #{"%#{pad}.3f" % [episodes[0]/episodes[1]]}\n"
-  text << "Average difference:        #{"%#{pad}.3f" % [difference/episodes[1]]}\n"
-
+  str = ''
+  str << "Total level score (TLS):   #{"%#{pad}.3f" % levels[0]}\n"
+  str << "Total episode score (TES): #{"%#{pad}.3f" % episodes[0]}\n"
+  str << "TLS (w/o secrets):         #{"%#{pad}.3f" % levels_no_secrets[0]}\n" if cond
+  str << "Difference (TLS - TES):    #{"%#{pad}.3f" % [difference]}\n\n"
+  str << "Average level score:       #{"%#{pad}.3f" % [levels[0]/levels[1]]}\n"
+  str << "Average episode score:     #{"%#{pad}.3f" % [episodes[0]/episodes[1]]}\n"
+  str << "Average difference:        #{"%#{pad}.3f" % [difference/episodes[1]]}\n"
   event << "Community's total #{format_tabs(tabs)} scores #{format_time}:\n".squish
-  event << format_block(text)
+  event << format_block(str)
 end
 
+# Return list of levels/episodes sorted by number of ties for 0th (desc)
 def send_maxable(event, maxed = false)
   # Parse message parameters
   msg    = event.content
@@ -457,9 +517,9 @@ def send_maxable(event, maxed = false)
   count  = ties.size
   ties   = ties.map { |s|
     if maxed
-      "#{"%-#{pad1}s" % s[0]} - #{format_string(s[2])}"
+      "#{"%-#{pad1}s" % s[0]} - #{format_string(s[3])}"
     else
-      "#{"%-#{pad1}s" % s[0]} - #{"%#{pad2}d" % s[1]} - #{format_string(s[2])}"
+      "#{"%-#{pad1}s" % s[0]} - #{"%#{pad2}d" % s[1]} - #{format_string(s[3])}"
     end
   }.join("\n")
 
@@ -482,59 +542,73 @@ def send_maxable(event, maxed = false)
   end
 end
 
+# Returns a list of maxed levels/episodes, i.e., with 20 ties for 0th
 def send_maxed(event)
   send_maxable(event, true)
 end
 
+# Returns a list of episodes sorted by difference between
+# episode 0th and the sum of the level 0ths
 def send_cleanliness(event)
-  msg = event.content
-  tabs = parse_tabs(msg)
-  cleanest = !!msg[/cleanest/i]
+  # Parse message parameters
+  msg   = event.content
+  tabs  = parse_tabs(msg)
+  clean = !!msg[/cleanest/i]
 
-  cleanliness = Episode.cleanliness(tabs)
-                       .sort_by{ |e| (cleanest ? e[1] : -e[1]) }
-                       .take(NUM_ENTRIES)
-#                       .each{ |e| e[1] = round_score(e[1]) }
-  padding     = cleanliness.map{ |e| ("%.3f" % e[1]).length }.max
-  cleanliness = cleanliness.map{ |e| "#{"%7s" % e[0]} - #{"%#{padding}.3f" % e[1]} - #{e[2]}" }.join("\n")
+  # Retrieve episodes and cleanliness
+  list = Episode.cleanliness(tabs).sort_by{ |e| (clean ? e[1] : -e[1]) }.take(NUM_ENTRIES)
+  pad1 = list.map{ |e| e[0].length }.max
+  pad2 = list.map{ |e| e[1].to_i.to_s.length + 4 }.max
+  list = list.map{ |e| "#{"%#{pad1}s" % e[0]} - #{"%#{pad2}.3f" % e[1]} - #{e[2]}" }.join("\n")
 
-  tabs = tabs.empty? ? "All " : format_tabs(tabs)
-  event << "#{tabs}#{cleanest ? "cleanest" : "dirtiest"} episodes #{format_time}:\n```#{cleanliness}```"
+  # Format response
+  tabs = tabs.empty? ? 'All ' : format_tabs(tabs)
+  event << "#{tabs} #{clean ? 'cleanest' : 'dirtiest'} episodes #{format_time}:".squish
+  event << format_block(list)
 end
 
+# Returns a list of episode ownages, i.e., episodes where the same player
+# has 0th in all 5 levels and the episode
 def send_ownages(event)
-  msg = event.content
+  # Parse message parameters
+  msg  = event.content
   tabs = parse_tabs(msg)
-  episodes = tabs.empty? ? Episode.all : Episode.where(tab: tabs)
 
+  # Retrieve ownages
   ownages = Episode.ownages(tabs)
-  list    = ownages.map{ |e, p| "#{"%7s" % e} - #{p}" }.join("\n")
+  pad     = ownages.map{ |e, p| e.length }.max
+  list    = ownages.map{ |e, p| "#{"%#{pad}s" % e} - #{p}" }.join("\n")
   count   = ownages.count
-  if count == 0
-    block = ""
-  elsif count <= 20
-    block = "```" + list + "```"
+  if count <= 20
+    block = list
   else
-    block = "```" + ownages.group_by{ |e, p| p }.map{ |p, o| "#{format_string(p)} - #{o.count}" }.join("\n") + "```"
+    block = ownages.group_by{ |e, p| p }.map{ |p, o| "#{format_string(p)} - #{o.count}" }.join("\n")
   end
 
-  tabs_s = tabs.empty? ? "All " : format_tabs(tabs)
-  tabs_e = tabs.empty? ? "" : format_tabs(tabs)
-  event << "#{tabs_s}episode ownages#{format_max(find_max(:rank, Episode, tabs))} #{format_time}:#{block}There're a total of #{count} #{tabs_e}episode ownages."
-  send_file(event, list, "ownages.txt") if count > 20
+  # Format response
+  tabs_h = tabs.empty? ? 'All ' : format_tabs(tabs)
+  tabs_f = tabs.empty? ? '' : format_tabs(tabs)
+  event << "#{tabs_h} episode ownages #{format_max(find_max(:rank, Episode, tabs))} #{format_time}:".squish
+  event << format_block(block) + "There're a total of #{count} #{tabs_f} episode ownages."
+  send_file(event, list, 'ownages.txt') if count > 20
 end
 
+# Return a list of a player's missing scores with specific characteristics
 def send_missing(event)
-  msg = event.content
+  # Parse message parameters
+  msg    = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg)
-  tabs = parse_tabs(msg)
-  rank = parse_rank(msg) || 20
-  ties = !!(msg =~ /ties/i)
+  type   = parse_type(msg)
+  tabs   = parse_tabs(msg)
+  rank   = parse_rank(msg) || 20
+  ties   = parse_ties(msg)
 
+  # Retrieve list of missing scores
   missing = player.missing_top_ns(type, tabs, rank, ties)
-  count = missing.count
+  count   = missing.count
   missing = missing.join("\n")
+
+  # Format response
   if count <= 20
     event << format_block(missing)
   else
@@ -542,99 +616,122 @@ def send_missing(event)
   end
 end
 
+# Return list of a player's most improvable scores, filtered by type and tab
 def send_suggestions(event)
-  msg = event.content
+  # Parse message parameters
+  msg    = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg)
-  tabs = parse_tabs(msg)
+  type   = parse_type(msg)
+  tabs   = parse_tabs(msg)
 
-  improvable = player.improvable_scores(type, tabs, NUM_ENTRIES)
-  padding = improvable.map{ |level, gap| gap }.max.to_i.to_s.length + 4
-  improvable = improvable.map { |level, gap| "#{'%-10s' % [level]} - #{"%#{padding}.3f" % [gap]}" }.join("\n")
+  # Retrieve and format most improvable scores
+  list = player.improvable_scores(type, tabs, NUM_ENTRIES)
+  pad1 = list.map{ |level, gap| level.length }.max
+  pad2 = list.map{ |level, gap| gap }.max.to_i.to_s.length + 4
+  list = list.map{ |level, gap| "#{"%-#{pad1}s" % [level]} - #{"%#{pad2}.3f" % [gap]}" }.join("\n")
 
+  # Send response
   tabs = format_tabs(tabs)
   type = format_type(type).downcase
-  event << "Most improvable #{tabs}#{type} scores for #{player.print_name}:\n#{format_block(improvable)}"
+  event << "Most improvable #{tabs} #{type} scores for #{player.print_name}:".squish
+  event << format_block(list)
 end
 
+# Return level ID for a specified level name
+# The parameter 'page' is for button page navigation when there are many results
 def send_level_id(event, page: nil)
+  # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  level  = parse_level_or_episode(msg, partial: true)
+  level   = parse_level_or_episode(msg, partial: true)
 
-  # Multiple matches
+  # Multiple matches, send match list
   if level.is_a?(Array)
     format_level_matches(event, msg, page, initial, level, 'search')
     return
   end
 
-  # Single match
+  # Single match, send ID if it's a level
   raise "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.longname} is level #{level.name}."
 end
 
+# Return level name for a specified level ID
 def send_level_name(event)
   level = parse_level_or_episode(event.content.gsub(/level/, ""))
   raise "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.name} is called #{level.longname}."
 end
 
-def send_points(event)
-  msg = event.content
+# Return a player's point count
+#   (a 0th is worth 20 points, a 1st is 19 points, all the way down to
+#    1 point for a 19th score)
+# Arguments:
+#   'avg'  we compute the average points, see method below
+#   'rank' we compute the average rank, which is just 20 - avg points
+def send_points(event, avg = false, rank = false)
+  # Parse message parameters
+  msg    = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg)
-  tabs = parse_tabs(msg)
-  points = player.points(type, tabs)
+  type   = parse_type(msg)
+  tabs   = parse_tabs(msg)
 
-  max  = find_max(:points, type, tabs)
+  # Retrieve player points, filtered by type and tabs
+  points = avg ? player.average_points(type, tabs) : player.points(type, tabs)
+
+  # Format and send response
+  max  = find_max(avg ? :avg_points : :points, type, tabs)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.print_name} has #{points} out of #{max} #{type} #{tabs}points."
+  if avg
+    if rank
+      event << "#{player.print_name} has an average #{tabs} #{type} rank of #{"%.3f" % [20 - points]}.".squish
+    else
+      event << "#{player.print_name} has #{"%.3f" % [points]} out of #{"%.3f" % max} average #{tabs} #{type} points.".squish
+    end
+  else
+    event << "#{player.print_name} has #{points} out of #{max} #{tabs} #{type} points.".squish
+  end
 end
 
+# Return a player's average point count
+# (i.e., total points divided by the number of scores, measures score quality)
 def send_average_points(event)
-  msg = event.content
-  player = parse_player(msg, event.user.name)
-  type = parse_type(msg)
-  tabs = parse_tabs(msg)
-  average = player.average_points(type, tabs)
-
-  max  = find_max(:avg_points, type, tabs)
-  type = format_type(type).downcase
-  tabs = format_tabs(tabs)
-  event << "#{player.print_name} has #{"%.3f" % [average]} out of #{"%.3f" % max} #{type} #{tabs}average points."
+  send_points(event, true)
 end
 
+# Return a player's average rank across all their scores, ideal quality measure
+# It's actually just 20 - average points
 def send_average_rank(event)
-  msg = event.content
-  player = parse_player(msg, event.user.name)
-  type = parse_type(msg)
-  tabs = parse_tabs(msg)
-  average = player.average_points(type, tabs)
-
-  type = format_type(type).downcase
-  tabs = format_tabs(tabs)
-  event << "#{player.print_name} has an average #{type} #{tabs}rank of #{"%.3f" % [20 - average]}."
+  send_points(event, true, true)
 end
 
+# Return a player's average 0th lead across all their 0ths
 def send_average_lead(event)
-  msg = event.content
+  # Parse message parameters
+  msg    = event.content
   player = parse_player(msg, event.user.name)
-  type = parse_type(msg) || Level
-  tabs = parse_tabs(msg)
+  type   = parse_type(msg) || Level
+  tabs   = parse_tabs(msg)
+
+  # Retrieve average 0th lead
   average = player.average_lead(type, tabs)
 
+  # Format and send response
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.print_name} has an average #{type} #{tabs}lead of #{"%.3f" % [average]}."
+  event << "#{player.print_name} has an average #{type} #{tabs} lead of #{"%.3f" % [average]}.".squish
 end
 
+# Return a table containing a certain measure (e.g. top20 count, points, etc)
+# and classifying it by type (columns) and tabs (rows)
 def send_table(event)
+  # Parse message parameters
   msg    = event.content
   player = parse_player(msg, event.user.name)
   range  = parse_range(msg)
-  global = false
-  ties   = !!(msg =~ /ties/i)
+  global = false # Table for a user, or the community
+  ties   = parse_ties(msg)
   avg    = !!(msg =~ /average/i)
 
   # The range must make sense
@@ -643,6 +740,7 @@ def send_table(event)
     return
   end
 
+  # Retrieve table (a matrix, first index is type, second index is tab)
   if avg
     if msg =~ /point/i
       table   = player.table(:avg_points, ties, nil, nil)
@@ -658,8 +756,8 @@ def send_table(event)
     table   = player.table(:score, ties, nil, nil)
     header  = "total score table"
   elsif msg =~ /tied/i
-    table   = player.table(:tied, ties, range[0], range[1])
-    header  = "tied #{rank.ordinalize} table"
+    table   = player.table(:tied_rank, ties, range[0], range[1])
+    header  = "tied #{format_range(range[0], range[1])} table"
   elsif msg =~ /maxed/i
     table   = player.table(:maxed, ties, nil, nil)
     header  = "maxed scores table"
@@ -673,7 +771,8 @@ def send_table(event)
     header  = "#{format_range(range[0], range[1])} table"
   end
 
-  # construct table
+  # Construct table. If it's an average measure, we need to retrieve the
+  # table of totals first, and then divide each cell.
   if avg
     scores = player.table(:rank, ties, 0, 20)
     totals = Level::tabs.map{ |tab, id|
@@ -688,7 +787,7 @@ def send_table(event)
     [format_tab(tab[0].to_sym), lvl, ep, avg ? wavg([lvl, ep], totals[i][1..2]) : lvl + ep]
   }
 
-  # format table
+  # Format table rows
   rows = []
   rows << ["", "Level", "Episode", "Total"]
   rows << :sep
@@ -709,88 +808,141 @@ def send_table(event)
       wavg(table.map(&:fourth), totals.map(&:fourth))
     ]
   end
+
+  # Send response
   player = global ? "" : "#{player.format_name.strip}'s "
-  event << "#{player}#{global ? header.capitalize : header} #{format_time}:```#{make_table(rows)}```"  
+  event << "#{player} #{global ? header.capitalize : header} #{format_time}:".squish
+  event << format_block(make_table(rows))
 end
 
+# Return score comparison between 2 players. Lists 5 categories:
+#   Scores which only P1 has
+#   Scores where P1 > P2
+#   Scores where P1 = P2
+#   Scores where P1 < P2
+#   Scores which only P2 has
+# Returns both the counts, as well as the list of scores in a file
 def send_comparison(event)
+  # Parse message parameters
   msg    = event.content
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
   p1, p2 = parse_players(msg, event.user.name)
+
+  # Retrieve comparison info
   comp   = Player.comparison(type, tabs, p1, p2)
   counts = comp.map{ |t| t.map{ |r, s| s.size }.sum }
 
-  header = "#{format_type(type)} #{format_tabs(tabs)}comparison between #{p1.truncate_name} and #{p2.truncate_name} #{format_time}:"
+  # Format message
+  header = "#{format_type(type)} #{format_tabs(tabs)} comparison between #{p1.truncate_name} and #{p2.truncate_name} #{format_time}:".squish
   rows = ["Scores with only #{p1.truncate_name}"]
   rows << "Scores where #{p1.truncate_name} > #{p2.truncate_name}"
   rows << "Scores where #{p1.truncate_name} = #{p2.truncate_name}"
   rows << "Scores where #{p1.truncate_name} < #{p2.truncate_name}"
   rows << "Scores with only #{p2.truncate_name}"
-  l = rows.map(&:length).max
-  table = rows.zip(counts).map{ |r, c| r.ljust(l) + " - " + c.to_s.rjust(4) }.join("\n")
-  list = (0..4).map{ |i|
-           rows[i] + ":\n\n" + comp[i].map{ |r, s|
-             s.map{ |e|
-               e.size == 2 ? format_pair(e) : format_entry(e)
-             }.join("\n")
-           }.join("\n") + "\n"
-         }.join("\n")
+  table = rows.zip(counts)
+  pad1  = table.map{ |row, count| row.length }.max
+  pad2  = table.map{ |row, count| numlen(count, false) }.max
+  table = table.map{ |r, c| "#{"%-#{pad1}s" % r} - #{"%#{pad2}d" % c}" }.join("\n")
 
-  event << header + "```" + table + "```"
+  # Format file
+  list = (0..4).map{ |i|
+    pad1 = comp[i].map{ |r, s| s.map{ |e| e.size == 2 ?  e[0][2].length :  e[2].length }.max }.max
+    pad2 = comp[i].map{ |r, s| s.map{ |e| e.size == 2 ? numlen(e[0][3]) : numlen(e[3]) }.max }.max
+    pad3 = comp[i].map{ |r, s| s.map{ |e| e.size == 2 ? numlen(e[1][3]) : numlen(e[3]) }.max }.max
+    rows[i] + ":\n\n" + comp[i].map{ |r, s|
+      s.map{ |e|
+        if e.size == 2
+          str = "#{"%-#{pad1}s" % e[0][2]} - "
+          str += "[#{"%02d" % e[0][0]}: #{"%#{pad2}.3f" % e[0][3]}] vs. "
+          str += "[#{"%02d" % e[1][0]}: #{"%#{pad3}.3f" % e[1][3]}]"
+          str
+        else
+          "#{"%02d" % e[0]}: #{"%-#{pad1}s" % e[2]} - #{"%#{pad2}.3f" % e[3]}"
+        end
+      }.join("\n")
+    }.join("\n") + "\n"
+  }.join("\n")
+
+  # Send response
+  event << header + format_block(table)
   send_file(event, list, "comparison-#{p1.sanitize_name}-#{p2.sanitize_name}.txt")
 end
 
+# Return an episode's partial level scores assuming the levels' 0th
+# (or, more generally, the levels' topN score) was done in an episode run
 def send_splits(event)
-  ep = parse_level_or_episode(event.content)
-  ep = Episode.find_by(name: ep.name[0..-4]) if ep.class == Level
-  raise "Columns can't be analyzed yet" if ep.class == Level
-  r = (parse_rank(event.content) || 1) - 1
+  # Parse message parameters
+  msg = event.content
+  r   = (parse_rank(msg) || 1) - 1
+  ep  = parse_level_or_episode(msg)
+  ep  = Episode.find_by(name: ep.name[0..-4])  if ep.class == Level
+  raise "Sorry, columns can't be analyzed yet." if ep.class == Story
+
+  # Retrieve splits
   splits = ep.splits(r)
   if splits.nil?
     event << "Sorry, that rank doesn't seem to exist for at least some of the levels."
     return
   end
 
+  # Send response
   clean = ep.cleanliness(r)[1]
-  rank = (r == 1 ? "1st" : (r == 2 ? "2nd" : (r == 3 ? "3rd" : "#{r}th")))
-  event << "#{rank} splits for episode #{ep.name}: `#{splits.map{ |s| "%.3f, " % s }.join[0..-3]}`."
-  event << "#{rank} time: `#{"%.3f" % ep.scores[r].score}`. #{rank} cleanliness: `#{"%.3f (%df)" % [clean, (60 * clean).round]}`."
+  rank  = r.ordinalize
+  str   = "#{rank} splits for episode #{ep.name}: "
+  str  += "`#{splits.map{ |s| "%.3f, " % s }.join[0..-3]}`.\n"
+  str  += "#{rank} time: `#{"%.3f" % ep.scores[r].score}`. "
+  str  += "#{rank} cleanliness: `#{"%.3f (%df)" % [clean, (60 * clean).round]}`."
+  event << str
 end
 
+# Return a list of random highscoreables
 def send_random(event)
+  # Parse message parameters
   msg    = event.content
   type   = parse_type(msg) || Level
   tabs   = parse_tabs(msg)
   amount = [msg[/\d+/].to_i || 1, NUM_ENTRIES].min
 
+  # Retrieve list of maps
   maps = tabs.empty? ? type.all : type.where(tab: tabs)
+
+  # Format and send response
   if amount > 1
-    event << "Random selection of #{amount} #{format_tabs(tabs)}#{format_type(type).downcase.pluralize}:"
-    event << "```" + maps.sample(amount).each_with_index.map{ |m, i| "#{"%2d" % i} - #{"%10s" % m.name}" }.join("\n") + "```"
+    tabs = format_tabs(tabs)
+    type = format_type(type).downcase.pluralize
+    event << "Random selection of #{amount} #{tabs} #{type}:".squish
+    event << format_block(maps.sample(amount).map(&:name).join("\n"))
   else
     map = maps.sample
     send_screenshot(event, map)
   end
 end
 
+# Return list of challenges for specified level, ordered and formatted as in the game
+# 'page' parameters controls button page navigation when there are many results
 def send_challenges(event, page: nil)
+  # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
   lvl     = parse_level_or_episode(msg, partial: true)
 
-  # Multiple matches
+  # Multiple matches, send match list
   if lvl.is_a?(Array)
     format_level_matches(event, msg, page, initial, lvl, 'search')
     return
   end
 
-  # Single match
+  # Single match, send challenge list if it's a non-secret level
   raise "#{lvl.class.to_s.pluralize.capitalize} don't have challenges!" if lvl.class != Level
   raise "#{lvl.tab.to_s} levels don't have challenges!" if ["SI", "SL"].include?(lvl.tab.to_s)
   event << "Challenges for #{lvl.longname} (#{lvl.name}):\n#{format_block(lvl.format_challenges)}"
 end
 
+# Return list of matches for specific level name query
+# Also the fallback for other functions when there are multiple matches
+# (e.g. scores, screenshot, challenges, level id, ...)
+# 'page' parameters controls button page navigation when there are many results
 def send_query(event, page: nil)
   initial = page.nil?
   msg     = fetch_message(event, initial)
@@ -798,6 +950,8 @@ def send_query(event, page: nil)
   format_level_matches(event, msg, page, initial, lvl, 'search')
 end
 
+# Auxiliar function called during lotd/eotw/cotm
+# Can also be called on demand by the botmaster
 def send_diff(event)
   assert_permissions(event)
   type = parse_type(event.content) || Level
@@ -809,10 +963,10 @@ def send_diff(event)
   event << "Score changes on #{current.format_name} since #{since}:\n```#{diff}```"
 end
 
+# Auxiliar function used by the demo analysis method
 def do_analysis(scores, rank)
   run      = scores.scores[rank]
   return nil if run.nil?
-
   analysis = run.demo.decode_demo
   {
     'player'   => run.player.name,
@@ -824,20 +978,25 @@ def do_analysis(scores, rank)
   }
 end
 
+# Return the demo analysis of a level's replay
 def send_analysis(event)
-  msg = event.content
+  # Parse message parameters
+  msg    = event.content
+  ranks  = parse_ranks(msg)
   scores = parse_level_or_episode(msg)
   raise "Episodes and columns can't be analyzed (yet)" if scores.is_a?(Episode) || scores.is_a?(Story)
-  ranks = parse_ranks(msg)
+
+  # Perform demo analysis
   analysis = ranks.map{ |rank| do_analysis(scores, rank) }.compact
-  length = analysis.map{ |a| a['analysis'].size }.max
+  length   = analysis.map{ |a| a['analysis'].size }.max
   raise "Connection failed" if !length || length == 0
-  padding = Math.log(length, 10).to_i + 1
-  table_header = " " * padding + "|" + "JRL|" * analysis.size
-  separation = "-" * table_header.size
+  padding  = Math.log(length, 10).to_i + 1
+  head     = " " * padding + "|" + "JRL|" * analysis.size
+  sep      = "-" * head.size
 
-  # 3 types of result formatting, only 2 being used.
-
+  # We format the result in 3 different ways, only 2 are being used though.
+  # Format 1 example:
+  #   R.R.R.JR.JR...
   raw_result = analysis.map{ |a|
     a['analysis'].map{ |b|
       [b % 2 == 1, b / 2 % 2 == 1, b / 4 % 2 == 1]
@@ -850,6 +1009,15 @@ def send_analysis(event)
     }.join(".")
   }.join("\n\n")
 
+  # Format 2 example:
+  #       |JRL|
+  #   ---------
+  #   0001| > |
+  #   0002| > |
+  #   0003| > |
+  #   0004|^> |
+  #   0005|^> |
+  #   ...
   table_result = analysis.map{ |a|
     table = a['analysis'].map{ |b|
       [b % 2 == 1 ? "^" : " ", b / 2 % 2 == 1 ? ">" : " ", b / 4 % 2 == 1 ? "<" : " "].push("|")
@@ -860,10 +1028,12 @@ def send_analysis(event)
    .transpose
    .each_with_index
    .map{ |l, i| "%0#{padding}d|#{l.join}" % [i + 1] }
-   .insert(0, table_header)
-   .insert(1, separation)
+   .insert(0, head)
+   .insert(1, sep)
    .join("\n")
 
+  # Format 3 example:
+  #   >>>//...
   key_result = analysis.map{ |a|
     a['analysis'].map{ |f|
       case f
@@ -881,23 +1051,44 @@ def send_analysis(event)
      .scan(/.{,60}/)
      .reject{ |f| f.empty? }
      .each_with_index
-     .map{ |f, i| "%0#{padding}d #{f}" % [60*i] }
+     .map{ |f, i| "%0#{padding}d #{f}" % [60 * i] }
      .join("\n")
   }.join("\n\n")
 
-  properties = "```" + analysis.map{ |a|
-    "[#{format_string(a['player'])}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
-  }.join("\n") + "```"
-  explanation = "[**-** Nothing, **^** Jump, **>** Right, **<** Left, **/** Right Jump, **\\\\** Left Jump, **≤** Left Right, **|** Left Right Jump]"
-  header = "Replay analysis for #{scores.format_name} #{format_time}.\n#{properties}\n#{explanation}"
+  # Format response
+  #   - Digest of runs' properties (length, score, gold collected, etc)
+  pad = analysis.map{ |a| a['player'].length }.max
+  properties = format_block(
+    analysis.map{ |a|
+      "[#{format_string(a['player'], pad)}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
+    }.join("\n")
+  )
+  #  - Summary of symbols' meaning
+  codes = {
+    '-'    => 'Nothing',
+    '^'    => 'Jump',
+    '>'    => 'Right',
+    '<'    => 'Left',
+    '/'    => 'Right Jump',
+    '\\\\' => 'Left Jump',
+    '≤'    => 'Left Right',
+    '|'    => 'Left Right Jump'
+  }
+  explanation = "[#{codes.map{ |code, meaning| "**#{code}** #{meaning}" }.join(', ')}]"
+  #  - Header of message, and final result (format 2 only used if short enough)
+  header = "Replay analysis for #{scores.format_name} #{format_time}.".squish
+  result = "#{header}\n#{properties}#{explanation}"
+  result += format_block(key_result) unless analysis.sum{ |a| a['analysis'].size } > 1080
 
-  result = "#{header}"
-  result += "```#{key_result}```" unless analysis.sum{ |a| a['analysis'].size } > 1080
-  if result.size > DISCORD_LIMIT then result = result[0..DISCORD_LIMIT - 7] + "...```" end
-  event << "#{result}"
+  # Send response
+  event << result
   send_file(event, table_result, "analysis-#{scores.name}.txt")
 end
 
+# Sends a PNG graph plotting the evolution of player's scores (e.g. top20 count,
+# 0th count, points...) over time.
+# Currently unavailable because the db structure changed between CCS and Eddy
+# See the subsequent method for the old code
 def send_history(event)
   event << "Function not available yet, restructuring being done."
 end

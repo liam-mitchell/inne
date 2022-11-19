@@ -92,7 +92,7 @@ module HighScore
       lnames = type.where(id: ret.keys)
                    .pluck(:id, :name)
                    .to_h
-      ret = ret.map{ |id, c| [lnames[id], c, pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+      ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
     end
     bench(:step) if BENCHMARK
     ret
@@ -899,7 +899,7 @@ class Player < ActiveRecord::Base
   end
 
   def missing_top_ns(type, tabs, n, ties)
-    type = [Level, Episode] if type.nil?
+    type = DEFAULT_TYPES.map(&:constantize) if type.nil?
     bench(:start) if BENCHMARK
     scores = [type].flatten.map{ |t|
       ids = top_ns(n, t, tabs, ties).pluck(:highscoreable_id)
@@ -1018,7 +1018,7 @@ class Player < ActiveRecord::Base
         HighScore.ties(type, [], nil, true, false)
                  .select{ |t| t[1] == t[2] }
                  .group_by{ |t| t[0].split("-")[0] }
-                 .map{ |tab, scores| [normalize_tab(tab), scores.size] }
+                 .map{ |tab, scores| [formalize_tab(tab), scores.size] }
                  .to_h
       when :maxable
         HighScore.ties(type, [], nil, false, false)

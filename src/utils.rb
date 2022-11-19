@@ -169,6 +169,10 @@ def set_avatar(str)
   GlobalProperty.find_by(key: 'avatar').update(value: str)
 end
 
+def numlen(n, float = true)
+  n.to_i.to_s.length + (float ? 4 : 0)
+end
+
 # Permission system:
 #   Support for different roles (unrelated to Discord toles). Each role can
 #   be determined by whichever system we choose (Discord user IDs, Discord
