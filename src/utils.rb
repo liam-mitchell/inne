@@ -1,5 +1,6 @@
 # Library of general functions useful throughout the program
 
+require 'active_record'
 require_relative 'constants.rb'
 ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 

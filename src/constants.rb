@@ -183,6 +183,8 @@ RTYPES = [
   'top10',
   'top20',
   'average_rank',
+  'cool',
+  'star',
   'tied_top1',
   'singular_top1',
   'plural_top1',

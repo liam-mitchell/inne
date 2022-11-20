@@ -597,6 +597,18 @@ class Score < ActiveRecord::Base
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
+    when :cool
+      scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
+                     .where(cool: true)
+                     .group(:player_id)
+                     .order("count(id) desc")
+                     .count(:id)
+    when :star
+      scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
+                     .where(star: true)
+                     .group(:player_id)
+                     .order("count(id) desc")
+                     .count(:id)
     end
 
     scores = scores.take(NUM_ENTRIES) if !full

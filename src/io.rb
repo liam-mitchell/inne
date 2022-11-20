@@ -415,9 +415,9 @@ def parse_rtype(msg)
     'point'
   elsif !!msg[/score/i]
     'score'
-  elsif !!msg[/singular/i]
+  elsif parse_singular(msg)
     'singular_top1'
-  elsif !!msg[/plural/i]
+  elsif parse_plural(msg)
     'plural_top1'
   elsif !!msg[/tied/i]
     'tied_top1'
@@ -425,6 +425,10 @@ def parse_rtype(msg)
     'maxed_top1'
   elsif !!msg[/maxable/i]
     'maxable_top1'
+  elsif parse_cool(msg)
+    'cool'
+  elsif parse_star(msg)
+    'star'
   else
     'top'
   end
@@ -626,7 +630,7 @@ end
 
 def format_rtype(rtype, rank = nil, ties = false)
   rtype = format_rank(rank || rtype[/\d+/i] || 1) if rtype[0..2] == 'top'
-  rtype = rtype.gsub('top1', '0th').tr('_', ' ')
+  rtype = rtype.gsub('top1', '0th').gsub('star', '*').tr('_', ' ')
   "#{rtype} rankings #{format_ties(ties)}"
 end
 

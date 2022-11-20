@@ -94,7 +94,8 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   type  = parse_type(msg, type, true, initial)
   tabs  = parse_tabs(msg, tab)
   rtype = rtype || parse_rtype(msg)
-  rank  = parse_rank(rtype) || parse_rank(msg) || 1
+  whole = ['cool', 'star'].include?(rtype) # default rank is top20, not top1 (0th)
+  rank  = parse_range(rtype, whole)[1] || parse_range(msg, whole)[1]
   ties  = !ties.nil? ? ties : parse_ties(msg, rtype)
   play  = parse_many_players(msg)
   nav   = parse_nav(msg) || !initial
@@ -134,6 +135,12 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   when 'maxable_top1'
     rankings = Score.rank(:maxable, type, tabs, nil, nil, full, play)
     max      = find_max(:maxable, type, tabs, !initial)
+  when 'cool'
+    rankings = Score.rank(:cool, type, tabs, ties, rank - 1, full, play)
+    max      = find_max(:rank, type, tabs, !initial)
+  when 'star'
+    rankings = Score.rank(:star, type, tabs, ties, rank - 1, full, play)
+    max      = find_max(:rank, type, tabs, !initial)
   else
     rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full, play)
     max      = find_max(:rank, type, tabs, !initial)
@@ -148,7 +155,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   min = "Minimum number of scores required: #{min_scores(type, tabs, !initial)}" if ['average_rank', 'average_point'].include?(rtype)
   #   Header
   tabs = format_tabs(tabs)
-  header = "Rankings - #{format_full(full).capitalize}"
+  header = "Rankings - #{format_full(full).capitalize} "
   header += full ? format_type(type, true).downcase : format_type(type, true)
   header += " #{tabs} #{format_rtype(rtype, nil, ties)} #{format_max(max)}"
   header += " without " + play.map(&:name).to_sentence if !play.empty?
