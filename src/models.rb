@@ -922,15 +922,19 @@ class Player < ActiveRecord::Base
     scores
   end
 
-  def improvable_scores(type, tabs, n)
+  def improvable_scores(type, tabs, a = 0, b = 20, ties = false, cool = false, star = false)
     type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
-    ids = scores_by_type_and_tabs(type, tabs).pluck(:highscoreable_id, :score).to_h
+    rtype = ties ? 'tied_rank' : 'rank'
+    ids = scores_by_type_and_tabs(type, tabs).where("#{rtype} >= #{a} AND #{rtype} < #{b}")
+    ids = ids.where(cool: true) if cool
+    ids = ids.where(star: true) if star
+    ids = ids.pluck(:highscoreable_id, :score).to_h
     ret = Score.where(highscoreable_type: type.to_s, highscoreable_id: ids.keys, rank: 0)
     ret = ret.pluck(:highscoreable_id, :score)
              .map{ |id, s| [id, s - ids[id]] }
              .sort_by{ |s| -s[1] }
-             .take(n)
+             .take(NUM_ENTRIES)
              .map{ |id, s| [type.find(id).name, s] }
     bench(:step) if BENCHMARK
     ret

@@ -269,7 +269,6 @@ def send_scores(event, map = nil, ret = false, page: nil)
   initial = page.nil?
   msg     = fetch_message(event, initial)
   scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
-  msg     = msg.remove(scores.class == Level ? scores.longname : scores.name)
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
   res     = ""
@@ -618,17 +617,25 @@ def send_suggestions(event)
   player = parse_player(msg, event.user.name)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
+  cool   = parse_cool(msg)
+  star   = parse_star(msg)
+  range  = parse_range(msg, true)
+  ties   = parse_ties(msg)
 
   # Retrieve and format most improvable scores
-  list = player.improvable_scores(type, tabs, NUM_ENTRIES)
+  list = player.improvable_scores(type, tabs, range[0], range[1], ties, cool, star)
   pad1 = list.map{ |level, gap| level.length }.max
   pad2 = list.map{ |level, gap| gap }.max.to_i.to_s.length + 4
   list = list.map{ |level, gap| "#{"%-#{pad1}s" % [level]} - #{"%#{pad2}.3f" % [gap]}" }.join("\n")
 
   # Send response
-  tabs = format_tabs(tabs)
-  type = format_type(type).downcase
-  event << "Most improvable #{tabs} #{type} scores for #{player.print_name}:".squish
+  tabs  = format_tabs(tabs)
+  type  = format_type(type).downcase
+  cool  = format_cool(cool)
+  star  = format_star(star)
+  range = format_range(range[0], range[1])
+  ties  = format_ties(ties)
+  event << "Most improvable #{cool} #{star} #{tabs} #{type} #{range} scores #{ties} for #{player.print_name}:".squish
   event << format_block(list)
 end
 
@@ -1678,7 +1685,7 @@ def respond(event)
   send_screenshot(event)     if msg =~ /screenshot/i
   send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
   send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
-  send_suggestions(event)    if msg =~ /worst/i && msg !~ /nightmare/i
+  send_suggestions(event)    if (msg =~ /\bworst\b/i && msg !~ /\bnightmare\b/i) || msg =~ /\bimprovable\b/i
   send_list(event)           if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
   send_missing(event)        if msg =~ /missing/i
   send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i && msg !~ /table/i

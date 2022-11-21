@@ -62,7 +62,7 @@ Eddy's TODO list for inne:
 - modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names
 - add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
 - add "suggestions" command (random selection of scores the player doesn't have)
-- HIGHSCORE UNMAXED SU-B-15-04
+- allow cool + star to be used
 
 \\ ------------------------ Cool ------------------------
 
