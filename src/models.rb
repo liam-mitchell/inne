@@ -1038,7 +1038,19 @@ class Player < ActiveRecord::Base
                  .select{ |t| t[1] < t[2] }  
                  .group_by{ |t| t[0].split("-")[0] }
                  .map{ |tab, scores| [formalize_tab(tab), scores.size] }
-                 .to_h   
+                 .to_h
+      when :cool
+        scores.where(highscoreable_type: type, cool: true)
+              .where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
+              .group(:tab)
+              .count(:id)
+              .to_h
+      when :star
+        scores.where(highscoreable_type: type, star: true)
+              .where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
+              .group(:tab)
+              .count(:id)
+              .to_h
       else
         scores.where(highscoreable_type: type).group(:tab).count(:id).to_h
       end

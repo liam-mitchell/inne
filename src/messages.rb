@@ -724,7 +724,9 @@ def send_table(event)
   # Parse message parameters
   msg    = event.content
   player = parse_player(msg, event.user.name)
-  range  = parse_range(msg)
+  cool   = parse_cool(msg)
+  star   = parse_star(msg)
+  range  = parse_range(msg, cool || star)
   global = false # Table for a user, or the community
   ties   = parse_ties(msg)
   avg    = !!(msg =~ /average/i)
@@ -737,30 +739,36 @@ def send_table(event)
 
   # Retrieve table (a matrix, first index is type, second index is tab)
   if avg
-    if msg =~ /point/i
+    if msg =~ /\bpoint\b/i
       table   = player.table(:avg_points, ties, nil, nil)
       header  = "average points table"
     else
       table   = player.table(:avg_rank, ties, nil, nil)
       header  = "average rank table"
     end
-  elsif msg =~ /point/i
+  elsif msg =~ /\bpoint\b/i
     table   = player.table(:points, ties, nil, nil)
     header  = "points table"
-  elsif msg =~ /score/i
+  elsif msg =~ /\bscore\b/i
     table   = player.table(:score, ties, nil, nil)
     header  = "total score table"
-  elsif msg =~ /tied/i
+  elsif msg =~ /\btied\b/i
     table   = player.table(:tied_rank, ties, range[0], range[1])
-    header  = "tied #{format_range(range[0], range[1])} table"
-  elsif msg =~ /maxed/i
+    header  = "tied #{format_range(range[0], range[1])} scores table"
+  elsif msg =~ /\bmaxed\b/i
     table   = player.table(:maxed, ties, nil, nil)
     header  = "maxed scores table"
     global  = true
-  elsif msg =~ /maxable/i
+  elsif msg =~ /\bmaxable\b/i
     table   = player.table(:maxable, ties, nil, nil)
     header  = "maxable scores table"
     global  = true
+  elsif cool
+    table   = player.table(:cool, ties, range[0], range[1])
+    header  = "cool #{format_range(range[0], range[1])} scores table"
+  elsif star
+    table   = player.table(:star, ties, range[0], range[1])
+    header  = "star #{format_range(range[0], range[1])} scores table"
   else
     table   = player.table(:rank, ties, range[0], range[1])
     header  = "#{format_range(range[0], range[1])} table"
