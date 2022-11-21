@@ -12,7 +12,9 @@ require_relative 'userlevels.rb'
 # Prints list of scores for a specific player within the specified range
 # If 'file' is true, we return the list in a file, otherwise, we just
 # print the score count (see next method)
-def send_list(event, file = true)
+# If 'missing' is true, we return the complementary list, i.e., the scores
+# which are NOT within the specified range, or are missing altogether
+def send_list(event, file: true, missing: false)
   # Parse message parameters
   msg    = event.content
   player = parse_player(msg, event.user.name)
@@ -21,11 +23,11 @@ def send_list(event, file = true)
   tabs   = parse_tabs(msg)
   cool   = parse_cool(msg)
   star   = parse_star(msg)
-  range  = parse_range(msg, cool || star ? true : false)
+  range  = parse_range(msg, cool || star || missing ? true : false)
   ties   = parse_ties(msg)
   tied   = parse_tied(msg)
-  sing   = parse_singular(msg)
-  plur   = parse_plural(msg)
+  sing   = (parse_singular(msg) && !missing) || (parse_plural(msg) && missing)
+  plur   = (parse_plural(msg) && !missing) || (parse_singular(msg) && missing)
 
   # The range must make sense
   if !range[2]
@@ -39,20 +41,24 @@ def send_list(event, file = true)
   elsif plur
     list = player.singular(type, tabs, true)
   elsif cool
-    list = player.cools(type, tabs, range[0], range[1], ties)
+    list = player.cools(type, tabs, range[0], range[1], ties, missing)
   elsif star
-    list = player.stars(type, tabs, range[0], range[1], ties)
+    list = player.stars(type, tabs, range[0], range[1], ties, missing)
   else
-    list = player.range_ns(range[0], range[1], type, tabs, ties, tied)
+    list = player.range_ns(range[0], range[1], type, tabs, ties, tied, missing)
   end
 
   # Format response
-  max   = find_max(:rank, type, tabs)
+  max1  = find_max(:rank, type, tabs)
+  max2  = player.range_ns(range[0], range[1], type, tabs, ties, tied).count
+  full  = !missing || !(cool || star)
+  high  = missing && !(sing || plur || cool || star)
+  max   = full ? max1 : max2
   type  = format_type(type).downcase
   tabs  = format_tabs(tabs)
   range = format_range(range[0], range[1], sing || plur)
-  sing  = format_singular(sing)
-  plur  = format_plural(plur)
+  sing  = format_singular(missing ? !sing : sing)
+  plur  = format_plural(missing ? !plur : plur)
   cool  = format_cool(cool)
   star  = format_star(star)
   ties  = format_ties(ties)
@@ -60,9 +66,9 @@ def send_list(event, file = true)
   count = list.count
 
   # Print count and possibly export list in file
-  event << "#{player.print_name} has #{count} out of #{max} #{tied} #{tabs} #{type} #{cool} #{star} #{range} scores #{ties}".squish + '.'
+  event << "#{player.print_name} #{missing ? 'is missing' : 'has'} #{count} out of #{max} #{tied} #{tabs} #{type} #{cool} #{star} #{range} #{sing} #{plur} scores #{ties}".squish + '.'
   if file
-    list = list.map{ |s| format_list_score(s) }.join("\n")
+    list = list.map{ |s| high ? s : format_list_score(s) }.join("\n")
     if count <= 20
       event << format_block(list)
     else
@@ -73,7 +79,12 @@ end
 
 # Prints total count of player's scores within a specific rank range
 def send_top_n_count(event)
-  send_list(event, false)
+  send_list(event, file: false) unless !!event.content[/\bmissing\b/i]
+end
+
+# Return a list of a player's missing scores with specific characteristics
+def send_missing(event)
+  send_list(event, file: !event.content[/\bhow many\b/i], missing: true)
 end
 
 # Return list of players sorted by a number of different ranking types
@@ -598,29 +609,6 @@ def send_ownages(event)
   event << "#{tabs_h} episode ownages #{format_max(find_max(:rank, Episode, tabs))} #{format_time}:".squish
   event << format_block(block) + "There're a total of #{count} #{tabs_f} episode ownages."
   send_file(event, list, 'ownages.txt') if count > 20
-end
-
-# Return a list of a player's missing scores with specific characteristics
-def send_missing(event)
-  # Parse message parameters
-  msg    = event.content
-  player = parse_player(msg, event.user.name)
-  type   = parse_type(msg)
-  tabs   = parse_tabs(msg)
-  rank   = parse_rank(msg) || 20
-  ties   = parse_ties(msg)
-
-  # Retrieve list of missing scores
-  missing = player.missing_top_ns(type, tabs, rank, ties)
-  count   = missing.count
-  missing = missing.join("\n")
-
-  # Format response
-  if count <= 20
-    event << format_block(missing)
-  else
-    send_file(event, missing, "missing-#{player.sanitize_name}.txt", false)
-  end
 end
 
 # Return list of a player's most improvable scores, filtered by type and tab

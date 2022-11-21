@@ -873,7 +873,8 @@ class Player < ActiveRecord::Base
     scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} < #{n}")
   end
 
-  def range_ns(a, b, type, tabs, ties, tied = false)
+  def range_ns(a, b, type, tabs, ties, tied = false, missing = false)
+    return missing(type, tabs, a, b, ties, tied) if missing
     if tied
       q = "tied_rank >= #{a} AND tied_rank < #{b} AND NOT (rank >= #{a} AND rank < #{b})"
     else
@@ -883,12 +884,12 @@ class Player < ActiveRecord::Base
     scores_by_type_and_tabs(type, tabs).where(q)
   end
 
-  def cools(type, tabs, r1 = 0, r2 = 20, ties = false)
-    range_ns(r1, r2, type, tabs, ties).where(cool: true)
+  def cools(type, tabs, r1 = 0, r2 = 20, ties = false, missing = false)
+    range_ns(r1, r2, type, tabs, ties).where(cool: !missing)
   end
 
-  def stars(type, tabs, r1 = 0, r2 = 20, ties = false)
-    range_ns(r1, r2, type, tabs, ties).where(star: true)
+  def stars(type, tabs, r1 = 0, r2 = 20, ties = false, missing = false)
+    range_ns(r1, r2, type, tabs, ties).where(star: !missing)
   end
 
   def scores_by_rank(type, tabs, r1 = 0, r2 = 20)
@@ -910,11 +911,11 @@ class Player < ActiveRecord::Base
     counts
   end
 
-  def missing_top_ns(type, tabs, n, ties)
+  def missing(type, tabs, a, b, ties, tied = false)
     type = DEFAULT_TYPES.map(&:constantize) if type.nil?
     bench(:start) if BENCHMARK
     scores = [type].flatten.map{ |t|
-      ids = top_ns(n, t, tabs, ties).pluck(:highscoreable_id)
+      ids = range_ns(a, b, t, tabs, ties, tied, false).pluck(:highscoreable_id)
       (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).order(:id).pluck(:name)
     }.flatten
     bench(:step) if BENCHMARK
