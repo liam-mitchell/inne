@@ -18,7 +18,6 @@ Eddy's TODO list for inne:
 - Add "ownage" and others to "table".
 - In "spread", when nth score doesn't exist, just take the last one. Apply to userlevels version too.
 - Perhaps add rank to how many function, i.e. "username has n/N top20 scores (ranked kth)".
-- Use "parse_range" for rankings, and maybe others too.
 - Report: Add # of 0ths, i.e., "• There were 23 new scores by 9 players in 18 levels, making the boards 15.083 seconds harder including X new 0ths increasing the total 0th score by 1.050 seconds."
 - Save how many times each streamer has streamed the game, and perhaps indicate it somehow if it's among the top ones (dope gamer alert!)
 - For secret levels, also parse old level names (e.g. ?-X-02-03), probably using a new field, filled only for secret levels.
@@ -46,15 +45,12 @@ Eddy's TODO list for inne:
   * kk's suggestion: nav bar for matches, navigate screenies etc
 - Userlevel tabs not working correctly? (dupped levels in top weekly, what about featured, etc)
 - Handle cheaters within database (rather than via hardcoding in source code), have botmaster function to add cheaters, etc
-- Fix secondary order for rankings (e.g. alphabetical or ID), otherwise weird things can happen during page navigation (since rankings get re-computed)
 - If no author results, truncate to first 16 chars and try again.
 - Histograms of userlevels played by ID (perhaps also chart anything, e.g. 0ths, top10s, parse_range)
 - Analysis:
   * Use framecount and gold fields from archives table, rather than computing it again
   * Implement for episodes and stories
 - "percent" for table
-- maxed table doesn't show zenny, so missing ? and ! perhaps
-- bottom (i.e. parse_range) in rank, table...
 - fix hc replays in db (I'm only saving the first 25, but deaths are included)
 - hc cleanliness and others
 - maybe modify function 'nav' from 'HighScore' module to allow for arbitrary offsets, and have some special sign to denote 'first' and 'last'
@@ -62,13 +58,11 @@ Eddy's TODO list for inne:
 - add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
 - add "suggestions" command (random selection of scores the player doesn't have)
 - allow "missing" parameter in table, just like in "how many" or "list"
-
-
-\\ ------------------------ Cool ------------------------
-
-- CKC rankings, both normal (counting) and weighed by the number of cool kids in each board (obviously, with type and tab as parameters).
-- Total coolness (“how cool is username” and the response be something like “username is the nth coolest ninja with X out of X cool scores”)
-- Number of levels with n cool kids (1-20, a-la stats), list of levels with n cool kids
+- use Score.filter with a Player for some of the Player methods, like range_ns, improvable, table...
+- Coolness:
+  * Add function to count levels with 1, 2, ... 19/20 cool/* scores, and optionally list them too
+  * Total coolness (“how cool is username” and the response be something like “username is the nth coolest ninja with X out of X cool scores”)
+  * CKC rankings weighed by the number of cool kids in each board
 
 
 \\ ------------------------ Art ------------------------
