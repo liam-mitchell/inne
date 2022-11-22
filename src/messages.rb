@@ -23,11 +23,10 @@ def send_list(event, file: true, missing: false)
   tabs   = parse_tabs(msg)
   cool   = parse_cool(msg)
   star   = parse_star(msg)
-  range  = parse_range(msg, cool || star || missing ? true : false)
+  range  = parse_range(msg, cool || star || missing)
   ties   = parse_ties(msg)
   tied   = parse_tied(msg)
-  sing   = (parse_singular(msg) && !missing) || (parse_plural(msg) && missing)
-  plur   = (parse_plural(msg) && !missing) || (parse_singular(msg) && missing)
+  sing   = (missing ? -1 : 1) * parse_singular(msg)
 
   # The range must make sense
   if !range[2]
@@ -36,29 +35,22 @@ def send_list(event, file: true, missing: false)
   end
 
   # Retrieve score count with specified characteristics
-  if sing
-    list = player.singular(type, tabs, false)
-  elsif plur
-    list = player.singular(type, tabs, true)
-  elsif cool
-    list = player.cools(type, tabs, range[0], range[1], ties, missing)
-  elsif star
-    list = player.stars(type, tabs, range[0], range[1], ties, missing)
+  if sing != 0
+    list = player.singular(type, tabs, sing == 1 ? false : true)
   else
-    list = player.range_ns(range[0], range[1], type, tabs, ties, tied, missing)
+    list = player.range_ns(range[0], range[1], type, tabs, ties, tied, cool, star, missing)
   end
 
   # Format response
   max1  = find_max(:rank, type, tabs)
   max2  = player.range_ns(range[0], range[1], type, tabs, ties, tied).count
-  full  = !missing || !(cool || star)
-  high  = missing && !(sing || plur || cool || star)
+  full  = !missing || !(cool || star) # max is all scores, not all player's scores
+  high  = missing && !(sing != 0 || cool || star) # list of highscoreables, not scores
   max   = full ? max1 : max2
   type  = format_type(type).downcase
   tabs  = format_tabs(tabs)
-  range = format_range(range[0], range[1], sing || plur)
-  sing  = format_singular(missing ? !sing : sing)
-  plur  = format_plural(missing ? !plur : plur)
+  range = format_range(range[0], range[1], sing != 0) # WHY boolean ???
+  sing  = format_singular((missing ? -1 : 1) * sing)
   cool  = format_cool(cool)
   star  = format_star(star)
   ties  = format_ties(ties)
@@ -66,7 +58,7 @@ def send_list(event, file: true, missing: false)
   count = list.count
 
   # Print count and possibly export list in file
-  event << "#{player.print_name} #{missing ? 'is missing' : 'has'} #{count} out of #{max} #{tied} #{tabs} #{type} #{cool} #{star} #{range} #{sing} #{plur} scores #{ties}".squish + '.'
+  event << "#{player.print_name} #{missing ? 'is missing' : 'has'} #{count} out of #{max} #{cool} #{tied} #{tabs} #{type} #{range}#{star} #{sing} scores #{ties}".squish + '.'
   if file
     list = list.map{ |s| high ? s : format_list_score(s) }.join("\n")
     if count <= 20
@@ -733,56 +725,52 @@ def send_table(event)
   player = parse_player(msg, event.user.name)
   cool   = parse_cool(msg)
   star   = parse_star(msg)
-  range  = parse_range(msg, cool || star)
   global = false # Table for a user, or the community
   ties   = parse_ties(msg)
-  avg    = !!(msg =~ /average/i)
+  avg    = !!(msg =~ /\baverage\b/i) || !!(msg =~ /\bavg\b/i)
+  rtype = :rank
+  if avg
+    if msg   =~ /\bpoint\b/i
+      rtype  = :avg_points
+      header = "average points"
+    else
+      rtype  = :avg_rank
+      header = "average rank"
+    end
+  elsif msg  =~ /\bpoint/i
+    rtype    = :points
+    header   = "points"
+  elsif msg  =~ /\bscore/i
+    rtype    = :score
+    header   = "total scores"
+  elsif msg  =~ /\btied\b/i
+    rtype    = :tied_rank
+    header   = "tied scores"
+  elsif msg  =~ /\bmaxed/i
+    rtype    = :maxed
+    header   = "maxed scores"
+    global   = true
+  elsif msg  =~ /\bmaxable/i
+    rtype    = :maxable
+    header   = "maxable scores"
+    global   = true
+  else
+    rtype    = :rank
+    header   = "scores"
+  end
+  range = parse_range(msg, cool || star || rtype != :rank)
 
   # The range must make sense
   if !range[2]
     event << "You specified an empty range! (#{format_range(range[0], range[1])})"
     return
   end
-
+  
   # Retrieve table (a matrix, first index is type, second index is tab)
-  if avg
-    if msg =~ /\bpoint\b/i
-      table   = player.table(:avg_points, ties, nil, nil)
-      header  = "average points table"
-    else
-      table   = player.table(:avg_rank, ties, nil, nil)
-      header  = "average rank table"
-    end
-  elsif msg =~ /\bpoint\b/i
-    table   = player.table(:points, ties, nil, nil)
-    header  = "points table"
-  elsif msg =~ /\bscore\b/i
-    table   = player.table(:score, ties, nil, nil)
-    header  = "total score table"
-  elsif msg =~ /\btied\b/i
-    table   = player.table(:tied_rank, ties, range[0], range[1])
-    header  = "tied #{format_range(range[0], range[1])} scores table"
-  elsif msg =~ /\bmaxed\b/i
-    table   = player.table(:maxed, ties, nil, nil)
-    header  = "maxed scores table"
-    global  = true
-  elsif msg =~ /\bmaxable\b/i
-    table   = player.table(:maxable, ties, nil, nil)
-    header  = "maxable scores table"
-    global  = true
-  elsif cool
-    table   = player.table(:cool, ties, range[0], range[1])
-    header  = "cool #{format_range(range[0], range[1])} scores table"
-  elsif star
-    table   = player.table(:star, ties, range[0], range[1])
-    header  = "star #{format_range(range[0], range[1])} scores table"
-  else
-    table   = player.table(:rank, ties, range[0], range[1])
-    header  = "#{format_range(range[0], range[1])} table"
-  end
+  table = player.table(rtype, ties, range[0], range[1], cool, star)
 
   # Construct table. If it's an average measure, we need to retrieve the
-  # table of totals first, and then divide each cell.
+  # table of totals first to do the weighed averages.
   if avg
     scores = player.table(:rank, ties, 0, 20)
     totals = Level::tabs.map{ |tab, id|
@@ -794,7 +782,12 @@ def send_table(event)
   table = Level::tabs.each_with_index.map{ |tab, i|
     lvl = table[0][tab[0]] || 0
     ep  = table[1][tab[0]] || 0
-    [format_tab(tab[0].to_sym), lvl, ep, avg ? wavg([lvl, ep], totals[i][1..2]) : lvl + ep]
+    [
+      format_tab(tab[0].to_sym),
+      avg ? lvl : round_score(lvl),
+      avg ? ep : round_score(ep),
+      avg ? wavg([lvl, ep], totals[i][1..2]) : round_score(lvl + ep)
+    ]
   }
 
   # Format table rows
@@ -820,6 +813,11 @@ def send_table(event)
   end
 
   # Send response
+  cool  = format_cool(cool)
+  star  = format_star(star)
+  ties  = format_ties(ties)
+  range = format_range(range[0], range[1], [:maxed, :maxable].include?(rtype))
+  header = "#{cool} #{range}#{star} #{header} #{ties} table".squish
   player = global ? "" : "#{player.format_name.strip}'s "
   event << "#{player} #{global ? header.capitalize : header} #{format_time}:".squish
   event << format_block(make_table(rows))

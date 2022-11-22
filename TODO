@@ -54,7 +54,6 @@ Eddy's TODO list for inne:
   * Implement for episodes and stories
 - "percent" for table
 - maxed table doesn't show zenny, so missing ? and ! perhaps
-- cool and star in worst, suggestions...
 - bottom (i.e. parse_range) in rank, table...
 - fix hc replays in db (I'm only saving the first 25, but deaths are included)
 - hc cleanliness and others
@@ -62,7 +61,8 @@ Eddy's TODO list for inne:
 - modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names
 - add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
 - add "suggestions" command (random selection of scores the player doesn't have)
-- allow cool + star to be used
+- allow "missing" parameter in table, just like in "how many" or "list"
+
 
 \\ ------------------------ Cool ------------------------
 

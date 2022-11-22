@@ -153,7 +153,7 @@ end
 
 # round float to nearest frame
 def round_score(score)
-  (score * 60).round / 60.0
+  score.is_a?(Integer) ? score : (score * 60).round / 60.0
 end
 
 # weighed average

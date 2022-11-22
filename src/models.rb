@@ -873,15 +873,22 @@ class Player < ActiveRecord::Base
     scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} < #{n}")
   end
 
-  def range_ns(a, b, type, tabs, ties, tied = false, missing = false)
-    return missing(type, tabs, a, b, ties, tied) if missing
+  # If we're asking for missing 'cool' or 'star' scores, we actually take the
+  # scores the player HAS which are missing the cool/star badge.
+  # Otherwise, missing includes all the scores the player DOESN'T have.
+  def range_ns(a, b, type, tabs, ties, tied = false, cool = false, star = false, missing = false)
+    return missing(type, tabs, a, b, ties, tied) if missing && !cool && !star
     if tied
       q = "tied_rank >= #{a} AND tied_rank < #{b} AND NOT (rank >= #{a} AND rank < #{b})"
     else
       rank_type = ties ? "tied_rank" : "rank"
       q = "#{rank_type} >= #{a} AND #{rank_type} < #{b}"
     end
-    scores_by_type_and_tabs(type, tabs).where(q)
+    ret = scores_by_type_and_tabs(type, tabs).where(q)
+    ret = ret.where("#{missing ? 'NOT ' : ''}(cool = 1 AND star = 1)") if cool && star
+    ret = ret.where(cool: !missing) if cool && !star
+    ret = ret.where(star: !missing) if star && !cool
+    ret
   end
 
   def cools(type, tabs, r1 = 0, r2 = 20, ties = false, missing = false)
@@ -915,7 +922,7 @@ class Player < ActiveRecord::Base
     type = DEFAULT_TYPES.map(&:constantize) if type.nil?
     bench(:start) if BENCHMARK
     scores = [type].flatten.map{ |t|
-      ids = range_ns(a, b, t, tabs, ties, tied, false).pluck(:highscoreable_id)
+      ids = range_ns(a, b, t, tabs, ties, tied, false, false, false).pluck(:highscoreable_id)
       (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).order(:id).pluck(:name)
     }.flatten
     bench(:step) if BENCHMARK
@@ -925,8 +932,8 @@ class Player < ActiveRecord::Base
   def improvable_scores(type, tabs, a = 0, b = 20, ties = false, cool = false, star = false)
     type = ensure_type(type) # only works for a single type
     bench(:start) if BENCHMARK
-    rtype = ties ? 'tied_rank' : 'rank'
-    ids = scores_by_type_and_tabs(type, tabs).where("#{rtype} >= #{a} AND #{rtype} < #{b}")
+    ttype = ties ? 'tied_rank' : 'rank'
+    ids = scores_by_type_and_tabs(type, tabs).where("#{ttype} >= #{a} AND #{ttype} < #{b}")
     ids = ids.where(cool: true) if cool
     ids = ids.where(star: true) if star
     ids = ids.pluck(:highscoreable_id, :score).to_h
@@ -1002,35 +1009,38 @@ class Player < ActiveRecord::Base
     ret
   end
 
-  def table(rank, ties, a, b)
+  def table(rank, ties, a, b, cool = false, star = false)
+    ttype = ties ? 'tied_rank' : 'rank'
     [Level, Episode, Story].map do |type|
+      if ![:maxed, :maxable].include?(rank)
+        queryBasic = scores.where(highscoreable_type: type)
+                          .where(!cool.blank? ? 'cool = 1' : '')
+                          .where(!star.blank? ? 'star = 1' : '')
+        query = queryBasic.where(!a.blank? ? "#{ttype} >= #{a}" : '')
+                          .where(!b.blank? ? "#{ttype} < #{b}" : '')
+                          .group(:tab)
+      end
       case rank
       when :rank
-        scores.where(highscoreable_type: type)
-              .where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
-              .group(:tab)
-              .count(:id)
-              .to_h
+        query.count(:id).to_h
       when :tied_rank
-        scores1 = scores.where(highscoreable_type: type)
-                        .where("tied_rank >= #{a} AND tied_rank < #{b}")
-                        .group(:tab)
-                        .count(:id)
-                        .to_h
-        scores2 = scores.where(highscoreable_type: type)
-                        .where("rank >= #{a} AND rank < #{b}")
-                        .group(:tab)
-                        .count(:id)
-                        .to_h
+        scores1 = queryBasic.where("tied_rank >= #{a} AND tied_rank < #{b}")
+                            .group(:tab)
+                            .count(:id)
+                            .to_h
+        scores2 = queryBasic.where("rank >= #{a} AND rank < #{b}")
+                            .group(:tab)
+                            .count(:id)
+                            .to_h
         scores1.map{ |tab, count| [tab, count - scores2[tab]] }.to_h
       when :points
-        scores.where(highscoreable_type: type).group(:tab).sum(ties ? "20 - tied_rank" : "20 - rank").to_h
+        query.sum("20 - #{ttype}").to_h
       when :score
-        scores.where(highscoreable_type: type).group(:tab).sum(:score).to_h
+        query.sum(:score).to_h
       when :avg_points
-        scores.where(highscoreable_type: type).group(:tab).average(ties ? "20 - tied_rank" : "20 - rank").to_h
+        query.average("20 - #{ttype}").to_h
       when :avg_rank
-        scores.where(highscoreable_type: type).group(:tab).average(ties ? "tied_rank" : "rank").to_h
+        query.average(ttype).to_h
       when :maxed
         HighScore.ties(type, [], nil, true, false)
                  .select{ |t| t[1] == t[2] }
@@ -1043,20 +1053,8 @@ class Player < ActiveRecord::Base
                  .group_by{ |t| t[0].split("-")[0] }
                  .map{ |tab, scores| [formalize_tab(tab), scores.size] }
                  .to_h
-      when :cool
-        scores.where(highscoreable_type: type, cool: true)
-              .where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
-              .group(:tab)
-              .count(:id)
-              .to_h
-      when :star
-        scores.where(highscoreable_type: type, star: true)
-              .where("#{ties ? "tied_rank" : "rank"} >= #{a} AND #{ties ? "tied_rank" : "rank"} < #{b}")
-              .group(:tab)
-              .count(:id)
-              .to_h
       else
-        scores.where(highscoreable_type: type).group(:tab).count(:id).to_h
+        query.count(:id).to_h
       end
     end
   end

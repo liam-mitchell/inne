@@ -415,9 +415,9 @@ def parse_rtype(msg)
     'point'
   elsif !!msg[/score/i]
     'score'
-  elsif parse_singular(msg)
+  elsif parse_singular(msg) == 1
     'singular_top1'
-  elsif parse_plural(msg)
+  elsif parse_singular(msg) == -1
     'plural_top1'
   elsif !!msg[/tied/i]
     'tied_top1'
@@ -606,11 +606,13 @@ def parse_tied(msg)
 end
 
 def parse_singular(msg)
-  !!msg[/\bsingular\b/i]
-end
-
-def parse_plural(msg)
-  !!msg[/\bplural\b/i]
+  if !!msg[/\bsingular\b/i]
+    1
+  elsif !!msg[/\bplural\b/i]
+    -1
+  else
+    0
+  end
 end
 
 # 'strict' means the emoji must be separated from text
@@ -655,11 +657,14 @@ def format_range(bott, rank, empty = false)
 end
 
 def format_singular(sing)
-  sing ? 'singular' : ''
-end
-
-def format_plural(plur)
-  plur ? 'plural' : ''
+  case sing
+  when 1
+    'singular'
+  when -1
+    'plural'
+  else
+    ''
+  end
 end
 
 def format_cool(cool)
