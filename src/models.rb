@@ -514,32 +514,59 @@ class Score < ActiveRecord::Base
 #  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
   enum tab:  [ :SI, :S, :SU, :SL, :SS, :SS2 ]
 
-  # Alternative method to perform rankings which outperforms the Player approach
-  # since we leave all the heavy lifting to the SQL interface instead of Ruby.
-  def self.rank(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
-    return rank_exclude(ranking, type, tabs, ties, n, full, players) if !players.empty? && [:rank, :tied_rank, :points, :avg_points, :avg_rank, :avg_lead].include?(ranking)
-    if [:avg_lead, :maxed, :maxable].include?(ranking)
-      type = ensure_type(type)
-    else
-      type = type.nil? ? DEFAULT_TYPES : (!type.is_a?(Array) ? [type] : type)
-    end
-    scores = self.where(highscoreable_type: type)
-    scores = scores.where(tab: tabs) if !tabs.empty?
-    scores = scores.where.not(player: players) if !players.empty?
-    bench(:start) if BENCHMARK
+  # Filter all scores by type, tabs, rank, etc.
+  # The basic version applies the same filters but the rank ones.
+  def self.filter(basic = false, player = nil, type = [], tabs = [], a = 0, b = 20, ties = false, cool = false, star = false)
+    ttype = ties ? 'tied_rank' : 'rank'
+    query1 = self.where(!player.nil? ? { player: player } : nil)
+                 .where(highscoreable_type: fix_type(type))
+                 .where(!tabs.empty? ? { tab: tabs } : nil)
+                 .where(cool ? { cool: true } : nil)
+                 .where(star ? { star: true } : nil)
+    query2 = query1.where(!a.blank?  ? "#{ttype} >= #{a}" : nil)
+                   .where(!b.blank?  ? "#{ttype} < #{b}"  : nil)
+    basic ? query1 : query2
+  end
 
+  # RANK players based on a variety of different filters and characteristic
+  def self.rank(
+      ranking: :rank, # Ranking type.          Def: Regular scores.
+      type:    nil,   # Highscoreable type.    Def: Levels and episodes.
+      tabs:    [],    # Highscoreable tabs.    Def: All tabs (SI, S, SU, SL, ?, !).
+      players: [],    # Players to ignore.     Def: None.
+      a:       0,     # Bottom rank of scores. Def: 0th.
+      b:       20,    # Top rank of scores.    Def: 19th.
+      full:    false, # Return full rankings, rather than top20 only.
+      ties:    false, # Whether to include ties or not.
+      cool:    false, # Only include cool scores.
+      star:    false  # Only include * scores.
+    )
+    # Most rankings which exclude players need to be computed completely
+    # differently, so we use another function.
+    if !players.empty? && [:rank, :tied_rank, :points, :avg_points, :avg_rank, :avg_lead].include?(ranking)
+      return rank_exclude(ranking, type, tabs, ties, b - 1, full, players)
+    end
+
+    # Normalize parameters and filter scores accordingly
+    type   = fix_type(type, [:avg_lead, :maxed, :maxable].include?(ranking))
+    ttype  = ties ? 'tied_rank' : 'rank'
+    basic  = ranking == :tied_rank # Reduced filters, needed for some ranking types
+    scores = filter(basic, nil, type, tabs, a, b, ties, cool, star)
+               .where(!players.empty? ? "player_id NOT IN (#{players.map(&:id).join(', ')})" : '')
+    
+    # Perform specific rankings to filtered scores
+    bench(:start) if BENCHMARK
     case ranking
     when :rank
-      scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
-                     .group(:player_id)
+      scores = scores.group(:player_id)
                      .order('count_id desc')
                      .count(:id)
     when :tied_rank
-      scores_w  = scores.where("tied_rank <= #{n}")
+      scores_w  = scores.where("tied_rank >= #{a} AND tied_rank < #{b}")
                         .group(:player_id)
                         .order('count_id desc')
                         .count(:id)
-      scores_wo = scores.where("rank <= #{n}")
+      scores_wo = scores.where("rank >= #{a} AND rank < #{b}")
                         .group(:player_id)
                         .order('count_id desc')
                         .count(:id)
@@ -597,22 +624,10 @@ class Score < ActiveRecord::Base
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
-    when :cool
-      scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
-                     .where(cool: true)
-                     .group(:player_id)
-                     .order("count(id) desc")
-                     .count(:id)
-    when :star
-      scores = scores.where("#{ties ? "tied_rank" : "rank"} <= #{n}")
-                     .where(star: true)
-                     .group(:player_id)
-                     .order("count(id) desc")
-                     .count(:id)
     end
 
+    # Crop, find players in advance, remove empty entries, and return
     scores = scores.take(NUM_ENTRIES) if !full
-    # find all players in advance (better performant)
     players = Player.where(id: scores.map(&:first))
                     .map{ |p| [p.id, p] }
                     .to_h

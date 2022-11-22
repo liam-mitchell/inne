@@ -62,6 +62,21 @@ def parse_type(msg, type = nil, multiple = false, initial = false)
   return multiple ? ret : nil
 end
 
+# Normalize how highscoreable types are handled.
+# A good example:
+#   [Level, Episode]
+# Bad examples:
+#   nil   (transforms to [Level, Episode])
+#   Level (transforms to [Level])
+# 'single' means we return a singly type instead
+def fix_type(type, single = false)
+  if single
+    ensure_type(type)
+  else
+    type.nil? ? DEFAULT_TYPES : (!type.is_a?(Array) ? [type] : type)
+  end
+end
+
 def parse_alias_type(msg, type = nil)
   ['level', 'player'].include?(type) ? type : (!!msg[/player/i] ? 'player' : 'level')
 end
@@ -158,7 +173,7 @@ def parse_many_players(msg, userlevel = false)
   playerClass = userlevel ? UserlevelPlayer : Player
   msg = msg[/without (.*)/i, 1] || ""  
   players = msg.split(/,|\band\b|\bor\b/i).flatten.map(&:strip).reject(&:empty?)
-  players.map{ |name|parse_player_explicit(name) }
+  players.map{ |name| parse_player_explicit(name) }
 end
 
 # The username can include the tag after a hash
@@ -349,12 +364,19 @@ end
 # 'full' means that if no range has been explicitly provided, then we default
 # to 0th-19th, otherwise we default to 0th-1st.
 def parse_range(msg, full = false)
-  rank   = parse_rank(msg) || 20
-  bott   = parse_bottom_rank(msg) || 0
-  ind    = nil
-  dflt   = parse_rank(msg).nil? && parse_bottom_rank(msg).nil?
-  valid  = true
-  20.times.each{ |r| ind = r if !!(msg =~ /\b#{r.ordinalize}\b/i) }
+  # Parse "topX" and "bottomX"
+  rank = parse_rank(msg) || 20
+  bott = parse_bottom_rank(msg) || 0
+  # Parse up to 2 individual ranks (e.g. 2nd, 7th...)
+  inds = msg.scan(/\b[1-9][1-9]?(?:st|nd|rd|th)\b/i)
+            .map{ |r| r.to_i.clamp(0, 20) }
+            .uniq
+            .sort
+            .take(2)
+  # If there's only 1 individual rank, the interval has width 1
+  inds.push(inds.first) if inds.size == 1
+  # Figure out if we need to default
+  dflt = parse_rank(msg).nil? && parse_bottom_rank(msg).nil?
 
   # If no range is provided, default to 0th count
   if dflt
@@ -368,17 +390,12 @@ def parse_range(msg, full = false)
   end
 
   # If an individual rank is provided, the range has width 1
-  if !ind.nil?
-    bott = ind
-    rank = ind + 1
+  if !inds.empty?
+    bott = inds[0].clamp(0, 19)
+    rank = (inds[1] + 1).clamp(1, 20)
   end
 
-  # The range must make sense   
-  if bott >= rank
-    valid = false
-  end
-
-  [bott, rank, valid]
+  [bott, rank, bott < rank]
 end
 
 # Parse a message for tabs

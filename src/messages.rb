@@ -9,12 +9,10 @@ require_relative 'io.rb'
 require_relative 'models.rb'
 require_relative 'userlevels.rb'
 
-# Prints list of scores for a specific player within the specified range
-# If 'file' is true, we return the list in a file, otherwise, we just
-# print the score count (see next method)
-# If 'missing' is true, we return the complementary list, i.e., the scores
-# which are NOT within the specified range, or are missing altogether
-def send_list(event, file: true, missing: false)
+# Prints COUNT of scores with specific characteristics for a player.
+#   Arg 'file':    Also return list of scores in a text file.
+#   Arg 'missing': Return complementary list, i.e., those NOT verifying conditions
+def send_list(event, file = true, missing = false)
   # Parse message parameters
   msg    = event.content
   player = parse_player(msg, event.user.name)
@@ -49,7 +47,7 @@ def send_list(event, file: true, missing: false)
   max   = full ? max1 : max2
   type  = format_type(type).downcase
   tabs  = format_tabs(tabs)
-  range = format_range(range[0], range[1], sing != 0) # WHY boolean ???
+  range = format_range(range[0], range[1], sing != 0)
   sing  = format_singular((missing ? -1 : 1) * sing)
   cool  = format_cool(cool)
   star  = format_star(star)
@@ -69,16 +67,6 @@ def send_list(event, file: true, missing: false)
   end
 end
 
-# Prints total count of player's scores within a specific rank range
-def send_top_n_count(event)
-  send_list(event, file: false) unless !!event.content[/\bmissing\b/i]
-end
-
-# Return a list of a player's missing scores with specific characteristics
-def send_missing(event)
-  send_list(event, file: !event.content[/\bhow many\b/i], missing: true)
-end
-
 # Return list of players sorted by a number of different ranking types
 # Navigation controls are optional
 # The named parameters are ALL for the navigation:
@@ -96,97 +84,120 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   msg   = fetch_message(event, initial)
   type  = parse_type(msg, type, true, initial)
   tabs  = parse_tabs(msg, tab)
-  rtype = rtype || parse_rtype(msg)
-  whole = ['cool', 'star'].include?(rtype) # default rank is top20, not top1 (0th)
-  rank  = parse_range(rtype, whole)[1] || parse_range(msg, whole)[1]
+  tab   = tabs.empty? ? 'all' : (tabs.size == 1 ? tabs[0].to_s.downcase : 'tab')
   ties  = !ties.nil? ? ties : parse_ties(msg, rtype)
   play  = parse_many_players(msg)
   nav   = parse_nav(msg) || !initial
   full  = parse_global(msg) || parse_full(msg) || nav
-  tab   = tabs.empty? ? 'all' : (tabs.size == 1 ? tabs[0].to_s.downcase : 'tab')
-  rtype = fix_rtype(rtype, rank)
+  rtype = rtype || parse_rtype(msg)
+  whole = [
+    'average_point',
+    'average_rank',
+    'point',
+    'score',
+    'cool',
+    'star'
+  ].include?(rtype) # default rank is top20, not top1 (0th)
+  range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(msg, whole)
+  rtype = fix_rtype(rtype, range[1])
+  cool  = parse_cool(rtype) || parse_cool(msg)
+  star  = parse_star(rtype) || parse_star(msg)
 
-  # EXECUTE specific rankings
+  # The range must make sense
+  if !range[2]
+    event << "You specified an empty range! (#{format_range(range[0], range[1])})"
+    return
+  end
+
+  # Determine ranking type and max value of said ranking
+  rtag = :rank
   case rtype
   when 'average_point'
-    rankings = Score.rank(:avg_points, type, tabs, ties, nil, full, play)
-    max      = find_max(:avg_points, type, tabs, !initial)
+    rtag = :avg_points
+    max  = find_max(:avg_points, type, tabs, !initial)
   when 'average_top1_lead'
-    rankings = Score.rank(:avg_lead, type, tabs, nil, nil, full, play)
-    max      = nil
+    rtag = :avg_lead
+    max  = nil
   when 'average_rank'
-    rankings = Score.rank(:avg_rank, type, tabs, ties, nil, full, play)
-    max      = find_max(:avg_rank, type, tabs, !initial)
+    rtag = :avg_rank
+    max  = find_max(:avg_rank, type, tabs, !initial)
   when 'point'
-    rankings = Score.rank(:points, type, tabs, ties, nil, full, play)
-    max      = find_max(:points, type, tabs, !initial)
+    rtag = :points
+    max  = find_max(:points, type, tabs, !initial)
   when 'score'
-    rankings = Score.rank(:score, type, tabs, nil, nil, full, play)
-    max      = find_max(:score, type, tabs, !initial)
+    rtag = :score
+    max  = find_max(:score, type, tabs, !initial)
   when 'singular_top1'
-    rankings = Score.rank(:singular, type, tabs, nil, 1, full, play)
-    max      = find_max(:rank, type, tabs, !initial)
+    rtag = :singular
+    max  = find_max(:rank, type, tabs, !initial)
   when 'plural_top1'
-    rankings = Score.rank(:singular, type, tabs, nil, 0, full, play)
-    max      = find_max(:rank, type, tabs, !initial)
+    rtag = :singular
+    max  = find_max(:rank, type, tabs, !initial)
   when 'tied_top1'
-    rankings = Score.rank(:tied_rank, type, tabs, true, rank - 1, full, play)
-    max      = find_max(:rank, type, tabs, !initial)
+    rtag = :tied_rank
+    max  = find_max(:rank, type, tabs, !initial)
   when 'maxed_top1'
-    rankings = Score.rank(:maxed, type, tabs, nil, nil, full, play)
-    max      = find_max(:maxed, type, tabs, !initial)
+    rtag = :maxed
+    max  = find_max(:maxed, type, tabs, !initial)
   when 'maxable_top1'
-    rankings = Score.rank(:maxable, type, tabs, nil, nil, full, play)
-    max      = find_max(:maxable, type, tabs, !initial)
-  when 'cool'
-    rankings = Score.rank(:cool, type, tabs, ties, rank - 1, full, play)
-    max      = find_max(:rank, type, tabs, !initial)
-  when 'star'
-    rankings = Score.rank(:star, type, tabs, ties, rank - 1, full, play)
-    max      = find_max(:rank, type, tabs, !initial)
+    rtag = :maxable
+    max  = find_max(:maxable, type, tabs, !initial)
   else
-    rankings = Score.rank(:rank, type, tabs, ties, rank - 1, full, play)
-    max      = find_max(:rank, type, tabs, !initial)
+    rtag = :rank
+    max  = find_max(:rank, type, tabs, !initial)
   end
+
+  # EXECUTE specific rankings
+  rank = Score.rank(
+    ranking: rtag,      # Ranking type.          Def: Regular scores.
+    type:    type,      # Highscoreable type.    Def: Levels and episodes.
+    tabs:    tabs,      # Highscoreable tabs.    Def: All tabs (SI, S, SU, SL, ?, !).
+    players: play,      # Players to ignore.     Def: None.
+    a:       range[0],  # Bottom rank of scores. Def: 0th.
+    b:       range[1],  # Top rank of scores.    Def: 19th.
+    full:    full,      # Return full rankings, rather than top20 only.
+    ties:    ties,      # Whether to include ties or not.
+    cool:    cool,      # Only include cool scores.
+    star:    star       # Only include * scores.
+  )
 
   # PAGINATION
   pagesize = nav ? PAGE_SIZE : 20
   page = parse_page(msg, page, reset_page, event.message.components)
-  pag  = compute_pages(rankings.size, page, pagesize)
+  pag  = compute_pages(rank.size, page, pagesize)
 
   # FORMAT message
   min = "Minimum number of scores required: #{min_scores(type, tabs, !initial)}" if ['average_rank', 'average_point'].include?(rtype)
   #   Header
-  tabs = format_tabs(tabs)
-  header = "Rankings - #{format_full(full).capitalize} "
-  header += full ? format_type(type, true).downcase : format_type(type, true)
-  header += " #{tabs} #{format_rtype(rtype, nil, ties)} #{format_max(max)}"
-  header += " without " + play.map(&:name).to_sentence if !play.empty?
-  header += " #{format_time}:"
-  header.squish!
+  full   = format_full(full).capitalize
+  tabs   = format_tabs(tabs)
+  type   = format_type(type, true)
+  type   = type.downcase if !full.empty? || !tabs.empty?
+  rtype  = format_rtype(rtype, nil, ties)
+  max    = format_max(max)
+  play   = !play.empty? ? ' without ' + play.map(&:name).to_sentence  : ''
+  header = "Rankings - #{full} #{tabs} #{type} #{rtype} #{max} #{play} #{format_time}:".squish
   #   Rankings
-  if rankings.empty?
-    rankings = "```These boards are empty!```"
+  if rank.empty?
+    rank = '```These boards are empty!```'
   else
-    order = rtype == 'average_rank' ? 1 : -1
-    bench(:start)
-    rankings = rankings.map{ |r| [r[0].print_name, r[1]] }
     # We sort again to add the alphabetical tie-breaker
     # Since it's already sorted, the primary order hardly takes time,
     # and only the secondary order becomes relevant
-    rankings = rankings.sort_by{ |r| [order * r[1], r[0].downcase] }
-    bench(:step)
-    rankings = rankings[pag[:offset]...pag[:offset] + pagesize] if !full || nav
-    score_padding = rankings.map{ |r| r[1].to_i.to_s.length }.max
-    name_padding = rankings.map{ |r| r[0].length }.max
-    format_str = rankings[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
-    rankings = rankings.each_with_index.map{ |r, i|
-      "#{HighScore.format_rank(i)}: #{format_string(r[0], name_padding)} - #{format_str % r[1]}"
+    order = rtype == 'average_rank' ? 1 : -1
+    rank.map!{ |r| [r[0].print_name, r[1]] }
+    rank.sort_by!{ |r| [order * r[1], r[0].downcase] }
+    rank = rank[pag[:offset]...pag[:offset] + pagesize] if !full || nav
+    pad1 = rank.map{ |r| r[1].to_i.to_s.length }.max
+    pad2 = rank.map{ |r| r[0].length }.max
+    fmt  = rank[0][1].is_a?(Integer) ? "%#{pad1}d" : "%#{pad1 + 4}.3f"
+    rank = rank.each_with_index.map{ |r, i|
+      "#{HighScore.format_rank(i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
     }.join("\n")
-    rankings = format_block(rankings)
+    rank = format_block(rank)
   end
   #   Footer
-  rankings.concat(min) if !min.nil? && (!full || nav)
+  rank.concat(min) if !min.nil? && (!full || nav)
 
   # SEND message
   if nav
@@ -195,11 +206,11 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     interaction_add_type_buttons(view, type, ties)
     interaction_add_select_menu_rtype(view, rtype)
     interaction_add_select_menu_metanet_tab(view, tab)
-    send_message_with_interactions(event, header + "\n" + rankings, view, !initial)
+    send_message_with_interactions(event, header + "\n" + rank, view, !initial)
   else
-    length = header.length + rankings.length
+    length = header.length + rank.length
     event << header
-    length < DISCORD_LIMIT && !full ? event << rankings : send_file(event, rankings[4..-4], "rankings.txt")
+    length < DISCORD_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
   end
 end
 
@@ -1660,6 +1671,7 @@ def respond(event)
 
   # on this methods, we will exclude a few problematic words that appear
   # in some level names which would accidentally trigger them
+  hm = !msg[/\bhow many\b/i]
   hello(event)               if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
   thanks(event)              if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
   dump(event)                if msg =~ /dump/i
@@ -1676,7 +1688,7 @@ def respond(event)
   send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i && msg !~ /table/i
   send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
   send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
-  send_top_n_count(event)    if msg =~ /how many/i && msg !~ /point/i
+  send_list(event, false)    if msg =~ /how many/i && msg !~ /point/i unless !!msg[/\bmissing\b/i]
   send_table(event)          if msg =~ /\btable\b/i
   send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
@@ -1685,7 +1697,7 @@ def respond(event)
   send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
   send_suggestions(event)    if (msg =~ /\bworst\b/i && msg !~ /\bnightmare\b/i) || msg =~ /\bimprovable\b/i
   send_list(event)           if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
-  send_missing(event)        if msg =~ /missing/i
+  send_list(event, hm, true) if msg =~ /missing/i
   send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i && msg !~ /table/i
   send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i && msg !~ /table/i
   send_level_name(event)     if msg =~ /\blevel name\b/i

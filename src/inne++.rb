@@ -438,6 +438,9 @@ def start_high_scores
   end
 end
 
+# Histories this way, stored in bulk in the database, are deprecated.
+# We now using a differential table with all new scores, called 'archives'.
+# So we can rebuild the boards at any given point in time with precision.
 def update_histories
   log("updating histories...")
   now = Time.now

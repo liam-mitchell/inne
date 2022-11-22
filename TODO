@@ -58,7 +58,7 @@ Eddy's TODO list for inne:
 - fix hc replays in db (I'm only saving the first 25, but deaths are included)
 - hc cleanliness and others
 - maybe modify function 'nav' from 'HighScore' module to allow for arbitrary offsets, and have some special sign to denote 'first' and 'last'
-- modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names
+- modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names, check LOG_SQL to minimize queries
 - add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
 - add "suggestions" command (random selection of scores the player doesn't have)
 - allow "missing" parameter in table, just like in "how many" or "list"
