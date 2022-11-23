@@ -647,10 +647,20 @@ def format_rank(rank)
   rank.to_i == 1 ? '0th' : "top #{rank}"
 end
 
-def format_rtype(rtype, rank = nil, ties = false)
-  rtype = format_rank(rank || rtype[/\d+/i] || 1) if rtype[0..2] == 'top'
+# Formats a ranking type. These can include the range in some default cases
+# (e.g. Top10 Rankings), unless the 'range' parameter is false.
+# 'rank' is used in case we can to overrule whatever the rank in the rtype
+# is, and 'ties' is used to include "w/ ties" or something.
+def format_rtype(rtype, range: true, rank: nil, ties: false)
+  if rtype[0..2] == 'top'
+    if range
+      rtype = format_rank(rank || rtype[/\d+/i] || 1)
+    else
+      rtype = rtype.split('_')[1..-1].join('_') if !range
+    end
+  end
   rtype = rtype.gsub('top1', '0th').gsub('star', '*').tr('_', ' ')
-  "#{rtype} rankings #{format_ties(ties)}"
+  "#{rtype} rankings #{format_ties(ties)}".squish
 end
 
 def format_bottom_rank(rank)

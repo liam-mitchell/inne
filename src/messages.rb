@@ -96,7 +96,9 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     'point',
     'score',
     'cool',
-    'star'
+    'star',
+    'maxed_top1',
+    'maxable_top1'
   ].include?(rtype) # default rank is top20, not top1 (0th)
   range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(msg, whole)
   rtype = fix_rtype(rtype, range[1])
@@ -168,16 +170,27 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
 
   # FORMAT message
   min = "Minimum number of scores required: #{min_scores(type, tabs, !initial)}" if ['average_rank', 'average_point'].include?(rtype)
-  #   Header
+  # --- Header
   full   = format_full(full).capitalize
   tabs   = format_tabs(tabs)
   type   = format_type(type, true)
   type   = type.downcase if !full.empty? || !tabs.empty?
-  rtype  = format_rtype(rtype, nil, ties)
+  # Rankings for which not to print the range, because their name already
+  # includes the range (e.g. Singular 0th Rankings)
+  prange = ![
+    'tied_top1',
+    'singular_top1',
+    'plural_top1',
+    'average_top1_lead',
+    'maxed_top1',
+    'maxable_top1'
+  ].include?(rtype)
+  range  = format_range(range[0], range[1], !prange)
+  rtype  = format_rtype(rtype, ties: ties, range: false)
   max    = format_max(max)
   play   = !play.empty? ? ' without ' + play.map(&:name).to_sentence  : ''
-  header = "Rankings - #{full} #{tabs} #{type} #{rtype} #{max} #{play} #{format_time}:".squish
-  #   Rankings
+  header = "Rankings - #{full} #{tabs} #{type} #{range} #{rtype} #{max} #{play} #{format_time}:".squish
+  # --- Rankings
   if rank.empty?
     rank = '```These boards are empty!```'
   else
@@ -196,7 +209,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     }.join("\n")
     rank = format_block(rank)
   end
-  #   Footer
+  # --- Footer
   rank.concat(min) if !min.nil? && (!full || nav)
 
   # SEND message
