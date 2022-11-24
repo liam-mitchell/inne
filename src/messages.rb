@@ -96,14 +96,14 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     'point',
     'score',
     'cool',
-    'star',
-    'maxed_top1',
-    'maxable_top1'
+    'star'
   ].include?(rtype) # default rank is top20, not top1 (0th)
   range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(msg, whole)
   rtype = fix_rtype(rtype, range[1])
   cool  = parse_cool(rtype) || parse_cool(msg)
   star  = parse_star(rtype) || parse_star(msg)
+  maxed = parse_maxed(rtype) || parse_maxed(msg)
+  maxable = !maxed && (parse_maxable(rtype) || parse_maxable(msg))
 
   # The range must make sense
   if !range[2]
@@ -132,16 +132,18 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   when 'singular_top1'
     rtag = :singular
     max  = find_max(:rank, type, tabs, !initial)
+    range[1] = 1
   when 'plural_top1'
     rtag = :singular
     max  = find_max(:rank, type, tabs, !initial)
+    range[1] = 0
   when 'tied_top1'
     rtag = :tied_rank
     max  = find_max(:rank, type, tabs, !initial)
-  when 'maxed_top1'
+  when 'maxed'
     rtag = :maxed
     max  = find_max(:maxed, type, tabs, !initial)
-  when 'maxable_top1'
+  when 'maxable'
     rtag = :maxable
     max  = find_max(:maxable, type, tabs, !initial)
   else
@@ -169,27 +171,29 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   pag  = compute_pages(rank.size, page, pagesize)
 
   # FORMAT message
-  min = "Minimum number of scores required: #{min_scores(type, tabs, !initial)}" if ['average_rank', 'average_point'].include?(rtype)
+  min   = "Minimum number of scores required: #{min_scores(type, tabs, !initial, range[0], range[1], star)}" if ['average_rank', 'average_point'].include?(rtype)
+  order = rtype == 'average_rank' ? 1 : -1
   # --- Header
-  full   = format_full(full).capitalize
-  tabs   = format_tabs(tabs)
-  type   = format_type(type, true)
-  type   = type.downcase if !full.empty? || !tabs.empty?
-  # Rankings for which not to print the range, because their name already
-  # includes the range (e.g. Singular 0th Rankings)
-  prange = ![
+  prange = ![ # Don't print range for these rankings
     'tied_top1',
     'singular_top1',
     'plural_top1',
-    'average_top1_lead',
-    'maxed_top1',
-    'maxable_top1'
+    'average_top1_lead'
   ].include?(rtype)
-  range  = format_range(range[0], range[1], !prange)
-  rtype  = format_rtype(rtype, ties: ties, range: false)
-  max    = format_max(max)
-  play   = !play.empty? ? ' without ' + play.map(&:name).to_sentence  : ''
-  header = "Rankings - #{full} #{tabs} #{type} #{range} #{rtype} #{max} #{play} #{format_time}:".squish
+  full    = format_full(full)
+  cool    = format_cool(cool)
+  star    = format_star(star)
+  tabs    = format_tabs(tabs)
+  type    = format_type(type, true)
+  range   = format_range(range[0], range[1], !prange)
+  rtype   = format_rtype(rtype, ties: ties, range: false, basic: true)
+  max     = format_max(max)
+  maxed   = format_maxed(maxed)
+  maxable = format_maxable(maxable)
+  play    = !play.empty? ? ' without ' + play.map(&:name).to_sentence  : ''
+  params  = "#{full} #{cool} #{maxed} #{maxable} #{tabs} #{type} #{range}#{star} #{rtype}".squish.capitalize
+  ending  = "#{max} #{play} #{format_time}:"
+  header  = "Rankings - #{params} #{ending}".squish
   # --- Rankings
   if rank.empty?
     rank = '```These boards are empty!```'
@@ -197,10 +201,9 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     # We sort again to add the alphabetical tie-breaker
     # Since it's already sorted, the primary order hardly takes time,
     # and only the secondary order becomes relevant
-    order = rtype == 'average_rank' ? 1 : -1
     rank.map!{ |r| [r[0].print_name, r[1]] }
     rank.sort_by!{ |r| [order * r[1], r[0].downcase] }
-    rank = rank[pag[:offset]...pag[:offset] + pagesize] if !full || nav
+    rank = rank[pag[:offset]...pag[:offset] + pagesize] if full.empty? || nav
     pad1 = rank.map{ |r| r[1].to_i.to_s.length }.max
     pad2 = rank.map{ |r| r[0].length }.max
     fmt  = rank[0][1].is_a?(Integer) ? "%#{pad1}d" : "%#{pad1 + 4}.3f"
@@ -210,7 +213,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     rank = format_block(rank)
   end
   # --- Footer
-  rank.concat(min) if !min.nil? && (!full || nav)
+  rank.concat(min) if !min.nil? && (full.empty? || nav)
 
   # SEND message
   if nav

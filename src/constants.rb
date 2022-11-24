@@ -189,8 +189,8 @@ RTYPES = [
   'singular_top1',
   'plural_top1',
   'average_top1_lead',
-  'maxed_top1',
-  'maxable_top1',
+  'maxed',
+  'maxable',
   'score',
   'point',
   'average_point'

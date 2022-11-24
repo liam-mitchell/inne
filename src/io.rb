@@ -359,6 +359,14 @@ def parse_offline(msg)
   !!msg[/\boffline\b/i]
 end
 
+def parse_maxed(msg)
+  !!msg[/\bmaxed\b/i]
+end
+
+def parse_maxable(msg)
+  !!msg[/\bmaxable\b/i]
+end
+
 # We parse a complex variety of ranges here, from individual ranks, to tops,
 # bottoms, intermediate ranges, etc.
 # 'full' means that if no range has been explicitly provided, then we default
@@ -368,7 +376,7 @@ def parse_range(msg, full = false)
   rank = parse_rank(msg) || 20
   bott = parse_bottom_rank(msg) || 0
   # Parse up to 2 individual ranks (e.g. 2nd, 7th...)
-  inds = msg.scan(/\b[1-9][1-9]?(?:st|nd|rd|th)\b/i)
+  inds = msg.scan(/\b[0-9][0-9]?(?:st|nd|rd|th)\b/i)
             .map{ |r| r.to_i.clamp(0, 20) }
             .uniq
             .sort
@@ -438,10 +446,10 @@ def parse_rtype(msg)
     'plural_top1'
   elsif !!msg[/tied/i]
     'tied_top1'
-  elsif !!msg[/maxed/i]
-    'maxed_top1'
-  elsif !!msg[/maxable/i]
-    'maxable_top1'
+  elsif parse_maxed(msg)
+    'maxed'
+  elsif parse_maxable(msg)
+    'maxable'
   elsif parse_cool(msg)
     'cool'
   elsif parse_star(msg)
@@ -451,7 +459,7 @@ def parse_rtype(msg)
   end
 end
 
-# Complete rtype with additional rank and ties info
+# Complete rtype with additional rank info
 def fix_rtype(rtype, rank)
   rtype += rank.to_s if rtype == 'top'
   rtype
@@ -649,9 +657,11 @@ end
 
 # Formats a ranking type. These can include the range in some default cases
 # (e.g. Top10 Rankings), unless the 'range' parameter is false.
-# 'rank' is used in case we can to overrule whatever the rank in the rtype
-# is, and 'ties' is used to include "w/ ties" or something.
-def format_rtype(rtype, range: true, rank: nil, ties: false)
+# 'range' Includes the range (e.g. Top10) or not
+# 'rank'  Overrule whatever the rank in the rtype is
+# 'ties'  Adds "w/ ties" or something
+# 'basic' Doesn't print words which are now parameters (e.g. cool)
+def format_rtype(rtype, range: true, rank: nil, ties: false, basic: false)
   if rtype[0..2] == 'top'
     if range
       rtype = format_rank(rank || rtype[/\d+/i] || 1)
@@ -660,6 +670,7 @@ def format_rtype(rtype, range: true, rank: nil, ties: false)
     end
   end
   rtype = rtype.gsub('top1', '0th').gsub('star', '*').tr('_', ' ')
+  rtype.remove!('cool', '*', 'maxed', 'maxed') if basic
   "#{rtype} rankings #{format_ties(ties)}".squish
 end
 
@@ -700,6 +711,14 @@ end
 
 def format_star(star)
   star ? '*' : ''
+end
+
+def format_maxed(maxed)
+  maxed ? 'maxed' : ''
+end
+
+def format_maxable(maxable)
+  maxable ? 'maxable' : ''
 end
 
 # Support for any single and multiple types

@@ -515,17 +515,24 @@ class Score < ActiveRecord::Base
   enum tab:  [ :SI, :S, :SU, :SL, :SS, :SS2 ]
 
   # Filter all scores by type, tabs, rank, etc.
-  # The basic version applies the same filters but the rank ones.
-  def self.filter(basic = false, player = nil, type = [], tabs = [], a = 0, b = 20, ties = false, cool = false, star = false)
+  # Param 'level' indicates how many filters to apply
+  def self.filter(level = 2, player = nil, type = [], tabs = [], a = 0, b = 20, ties = false, cool = false, star = false)
     ttype = ties ? 'tied_rank' : 'rank'
-    query1 = self.where(!player.nil? ? { player: player } : nil)
-                 .where(highscoreable_type: fix_type(type))
-                 .where(!tabs.empty? ? { tab: tabs } : nil)
-                 .where(cool ? { cool: true } : nil)
-                 .where(star ? { star: true } : nil)
-    query2 = query1.where(!a.blank?  ? "#{ttype} >= #{a}" : nil)
-                   .where(!b.blank?  ? "#{ttype} < #{b}"  : nil)
-    basic ? query1 : query2
+    queries = []
+    queries.push(
+      self.where(!player.nil? ? { player: player } : nil)
+          .where(highscoreable_type: fix_type(type))
+          .where(!tabs.empty? ? { tab: tabs } : nil)
+    )
+    queries.push(
+      queries.last.where(!a.blank?  ? "#{ttype} >= #{a}" : nil)
+                  .where(!b.blank?  ? "#{ttype} < #{b}"  : nil)
+    )
+    queries.push(
+      queries.last.where(cool ? { cool: true } : nil)
+                  .where(star ? { star: true } : nil)
+    )
+    queries[level.clamp(0, queries.size - 1)]
   end
 
   # RANK players based on a variety of different filters and characteristic
@@ -550,8 +557,10 @@ class Score < ActiveRecord::Base
     # Normalize parameters and filter scores accordingly
     type   = fix_type(type, [:avg_lead, :maxed, :maxable].include?(ranking))
     ttype  = ties ? 'tied_rank' : 'rank'
-    basic  = ranking == :tied_rank # Reduced filters, needed for some ranking types
-    scores = filter(basic, nil, type, tabs, a, b, ties, cool, star)
+    level  = 2
+    level  = 1 if [:maxed, :maxable].include?(ranking)
+    level  = 0 if [:tied_rank, :avg_lead, :singular].include?(ranking)
+    scores = filter(level, nil, type, tabs, a, b, ties, cool, star)
                .where(!players.empty? ? "player_id NOT IN (#{players.map(&:id).join(', ')})" : '')
     
     # Perform specific rankings to filtered scores
@@ -574,7 +583,7 @@ class Score < ActiveRecord::Base
                        .sort_by{ |id, c| -c }
     when :singular
       types = type.map{ |t|
-        ids = scores.where(rank: 1, tied_rank: n, highscoreable_type: t)
+        ids = scores.where(rank: 1, tied_rank: b, highscoreable_type: t)
                     .pluck(:highscoreable_id)
         scores.where(rank: 0, highscoreable_type: t, highscoreable_id: ids)
               .group(:player_id)
@@ -590,19 +599,20 @@ class Score < ActiveRecord::Base
     when :avg_points
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{min_scores(type, tabs)}")
+                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star)}")
                      .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
                      .average(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_rank
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{min_scores(type, tabs)}")
+                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star)}")
                      .order("avg(#{ties ? "tied_rank" : "rank"})")
                      .average(ties ? "tied_rank" : "rank")
     when :avg_lead
       scores = scores.where(rank: [0, 1])
                      .pluck(:player_id, :highscoreable_id, :score)
                      .group_by{ |s| s[1] }
+                     .reject{ |h, s| s.size < 2 }
                      .map{ |h, s| [s[0][0], s[0][2] - s[1][2]] }
                      .group_by{ |s| s[0] }
                      .map{ |p, s| [p, s.map(&:last).sum / s.map(&:last).count] }

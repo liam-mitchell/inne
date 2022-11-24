@@ -138,7 +138,10 @@ end
 # Finds the minimum number of scores required to appear in a certain
 # average rank/point rankings
 # If 'empty' we allow no types, otherwise default to Level and Episode
-def min_scores(type, tabs, empty = false)
+# If 'a' and 'b', we weight the min scores by the range size
+# If 'star' then we're dealing with only * scores, and we should again be
+# more gentle
+def min_scores(type, tabs, empty = false, a = 0, b = 20, star = false)
   type = DEFAULT_TYPES.map(&:constantize) if type.nil? || !empty && type.empty?
   mins = [type].flatten.map{ |t|
     if tabs.empty?
@@ -148,7 +151,8 @@ def min_scores(type, tabs, empty = false)
     end
     [type_min, TYPES[t.to_s][0]].min
   }.sum
-  [mins, MAXMIN_SCORES].min
+  c = star ? 1 : b - a
+  ([mins, MAXMIN_SCORES].min * c / 20.0).to_i
 end
 
 # round float to nearest frame
