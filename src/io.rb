@@ -647,8 +647,9 @@ def parse_cool(msg, strict = false)
 end
 
 # see parse_cool for 'strict'
-def parse_star(msg, strict = false)
-  !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i]
+# if 'name' then we accept 'star' for parsing stars as well
+def parse_star(msg, strict = false, name = false)
+  !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i] || !!msg[/\bstar\b/i]
 end
 
 def format_rank(rank)

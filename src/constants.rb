@@ -240,7 +240,8 @@ IGNORED_PLAYERS = [
   "Boringfish",
   "cock unsucker",
   "TylerDC",
-  "Staticwork"
+  "Staticwork",
+  "crit a cola drinker"
 ]
 
 # Problematic hackers? We get rid of them by banning their user IDs
@@ -260,7 +261,8 @@ IGNORED_IDS = [
   307030, # The_Mega_Force
   298531, # Boringfish
    76223, # TylerDC
-  325245  # Staticwork
+  325245, # Staticwork
+  202167  # crit a cola drinker
 ]
 
 # Patched runs from legitimate players because they were done

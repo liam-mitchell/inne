@@ -89,6 +89,11 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   play  = parse_many_players(msg)
   nav   = parse_nav(msg) || !initial
   full  = parse_global(msg) || parse_full(msg) || nav
+  cool  = !rtype.nil? && parse_cool(rtype) || rtype.nil? && parse_cool(msg)
+  star  = !rtype.nil? && parse_star(rtype, false, false) || rtype.nil? && parse_star(msg)
+  maxed = !rtype.nil? && parse_maxed(rtype) || rtype.nil? && parse_maxed(msg)
+  maxable = !maxed && (!rtype.nil? && parse_maxable(rtype) || rtype.nil? && parse_maxable(msg))
+  rtype2 = rtype # save a copy before we change it
   rtype = rtype || parse_rtype(msg)
   whole = [
     'average_point',
@@ -96,14 +101,12 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     'point',
     'score',
     'cool',
-    'star'
+    'star',
+    'maxed',
+    'maxable'
   ].include?(rtype) # default rank is top20, not top1 (0th)
-  range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(msg, whole)
+  range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(rtype2.nil? ? msg : '', whole)
   rtype = fix_rtype(rtype, range[1])
-  cool  = parse_cool(rtype) || parse_cool(msg)
-  star  = parse_star(rtype) || parse_star(msg)
-  maxed = parse_maxed(rtype) || parse_maxed(msg)
-  maxable = !maxed && (parse_maxable(rtype) || parse_maxable(msg))
 
   # The range must make sense
   if !range[2]
@@ -182,18 +185,18 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   ].include?(rtype)
   full    = format_full(full)
   cool    = format_cool(cool)
-  star    = format_star(star)
-  tabs    = format_tabs(tabs)
-  type    = format_type(type, true)
-  range   = format_range(range[0], range[1], !prange)
-  rtype   = format_rtype(rtype, ties: ties, range: false, basic: true)
-  max     = format_max(max)
   maxed   = format_maxed(maxed)
   maxable = format_maxable(maxable)
+  tabs    = format_tabs(tabs)
+  typeB   = format_type(type, true).downcase
+  range   = format_range(range[0], range[1], !prange)
+  star    = format_star(star)
+  rtypeB  = format_rtype(rtype, ties: ties, range: false, basic: true)
+  max     = format_max(max)
   play    = !play.empty? ? ' without ' + play.map(&:name).to_sentence  : ''
-  params  = "#{full} #{cool} #{maxed} #{maxable} #{tabs} #{type} #{range}#{star} #{rtype}".squish.capitalize
-  ending  = "#{max} #{play} #{format_time}:"
-  header  = "Rankings - #{params} #{ending}".squish
+  header  = "#{full} #{cool} #{maxed} #{maxable} #{tabs} #{typeB} #{range}#{star} #{rtypeB} #{max} #{play} #{format_time}:".squish
+  header[0] = header[0].upcase
+  header  = "Rankings - #{header}".squish
   # --- Rankings
   if rank.empty?
     rank = '```These boards are empty!```'
@@ -208,7 +211,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     pad2 = rank.map{ |r| r[0].length }.max
     fmt  = rank[0][1].is_a?(Integer) ? "%#{pad1}d" : "%#{pad1 + 4}.3f"
     rank = rank.each_with_index.map{ |r, i|
-      "#{HighScore.format_rank(i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
+      "#{HighScore.format_rank(pag[:offset] + i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
     }.join("\n")
     rank = format_block(rank)
   end
