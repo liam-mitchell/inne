@@ -90,7 +90,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   nav   = parse_nav(msg) || !initial
   full  = parse_global(msg) || parse_full(msg) || nav
   cool  = !rtype.nil? && parse_cool(rtype) || rtype.nil? && parse_cool(msg)
-  star  = !rtype.nil? && parse_star(rtype, false, false) || rtype.nil? && parse_star(msg)
+  star  = !rtype.nil? && parse_star(rtype, false, true) || rtype.nil? && parse_star(msg)
   maxed = !rtype.nil? && parse_maxed(rtype) || rtype.nil? && parse_maxed(msg)
   maxable = !maxed && (!rtype.nil? && parse_maxable(rtype) || rtype.nil? && parse_maxable(msg))
   rtype2 = rtype # save a copy before we change it
@@ -231,6 +231,45 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     event << header
     length < DISCORD_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
   end
+end
+
+# Sort highscoreables by amount of scores (0-20) with certain characteristics
+# (e.g. classify levels by amount of cool/* scores)
+def send_tally(event)
+  # Parse message parameters
+  msg   = event.content
+  type  = parse_type(msg)
+  tabs  = parse_tabs(msg)
+  cool  = parse_cool(msg)
+  star  = parse_star(msg)
+  ties  = parse_ties(msg)
+  range = parse_range(msg, true)
+  list  = !!msg[/\blist\b/i]
+
+  # Retrieve tally
+  res   = Score.tally(list, type, tabs, ties, cool, star, range[0], range[1])
+  count = list ? res.map(&:size).sum : res.sum
+
+  # Format response
+  type  = format_type(type)
+  tabs  = format_tabs(tabs)
+  cool  = format_cool(cool)
+  star  = format_star(star)
+  ties  = ties ? 'tied for 0th' : ''
+  pad1  = (0..20).select{ |r| list ? !res[r].empty? : res[r] > 0 }.max.to_s.length
+  pad2  = res.max.to_s.length if !list
+  block = (0..20).to_a.reverse.map{ |r|
+    if list
+      "#{r} #{cplural('score', r)}:\n\n" + res[r].join("\n") + "\n" if !res[r].empty?
+    else
+      "#{"%#{pad1}d #{cplural('score', r, true)}: %#{pad2}d" % [r, res[r]]}" if res[r] != 0
+    end
+  }.compact.join("\n")
+  range = format_range(range[0], range[1])
+
+  # Send response
+  event << "#{tabs} #{type} #{cool} #{range}#{star} scores #{ties} tally #{format_time}:".squish
+  !list || count <= 20 ? event << format_block(block) : send_file(event, block, 'tally.txt')
 end
 
 # Return a player's total score (sum of scores) in specified tabs and type
@@ -1715,7 +1754,7 @@ def respond(event)
   send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
   send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
   send_suggestions(event)    if (msg =~ /\bworst\b/i && msg !~ /\bnightmare\b/i) || msg =~ /\bimprovable\b/i
-  send_list(event)           if msg =~ /\blist\b/i && msg !~ /of inappropriate words/i
+  send_list(event)           if msg =~ /\blist\b/i unless msg =~ /of inappropriate words/i || !!msg[/\btally\b/i]
   send_list(event, hm, true) if msg =~ /missing/i
   send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i && msg !~ /table/i
   send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i && msg !~ /table/i
@@ -1736,6 +1775,7 @@ def respond(event)
   send_dmmc(event)           if msg =~ /\bdmmcize\b/i
   sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
   send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
+  send_tally(event)          if msg =~ /\btally\b/i
   faceswap(event)            if msg =~ /faceswap/i
   #testa(event) if msg =~ /testa/i
 

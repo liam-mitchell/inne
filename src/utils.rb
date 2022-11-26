@@ -178,6 +178,16 @@ def numlen(n, float = true)
   n.to_i.to_s.length + (float ? 4 : 0)
 end
 
+# Conditionally pluralize word
+# If 'pad' we pad string to longest between singular and plural, for alignment
+def cplural(word, n, pad = false)
+  sing = word
+  plur = word.pluralize
+  word = n == 1 ? sing : plur
+  pad  = [sing, plur].map(&:length).max
+  "%-#{pad}s" % word
+end
+
 # Permission system:
 #   Support for different roles (unrelated to Discord toles). Each role can
 #   be determined by whichever system we choose (Discord user IDs, Discord

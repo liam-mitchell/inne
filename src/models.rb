@@ -722,6 +722,35 @@ class Score < ActiveRecord::Base
     ret.first
   end
 
+  # Tally levels by count of scores under certain conditions
+  # If 'list' we return list, otherwise just the count
+  def self.tally(list, type, tabs, ties = false, cool = false, star = false, a = 0, b = 20)
+    type = fix_type(type)
+    res = type.map{ |t|
+      t_str = t.to_s.downcase.pluralize
+      query = filter(2, nil, t, tabs, a, b, false, cool, star)
+              .where(ties ? { tied_rank: 0 } : nil)
+              .joins("INNER JOIN #{t_str} ON #{t_str}.id = scores.highscoreable_id")
+              .group(:highscoreable_id)
+              .order("cnt DESC, highscoreable_id ASC")
+              .select("#{t_str}.name AS name, count(scores.id) AS cnt")
+      if list
+        l = query.map{ |h| [h.name, h.cnt] }
+                 .group_by(&:last)
+                 .map{ |c, hs| [c, hs.map(&:first)] }
+                 .to_h
+        (0..20).map{ |r| l.key?(r) ? l[r] : [] }
+      else
+        Score.from(query).group('cnt').order('cnt').count('cnt')
+      end
+    }
+    if list
+      (0..20).map{ |r| res.map{ |t| t[r] }.flatten }
+    else
+      (0..20).map{ |r| res.map{ |t| t[r].to_i }.sum }
+    end
+  end
+
   def spread
     highscoreable.scores.find_by(rank: 0).score - score
   end
@@ -913,7 +942,7 @@ class Player < ActiveRecord::Base
     ret = ret.where("#{missing ? 'NOT ' : ''}(cool = 1 AND star = 1)") if cool && star
     ret = ret.where(cool: !missing) if cool && !star
     ret = ret.where(star: !missing) if star && !cool
-    ret
+    ret.order('rank, highscoreable_type DESC, highscoreable_id')
   end
 
   def cools(type, tabs, r1 = 0, r2 = 20, ties = false, missing = false)

@@ -73,7 +73,7 @@ def fix_type(type, single = false)
   if single
     ensure_type(type)
   else
-    type.nil? ? DEFAULT_TYPES : (!type.is_a?(Array) ? [type] : type)
+    type.nil? ? DEFAULT_TYPES.map(&:constantize) : (!type.is_a?(Array) ? [type] : type)
   end
 end
 
@@ -649,7 +649,7 @@ end
 # see parse_cool for 'strict'
 # if 'name' then we accept 'star' for parsing stars as well
 def parse_star(msg, strict = false, name = false)
-  !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i] || !!msg[/\bstar\b/i]
+  !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i] || name && !!msg[/\bstar\b/i]
 end
 
 def format_rank(rank)
@@ -801,7 +801,7 @@ def format_level_list(levels)
 end
 
 def format_level_matches(event, msg, page, initial, matches, func)
-  exact = matches[0].split(' ')[0] == "Multiple"
+  exact = matches[0].split(' ')[0] == 'Multiple'
   if exact  # Multiple partial matches
     page = parse_page(msg, page, false, event.message.components)
     pag  = compute_pages(matches[1].size, page)
@@ -819,9 +819,9 @@ def format_level_matches(event, msg, page, initial, matches, func)
   end
 end
 
-def send_file(event, data, name = "result.txt", binary = false)
+def send_file(event, data, name = 'result.txt', binary = false)
   tmpfile = File.join(Dir.tmpdir, name)
-  File::open(tmpfile, binary ? "wb" : "w", crlf_newline: !binary) do |f|
+  File::open(tmpfile, binary ? 'wb' : 'w', crlf_newline: !binary) do |f|
     f.write(data)
   end
   event.attach_file(File::open(tmpfile))
