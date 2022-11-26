@@ -60,10 +60,7 @@ Eddy's TODO list for inne:
 - allow "missing" parameter in table, just like in "how many" or "list"
 - use Score.filter with a Player for some of the Player methods, like range_ns, improvable, table...
 - add Score::filter to rank_exclude
-- Coolness:
-  * Add function to count levels with 1, 2, ... 19/20 cool/* scores, and optionally list them too (maybe add "global" parameter in send_list)
-  * Total coolness (“how cool is username” and the response be something like “username is the nth coolest ninja with X out of X cool scores”)
-  * CKC rankings weighed by the number of cool kids in each board
+- CKC rankings weighed by the number of cool kids in each board
 
 
 \\ ------------------------ Art ------------------------

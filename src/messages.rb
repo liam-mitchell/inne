@@ -12,10 +12,11 @@ require_relative 'userlevels.rb'
 # Prints COUNT of scores with specific characteristics for a player.
 #   Arg 'file':    Also return list of scores in a text file.
 #   Arg 'missing': Return complementary list, i.e., those NOT verifying conditions
-def send_list(event, file = true, missing = false)
+#   Arg 'third':   Allows to parse player name using 'is'
+def send_list(event, file = true, missing = false, third = false)
   # Parse message parameters
   msg    = event.content
-  player = parse_player(msg, event.user.name)
+  player = parse_player(msg, event.user.name, false, false, false, false, third)
   msg    = msg.remove!(player.name)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
@@ -1747,6 +1748,7 @@ def respond(event)
   send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
   send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
   send_list(event, false)    if msg =~ /how many/i && msg !~ /point/i unless !!msg[/\bmissing\b/i]
+  send_list(event, false, false, true) if msg =~ /how cool/i 
   send_table(event)          if msg =~ /\btable\b/i
   send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
   send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i

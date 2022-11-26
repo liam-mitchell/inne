@@ -124,8 +124,9 @@ end
 # explicit: players will only be parsed if they appear explicitly, without inferring from their user, otherwise nil
 # enforce: a player MUST be supplied explicitly, otherwise exception
 # implicit: the player will be inferred from their user, without even parsing the comment
-def parse_player(msg, username, userlevel = false, explicit = false, enforce = false, implicit = false)
-  p = msg[/(for|of) (.*)[\.\?]?/i, 2]
+# third: allow for 3rd person specification "is xela" rather than "for xela"
+def parse_player(msg, username, userlevel = false, explicit = false, enforce = false, implicit = false, third = false)
+  p = msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
   playerClass = userlevel ? UserlevelPlayer : Player
 
   # We make sure to only return players with metanet_ids, ie., with highscores.
