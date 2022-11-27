@@ -188,7 +188,7 @@ module HighScore
   def save_scores(updated)
     ActiveRecord::Base.transaction do
       # Save * at start, so that we can reassign them again after updating
-      stars = scores.where(star: true).pluck(:player_id)
+      stars = scores.where(star: true).pluck(:player_id) if self.class != Userlevel
       updated.each_with_index do |score, i|
         # Compute values, userlevels have some differences
         player = (self.class == Userlevel ? UserlevelPlayer : Player).find_or_create_by(metanet_id: score['user_id'])
@@ -200,41 +200,38 @@ module HighScore
           score:     scoretime,
           replay_id: score['replay_id'].to_i,
           player:    player,
-          tied_rank: updated.find_index { |s| s['score'] == score['score'] },
-          star:      false
+          tied_rank: updated.find_index { |s| s['score'] == score['score'] }
         )
         # Updates for non-userlevels (tab, archive, demos)
-        scores.find_by(rank: i).update(tab: self.tab) if self.class != Userlevel
-        # Update the archive if the run is new
-        if self.class != Userlevel && Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
-          # Update archive entry
-          ar = Archive.create(
-            replay_id:     score['replay_id'].to_i,
-            player:        Player.find_by(metanet_id: score['user_id']),
-            highscoreable: self,
-            score:         (score['score'] * 60.0 / 1000.0).round,
-            metanet_id:    score['user_id'].to_i, # future-proof the db
-            date:          Time.now,
-            tab:           self.tab
-          )
-          # Update demo entry
-          demo = Demo.find_or_create_by(id: ar.id)
-          demo.update(replay_id: ar.replay_id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
-          demo.update_demo
+        if self.class != Userlevel
+          scores.find_by(rank: i).update(tab: self.tab, star: false)
+          if Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
+            # Update archive
+            ar = Archive.create(
+              replay_id:     score['replay_id'].to_i,
+              player:        Player.find_by(metanet_id: score['user_id']),
+              highscoreable: self,
+              score:         (score['score'] * 60.0 / 1000.0).round,
+              metanet_id:    score['user_id'].to_i,
+              date:          Time.now,
+              tab:           self.tab
+            )
+            # Update demo
+            demo = Demo.find_or_create_by(id: ar.id)
+            demo.update(replay_id: ar.replay_id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
+            demo.update_demo
+          end
         end
       end
       if self.class == Userlevel
         self.update(last_update: Time.now)
         self.update(scored:      true)     if updated.size > 0
       else
+        scores.where("rank < #{find_coolness}").update_all(cool: true)
         scores.where(player_id: stars).update_all(star: true)
       end
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
-    end
-    # Update coolness in a different transaction so that the new scores are already commited
-    ActiveRecord::Base.transaction do
-      scores.where("rank < #{find_coolness}").update_all(cool: true)
     end
   end
 
@@ -303,6 +300,7 @@ module HighScore
   end
 
   def format_scores(padding = max_name_length)
+    scores.reload # Otherwise sometimes recent changes aren't in memory
     max = scores.map(&:score).max.to_i.to_s.length + 4
     scores.each_with_index.map{ |s, i| s.format(padding, max) }.join("\n")
   end
