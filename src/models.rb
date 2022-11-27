@@ -187,6 +187,8 @@ module HighScore
 
   def save_scores(updated)
     ActiveRecord::Base.transaction do
+      # Save * at start, so that we can reassign them again after updating
+      stars = scores.where(star: true).pluck(:player_id)
       updated.each_with_index do |score, i|
         # Compute values, userlevels have some differences
         player = (self.class == Userlevel ? UserlevelPlayer : Player).find_or_create_by(metanet_id: score['user_id'])
@@ -198,7 +200,8 @@ module HighScore
           score:     scoretime,
           replay_id: score['replay_id'].to_i,
           player:    player,
-          tied_rank: updated.find_index { |s| s['score'] == score['score'] }
+          tied_rank: updated.find_index { |s| s['score'] == score['score'] },
+          star:      false
         )
         # Updates for non-userlevels (tab, archive, demos)
         scores.find_by(rank: i).update(tab: self.tab) if self.class != Userlevel
@@ -220,14 +223,18 @@ module HighScore
           demo.update_demo
         end
       end
-      # Userlevel-specific
-      self.update(last_update: Time.now) if self.class == Userlevel
-      self.update(scored:      true)     if self.class == Userlevel && updated.size > 0
-      # Update coolness and star attributes
-      scores.where("rank < #{find_coolness}").update_all(cool: true)
-      scores.find_by(rank: 0).update(star: true)
+      if self.class == Userlevel
+        self.update(last_update: Time.now)
+        self.update(scored:      true)     if updated.size > 0
+      else
+        scores.where(player_id: stars).update_all(star: true)
+      end
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
+    end
+    # Update coolness in a different transaction so that the new scores are already commited
+    ActiveRecord::Base.transaction do
+      scores.where("rank < #{find_coolness}").update_all(cool: true)
     end
   end
 
