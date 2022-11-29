@@ -204,7 +204,7 @@ module HighScore
         )
         # Updates for non-userlevels (tab, archive, demos)
         if self.class != Userlevel
-          scores.find_by(rank: i).update(tab: self.tab, star: false)
+          scores.find_by(rank: i).update(tab: self.tab, cool: false, star: false)
           if Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
             # Update archive
             ar = Archive.create(
@@ -229,6 +229,7 @@ module HighScore
       else
         scores.where("rank < #{find_coolness}").update_all(cool: true)
         scores.where(player_id: stars).update_all(star: true)
+        scores.where(rank: 0).update(star: true)
       end
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
