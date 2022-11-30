@@ -5,12 +5,12 @@
 # 2) Set up the following 2 environment variables (optional):
 # 2.1) TWITCH_SECRET - This is your Twitch app's secret, if you want to be able to
 #                      use the Twitch functionality. Otherwise, disable the
-#                      variable LOOKUP_TWITCH down below.
+#                      variable UPDATE_TWITCH in constants.rb.
 # 2.2) DISCORD_TOKEN_TEST - Same as DISCORD_TOKEN, but for a secondary development
 #                           bot. If you don't care about this, never enable the
-#                           variable TEST down below.
+#                           variable TEST in constants.rb.
 # 3) Configure the "outte" environment of the config file in ./db/config.yml,
-#    or create a new one and rename the DATABASE_ENV variable down below.
+#    or create a new one and rename the DATABASE_ENV variable in constants.rb.
 # 4) Configure the "outte_test" environment of the config file (optional).
 # 5) Create, migrate and seed a database named "inne". Make sure to use MySQL 5.7
 #    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
@@ -183,7 +183,8 @@ def update_twitch
     $twitch_streams.each{ |game, list|
       if old_streams.key?(game)
         list.each{ |stream|
-          if !old_streams[game].map{ |s| s['id'] }.include?(stream['id'])
+          # Stream is new (wasn't in the list before) and recent (to prevent some duplicates)
+          if !old_streams[game].map{ |s| s['user_id'] }.include?(stream['user_id']) && Twitch::length(stream) < 5
             $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>") if !(stream['user_name'] == "eblan4ikof")
           end
         }

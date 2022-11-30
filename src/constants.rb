@@ -8,7 +8,7 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
+DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 
 # <--------------------------------------------------------------------------->
@@ -25,10 +25,10 @@ CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
 # <------                     NETWORK VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-RETRIES        = 50   # Redownload attempts for boards / demos
-ATTEMPT_LIMIT  = 5    # Redownload attempts in general (bigger files)
-INVALID_RESP   = '-1337'
-DEFAULT_TYPES  = ['Level', 'Episode']
+RETRIES        = 50      # Redownload attempts for boards / demos
+ATTEMPT_LIMIT  = 5       # Redownload attempts in general (bigger files)
+INVALID_RESP   = '-1337' # N++'s server response when Steam ID is inactive
+DEFAULT_TYPES  = ['Level', 'Episode'] # Default highscoreable types
 
 # <--------------------------------------------------------------------------->
 # <------                     DISCORD VARIABLES                         ------>
@@ -80,7 +80,6 @@ MIN_ID       = 22715 # ID of the very first userlevel, to exclude Metanet levels
 #     'fullname' - Display name of tab 
 #     'update'   - Determines whether we update our db's tab info.
 #     'size'     - Determines how many maps from each tab to update.
-USERLEVEL_REPORT_SIZE = 500
 USERLEVEL_TABS = {
   10 => { name: 'all',      fullname: 'All',        size: -1,   update: false }, # keep first
   7  => { name: 'best',     fullname: 'Best',       size: 1000, update: true  },
@@ -88,6 +87,7 @@ USERLEVEL_TABS = {
   9  => { name: 'top',      fullname: 'Top Weekly', size: 1000, update: true  },
   11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
 }
+USERLEVEL_REPORT_SIZE = 500 # Number of userlevels to include in daily rankings
 
 # <--------------------------------------------------------------------------->
 # <------                       JOKE VARIABLES                          ------>
@@ -108,7 +108,7 @@ COOL            = true              # Emoji for CKC in leaderboards
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
-UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
+UPDATE_TWITCH     = true # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos

@@ -1560,7 +1560,7 @@ module Twitch extend self
     'N+'    => 18983,
     'Nv2'   => 105456,
     'N++'   => 369385
-#    'GTASA' => 6521 # This is for testing purposes, since often there are no N streams live
+#    'GTAV'  => 32982 # This is for testing purposes, since often there are no N streams live
   }
 
   def get_twitch_token
@@ -1571,6 +1571,10 @@ module Twitch extend self
     GlobalProperty.find_by(key: 'twitch_token').update(value: token)
   end
 
+  def length(s)
+    (Time.now - DateTime.parse(s['started_at']).to_time).to_i / 60.0
+  end
+
   def table_header
     "#{"Player".ljust(15, " ")} #{"Title".ljust(35, " ")} #{"Time".ljust(12, " ")} #{"Views".ljust(4, " ")}\n#{"-" * 70}"
   end
@@ -1578,7 +1582,7 @@ module Twitch extend self
   def format_stream(s)
     name  = to_ascii(s['user_name'].remove("\n").strip[0..14]).ljust(15, ' ')
     title = to_ascii(s['title'].remove("\n").strip[0..34]).ljust(35, ' ')
-    time  = "#{(Time.now - DateTime.parse(s['started_at']).to_time).to_i / 60} mins ago".rjust(12, ' ')
+    time  = "#{length(s).to_i} mins ago".rjust(12, ' ')
     views = s['viewer_count'].to_s.rjust(5, ' ')
     "#{name} #{title} #{time} #{views}"
   end
