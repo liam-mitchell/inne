@@ -5,18 +5,10 @@ require_relative 'utils.rb'
 
 module HighScore
 
-  # Overwrite Rails default definition to sort by rank (rather than ID)
-  #def scores
-  #  scores.sort_by{ |s| s.rank }
-  #end
-
   def self.format_rank(rank)
     "#{rank < 10 ? '0' : ''}#{rank}"
   end
 
-  # everything in the "spreads" and "ties" functions has been carefully
-  # benchmarked so, though unelegant, it's the most efficient set of
-  # sql queries
   def self.spreads(n, type, tabs, small = false, player_id = nil)
     n = n.clamp(0,19)
     type = ensure_type(type)
@@ -98,16 +90,6 @@ module HighScore
     ret
   end
 
-  def scores_uri(steam_id)
-    klass = self.class == Userlevel ? "level" : self.class.to_s.downcase
-    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}")
-  end
-
-  def replay_uri(steam_id, replay_id)
-    qt = [Level, Userlevel].include?(self.class) ? 0 : (self.class == Episode ? 1 : 4)
-    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
-  end
-
   def self.get_data(uri_proc, data_proc, err, *vargs)
     attempts ||= 0
     initial_id = get_last_steam_id
@@ -131,6 +113,16 @@ module HighScore
     else
       return nil
     end
+  end
+
+  def scores_uri(steam_id)
+    klass = self.class == Userlevel ? "level" : self.class.to_s.downcase
+    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}")
+  end
+
+  def replay_uri(steam_id, replay_id)
+    qt = [Level, Userlevel].include?(self.class) ? 0 : (self.class == Episode ? 1 : 4)
+    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
   end
 
   def get_scores
@@ -389,7 +381,7 @@ end
 
 class Level < ActiveRecord::Base
   include HighScore
-  has_many :scores, as: :highscoreable
+  has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :challenges
   has_many :level_aliases
@@ -412,7 +404,7 @@ end
 
 class Episode < ActiveRecord::Base
   include HighScore
-  has_many :scores, as: :highscoreable
+  has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :levels
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
@@ -502,7 +494,7 @@ end
 
 class Story < ActiveRecord::Base
   include HighScore
-  has_many :scores, as: :highscoreable
+  has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
 

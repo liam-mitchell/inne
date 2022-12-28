@@ -1746,7 +1746,7 @@ def respond(event)
   send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i && !!msg[NAME_PATTERN, 2]
   send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i && msg !~ /table/i
   send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
-  send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i
+  send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i && msg !~ /community/i
   send_list(event, false)    if msg =~ /how many/i && msg !~ /point/i unless !!msg[/\bmissing\b/i]
   send_list(event, false, false, true) if msg =~ /how cool/i 
   send_table(event)          if msg =~ /\btable\b/i

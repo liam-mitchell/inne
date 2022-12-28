@@ -61,6 +61,8 @@ Eddy's TODO list for inne:
 - use Score.filter with a Player for some of the Player methods, like range_ns, improvable, table...
 - add Score::filter to rank_exclude
 - CKC rankings weighed by the number of cool kids in each board
+- Have all people tied in rankings have the same rank, with hyphens. Show slightly over 20 if tied at the bottom, up to another limit, like 25.
+- In order to sort ties, rather than alphabetical, use chronological. For simplicity, use date of most recent 0th, rather than the whole history.
 
 
 \\ ------------------------ Art ------------------------

@@ -737,6 +737,7 @@ def start_level_of_the_day
 end
 
 def potato
+  return if !RESPOND
   while true
     sleep(POTATO_RATE)
     next if $nv2_channel.nil? || $last_potato.nil?
@@ -828,31 +829,33 @@ $status_update   = Time.now.to_i
 $twitch_token    = nil
 $twitch_streams  = {}
 
-$bot.mention do |event|
-  respond(event)
-  log("mentioned by #{event.user.name}: #{event.content}")
-end
-
-$bot.private_message do |event|
-  respond(event)
-  log("private message from #{event.user.name}: #{event.content}")
-end
-
-$bot.message do |event|
-  if event.channel == $nv2_channel
-    $last_potato = Time.now.to_i
-    $tomato = false
+if RESPOND
+  $bot.mention do |event|
+    respond(event)
+    log("mentioned by #{event.user.name}: #{event.content}")
   end
-  mishnub(event) if MISHU && event.content.downcase.include?("mishu")
-  robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
-end
 
-$bot.button do |event|
-  respond_interaction_button(event)
-end
+  $bot.private_message do |event|
+    respond(event)
+    log("private message from #{event.user.name}: #{event.content}")
+  end
 
-$bot.select_menu do |event|
-  respond_interaction_menu(event)
+  $bot.message do |event|
+    if event.channel == $nv2_channel
+      $last_potato = Time.now.to_i
+      $tomato = false
+    end
+    mishnub(event) if MISHU && event.content.downcase.include?("mishu")
+    robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
+  end
+
+  $bot.button do |event|
+    respond_interaction_button(event)
+  end
+
+  $bot.select_menu do |event|
+    respond_interaction_menu(event)
+  end
 end
 
 puts "the bot's URL is #{$bot.invite_url}"
@@ -873,6 +876,8 @@ if !TEST
   puts "Nv2 channel: #{$nv2_channel.name}.        " if !$nv2_channel.nil?
   puts "Content channel: #{$content_channel.name}." if !$content_channel.nil?
 end
+
+byebug if BYEBUG
 
 $threads = []
 $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
