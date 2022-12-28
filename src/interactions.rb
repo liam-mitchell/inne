@@ -193,7 +193,7 @@ def send_message_with_interactions(event, msg, view = nil, edit = false, attachm
   end
 end
 
-def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: nil, mode: nil, edit: false)
+def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: nil, mode: nil, edit: false, int: true)
   # Normalize pars
   order = "default" if order.nil? || order.empty?
   order = order.downcase.split(" ").first
@@ -202,10 +202,12 @@ def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: n
   mode = "solo" if !MODES.values.include?(mode.to_s.downcase)
   # Create and fill component collection (View)
   view = Discordrb::Webhooks::View.new
-  interaction_add_button_navigation(view, page, pages)
-  interaction_add_select_menu_order(view, order)
-  interaction_add_select_menu_tab(view, tab)
-  interaction_add_select_menu_mode(view, mode)
+  if int
+    interaction_add_button_navigation(view, page, pages) unless pages == 1
+    interaction_add_select_menu_order(view, order)
+    interaction_add_select_menu_tab(view, tab)
+    interaction_add_select_menu_mode(view, mode)
+  end
   # Send
   send_message_with_interactions(event, msg, view, edit)
 end

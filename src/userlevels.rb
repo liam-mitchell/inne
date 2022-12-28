@@ -1,5 +1,5 @@
 require 'chunky_png' # for screenshot generation
-#require 'oily_png'
+#require 'oily_png' # more efficient screenshot generation (broken?)
 include ChunkyPNG::Color
 require_relative 'constants.rb'
 require_relative 'utils.rb'
@@ -150,54 +150,70 @@ class Userlevel < ActiveRecord::Base
   # 'old' is the ID in the old format, '-1' if it didn't exist
   # 'pal' is the index at which the colors of the object start in the palette image
   OBJECTS = {
-    0x00 => {name: 'ninja',              pref:  4, att: 2, old:  0, pal:  6},
-    0x01 => {name: 'mine',               pref: 22, att: 2, old:  1, pal: 10},
-    0x02 => {name: 'gold',               pref: 21, att: 2, old:  2, pal: 14},
-    0x03 => {name: 'exit',               pref: 25, att: 4, old:  3, pal: 17},
-    0x04 => {name: 'exit switch',        pref: 20, att: 0, old: -1, pal: 25},
-    0x05 => {name: 'regular door',       pref: 19, att: 3, old:  4, pal: 30},
-    0x06 => {name: 'locked door',        pref: 28, att: 5, old:  5, pal: 31},
-    0x07 => {name: 'locked door switch', pref: 27, att: 0, old: -1, pal: 33},
-    0x08 => {name: 'trap door',          pref: 29, att: 5, old:  6, pal: 39},
-    0x09 => {name: 'trap door switch',   pref: 26, att: 0, old: -1, pal: 41},
-    0x0A => {name: 'launch pad',         pref: 18, att: 3, old:  7, pal: 47},
-    0x0B => {name: 'one-way platform',   pref: 24, att: 3, old:  8, pal: 49},
-    0x0C => {name: 'chaingun drone',     pref: 16, att: 4, old:  9, pal: 51},
-    0x0D => {name: 'laser drone',        pref: 17, att: 4, old: 10, pal: 53},
-    0x0E => {name: 'zap drone',          pref: 15, att: 4, old: 11, pal: 57},
-    0x0F => {name: 'chase drone',        pref: 14, att: 4, old: 12, pal: 59},
-    0x10 => {name: 'floor guard',        pref: 13, att: 2, old: 13, pal: 61},
-    0x11 => {name: 'bounce block',       pref:  3, att: 2, old: 14, pal: 63},
-    0x12 => {name: 'rocket',             pref:  8, att: 2, old: 15, pal: 65},
-    0x13 => {name: 'gauss turret',       pref:  9, att: 2, old: 16, pal: 69},
-    0x14 => {name: 'thwump',             pref:  6, att: 3, old: 17, pal: 74},
-    0x15 => {name: 'toggle mine',        pref: 23, att: 2, old: 18, pal: 12},
-    0x16 => {name: 'evil ninja',         pref:  5, att: 2, old: 19, pal: 77},
-    0x17 => {name: 'laser turret',       pref:  7, att: 4, old: 20, pal: 79},
-    0x18 => {name: 'boost pad',          pref:  1, att: 2, old: 21, pal: 81},
-    0x19 => {name: 'deathball',          pref: 10, att: 2, old: 22, pal: 83},
-    0x1A => {name: 'micro drone',        pref: 12, att: 4, old: 23, pal: 57},
-    0x1B => {name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86},
-    0x1C => {name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88}
+    0x00 => { name: 'ninja',              pref:  4, att: 2, old:  0, pal:  6 },
+    0x01 => { name: 'mine',               pref: 22, att: 2, old:  1, pal: 10 },
+    0x02 => { name: 'gold',               pref: 21, att: 2, old:  2, pal: 14 },
+    0x03 => { name: 'exit',               pref: 25, att: 4, old:  3, pal: 17 },
+    0x04 => { name: 'exit switch',        pref: 20, att: 0, old: -1, pal: 25 },
+    0x05 => { name: 'regular door',       pref: 19, att: 3, old:  4, pal: 30 },
+    0x06 => { name: 'locked door',        pref: 28, att: 5, old:  5, pal: 31 },
+    0x07 => { name: 'locked door switch', pref: 27, att: 0, old: -1, pal: 33 },
+    0x08 => { name: 'trap door',          pref: 29, att: 5, old:  6, pal: 39 },
+    0x09 => { name: 'trap door switch',   pref: 26, att: 0, old: -1, pal: 41 },
+    0x0A => { name: 'launch pad',         pref: 18, att: 3, old:  7, pal: 47 },
+    0x0B => { name: 'one-way platform',   pref: 24, att: 3, old:  8, pal: 49 },
+    0x0C => { name: 'chaingun drone',     pref: 16, att: 4, old:  9, pal: 51 },
+    0x0D => { name: 'laser drone',        pref: 17, att: 4, old: 10, pal: 53 },
+    0x0E => { name: 'zap drone',          pref: 15, att: 4, old: 11, pal: 57 },
+    0x0F => { name: 'chase drone',        pref: 14, att: 4, old: 12, pal: 59 },
+    0x10 => { name: 'floor guard',        pref: 13, att: 2, old: 13, pal: 61 },
+    0x11 => { name: 'bounce block',       pref:  3, att: 2, old: 14, pal: 63 },
+    0x12 => { name: 'rocket',             pref:  8, att: 2, old: 15, pal: 65 },
+    0x13 => { name: 'gauss turret',       pref:  9, att: 2, old: 16, pal: 69 },
+    0x14 => { name: 'thwump',             pref:  6, att: 3, old: 17, pal: 74 },
+    0x15 => { name: 'toggle mine',        pref: 23, att: 2, old: 18, pal: 12 },
+    0x16 => { name: 'evil ninja',         pref:  5, att: 2, old: 19, pal: 77 },
+    0x17 => { name: 'laser turret',       pref:  7, att: 4, old: 20, pal: 79 },
+    0x18 => { name: 'boost pad',          pref:  1, att: 2, old: 21, pal: 81 },
+    0x19 => { name: 'deathball',          pref: 10, att: 2, old: 22, pal: 83 },
+    0x1A => { name: 'micro drone',        pref: 12, att: 4, old: 23, pal: 57 },
+    0x1B => { name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86 },
+    0x1C => { name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88 }
   }
   FIXED_OBJECTS = [0, 1, 2, 3, 4, 7, 9, 16, 17, 18, 19, 21, 22, 24, 25, 28]
-  THEMES = ["acid", "airline", "argon", "autumn", "BASIC", "berry", "birthday cake",
-  "bloodmoon", "blueprint", "bordeaux", "brink", "cacao", "champagne", "chemical",
-  "chococherry", "classic", "clean", "concrete", "console", "cowboy", "dagobah",
-  "debugger", "delicate", "desert world", "disassembly", "dorado", "dusk", "elephant",
-  "epaper", "epaper invert", "evening", "F7200", "florist", "formal", "galactic",
-  "gatecrasher", "gothmode", "grapefrukt", "grappa", "gunmetal", "hazard", "heirloom",
-  "holosphere", "hope", "hot", "hyperspace", "ice world", "incorporated", "infographic",
-  "invert", "jaune", "juicy", "kicks", "lab", "lava world", "lemonade", "lichen",
-  "lightcycle", "line", "m", "machine", "metoro", "midnight", "minus", "mir",
-  "mono", "moonbase", "mustard", "mute", "nemk", "neptune", "neutrality", "noctis",
-  "oceanographer", "okinami", "orbit", "pale", "papier", "papier invert", "party",
-  "petal", "PICO-8", "pinku", "plus", "porphyrous", "poseidon", "powder", "pulse",
-  "pumpkin", "QDUST", "quench", "regal", "replicant", "retro", "rust", "sakura",
-  "shift", "shock", "simulator", "sinister", "solarized dark", "solarized light",
-  "starfighter", "sunset", "supernavy", "synergy", "talisman", "toothpaste", "toxin",
-  "TR-808", "tycho", "vasquez", "vectrex", "vintage", "virtual", "vivid", "void",
-  "waka", "witchy", "wizard", "wyvern", "xenon", "yeti"]
+  THEMES = [
+    "acid",           "airline",         "argon",         "autumn",
+    "BASIC",          "berry",           "birthday cake", "bloodmoon",
+    "blueprint",      "bordeaux",        "brink",         "cacao",
+    "champagne",      "chemical",        "chococherry",   "classic",
+    "clean",          "concrete",        "console",       "cowboy",
+    "dagobah",        "debugger",        "delicate",      "desert world",
+    "disassembly",    "dorado",          "dusk",          "elephant",
+    "epaper",         "epaper invert",   "evening",       "F7200",
+    "florist",        "formal",          "galactic",      "gatecrasher",
+    "gothmode",       "grapefrukt",      "grappa",        "gunmetal",
+    "hazard",         "heirloom",        "holosphere",    "hope",
+    "hot",            "hyperspace",      "ice world",     "incorporated",
+    "infographic",    "invert",          "jaune",         "juicy",
+    "kicks",          "lab",             "lava world",    "lemonade",
+    "lichen",         "lightcycle",      "line",          "m",
+    "machine",        "metoro",          "midnight",      "minus",
+    "mir",            "mono",            "moonbase",      "mustard",
+    "mute",           "nemk",            "neptune",       "neutrality",
+    "noctis",         "oceanographer",   "okinami",       "orbit",
+    "pale",           "papier",          "papier invert", "party",
+    "petal",          "PICO-8",          "pinku",         "plus",
+    "porphyrous",     "poseidon",        "powder",        "pulse",
+    "pumpkin",        "QDUST",           "quench",        "regal",
+    "replicant",      "retro",           "rust",          "sakura",
+    "shift",          "shock",           "simulator",     "sinister",
+    "solarized dark", "solarized light", "starfighter",   "sunset",
+    "supernavy",      "synergy",         "talisman",      "toothpaste",
+    "toxin",          "TR-808",          "tycho",         "vasquez",
+    "vectrex",        "vintage",         "virtual",       "vivid",
+    "void",           "waka",            "witchy",        "wizard",
+    "wyvern",         "xenon",           "yeti"
+  ]
   DEFAULT_PALETTE = "vasquez"
   PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
   BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
@@ -816,14 +832,14 @@ end
 # <---                           MESSAGES                                   --->
 # <---------------------------------------------------------------------------->
 
-def format_userlevels(maps, page, range)
-  #bench(:start) if BENCHMARK
+def format_userlevels(maps, page)
+  return "" if maps.size == 0
   # Calculate required column padding
   max_padding = {n: 6, id: 6, title: 30, author: 16, date: 14, favs: 4 }
-  min_padding = {n: 2, id: 2, title:  5, author:  6, date: 14, favs: 2 }
+  min_padding = {n: 1, id: 2, title:  5, author:  6, date: 14, favs: 2 }
   def_padding = {n: 3, id: 6, title: 25, author: 16, date: 14, favs: 2 }
   if !maps.nil? && !maps.empty?
-    n_padding =      [ [ (range.to_a.max + 1).to_s.length,                  max_padding[:n]     ].min, min_padding[:n]      ].max
+    n_padding =      [ [ (PAGE_SIZE * (page - 1) + maps.size).to_s.length,  max_padding[:n]     ].min, min_padding[:n]      ].max
     id_padding =     [ [ maps.map{ |map| map[:id].to_i }.max.to_s.length,   max_padding[:id]    ].min, min_padding[:id]     ].max
     title_padding  = [ [ maps.map{ |map| map[:title].to_s.length }.max,     max_padding[:title] ].min, min_padding[:title]  ].max
     author_padding = [ [ maps.map{ |map| map[:author].to_s.length }.max,    max_padding[:title] ].min, min_padding[:author] ].max
@@ -835,13 +851,12 @@ def format_userlevels(maps, page, range)
   end
 
   # Print header
-  output = "```\n"
-  output += "%-#{padding[:n]}.#{padding[:n]}s " % "N"
-  output += "%-#{padding[:id]}.#{padding[:id]}s " % "ID"
-  output += "%-#{padding[:title]}.#{padding[:title]}s " % "TITLE"
-  output += "%-#{padding[:author]}.#{padding[:author]}s " % "AUTHOR"
-  output += "%-#{padding[:date]}.#{padding[:date]}s " % "DATE"
-  output += "%-#{padding[:favs]}.#{padding[:favs]}s" % "++"
+  output  = "%-#{padding[:n]}s "      % "N"
+  output += "%-#{padding[:id]}s "     % "ID"
+  output += "%-#{padding[:title]}s "  % "TITLE"
+  output += "%-#{padding[:author]}s " % "AUTHOR"
+  output += "%-#{padding[:date]}s "   % "DATE"
+  output += "%-#{padding[:favs]}s"    % "++"
   output += "\n"
   #output += "-" * (padding.inject(0){ |sum, pad| sum += pad[1] } + padding.size - 1) + "\n"
 
@@ -861,8 +876,7 @@ def format_userlevels(maps, page, range)
       output << line + "\n"
     }
   end
-  #bench(:step) if BENCHMARK
-  output + "```"
+  format_block(output)
 end
 
 # The next function queries userlevels from the database based on a number of
@@ -948,9 +962,9 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   output = "Browsing #{USERLEVEL_TABS[cat][:name]}#{mode == -1 ? '' : ' ' + MODES[mode]} maps"
   output += " by \"#{author[0..63]}\"" if !author.empty?
   output += " for \"#{search[0..63]}\"" if !search.empty?
-  output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}"
-  output += " (Total results: **#{count}**)."
-  output += format_userlevels(Userlevel::serial(maps), pag[:page], pag[:offset] .. pag[:offset] + 19)
+  output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}."
+  output += format_userlevels(Userlevel::serial(maps), pag[:page])
+  output += count == 0 ? "\nNo results :shrug:" : "Total results: **#{count}**."
   bench(:step) if BENCHMARK
 
   # <------ SEND message ------>
@@ -963,7 +977,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     order: order_str,
     tab:   USERLEVEL_TABS[cat][:name],
     mode:  MODES[mode],
-    edit:  !initial
+    edit:  !initial,
+    int:   count > 0
   )
 rescue => e
   err(e)
@@ -1315,16 +1330,17 @@ def send_userlevel_maxable(event)
 end
 
 def send_random_userlevel(event)
+  byebug
   msg    = event.content
   author = parse_userlevel_author(msg) || ""
-  amount = [msg.remove(author)[/\d+/].to_i || 1, PAGE_SIZE].min
+  amount = [(msg.remove(author)[/\d+/] || 1).to_i, PAGE_SIZE].min
   mode   = msg =~ /\bcoop\b/i ? :coop : (msg =~ /\brace\b/i ? :race : :solo)
   full   = !parse_newest(msg)
   levels = full ? Userlevel.global : Userlevel.newest
 
   if amount > 1
     maps = levels.where(mode: mode, author: author).sample(amount)
-    event << "Random selection of #{amount} #{mode.to_s} #{format_global(full)}userlevels#{!author.empty? ? " by #{author}" : ""}:" + format_userlevels(Userlevel::serial(maps), 0, (0..amount - 1))
+    event << "Random selection of #{amount} #{mode.to_s} #{format_global(full)}userlevels#{!author.empty? ? " by #{author}" : ""}:" + format_userlevels(Userlevel::serial(maps), 0)
   else
     map = levels.where(mode: mode, author: author).sample
     send_userlevel_screenshot(event, map)

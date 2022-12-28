@@ -63,6 +63,7 @@ Eddy's TODO list for inne:
 - CKC rankings weighed by the number of cool kids in each board
 - Have all people tied in rankings have the same rank, with hyphens. Show slightly over 20 if tied at the bottom, up to another limit, like 25.
 - In order to sort ties, rather than alphabetical, use chronological. For simplicity, use date of most recent 0th, rather than the whole history.
+- Fix random userlevel function, the new send_userlevel_individual approach broke it.
 
 
 \\ ------------------------ Art ------------------------
@@ -82,6 +83,7 @@ Eddy's TODO list for inne:
 - Add Metanet levels to the db.
 
 Less priority:
+- Short/compact search mode (apt for mobile; show only ID, name and author; shorter truncations)
 - Missing
 - Demo analysis.
 - Userlevel rankings by page (featured, best, hardest, etc.). Also, the special hardest rankings with point ponderation.
@@ -113,6 +115,7 @@ Others:
 \\ ------------------------ Screenshots ------------------------
 
 - Regular doors aren't being placed correctly, sometimes at least, see e.g. 42069, in which horizontal doors are shifted half a tile up, and vertical doos are shifted half a tile to the left. There have been more examples.
+- For tile borders, rather than placing them in the center, move them inside the tile so that they don't protrude.
 
 Default palettes:
 - 2 votes for classic, 5 for vasquez, 5 for random
