@@ -978,7 +978,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     tab:   USERLEVEL_TABS[cat][:name],
     mode:  MODES[mode],
     edit:  !initial,
-    int:   count > 0
+    int:   count > 1
   )
 rescue => e
   err(e)

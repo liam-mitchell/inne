@@ -357,7 +357,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   # Format response, add cleanliness if it's an episode
   res << "Highscores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length)) rescue ""}"
   if scores.is_a?(Episode)
-    clean = scores.cleanliness[1]
+    clean = round_score(scores.cleanliness[1])
     res << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
   end
 
@@ -965,7 +965,7 @@ def send_splits(event)
   end
 
   # Send response
-  clean = ep.cleanliness(r)[1]
+  clean = round_score(ep.cleanliness(r)[1])
   rank  = r.ordinalize
   str   = "#{rank} splits for episode #{ep.name}: "
   str  += "`#{splits.map{ |s| "%.3f, " % s }.join[0..-3]}`.\n"
