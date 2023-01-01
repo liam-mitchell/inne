@@ -1030,7 +1030,6 @@ end
 # Auxiliar function called during lotd/eotw/cotm
 # Can also be called on demand by the botmaster
 def send_diff(event)
-  assert_permissions(event)
   type = parse_type(event.content) || Level
   current = get_current(type)
   old_scores = get_saved_scores(type)

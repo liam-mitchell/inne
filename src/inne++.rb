@@ -184,7 +184,7 @@ def update_twitch
       if old_streams.key?(game)
         list.each{ |stream|
           # Stream is new (wasn't in the list before) and recent (to prevent some duplicates)
-          if !old_streams[game].map{ |s| s['user_id'] }.include?(stream['user_id']) && Twitch::length(stream) < 5
+          if !old_streams[game].map{ |s| s['user_id'] }.include?(stream['user_id'])
             $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>") if !(stream['user_name'] == "eblan4ikof")
           end
         }

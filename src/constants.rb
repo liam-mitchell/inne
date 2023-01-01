@@ -2,14 +2,14 @@
 # <------                  DEVBELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = true  # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = false # Execute all threads
+DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
+DO_EVERYTHING  = true  # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
 
@@ -130,7 +130,7 @@ TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||          
 HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
 HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
 DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      60 # daily
+LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
 STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
 REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
