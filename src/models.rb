@@ -541,7 +541,6 @@ class Score < ActiveRecord::Base
       players: [],    # Players to ignore.     Def: None.
       a:       0,     # Bottom rank of scores. Def: 0th.
       b:       20,    # Top rank of scores.    Def: 19th.
-      full:    false, # Return full rankings, rather than top20 only.
       ties:    false, # Whether to include ties or not.
       cool:    false, # Only include cool scores.
       star:    false  # Only include * scores.
@@ -634,8 +633,7 @@ class Score < ActiveRecord::Base
                      .count(:id)
     end
 
-    # Crop, find players in advance, remove empty entries, and return
-    scores = scores.take(NUM_ENTRIES) if !full
+    # Find players in advance, remove empty entries, and return
     players = Player.where(id: scores.map(&:first))
                     .map{ |p| [p.id, p] }
                     .to_h
@@ -1195,7 +1193,7 @@ end
 class TotalScoreHistory < ActiveRecord::Base
   belongs_to :player
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
-
+7
   def self.compose(rankings, type, tab, time)
     rankings.select { |r| r[1] > 0 }.map do |r|
       {

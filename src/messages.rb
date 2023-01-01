@@ -163,7 +163,6 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     players: play,      # Players to ignore.     Def: None.
     a:       range[0],  # Bottom rank of scores. Def: 0th.
     b:       range[1],  # Top rank of scores.    Def: 19th.
-    full:    full,      # Return full rankings, rather than top20 only.
     ties:    ties,      # Whether to include ties or not.
     cool:    cool,      # Only include cool scores.
     star:    star       # Only include * scores.
