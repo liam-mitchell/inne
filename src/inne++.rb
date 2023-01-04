@@ -178,20 +178,14 @@ def update_twitch
   end
   while(true)
     sleep(WAIT)
-    old_streams = $twitch_streams.dup
     Twitch::update_twitch_streams
-    $twitch_streams.each{ |game, list|
-      if old_streams.key?(game)
-        list.each{ |stream|
-          # Stream is new (wasn't in the list before) and recent (to prevent some duplicates)
-          if !old_streams[game].map{ |s| s['user_id'] }.include?(stream['user_id']) && Twitch::length(stream) < 5
-            $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>") if !(stream['user_name'] == "eblan4ikof")
-          end
-        }
-      end
+    Twitch::new_streams.each{ |game, list|
+      list.each{ |stream|
+        Twitch::post_stream(stream)
+      }
     }
     sleep(TWITCH_UPDATE_FREQUENCY)
-  end  
+  end
 rescue => e
   err(e)
   sleep(WAIT)
@@ -828,6 +822,7 @@ $last_mishu      = nil
 $status_update   = Time.now.to_i
 $twitch_token    = nil
 $twitch_streams  = {}
+$boot_time       = Time.now.to_i
 
 if RESPOND
   $bot.mention do |event|

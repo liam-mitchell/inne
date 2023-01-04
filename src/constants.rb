@@ -8,7 +8,7 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
+DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
@@ -42,7 +42,6 @@ CHANNEL_ID     = 210778111594332181 # Discord main channel ID (#highscores)
 USERLEVELS_ID  = 221721273405800458 # ... (#mapping)
 NV2_ID         = 197774025844457472 # ... (#nv2)
 CONTENT_ID     = 197793786389200896 # ... (#content-creation)
-TWITCH_ROLE    = "Voyeur"           # Discord role for those that want to be pinged when a new stream happens
 DISCORD_LIMIT  = 2000               # Message character limit
 
 # <--------------------------------------------------------------------------->
@@ -100,7 +99,7 @@ POTATO_RATE    = 1                  # seconds between potato checks
 POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
 MISHU          = true               # MishNUB joke
 MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
-COOL            = true              # Emoji for CKC in leaderboards
+COOL           = true              # Emoji for CKC in leaderboards
 
 # <--------------------------------------------------------------------------->
 # <------                       TASK VARIABLES                          ------>
@@ -110,7 +109,7 @@ COOL            = true              # Emoji for CKC in leaderboards
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
-UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
+UPDATE_TWITCH     = true  # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
@@ -130,7 +129,7 @@ TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||          
 HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
 HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
 DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      60 # daily
+LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
 EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
 STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
 REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
@@ -142,6 +141,16 @@ USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 *
 USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
 USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      24 * 60 * 60 # daily
 USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
+
+# <--------------------------------------------------------------------------->
+# <------                      TWITCH VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+TWITCH_ROLE      = "Voyeur"    # Discord role to ping when a new stream happens
+TWITCH_COOLDOWN  = 2 * 60 * 60 # Cooldown to ping stream by the same user
+TWITCH_BLACKLIST = [
+  "eblan4ikof"
+]
 
 # <--------------------------------------------------------------------------->
 # <------                 HIGHSCORING VARIABLES                         ------>

@@ -559,7 +559,7 @@ class Score < ActiveRecord::Base
     level  = 0 if [:tied_rank, :avg_lead, :singular].include?(ranking)
     scores = filter(level, nil, type, tabs, a, b, ties, cool, star)
                .where(!players.empty? ? "player_id NOT IN (#{players.map(&:id).join(', ')})" : '')
-    
+
     # Perform specific rankings to filtered scores
     bench(:start) if BENCHMARK
     case ranking
@@ -621,13 +621,13 @@ class Score < ActiveRecord::Base
                      .map{ |id, c| [id, round_score(c)] }
     when :maxed
       scores = scores.where(highscoreable_id: HighScore.ties(type, tabs, nil, true, true))
-                     .where("tied_rank = 0")   
+                     .where("tied_rank = 0")
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
     when :maxable
       scores = scores.where(highscoreable_id: HighScore.ties(type, tabs, nil, false, true))
-                     .where("tied_rank = 0")   
+                     .where("tied_rank = 0")
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
@@ -1099,7 +1099,7 @@ class Player < ActiveRecord::Base
                  .to_h
       when :maxable
         HighScore.ties(type, [], nil, false, false)
-                 .select{ |t| t[1] < t[2] }  
+                 .select{ |t| t[1] < t[2] }
                  .group_by{ |t| t[0].split("-")[0] }
                  .map{ |tab, scores| [formalize_tab(tab), scores.size] }
                  .to_h
@@ -1312,7 +1312,7 @@ class Archive < ActiveRecord::Base
     }
     zeroths.map(&:first)
   end
-  
+
   def self.format_scores(board, zeroths = [])
     pad = board.map{ |s| ("%.3f" % (s[1].to_f / 60.0)).length.to_i }.max
     board.each_with_index.map{ |s, i|
@@ -1546,11 +1546,11 @@ end
 module Twitch extend self
 
   GAME_IDS = {
-#    'N'     => 12273, # Commented because it's usually non-N related :(
-    'N+'    => 18983,
-    'Nv2'   => 105456,
-    'N++'   => 369385
-#    'GTAV'  => 32982 # This is for testing purposes, since often there are no N streams live
+#    'N'     => 12273,  # Commented because it's usually non-N related :(
+    'N+'     => 18983,
+    'Nv2'    => 105456,
+    'N++'    => 369385,
+    'GTASA'  => 6521    # This is for testing purposes, since often there are no N streams live
   }
 
   def get_twitch_token
@@ -1587,7 +1587,7 @@ module Twitch extend self
       }
     )
     if res.code.to_i == 401
-      err("TWITCH: Unauthorized to perform requests, please verify you have this correctly configured.")      
+      err("TWITCH: Unauthorized to perform requests, please verify you have this correctly configured.")
     elsif res.code.to_i != 200
       err("TWITCH: App access token request failed.")
     else
@@ -1663,7 +1663,7 @@ module Twitch extend self
         break
       end
     end
-    JSON.parse(res.body)['data'].sort_by{ |s| s['user_name'].downcase }
+    JSON.parse(res.body)['data']
   rescue
     err("TWITCH: Stream list request method for #{name} failed.")
     sleep(5)
@@ -1672,8 +1672,52 @@ module Twitch extend self
 
   def update_twitch_streams
     GAME_IDS.each{ |game, id|
-      $twitch_streams[game] = get_twitch_streams(game)
+      new_streams = get_twitch_streams(game)
+      $twitch_streams[game] = [] if !$twitch_streams.key?(game)
+      # Reject blacklisted streams
+      new_streams.reject!{ |s| TWITCH_BLACKLIST.include?(s['user_name']) }
+      # Update values of already existing streams
+      $twitch_streams[game].each{ |stream|
+        new_stream = new_streams.select{ |s| s['user_id'] == stream['user_id'] }.first
+        if !new_stream.nil?
+          stream.merge!(new_stream)
+          stream['on'] = true
+        else
+          stream['on'] = false
+        end
+      }
+      # Add new streams
+      new_streams.reject!{ |s|
+        $twitch_streams[game].map{ |ss| ss['user_id'] }.include?(s['user_id'])
+      }
+      new_streams.each{ |stream| stream['on'] = true }
+      $twitch_streams[game].push(*new_streams)
+      # Delete obsolete streams
+      $twitch_streams[game].reject!{ |stream|
+        stream.key?('on') && !stream['on'] && stream.key?('posted') && (Time.now.to_i - stream['posted'] > TWITCH_COOLDOWN)
+      }
+      # Reorder streams
+      $twitch_streams[game].sort_by!{ |s| -Time.parse(s['started_at']).to_i }
     }
   end
 
+  def active_streams
+    $twitch_streams.map{ |game, list|
+      [game, list.select{ |s| s['on'] }]
+    }.to_h
+  end
+
+  def new_streams
+    active_streams.map{ |game, list|
+      [game, list.select{ |s| !s['posted'] && Time.parse(s['started_at']).to_i > $boot_time }]
+    }.to_h
+  end
+
+  def post_stream(stream)
+    game = GAME_IDS.invert[stream['game_id'].to_i]
+    $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>")
+    return if !$twitch_streams.key?(game)
+    s = $twitch_streams[game].select{ |s| s['user_id'] ==  stream['user_id'] }.first
+    s['posted'] = Time.now.to_i if !s.nil?
+  end
 end

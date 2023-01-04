@@ -1541,20 +1541,22 @@ end
 # TODO: Implement a way to query next pages if there are more than 20 streams.
 #       ... who are we kidding we'll never need this bahahahah.
 def send_twitch(event)
-  lists = ["N++", "N+", "N", "Nv2"].map{ |name|
-    Twitch::GAME_IDS.key?(name) ? [name, Twitch::get_twitch_streams(name)] : nil
-  }.compact.to_h
+  Twitch::update_twitch_streams
+  streams = Twitch::active_streams
+
   event << "Currently active N related Twitch streams #{format_time}:"
-  if lists.map{ |k, v| v.size }.sum == 0
+  if streams.map{ |k, v| v.size }.sum == 0
     event << "None :shrug:"
   else
-    lists.each{ |game, list|
+    str = ""
+    streams.each{ |game, list|
       if list.size > 0
-        event << "**#{game}**: #{list.size}"
-        streams = list.take(20).map{ |stream| Twitch::format_stream(stream) }.join("\n")
-        event << "```" + Twitch::table_header + "\n" + streams + "```"
+        str += "**#{game}**: #{list.size}\n"
+        ss = list.take(20).map{ |stream| Twitch::format_stream(stream) }.join("\n")
+        str += format_block(Twitch::table_header + "\n" + ss)
       end
     }
+    event << str if !str.empty?
   end
 end
 
@@ -1675,6 +1677,7 @@ def sanitize_archives(event)
 end
 
 def testa(event)
+  assert_permissions(event)
   golds = Score.where(rank: 0, highscoreable_type: 'Level')
                .joins("INNER JOIN levels ON levels.id = scores.highscoreable_id")
                .joins("INNER JOIN archives ON archives.replay_id = scores.replay_id")
