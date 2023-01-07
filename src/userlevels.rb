@@ -217,11 +217,11 @@ class Userlevel < ActiveRecord::Base
   DEFAULT_PALETTE = "vasquez"
   PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
   BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
-  ROWS = 23
+  ROWS    = 23
   COLUMNS = 42
-  DIM = 44
-  WIDTH = DIM * (COLUMNS + 2)
-  HEIGHT = DIM * (ROWS + 2)
+  DIM     = 44
+  WIDTH   = DIM * (COLUMNS + 2)
+  HEIGHT  = DIM * (ROWS + 2)
   INVALID_NAMES = [nil, "null", ""]
 
   def self.mode(mode)
@@ -271,6 +271,7 @@ class Userlevel < ActiveRecord::Base
     HighScore::get_data(uri, data, err, qt, page, mode)
   end
 
+  # Not used anymore, since we now perform searches in the local db
   def self.get_search(search = "", page = 0, mode = 0)
     initial_id = get_last_steam_id
     response = Net::HTTP.get(search_uri(initial_id, search, page, mode))
@@ -356,6 +357,33 @@ class Userlevel < ActiveRecord::Base
   rescue => e
     err(e)
     nil
+  end
+
+  # Dump 48 byte header used by the game for userlevel queries
+  def self.query_header(count, cat, mode)
+    header  = Time.now.strftime("%Y-%m-%d-%H:%M") # Date of query  (16B)
+    header += _pack(count, 4)                     # Map count      ( 4B)
+    header += _pack(0,     4)                     # Query page     ( 4B)
+    header += _pack(0,     4)                     # ?              ( 4B)
+    header += _pack(cat,   4)                     # Query category ( 4B)
+    header += _pack(mode,  4)                     # Game mode      ( 4B)
+    header += _pack(5,     4)                     # ?              ( 4B)
+    header += _pack(500,   4)                     # ?              ( 4B)
+    header += _pack(0,     4)                     # ?              ( 4B)
+    header
+  end
+
+  # Dump binary file containing a collection of userlevels using the format
+  # of query results that the game utilizes
+  # (see self.parse for documentation of this format)
+  # TODO: Add more integrity checks (category...)
+  def self.dump_query(maps, cat, mode)
+    raise "Some of the queried userlevels have an incorrect game mode." if !maps.index{ |m| m.mode != mode }.nil?
+    raise "Too many queried userlevels." if count > 500
+    header  = query_header(maps.size, cat, mode)
+    headers = maps.map{ |m| m.dump_header }.join
+    data    = maps.map{ |m| m.dump_data }.join
+    header + headers + data
   end
 
   # Updates position of userlevels in several lists (best, top weekly, featured, hardest...)
@@ -708,6 +736,25 @@ class Userlevel < ActiveRecord::Base
     }
     data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
     data
+  end
+
+  # Generate compressed map dump in the format the game uses when browsing
+  def dump_data
+    block = Zlib::Deflate.deflate(self.convert, 9)
+    data  = _pack(block.size, 4)    # Length of full data block (4B)
+    data += _pack(objects.count, 2) # Object count              (2B)
+    data += block                   # Zlib-compressed map data  (?B)
+    data
+  end
+
+  # Generate 44 byte map header of the dump above
+  def dump_header
+    header  = _pack(id, 4)                                 # Userlevel ID ( 4B)
+    header += _pack(author_id, 4)                          # User ID      ( 4B)
+    header += author[0..15].ljust(16, "\x00")              # User name    (16B)
+    header += _pack(favs, 4)                               # Map ++'s     ( 4B)
+    header += reformat_date(date)[0..15].ljust(16, "\x00") # Map date     (16B)
+    header
   end
 
   # <-------------------------------------------------------------------------->

@@ -18,6 +18,11 @@ def format_date(date)
   date[0..7].split("/").reverse.join("/") + date[-6..-1]
 end
 
+# Reformat date string back to the format the server users
+def reformat_date(date)
+  '20' + date[0..7].split('/').reverse.join('-') + '-' + date[-5..-1]
+end
+
 def to_ascii(s)
   s.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
 end
