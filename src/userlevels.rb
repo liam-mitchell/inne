@@ -378,12 +378,14 @@ class Userlevel < ActiveRecord::Base
   # (see self.parse for documentation of this format)
   # TODO: Add more integrity checks (category...)
   def self.dump_query(maps, cat, mode)
-    raise "Some of the queried userlevels have an incorrect game mode." if !maps.index{ |m| m.mode != mode }.nil?
-    raise "Too many queried userlevels." if count > 500
+    raise "Some of the queried userlevels have an incorrect game mode." if !maps.index{ |m| MODES.invert[m.mode] != mode }.nil?
+    raise "Too many queried userlevels." if maps.size > 500
+    bench(:start)
     header  = query_header(maps.size, cat, mode)
     headers = maps.map{ |m| m.dump_header }.join
     data    = maps.map{ |m| m.dump_data }.join
-    header + headers + data
+    bench(:step)
+    File.binwrite('query', header + headers + data)
   end
 
   # Updates position of userlevels in several lists (best, top weekly, featured, hardest...)
@@ -706,13 +708,20 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Generate a file with the usual userlevel format
-  def convert
+  # If query is true, then the format for userlevel query files is used (slightly
+  # different header, shorter)
+  def convert(query = false)
     # HEADER
-    data = ("\x00" * 4).force_encoding("ascii-8bit")   # magic number ?
-    data << _pack(1230 + 5 * self.objects.size, 4)     # filesize
+    data = ""
+    if !query
+      data << ("\x00" * 4).force_encoding("ascii-8bit")   # magic number ?
+      data << _pack(1230 + 5 * self.objects.size, 4)     # filesize
+    end
     data << ("\xFF" * 4).force_encoding("ascii-8bit")  # static data
     data << _pack(Userlevel.modes[self.mode], 4)       # game mode
-    data << ("\x25" + "\x00" * 3 + "\xFF" * 4 + "\x00" * 14).force_encoding("ascii-8bit") # static data
+    data << _pack(37, 4)                               # ?
+    data << (query ? _pack(self.author_id, 4) : ("\xFF" * 4).force_encoding("ascii-8bit"))
+    data << ("\x00" * 14).force_encoding("ascii-8bit") # static data
     data << self.title[0..126].ljust(128,"\x00").force_encoding("ascii-8bit") # map title
     data << ("\x00" * 18).force_encoding("ascii-8bit") # static data
 
@@ -740,10 +749,10 @@ class Userlevel < ActiveRecord::Base
 
   # Generate compressed map dump in the format the game uses when browsing
   def dump_data
-    block = Zlib::Deflate.deflate(self.convert, 9)
-    data  = _pack(block.size, 4)    # Length of full data block (4B)
-    data += _pack(objects.count, 2) # Object count              (2B)
-    data += block                   # Zlib-compressed map data  (?B)
+    block = Zlib::Deflate.deflate(self.convert(true), 9)
+    data  = _pack(block.size + 6, 4) # Length of full data block (4B)
+    data += _pack(objects.count,  2) # Object count              (2B)
+    data += block                    # Zlib-compressed map data  (?B)
     data
   end
 
@@ -937,7 +946,11 @@ end
 #
 # Therefore, be CAREFUL when modifying the header of the message. It must still
 # be a valid regex command containing all info necessary.
-def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, query: nil)
+#
+# The socket parameter is an exception. It's used for performing a backend query
+# and returning the maps, so the data can be dumped to a binary and socketed,
+# to proxy the game's userlevel queries.
+def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, query: nil, socket: nil)
   
   # <------ PARSE all message elements ------>
 
@@ -946,15 +959,18 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # query (edit post).
   initial = page.nil? && order.nil? && tab.nil? && mode.nil?
   reset_page = page.nil? && !initial
-  if !query.nil?
-    msg = ""
-  elsif initial
-    msg = event.content
+  if !socket.nil?
+    msg = socket
   else
-    msg = event.message.content
-    msg = msg.split("```").first # Everything before the actual userlevel names
+    if !query.nil?
+      msg = ""
+    elsif initial
+      msg = event.content
+    else
+      msg = event.message.content
+      msg = msg.split("```").first # Everything before the actual userlevel names
+    end
   end
-
   h      = parse_order(msg, order) # Updates msg
   msg    = h[:msg]
   order  = h[:order]
@@ -968,9 +984,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     search = query[:title]
     author = query[:author]
   end
-  page   = parse_page(msg, page, reset_page, event.message.components)
+  page   = parse_page(msg, page, reset_page, !event.nil? ? event.message.components : nil)
   mode   = MODES.select{ |k, v| v == (mode || parse_mode(msg)) }.keys.first
-
 
   # Determine the category / tab
   cat = 10 # newest
@@ -979,23 +994,25 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
 
   #<------ FETCH userlevels ------>
 
+  pagesize = !socket.nil? ? QUERY_LIMIT_SOFT : PAGE_SIZE
   # Filter userlevels
   if query.nil?
     query   = Userlevel::tab(cat, mode)
-    query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
+    query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..15] + "%")) if !author.empty?
     query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
   else
     query   = query[:query]
   end
   # Compute count, page number, total pages, and offset
   count     = query.count
-  pag       = compute_pages(count, page)
+  pag       = compute_pages(count, page, pagesize)
   # Order userlevels
   order_str = Userlevel::sort(order, invert)
   query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
   # Fetch userlevels
-  ids       = query.offset(pag[:offset]).limit(PAGE_SIZE).pluck(:id)
+  ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
   maps      = query.where(id: ids).all.to_a
+  return maps if !socket.nil?
 
   # <------ FORMAT message ------>
 
@@ -1031,10 +1048,14 @@ rescue => e
   err(e)
   puts(e.backtrace)
   err_str = "An error happened, try again, if it keeps failing, contact the botmeister."
-  if initial
-    event << err_str
+  if !socket.nil?
+    log("Error socketing userlevel query.")
   else
-    event.channel.send_message(err_str)
+    if initial
+      event << err_str
+    else
+      event.channel.send_message(err_str)
+    end
   end
 end
 

@@ -1677,18 +1677,8 @@ end
 
 def testa(event)
   assert_permissions(event)
-  golds = Score.where(rank: 0, highscoreable_type: 'Level')
-               .joins("INNER JOIN levels ON levels.id = scores.highscoreable_id")
-               .joins("INNER JOIN archives ON archives.replay_id = scores.replay_id")
-               .where("archives.gold > -1")
-               .order('archives.framecount')
-               .pluck('levels.name', 'archives.framecount', 'archives.gold')
-  event << format_block(golds.take(20).map{ |name, frames, gold|
-    "#{name.ljust(10)} #{frames}"
-  }.join("\n"))
-  event << format_block(golds.reverse.take(20).map{ |name, frames, gold|
-    "#{name.ljust(10)} #{frames}"
-  }.join("\n"))
+  maps = send_userlevel_browse(nil, socket: event.content)
+  Userlevel::dump_query(maps, 10, 0)
 end
 
 # TODO set level of the day on startup
@@ -1780,7 +1770,7 @@ def respond(event)
   send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   send_tally(event)          if msg =~ /\btally\b/i
   faceswap(event)            if msg =~ /faceswap/i
-  #testa(event) if msg =~ /testa/i
+  testa(event) if msg =~ /testa/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't

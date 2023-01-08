@@ -2,13 +2,13 @@
 # <------                  DEVBELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = false # Switch to the local test bot
+TEST           = true  # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
+DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
@@ -89,6 +89,8 @@ USERLEVEL_TABS = {
   11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
 }
 USERLEVEL_REPORT_SIZE = 500 # Number of userlevels to include in daily rankings
+QUERY_LIMIT_HARD = 500 # Maximum number of queried userlevels per page
+QUERY_LIMIT_SOFT = 25  # Selected number of queried userlevels per page
 
 # <--------------------------------------------------------------------------->
 # <------                       JOKE VARIABLES                          ------>
