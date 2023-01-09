@@ -39,6 +39,7 @@ require 'net/http'
 require 'thread'
 require 'yaml'
 require 'byebug'
+require 'socket'
 
 # Import other source files
 require_relative 'constants.rb'
@@ -886,7 +887,8 @@ $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO
 $threads << Thread.new { start_userlevel_tabs }      if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
 $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { potato }                    if POTATO
+$threads << Thread.new { potato }                    if POTATO && !DO_NOTHING
+$threads << Thread.new { Sock::start }               if SOCKET && !DO_NOTHING
 
 wd = Thread.new { watchdog }
 wd.join

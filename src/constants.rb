@@ -8,7 +8,7 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
 LOG            = false # Export logs and errors into external file
 LOG_REPORT     = false # Log new weekly scores that appear in the report
-DO_NOTHING     = true  # Don't execute any threads (see below for ind flags)
+DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
@@ -111,7 +111,7 @@ COOL           = true              # Emoji for CKC in leaderboards
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
-UPDATE_TWITCH     = true  # Thread to regularly look up N related Twitch streams
+UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
 UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
@@ -153,6 +153,17 @@ TWITCH_COOLDOWN  = 2 * 60 * 60 # Cooldown to ping stream by the same user
 TWITCH_BLACKLIST = [
   "eblan4ikof"
 ]
+
+# <--------------------------------------------------------------------------->
+# <------                      SOCKET VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+# Variables that control the TCP socket we open to listen to the N++ Search
+# Engine, a tool that uses outte's database to perform custom userlevel queries
+# and inject them directly in-game.
+
+SOCKET      = true # Whether to open socket or not
+SOCKET_PORT = 8125 # Port to listen to
 
 # <--------------------------------------------------------------------------->
 # <------                 HIGHSCORING VARIABLES                         ------>

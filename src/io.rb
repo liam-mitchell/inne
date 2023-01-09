@@ -42,8 +42,10 @@ def compute_pages(count = 1, page = 1, pagesize = PAGE_SIZE)
   { page: page, pages: pages, offset: offset }
 end
 
-def parse_mode(msg)
-  !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : (!!msg[/solo/i] ? 'solo' : 'all'))
+# Parse game mode from string. If explicit is set, one of the 3 modes must be
+# set (defaulting to 'solo'), otherwise, it defaults to 'all'.
+def parse_mode(msg, explicit = false)
+  !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : (explicit ? 'solo' : (!!msg[/solo/i] ? 'solo' : 'all')))
 end
 
 # Optionally allow to parse multiple types, for retrocompat

@@ -1721,3 +1721,46 @@ module Twitch extend self
     s['posted'] = Time.now.to_i if !s.nil?
   end
 end
+
+# The following module encapsulates the functionality of a TCP socket that may
+# optionally be opened with outte to listen to queries for userlevels.
+#
+# This is meant to be the backend of the N++ Search Engine tool, which uses
+# outte's userlevel database and functionality to extend N++'s native userlevel
+# engine, and then proxies Metanet's server and pipes these directly to the game
+# in the format it uses, so that custom searches can be performed in-game.
+module Sock extend self
+  def read(client)
+    req = ""
+    begin
+      req << client.read_nonblock(1024)
+    rescue Errno::EAGAIN
+      retry if IO.select([client], nil, nil, 1)
+    rescue
+    end
+    req
+  end
+
+  def parse(req)
+    req
+  end
+
+  def handle(req)
+    ret = send_userlevel_browse(nil, socket: req.dup)
+    Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
+  end
+  
+  def start
+    server = TCPServer.new(SOCKET_PORT)
+    loop do
+      Thread.start(server.accept) do |client|
+        req = parse(read(client))
+        client.write(handle(req))
+        client.close
+        log("Proxied request: #{req}")
+      end
+    end
+  rescue
+    err("Socket failed.")
+  end
+end

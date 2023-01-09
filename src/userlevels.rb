@@ -379,13 +379,11 @@ class Userlevel < ActiveRecord::Base
   # TODO: Add more integrity checks (category...)
   def self.dump_query(maps, cat, mode)
     raise "Some of the queried userlevels have an incorrect game mode." if !maps.index{ |m| MODES.invert[m.mode] != mode }.nil?
-    raise "Too many queried userlevels." if maps.size > 500
-    bench(:start)
+    raise "Too many queried userlevels." if maps.size > QUERY_LIMIT_HARD
     header  = query_header(maps.size, cat, mode)
     headers = maps.map{ |m| m.dump_header }.join
     data    = maps.map{ |m| m.dump_data }.join
-    bench(:step)
-    File.binwrite('query', header + headers + data)
+    header + headers + data
   end
 
   # Updates position of userlevels in several lists (best, top weekly, featured, hardest...)
@@ -711,11 +709,12 @@ class Userlevel < ActiveRecord::Base
   # If query is true, then the format for userlevel query files is used (slightly
   # different header, shorter)
   def convert(query = false)
+    objs = self.objects
     # HEADER
     data = ""
     if !query
       data << ("\x00" * 4).force_encoding("ascii-8bit")   # magic number ?
-      data << _pack(1230 + 5 * self.objects.size, 4)     # filesize
+      data << _pack(1230 + 5 * objs.size, 4)     # filesize
     end
     data << ("\xFF" * 4).force_encoding("ascii-8bit")  # static data
     data << _pack(Userlevel.modes[self.mode], 4)       # game mode
@@ -731,15 +730,15 @@ class Userlevel < ActiveRecord::Base
     object_data = ""
     OBJECTS.sort_by{ |id, entity| id }.each{ |id, entity|
       if ![7,9].include?(id) # ignore door switches for counting
-        object_counts << self.objects.select{ |o| o[0] == id }.size.to_s(16).rjust(4,"0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join
+        object_counts << objs.select{ |o| o[0] == id }.size.to_s(16).rjust(4,"0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join
       else
         object_counts << "\x00\x00"
       end
       if ![6,7,8,9].include?(id) # doors must once again be treated differently
-        object_data << self.objects.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
+        object_data << objs.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
       elsif [6,8].include?(id)
-        doors = self.objects.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
-        switches = self.objects.select{ |o| o[0] == id + 1 }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
+        doors = objs.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
+        switches = objs.select{ |o| o[0] == id + 1 }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
         object_data << doors.zip(switches).flatten.join
       end
     }
@@ -760,7 +759,7 @@ class Userlevel < ActiveRecord::Base
   def dump_header
     header  = _pack(id, 4)                                 # Userlevel ID ( 4B)
     header += _pack(author_id, 4)                          # User ID      ( 4B)
-    header += author[0..15].ljust(16, "\x00")              # User name    (16B)
+    header += author.to_s[0..15].ljust(16, "\x00")         # User name    (16B)
     header += _pack(favs, 4)                               # Map ++'s     ( 4B)
     header += reformat_date(date)[0..15].ljust(16, "\x00") # Map date     (16B)
     header
@@ -985,7 +984,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     author = query[:author]
   end
   page   = parse_page(msg, page, reset_page, !event.nil? ? event.message.components : nil)
-  mode   = MODES.select{ |k, v| v == (mode || parse_mode(msg)) }.keys.first
+  mode   = MODES.select{ |k, v| v == (mode || parse_mode(msg, !socket.nil?)) }.keys.first
 
   # Determine the category / tab
   cat = 10 # newest
@@ -1012,7 +1011,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # Fetch userlevels
   ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
   maps      = query.where(id: ids).all.to_a
-  return maps if !socket.nil?
+  return { maps: maps, mode: mode, cat: cat } if !socket.nil?
 
   # <------ FORMAT message ------>
 
