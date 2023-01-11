@@ -548,7 +548,7 @@ class Score < ActiveRecord::Base
     # Most rankings which exclude players need to be computed completely
     # differently, so we use another function.
     if !players.empty? && [:rank, :tied_rank, :points, :avg_points, :avg_rank, :avg_lead].include?(ranking)
-      return rank_exclude(ranking, type, tabs, ties, b - 1, full, players)
+      return rank_exclude(ranking, type, tabs, ties, b - 1, players)
     end
 
     # Normalize parameters and filter scores accordingly
@@ -647,7 +647,7 @@ class Score < ActiveRecord::Base
   # Rankings excluding specified players. Less optimized than the function above
   # because I couldn't find a way to ignore them other than loop through all levels
   # on a one by one basis.
-  def self.rank_exclude(ranking, type, tabs, ties = false, n = 0, full = false, players = [])
+  def self.rank_exclude(ranking, type, tabs, ties = false, n = 0, players = [])
     bench(:start) if BENCHMARK
     pids = players.map(&:id)
     p = Player.pluck(:id).map{ |id| [id, 0] }.to_h
@@ -702,7 +702,6 @@ class Score < ActiveRecord::Base
          .map{ |id, c| [id, c.to_f / q[id]] }
          .to_h if [:avg_points, :avg_rank, :avg_lead].include?(ranking)
     p.sort_by{ |id, c| ranking == :avg_rank ? c : -c }
-     .take(NUM_ENTRIES)
      .reject{ |id, c| c == 0 unless [:avg_rank, :avg_lead].include?(ranking) }
      .map{ |id, c| [Player.find(id), c] }
   end

@@ -193,7 +193,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   star    = format_star(star)
   rtypeB  = format_rtype(rtype, ties: ties, range: false, basic: true)
   max     = format_max(max)
-  play    = !play.empty? ? ' without ' + play.map(&:name).to_sentence  : ''
+  play    = !play.empty? ? ' without ' + play.map{ |p| "`#{p.print_name}`" }.to_sentence  : ''
   header  = "#{full} #{cool} #{maxed} #{maxable} #{tabs} #{typeB} #{range}#{star} #{rtypeB} #{max} #{play} #{format_time}:".squish
   header[0] = header[0].upcase
   header  = "Rankings - #{header}".squish

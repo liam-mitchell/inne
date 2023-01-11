@@ -780,7 +780,7 @@ def format_max(max)
 end
 
 def format_author(name)
-  !name.empty? ? "on maps by #{name}" : ''
+  !name.empty? ? "on maps by `#{name}`" : ''
 end
 
 def format_block(str)
