@@ -364,11 +364,11 @@ class Userlevel < ActiveRecord::Base
     header  = Time.now.strftime("%Y-%m-%d-%H:%M") # Date of query  (16B)
     header += _pack(count, 4)                     # Map count      ( 4B)
     header += _pack(0,     4)                     # Query page     ( 4B)
-    header += _pack(0,     4)                     # ?              ( 4B)
+    header += _pack(0,     4)                     # Type           ( 4B)
     header += _pack(cat,   4)                     # Query category ( 4B)
     header += _pack(mode,  4)                     # Game mode      ( 4B)
-    header += _pack(5,     4)                     # ?              ( 4B)
-    header += _pack(500,   4)                     # ?              ( 4B)
+    header += _pack(5,     4)                     # Cache duration ( 4B)
+    header += _pack(500,   4)                     # Max page size  ( 4B)
     header += _pack(0,     4)                     # ?              ( 4B)
     header
   end
@@ -713,16 +713,18 @@ class Userlevel < ActiveRecord::Base
     # HEADER
     data = ""
     if !query
-      data << ("\x00" * 4).force_encoding("ascii-8bit")   # magic number ?
-      data << _pack(1230 + 5 * objs.size, 4)     # filesize
+      data << ("\x00" * 4).force_encoding("ascii-8bit") # magic number ?
+      data << _pack(1230 + 5 * objs.size, 4)            # Filesize
     end
-    data << ("\xFF" * 4).force_encoding("ascii-8bit")  # static data
-    data << _pack(Userlevel.modes[self.mode], 4)       # game mode
-    data << _pack(37, 4)                               # ?
+    data << ("\xFF" * 4).force_encoding("ascii-8bit")   # Level ID (unset)
+    data << _pack(Userlevel.modes[self.mode], 4)        # Game mode
+    data << _pack(37, 4)                                # QT (unset, max is 36)
     data << (query ? _pack(self.author_id, 4) : ("\xFF" * 4).force_encoding("ascii-8bit"))
-    data << ("\x00" * 14).force_encoding("ascii-8bit") # static data
+    data << ("\x00" * 4).force_encoding("ascii-8bit")   # Fav count (unset)
+    data << ("\x00" * 10).force_encoding("ascii-8bit")  # Date SystemTime (unset)
     data << self.title[0..126].ljust(128,"\x00").force_encoding("ascii-8bit") # map title
-    data << ("\x00" * 18).force_encoding("ascii-8bit") # static data
+    data << ("\x00" * 16).force_encoding("ascii-8bit")  # Author name (unset)
+    data << ("\x00" * 2).force_encoding("ascii-8bit")   # Padding
 
     # MAP DATA
     tile_data = self.tiles.flatten.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join
@@ -748,10 +750,12 @@ class Userlevel < ActiveRecord::Base
 
   # Generate compressed map dump in the format the game uses when browsing
   def dump_data
-    block = Zlib::Deflate.deflate(self.convert(true), 9)
-    data  = _pack(block.size + 6, 4) # Length of full data block (4B)
-    data += _pack(objects.count,  2) # Object count              (2B)
-    data += block                    # Zlib-compressed map data  (?B)
+    block  = self.convert(true)
+    dblock = Zlib::Deflate.deflate(self.convert(true), 9)
+    ocount = (block.size - 0xB0 - 966 - 80) / 5
+    data  = _pack(dblock.size + 6, 4) # Length of full data block (4B)
+    data += _pack(ocount,          2) # Object count              (2B)
+    data += dblock                    # Zlib-compressed map data  (?B)
     data
   end
 
@@ -1425,7 +1429,7 @@ def send_userlevel_mapping_summary(event)
   full   = parse_global(msg)
 
   userlevels = Userlevel.global.where(mode: :solo)
-  maps = player.nil? ? userlevels : userlevels.where(author: player)
+  maps = player.nil? ? userlevels : userlevels.where(author: player[0..15])
   count = maps.count
   event << "Userlevel mapping summary#{" for #{player}" if !player.nil?}:```"
   event << "Maps:           #{count}"
