@@ -728,8 +728,15 @@ class Userlevel < ActiveRecord::Base
 
     # MAP DATA
     tile_data = self.tiles.flatten.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join
-    object_counts = ""
+    object_counts = [0] * 40
     object_data = ""
+    objs.each{ |o| object_counts[o[0]] += 1 }
+    objs.group_by{ |o| o[0] }
+    object_counts[7] = 0
+    object_counts[9] = 0
+    object_counts = object_counts.map{ |c| _pack(c, 2) }.join
+    object_data = objs.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
+=begin
     OBJECTS.sort_by{ |id, entity| id }.each{ |id, entity|
       if ![7,9].include?(id) # ignore door switches for counting
         object_counts << objs.select{ |o| o[0] == id }.size.to_s(16).rjust(4,"0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join
@@ -744,6 +751,7 @@ class Userlevel < ActiveRecord::Base
         object_data << doors.zip(switches).flatten.join
       end
     }
+=end
     data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
     data
   end
@@ -751,7 +759,7 @@ class Userlevel < ActiveRecord::Base
   # Generate compressed map dump in the format the game uses when browsing
   def dump_data
     block  = self.convert(true)
-    dblock = Zlib::Deflate.deflate(self.convert(true), 9)
+    dblock = Zlib::Deflate.deflate(block, 9)
     ocount = (block.size - 0xB0 - 966 - 80) / 5
     data  = _pack(dblock.size + 6, 4) # Length of full data block (4B)
     data += _pack(ocount,          2) # Object count              (2B)
