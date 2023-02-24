@@ -89,8 +89,6 @@ USERLEVEL_TABS = {
   11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
 }
 USERLEVEL_REPORT_SIZE = 500 # Number of userlevels to include in daily rankings
-QUERY_LIMIT_HARD = 500 # Maximum number of queried userlevels per page
-QUERY_LIMIT_SOFT = 25  # Selected number of queried userlevels per page
 
 # <--------------------------------------------------------------------------->
 # <------                       JOKE VARIABLES                          ------>
@@ -99,9 +97,10 @@ QUERY_LIMIT_SOFT = 25  # Selected number of queried userlevels per page
 POTATO         = true               # joke they have in the nv2 channel
 POTATO_RATE    = 1                  # seconds between potato checks
 POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
+FRUITS         = [':potato:', ':tomato:', ':eggplant:', ':peach:', ':carrot:', ':pineapple:', ':cucumber:', ':cheese:']
 MISHU          = true               # MishNUB joke
 MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
-COOL           = true              # Emoji for CKC in leaderboards
+COOL           = true               # Emoji for CKC in leaderboards
 
 # <--------------------------------------------------------------------------->
 # <------                       TASK VARIABLES                          ------>
@@ -162,8 +161,10 @@ TWITCH_BLACKLIST = [
 # Engine, a tool that uses outte's database to perform custom userlevel queries
 # and inject them directly in-game.
 
-SOCKET      = true # Whether to open socket or not
-SOCKET_PORT = 8125 # Port to listen to
+SOCKET           = true # Whether to open socket or not
+SOCKET_PORT      = 8125 # Port to listen to
+QUERY_LIMIT_SOFT = 50   # Number of queried userlevels per page
+QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 
 # <--------------------------------------------------------------------------->
 # <------                 HIGHSCORING VARIABLES                         ------>

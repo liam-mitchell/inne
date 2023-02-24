@@ -737,15 +737,9 @@ def potato
     sleep(POTATO_RATE)
     next if $nv2_channel.nil? || $last_potato.nil?
     if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
-      if $tomato
-        $nv2_channel.send_message(":tomato:")
-        $tomato = false
-        log("tomatoed nv2")
-      else
-        $nv2_channel.send_message(":potato:")
-        $tomato = true
-        log("potatoed nv2")
-      end
+      $nv2_channel.send_message(FRUITS[$potato])
+      log(FRUITS[$potato].gsub(/:/, '') + 'ed nv2')
+      $potato = ($potato + 1) % FRUITS.size
       $last_potato = Time.now.to_i
     end
   end
@@ -818,7 +812,7 @@ $mapping_channel = nil
 $nv2_channel     = nil
 $content_channel = nil
 $last_potato     = Time.now.to_i
-$tomato          = false
+$potato          = 0
 $last_mishu      = nil
 $status_update   = Time.now.to_i
 $twitch_token    = nil
@@ -839,7 +833,7 @@ if RESPOND
   $bot.message do |event|
     if event.channel == $nv2_channel
       $last_potato = Time.now.to_i
-      $tomato = false
+      $potato = 0
     end
     mishnub(event) if MISHU && event.content.downcase.include?("mishu")
     robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]

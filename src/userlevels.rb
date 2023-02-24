@@ -361,15 +361,16 @@ class Userlevel < ActiveRecord::Base
 
   # Dump 48 byte header used by the game for userlevel queries
   def self.query_header(count, cat, mode)
+    mcount  = QUERY_LIMIT_SOFT
     header  = Time.now.strftime("%Y-%m-%d-%H:%M") # Date of query  (16B)
-    header += _pack(count, 4)                     # Map count      ( 4B)
-    header += _pack(0,     4)                     # Query page     ( 4B)
-    header += _pack(0,     4)                     # Type           ( 4B)
-    header += _pack(cat,   4)                     # Query category ( 4B)
-    header += _pack(mode,  4)                     # Game mode      ( 4B)
-    header += _pack(5,     4)                     # Cache duration ( 4B)
-    header += _pack(500,   4)                     # Max page size  ( 4B)
-    header += _pack(0,     4)                     # ?              ( 4B)
+    header += _pack(count,  4)                    # Map count      ( 4B)
+    header += _pack(0,      4)                    # Query page     ( 4B)
+    header += _pack(0,      4)                    # Type           ( 4B)
+    header += _pack(cat,    4)                    # Query category ( 4B)
+    header += _pack(mode,   4)                    # Game mode      ( 4B)
+    header += _pack(5,      4)                    # Cache duration ( 4B)
+    header += _pack(mcount, 4)                    # Max page size  ( 4B)
+    header += _pack(0,      4)                    # ?              ( 4B)
     header
   end
 
@@ -736,7 +737,7 @@ class Userlevel < ActiveRecord::Base
     object_counts[9] = 0
     object_counts = object_counts.map{ |c| _pack(c, 2) }.join
     object_data = objs.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
-=begin
+=begin # Don't remove, as this is the code that works if objects aren't already sorted in the database
     OBJECTS.sort_by{ |id, entity| id }.each{ |id, entity|
       if ![7,9].include?(id) # ignore door switches for counting
         object_counts << objs.select{ |o| o[0] == id }.size.to_s(16).rjust(4,"0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join
@@ -970,8 +971,10 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # query (edit post).
   initial = page.nil? && order.nil? && tab.nil? && mode.nil?
   reset_page = page.nil? && !initial
+  empty = false # Return empty list of userlevels
   if !socket.nil?
     msg = socket
+    empty = !!msg[/rzcglfrg/i]
   else
     if !query.nil?
       msg = ""
@@ -1005,24 +1008,28 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
 
   #<------ FETCH userlevels ------>
 
-  pagesize = !socket.nil? ? QUERY_LIMIT_SOFT : PAGE_SIZE
-  # Filter userlevels
-  if query.nil?
-    query   = Userlevel::tab(cat, mode)
-    query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..15] + "%")) if !author.empty?
-    query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
+  if empty
+    maps = []
   else
-    query   = query[:query]
+    pagesize = !socket.nil? ? QUERY_LIMIT_SOFT : PAGE_SIZE
+    # Filter userlevels
+    if query.nil?
+      query   = Userlevel::tab(cat, mode)
+      query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..15] + "%")) if !author.empty?
+      query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
+    else
+      query   = query[:query]
+    end
+    # Compute count, page number, total pages, and offset
+    count     = query.count
+    pag       = compute_pages(count, page, pagesize)
+    # Order userlevels
+    order_str = Userlevel::sort(order, invert)
+    query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
+    # Fetch userlevels
+    ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
+    maps      = query.where(id: ids).all.to_a
   end
-  # Compute count, page number, total pages, and offset
-  count     = query.count
-  pag       = compute_pages(count, page, pagesize)
-  # Order userlevels
-  order_str = Userlevel::sort(order, invert)
-  query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
-  # Fetch userlevels
-  ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
-  maps      = query.where(id: ids).all.to_a
   return { maps: maps, mode: mode, cat: cat } if !socket.nil?
 
   # <------ FORMAT message ------>

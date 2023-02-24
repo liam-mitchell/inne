@@ -5,6 +5,7 @@ require_relative 'constants.rb'
 ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 
 # Turn a little endian binary array into an integer
+# TODO: This is just a special case of_unpack, substitute
 def parse_int(bytes)
   if bytes.is_a?(Array) then bytes = bytes.join end
   bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
