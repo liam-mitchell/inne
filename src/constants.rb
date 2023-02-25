@@ -163,7 +163,7 @@ TWITCH_BLACKLIST = [
 
 SOCKET           = true # Whether to open socket or not
 SOCKET_PORT      = 8125 # Port to listen to
-QUERY_LIMIT_SOFT = 50   # Number of queried userlevels per page
+QUERY_LIMIT_SOFT = 25   # Number of queried userlevels per page
 QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 
 # <--------------------------------------------------------------------------->
