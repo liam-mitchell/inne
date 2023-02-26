@@ -1560,13 +1560,14 @@ def send_twitch(event)
 end
 
 # Add role to player (internal, for permission system, not related to Discord roles)
+# Example: Add role "dmmc" for Donfuy
 def add_role(event)
   assert_permissions(event)
 
   msg  = event.content
   user = parse_discord_user(msg)
 
-  role = msg[/#{parse_term}/i, 2]
+  role = parse_term(msg)
   raise "You need to provide a role in quotes." if role.nil?
 
   Role.add(user, role)
@@ -1574,15 +1575,16 @@ def add_role(event)
 end
 
 # Add custom player / level alias.
+# Example: Add level alias "sss" for sigma structure symphony
 def add_alias(event)
   assert_permissions(event) # Only the botmaster can execute this
-  
+
   msg = event.content
-  aka = msg[/#{parse_term}/i, 2]
+  aka = parse_term(msg)
   raise "You need to provide an alias in quotes." if aka.nil?
 
-  msg.remove!(/#{parse_term}/i)
-  type   = !!msg[/\blevel\b/i] ? 'level' : (!!msg[/\bplayer\b/i] ? 'player' : nil)
+  msg.remove!(aka)
+  type = !!msg[/\blevel\b/i] ? 'level' : (!!msg[/\bplayer\b/i] ? 'player' : nil)
   raise "You need to provide an alias type: level, player." if type.nil?
 
   entry = type == 'level' ? parse_level_or_episode(msg) : parse_player(msg, event.user.name)

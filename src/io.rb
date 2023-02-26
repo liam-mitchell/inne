@@ -155,7 +155,7 @@ end
 # formats, so we act accordingly and reuse the previous method.
 def parse_players(msg, username, userlevel = false)
   playerClass = userlevel ? UserlevelPlayer : Player
-  p = msg.scan(/#{parse_term}/i).map(&:second)
+  p = parse_term(msg, global: true)
   case p.size
   when 0
     p1 = parse_player(msg, username, userlevel, true, true, false)
@@ -484,38 +484,14 @@ end
 # The following function is supposed to modify the message!
 #
 # Supports querying for both titles and author names. If both are present, at
-# least one must go in quotes, to distinguish between them. The one without
+# least one should go in quotes, to distinguish between them (it will still work
+# without quotes if the author comes before the name). The one without
 # quotes must go at the end, so that everything after the particle is taken to
 # be the title/author name.
-#
-# The first thing we do is parse the terms in quotes. Then we remove them from
-# the message and parse the potential non-quoted counterparts. Then we remove
-# these as well if found, and finish parsing the rest of the message, which
-# is only keywords and hence poses no ambiguity. In between these two we parse
-# the order, since that also begins with "by".
 def parse_title_and_author(msg)
-  strs = [
-    [ # Primary queries
-      { str: /\bfor\s*#{parse_term}/i, term: 2 }, # Title
-      { str: /\bby\s*#{parse_term}/i,  term: 2 }  # Author
-    ],
-    [ # Secondary queries
-      { str: /\bfor (.*)/i,            term: 1 }, # Title
-      { str: /\bby (.*)/i,             term: 1 }  # Author
-    ]
-  ]
-  queries = [""] * strs.first.size
-  strs.each_with_index{ |q, j|
-    q.each_with_index{ |sq, i|
-      if !msg[sq[:str]].nil?
-        if queries[i].empty?
-          queries[i] = msg[sq[:str], sq[:term]]
-        end
-        msg.remove!(sq[:str])
-      end
-    }
-  }
-  { msg: msg, search: queries[0].strip, author: queries[1].strip }
+  title, msg = parse_term(msg, quoted: ['for', 'title'], final: ['for'], remove: true)
+  author, msg = parse_term(msg, quoted: ['by', 'author'], final: ['by'], remove: true)
+  { msg: msg, search: title.strip, author: author.strip }
 end
 
 def clean_userlevel_message(msg)
@@ -526,16 +502,16 @@ def parse_userlevel(msg)
   # --- PARSE message elements
 
   # Parse author and remove from message, if exists
-  author_regex = /by\s*#{parse_term}/i
-  author = msg[author_regex, 2] || ""
-  msg.remove!(author_regex)
+  author = parse_term(msg, quoted: ['by'])
+  msg.remove!(author)
 
   # Parse title, first in quotes, and if that doesn't exist, then everything remaining
-  title = msg[/#{parse_term}/i, 2]
-  if title.nil?
-    title = msg.strip[/(for|of)?\s*(.*)/i, 2]
+  title = parse_term(msg, quoted: ['for', 'of'])
+  if title.empty?
+    title = parse_term(msg, final: ['for', 'of'])
     # If the "title" is just numbers (and not quoted), then it's actually the ID
-    id    = title == title[/\d+/i] ? title.to_i : -1
+    id = title.strip == title[/\d+/i] ? title.to_i : -1
+    id = msg.strip == msg[/\d+/i] ? msg.to_i : -1 if id == -1
   else
     id = -1
   end
@@ -577,40 +553,57 @@ end
 # if it's not quoted
 def parse_palette(msg)
   err = ""
-  regex1 = /\b(using|with|in)?(the)?\s*pall?ett?e\s*#{parse_term}/i
-  regex2 = /\b(using|with|in)?\s*pall?ett?e\s*(.*)/i
-  pal1 = msg[regex1, 4]
-  pal2 = msg[regex2, 2]
-  pal = nil
-  if !pal1.nil?
-    if Userlevel::THEMES.include?(pal1)
-      pal = pal1
-    else
-      err = "The palette `" + pal1 + "` doesn't exit. Using default: `" + Userlevel::DEFAULT_PALETTE + "`."
+  pal, msg = parse_term(msg, quoted: ['palette'], final: ['palette'], remove: true)
+  if !pal.empty?
+    if !Userlevel::THEMES.include?(pal)
+      err = "Palette `#{pal}` doesn't exit, using `#{Userlevel::DEFAULT_PALETTE}`."
+      pal = ''
     end
-    msg.remove!(regex1)
-  elsif !pal2.nil?
-    if Userlevel::THEMES.include?(pal2)
-      pal = pal2
-    else
-      err = "The palette `" + pal2 + "` doesn't exit. Using default: `" + Userlevel::DEFAULT_PALETTE + "`."
-    end
-    msg.remove!(regex2)
   end
-  pal = Userlevel::DEFAULT_PALETTE if pal.nil?
+  pal = Userlevel::DEFAULT_PALETTE if pal.empty?
   err += "\n" if !err.empty?
   { msg: msg, palette: pal, error: err }
 end
 
-# We build the regex: /("|“|”)([^"“”]*)("|“|”)/i
-# which parses a term in between different types of quotes
-def parse_term(opt = false)
-  quotes = ["\"", "“", "”"]
-  "(#{quotes.join('|')})([^#{quotes.join}]*)(#{quotes.join('|')})"
+# Parse a quoted term from a string. Features:
+# - Can handle quotes themselves, if they're escaped
+# - An array of prefixes to match before the quoted term (can also be a single string)
+# - Robust, never raises exceptions, always returns a string
+# - Also supports a mode to match everything after the prefix, or even both
+#   (in which case, the quoted match takes preference)
+# 'quoted' contains the array of prefixes for quoted terms, can be empty
+# 'final'  contains the array of prefixes for general matches, cannot be empty
+# 'global' returns an array with all matches, rather than only the first
+#          (only valid for quoted parses)
+# 'remove' returns an array with the match, and the msg with the match removed
+def parse_term(str, quoted: nil, final: nil, global: false, remove: false)
+  return (remove ? ['', str] : '') if !str.is_a?(String)
+  final = nil if global
+  prefix = [
+    regexize_words(quoted),
+    regexize_words(final)
+  ]
+  regex = [
+    /#{prefix[0]}\s*"((?:(?:\\.)|[^\\"])*)"/i,
+    /#{prefix[1]}\s+(.*)/i
+  ]
+  str.gsub!(/["“”`´]/, '"')
+  if global
+    matches = str.scan(regex[0]).map(&:first)
+    return (remove ? [matches, str.remove(regex[0])] : matches)
+  end
+  match = [
+    str[regex[0], 1],
+    (str[regex[1], 1] unless prefix[1].empty?).to_s.strip
+  ]
+  c = !quoted.nil? && !final.nil? ? (!match[0].nil? ? 0 : 1) : (quoted.nil? && !final.nil? ? 1 : 0)
+  remove ? [match[c].to_s, str.remove(regex[c])] : match[c].to_s
+rescue
+  remove ? ['', str] : ''
 end
 
 def parse_userlevel_author(msg)
-  msg[/((by)|(author))\s*#{parse_term}/i, 5] || ""
+  parse_term(msg, quoted: ['by', 'author'])
 end
 
 def parse_global(msg)

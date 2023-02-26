@@ -951,17 +951,19 @@ end
 # parameters, like the title, the author, the tab and the mode, as well as
 # allowing for arbitrary orders.
 # 
-# The parameters are only used when the function has been called by interacting
-# with a pre-existing post, in which case we parse the header of the message as
-# though it was a user command, to figure out the original query, and then modify
-# it by the values of the parameters (e.g. incrementing the page).
+# Parameters:
+#   The parameters are only used when the function has been called by interacting
+#   with a pre-existing post, in which case we parse the header of the message as
+#   though it was a user command, to figure out the original query, and then modify
+#   it by the values of the parameters (e.g. incrementing the page).
 #
-# Therefore, be CAREFUL when modifying the header of the message. It must still
-# be a valid regex command containing all info necessary.
+#   Therefore, be CAREFUL when modifying the header of the message. It must still
+#   be a valid regex command containing all necessary info.
 #
-# The socket parameter is an exception. It's used for performing a backend query
-# and returning the maps, so the data can be dumped to a binary and socketed,
-# to proxy the game's userlevel queries.
+# Socket:
+#   The socket parameter is an exception to the above. It's used when the query has
+#   been received from CUSE rather than Discord, in which case, instead of printing
+#   the map list, we return the maps so they can be dumped and sent back to CUSE.
 def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, query: nil, socket: nil)
   
   # <------ PARSE all message elements ------>
@@ -974,7 +976,6 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   empty = false # Return empty list of userlevels
   if !socket.nil?
     msg = socket
-    empty = !!msg[/rzcglfrg/i]
   else
     if !query.nil?
       msg = ""
@@ -992,8 +993,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   if query.nil?
     h      = parse_title_and_author(msg) # Updates msg
     msg    = h[:msg]
-    search = h[:search]
-    author = h[:author]
+    search = unescape(h[:search])
+    author = unescape(h[:author])
   else
     search = query[:title]
     author = query[:author]
@@ -1008,28 +1009,24 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
 
   #<------ FETCH userlevels ------>
 
-  if empty
-    maps = []
+  pagesize = !socket.nil? ? QUERY_LIMIT_SOFT : PAGE_SIZE
+  # Filter userlevels
+  if query.nil?
+    query   = Userlevel::tab(cat, mode)
+    query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..15] + "%")) if !author.empty?
+    query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
   else
-    pagesize = !socket.nil? ? QUERY_LIMIT_SOFT : PAGE_SIZE
-    # Filter userlevels
-    if query.nil?
-      query   = Userlevel::tab(cat, mode)
-      query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..15] + "%")) if !author.empty?
-      query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
-    else
-      query   = query[:query]
-    end
-    # Compute count, page number, total pages, and offset
-    count     = query.count
-    pag       = compute_pages(count, page, pagesize)
-    # Order userlevels
-    order_str = Userlevel::sort(order, invert)
-    query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
-    # Fetch userlevels
-    ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
-    maps      = query.where(id: ids).all.to_a
+    query   = query[:query]
   end
+  # Compute count, page number, total pages, and offset
+  count     = query.count
+  pag       = compute_pages(count, page, pagesize)
+  # Order userlevels
+  order_str = Userlevel::sort(order, invert)
+  query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
+  # Fetch userlevels
+  ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
+  maps      = query.where(id: ids).all.to_a
   return { maps: maps, mode: mode, cat: cat } if !socket.nil?
 
   # <------ FORMAT message ------>
@@ -1042,8 +1039,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # message, so it needs to have a format compatible with the regex we use to
   # parse commands. I know, genius implementation.
   output = "Browsing #{USERLEVEL_TABS[cat][:name]}#{mode == -1 ? '' : ' ' + MODES[mode]} maps"
-  output += " by \"#{author[0..63]}\"" if !author.empty?
-  output += " for \"#{search[0..63]}\"" if !search.empty?
+  output += " by `#{author[0..63]}`" if !author.empty?
+  output += " for `#{search[0..63]}`" if !search.empty?
   output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}."
   output += format_userlevels(Userlevel::serial(maps), pag[:page])
   output += count == 0 ? "\nNo results :shrug:" : "Total results: **#{count}**."

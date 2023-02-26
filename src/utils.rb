@@ -28,6 +28,17 @@ def to_ascii(s)
   s.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
 end
 
+# Escape problematic chars (e.g. quotes or backslashes)
+def escape(str)
+  str.dump[1..-2]
+end
+
+def unescape(str)
+  "\"#{str}\"".undump
+rescue
+  str
+end
+
 def sanitize_filename(s)
   return '' if s.nil?
   s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
@@ -100,6 +111,18 @@ end
 
 def pad_truncate_ellipsis(str, pad = DEFAULT_PADDING, max_pad = MAX_PAD_GEN)
   truncate_ellipsis(format_string(str, pad, max_pad, false))
+end
+
+# Converts an array of strings into a regex string that matches any of them
+# with non-capturing groups (it can also take a string)
+def regexize_words(words)
+  return '' if !words.is_a?(Array) && !words.is_a?(String)
+  words = [words] if words.is_a?(String)
+  words = words.reject{ |w| !w.is_a?(String) || w.empty? }
+  return '' if words.empty?
+  words = '(?:' + words.map{ |w| "(?:\\b#{Regexp.escape(w.strip)}\\b)" }.join('|') + ')'
+rescue
+  ''
 end
 
 # sometimes we need to make sure there's exactly one valid type
