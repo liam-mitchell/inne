@@ -1325,10 +1325,21 @@ class Archive < ActiveRecord::Base
     # Store results to print summary after sanitization
     ret = {}
 
+    # Delete scores by ignored players
+    query = Score.joins("INNER JOIN players ON players.id = scores.player_id")
+                 .where("players.metanet_id" => IGNORED_IDS)
+    ret['score_del'] = query.count.to_i
+    query.each(&:destroy)
+
     # Delete archives by ignored players
     query = Archive.where(metanet_id: IGNORED_IDS)
     ret['archive_del'] = query.count.to_i
     query.each(&:wipe)
+
+    # Delete ignored players
+    query = Player.where(metanet_id: IGNORED_IDS)
+    ret['player_del'] = query.count.to_i
+    query.each(&:destroy)
 
     # Delete individual archives
     ret['archive_ind_del'] = 0

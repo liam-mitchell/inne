@@ -1672,7 +1672,9 @@ def sanitize_archives(event)
   assert_permissions(event)
   counts = Archive::sanitize
   event << "Sanitized database:"
+  event << "* Removed #{counts['score_del']} scores by ignored players." if counts.key?('score_del')
   event << "* Removed #{counts['archive_del']} archives by ignored players." if counts.key?('archive_del')
+  event << "* Removed #{counts['player_del']} ignored players." if counts.key?('player_del')
   event << "* Removed #{counts['archive_ind_del']} individual archives." if counts.key?('archive_ind_del')
   event << "* Removed #{counts['orphan_demos']} orphaned demos." if counts.key?('orphan_demos')
 end

@@ -505,12 +505,16 @@ def parse_userlevel(msg)
   author = parse_term(msg, quoted: ['by'])
   msg.remove!(author)
 
-  # Parse title, first in quotes, and if that doesn't exist, then everything remaining
+  # Parse title, first in quotes
   title = parse_term(msg, quoted: ['for', 'of'])
   if title.empty?
+    # If no quoted title, search without quotes
     title = parse_term(msg, final: ['for', 'of'])
     # If the "title" is just numbers (and not quoted), then it's actually the ID
     id = title.strip == title[/\d+/i] ? title.to_i : -1
+    # If no title (prefixed with "for" or "of") found, take entire msg
+    title = msg.strip if title.empty?
+    # Again, try to parse ID if it wasn't parsed already
     id = msg.strip == msg[/\d+/i] ? msg.to_i : -1 if id == -1
   else
     id = -1
