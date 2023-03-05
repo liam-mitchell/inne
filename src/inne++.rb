@@ -67,11 +67,9 @@ def set_current(type, curr)
 end
 
 def get_next(type)
-  ret = nil
-  while ret.nil?
-    t = type.where(completed: nil).sample
-    ret = t if t.scores[0].score != t.scores.last.score
-  end
+  query = type.where(completed: nil)
+  type.update_all(completed: nil) if query.count <= 0
+  ret = type.where(completed: nil).sample
   ret.update(completed: true)
   ret
 end

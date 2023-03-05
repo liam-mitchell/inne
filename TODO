@@ -22,7 +22,6 @@ Eddy's TODO list for inne:
 - Save how many times each streamer has streamed the game, and perhaps indicate it somehow if it's among the top ones (dope gamer alert!)
 - For secret levels, also parse old level names (e.g. ?-X-02-03), probably using a new field, filled only for secret levels.
 - Command to update certain userlevels (e.g. within a range, from a author, etc., with some hard limit e.g. 50, perhaps a cooldown).
-- Add another fruit for potatoing nv2
 - Make a tool to auto-patch npp.dll and MITM so that we can e.g. send custom userlevel searches.
 - Add amount of scores each board has (we can find this out with LittleNinjaThatTried and similar ideas).
 - Add other versions? (v1.4, v2.0, etc)
@@ -38,14 +37,12 @@ Eddy's TODO list for inne:
 - Browse uncleared userlevels (levels with no completions)
 - Unmaxed missing (ignore maxes in missing)
 - Add "graphic" / "screenshot" parameter to many commands which output level lists, so that instead of the list, we get images with thumbnails of 5/10 levels, with arrow button navigation to move, a-la userlevel browse.
-- Fix dashless ids (episodes starting with 10/11 are being recognized as level 1-0 and 1-1 instead).
 - Add access to all functions using slash commands
 - Multiple matches:
   * Add for player names
   * kk's suggestion: nav bar for matches, navigate screenies etc
 - Userlevel tabs not working correctly? (dupped levels in top weekly, what about featured, etc)
 - Handle cheaters within database (rather than via hardcoding in source code), have botmaster function to add cheaters, etc
-- If no author results, truncate to first 16 chars and try again.
 - Histograms of userlevels played by ID (perhaps also chart anything, e.g. 0ths, top10s, parse_range)
 - Analysis:
   * Use framecount and gold fields from archives table, rather than computing it again
@@ -64,7 +61,7 @@ Eddy's TODO list for inne:
 - Have all people tied in rankings have the same rank, with hyphens. Show slightly over 20 if tied at the bottom, up to another limit, like 25.
 - In order to sort ties, rather than alphabetical, use chronological. For simplicity, use date of most recent 0th, rather than the whole history.
 - Fix random userlevel function, the new send_userlevel_individual approach broke it.
-- Send message if the command was not understood, i.e., if no function was executed. We can do this by having a flag that each function sets to true when it's executed, and then check it at the end. We can also use this flag to prevent executing 2 functions on the same command, which means we could also control the flow by changing the order of the function calls at the bottom.
+- Send message if the command was not understood, i.e., if no function was executed, but not in DM's. We can do this by having a flag that each function sets to true when it's executed, and then check it at the end. We can also use this flag to prevent executing 2 functions on the same command, which means we could also control the flow by changing the order of the function calls at the bottom.
 
 
 \\ ------------------------ Art ------------------------
@@ -77,8 +74,8 @@ Eddy's TODO list for inne:
 
 \\ ------------------------ Userlevels ------------------------
 
-- Usernames are being truncated.
 - We need to update all maps regularly, for the ++'s, etc.
+- Periodically unify userlevel authors who've changed usernames, by setting it to the most recent one
 - Userlevel of the day (filter by levels with at least n scores and at least a certain delta of scores to prevent impossible and maxed levels)
 - Unify names: Authors who have changed username, group by author id and change all names to the most recent one. BUT keep old names in the alias table.
 - Add Metanet levels to the db.
