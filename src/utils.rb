@@ -335,3 +335,37 @@ def string_distance_list_mixed(word, list, min: 1, max: 3, max2: 2, th: 3, soft_
   to_take = [[keepies, soft_limit].max, hard_limit].min
   matches.values.flatten(1).take(to_take)
 end
+
+# This function sets up the potato parameters correctly in case outte was closed,
+# so that a chain of fruits may not be broken
+def fix_potato
+  last_msg = $nv2_channel.history(1)[0] rescue nil
+  $last_potato = last_msg.timestamp.to_i rescue Time.now.to_i
+  if last_msg.author.id == CONFIG['client_id']
+    $potato = ((FRUITS.index(last_msg.content) + 1) % FRUITS.size) rescue 0
+  end
+rescue
+  nil
+end
+
+def set_channels(event = nil)
+  if !event.nil?
+    $channel         = event.channel
+    $mapping_channel = event.channel
+    $nv2_channel     = event.channel
+    $content_channel = event.channel
+  elsif !TEST
+    channels = $bot.servers[SERVER_ID].channels
+    $channel         = channels.find{ |c| c.id == CHANNEL_ID }
+    $mapping_channel = channels.find{ |c| c.id == USERLEVELS_ID }
+    $nv2_channel     = channels.find{ |c| c.id == NV2_ID }
+    $content_channel = channels.find{ |c| c.id == CONTENT_ID }
+  else
+    return
+  end
+  fix_potato
+  puts "Main channel: #{$channel.name}."            if !$channel.nil?
+  puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
+  puts "Nv2 channel: #{$nv2_channel.name}.        " if !$nv2_channel.nil?
+  puts "Content channel: #{$content_channel.name}." if !$content_channel.nil?
+end

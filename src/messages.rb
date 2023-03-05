@@ -1300,19 +1300,7 @@ end
 def hello(event)
   $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
   event << "Hi!"
-
-  if $channel.nil?
-    $channel         = event.channel
-    $mapping_channel = event.channel
-    $nv2_channel     = event.channel
-    $content_channel = event.channel
-    $last_potato = $nv2_channel.history(1)[0].timestamp.to_i
-    puts "Main channel established: #{$channel.name}."            if !$channel.nil?
-    puts "Mapping channel established: #{$mapping_channel.name}." if !$mapping_channel.nil?
-    puts "Nv2 channel established: #{$nv2_channel.name}."         if !$nv2_channel.nil?
-    puts "Content channel established: #{$content_channel.name}." if !$content_channel.nil?
-    send_times(event)
-  end
+  set_channels(event) if $channel.nil?
 end
 
 def thanks(event)

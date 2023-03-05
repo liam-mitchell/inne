@@ -855,18 +855,7 @@ trap("INT") { $kill_threads = true }
 
 $bot.run(true)
 puts "Established connection to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}."
-if !TEST
-  $channel         = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CHANNEL_ID }
-  $mapping_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == USERLEVELS_ID }
-  $nv2_channel     = $bot.servers[SERVER_ID].channels.find{ |c| c.id == NV2_ID }
-  $content_channel = $bot.servers[SERVER_ID].channels.find{ |c| c.id == CONTENT_ID }
-  $last_potato = Time.now.to_i
-  puts "Main channel: #{$channel.name}."            if !$channel.nil?
-  puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
-  puts "Nv2 channel: #{$nv2_channel.name}.        " if !$nv2_channel.nil?
-  puts "Content channel: #{$content_channel.name}." if !$content_channel.nil?
-end
-
+set_channels
 byebug if BYEBUG
 
 $threads = []
