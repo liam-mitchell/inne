@@ -13,6 +13,12 @@ end
 class UserlevelTab < ActiveRecord::Base
 end
 
+class UserlevelAuthor < ActiveRecord::Base
+end
+
+class UserlevelAka < ActiveRecord::Base
+end
+
 # We create aliases "player" and "scores" so we don't have to specify "userlevel_"
 class UserlevelScore < ActiveRecord::Base
   alias_attribute :player, :userlevel_player
