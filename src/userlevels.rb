@@ -1019,8 +1019,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # Filter userlevels
   if query.nil?
     query   = Userlevel::tab(cat, mode)
-    query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..15] + "%")) if !author.empty?
-    query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0..63] + "%")) if !search.empty?
+    query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0...16] + "%")) if !author.empty?
+    query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0...128] + "%")) if !search.empty?
   else
     query   = query[:query]
   end

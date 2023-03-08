@@ -481,92 +481,8 @@ def parse_order(msg, order = nil)
   { msg: msg, order: order, invert: invert }
 end
 
-# The following function is supposed to modify the message!
-#
-# Supports querying for both titles and author names. If both are present, at
-# least one should go in quotes, to distinguish between them (it will still work
-# without quotes if the author comes before the name). The one without
-# quotes must go at the end, so that everything after the particle is taken to
-# be the title/author name.
-def parse_title_and_author(msg)
-  title, msg = parse_term(msg, quoted: ['for', 'title'], final: ['for'], remove: true)
-  author, msg = parse_term(msg, quoted: ['by', 'author'], final: ['by'], remove: true)
-  { msg: msg, search: title.strip, author: author.strip }
-end
-
 def clean_userlevel_message(msg)
   msg.sub(/(for)?\s*\w*userlevel\w*/i, '')
-end
-
-def parse_userlevel(msg)
-  # --- PARSE message elements
-
-  # Parse author and remove from message, if exists
-  author = parse_term(msg, quoted: ['by'])
-  msg.remove!(author)
-
-  # Parse title, first in quotes
-  title = parse_term(msg, quoted: ['for', 'of'])
-  if title.empty?
-    # If no quoted title, search without quotes
-    title = parse_term(msg, final: ['for', 'of'])
-    # If the "title" is just numbers (and not quoted), then it's actually the ID
-    id = title.strip == title[/\d+/i] ? title.to_i : -1
-    # If no title (prefixed with "for" or "of") found, take entire msg
-    title = msg.strip if title.empty?
-    # Again, try to parse ID if it wasn't parsed already
-    id = msg.strip == msg[/\d+/i] ? msg.to_i : -1 if id == -1
-  else
-    id = -1
-  end
-
-  # --- FETCH userlevel(s)
-  query = nil
-  err   = ""
-  count = 0
-  if id != -1
-    query = Userlevel.where(id: id)
-    err = "No userlevel with ID `#{id}` found."
-  elsif !title.empty?
-    query = Userlevel.where(Userlevel.sanitize("title LIKE ?", "%" + title[0..63] + "%"))
-    query = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0..63] + "%")) if !author.empty?
-    err = "No userlevel with title `#{title}`#{" by author `#{author}`" if !author.empty?} found."
-  else
-    return {
-      query: nil,
-      msg:   "You need to provide a map's title or ID.",
-      count: 0
-    }
-  end
-
-  # --- Prepare return depending on map count
-  ret   = ""
-  count = query.count
-  case count
-  when 0
-    ret = err
-  when 1
-    query = query.first
-  else
-    ret = "Multiple matching maps found. Please refine terms or use the userlevel ID:"
-  end
-  { query: query, msg: ret, count: count, title: title, author: author }
-end
-
-# The palette may or may not be quoted, but it MUST go at the end of the command
-# if it's not quoted
-def parse_palette(msg)
-  err = ""
-  pal, msg = parse_term(msg, quoted: ['palette'], final: ['palette'], remove: true)
-  if !pal.empty?
-    if !Userlevel::THEMES.include?(pal)
-      err = "Palette `#{pal}` doesn't exit, using `#{Userlevel::DEFAULT_PALETTE}`."
-      pal = ''
-    end
-  end
-  pal = Userlevel::DEFAULT_PALETTE if pal.empty?
-  err += "\n" if !err.empty?
-  { msg: msg, palette: pal, error: err }
 end
 
 # Parse a quoted term from a string. Features:
@@ -606,8 +522,121 @@ rescue
   remove ? ['', str] : ''
 end
 
-def parse_userlevel_author(msg)
-  parse_term(msg, quoted: ['by', 'author'])
+# Parses a term:
+#   1) First quoted, and if found, returned
+#   2) Then unquoted, and if found:
+#   2.1) If it's a number, it's assumed to be an ID, casted to int and returned
+#   2.2) Otherwise, assumed to be a string, returned
+def parse_string_or_id(msg, quoted: nil, final: nil, remove: false)
+  name, msg = parse_term(msg, quoted: quoted, remove: true)
+  return (remove ? [name, msg] : name) if !name.empty?
+  name, msg = parse_term(msg, final: final, remove: true)
+  return '' if name.empty?
+  name = name.strip.to_i if is_num(name)
+  return (remove ? [name, msg] : name)
+end
+
+# TODO: Allow to search AKA's in the following function, perhaps with a bool
+# parameter to specify
+
+# Parse userlevel author from a message. Might return a string if a name is found,
+# or an integer if an ID is found.
+def parse_userlevel_author(msg, remove: false)
+  name, msg = parse_string_or_id(msg, quoted: ['by', 'author'], final: ['by'], remove: true)
+  name.strip! if name.is_a?(String)
+  remove ? [name, msg] : name
+end
+
+# Parse userlevel title from a message. Might return a string if a name is found,
+# or an integer if an ID is found.
+# Also, if 'full' is true, when a name is found the entire msg will be considered the name
+def parse_userlevel_title(msg, remove: false, full: true)
+  name, msg = parse_string_or_id(msg, quoted: ['for', 'title'], final: ['for'], remove: true)
+  name.strip! if name.is_a?(String)
+  if name.is_a?(String) && name.empty? && full
+    name, msg = msg, ''
+    name = name.strip.to_i if is_num(name)
+  end
+  remove ? [name, msg] : name
+end
+
+# The following function is supposed to modify the message!
+#
+# Supports querying for both titles and author names. If both are present, at
+# least one should go in quotes, to distinguish between them (it will still work
+# without quotes if the author comes before the name). The one without
+# quotes must go at the end, so that everything after the particle is taken to
+# be the title/author name.
+def parse_title_and_author(msg)
+  title, msg = parse_userlevel_title(msg, remove: true)
+  author, msg = parse_userlevel_author(msg, remove: true)
+  { msg: msg, search: title, author: author }
+end
+
+# TODO: Use UserlevelAuthor for querying in the following function.
+# TODO: Thoroughly test all possibilities
+
+# Parse a userlevel from a message by looking for a title or an ID, as well as
+# an author or author ID, optionally.
+def parse_userlevel(msg)
+  # --- PARSE message elements
+
+  h = parse_title_and_author(msg)
+
+  # --- FETCH userlevel(s)
+  empty = {
+    query: nil,
+    msg:   "You need to provide a map's title, ID, author, or author ID.",
+    count: 0
+  }
+  query = Userlevel
+  err   = ""
+  count = 0
+
+  # TODO: Finish the following, by building specific error message
+  # TODO: Use sanitize_sql_like to escape %'s and _'s
+  # TODO: Use this code for the userlevel_browse function too, perhaps abstract
+
+  if h[:search].is_a?(Integer)
+    query = Userlevel.where(id: h[:search])
+    err = "No userlevel with ID `#{id}` found."
+  elsif !(h[:search].empty? && h[:author].is_a?(String) && h[:author].empty?)
+    query = query.where("title LIKE ?", "%" + h[:search][0...128] + "%") if !h[:search].empty?
+    query = query.where(author_id: h[:author]) if h[:author].is_a?(Integer)
+    query = query.where("author LIKE ?", "%" + h[:author][0...16] + "%") if !h[:author].empty?
+    err = "No userlevel with title `#{title}`#{" by author `#{author}`" if !author.empty?} found."
+  else
+    return empty
+  end
+
+  # --- Prepare return depending on map count
+  ret   = ""
+  count = query.count
+  case count
+  when 0
+    ret = err
+  when 1
+    query = query.first
+  else
+    ret = "Multiple matching maps found. Please refine terms or use the userlevel ID:"
+  end
+  { query: query, msg: ret, count: count, title: title, author: author }
+end
+
+# The palette may or may not be quoted, but it MUST go at the end of the command
+# if it's not quoted
+def parse_palette(msg)
+  err = ""
+  pal, msg = parse_term(msg, quoted: ['palette'], final: ['palette'], remove: true)
+  if !pal.empty?
+    if !Userlevel::THEMES.include?(pal)
+      err = "Palette `#{pal}` doesn't exit, using `#{Userlevel::DEFAULT_PALETTE}`."
+      pal = ''
+    end
+  end
+  pal = Userlevel::DEFAULT_PALETTE if pal.empty?
+  err += "\n" if !err.empty?
+  { msg: msg, palette: pal, error: err }
 end
 
 def parse_global(msg)

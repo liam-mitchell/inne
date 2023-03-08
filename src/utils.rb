@@ -56,6 +56,10 @@ def _unpack(bytes)
   bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
 end
 
+def is_num(str)
+  str.strip == str[/\d+/i]
+end
+
 def bench(action)
   @t ||= Time.now
   @total ||= 0
