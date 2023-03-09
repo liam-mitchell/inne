@@ -481,10 +481,6 @@ def parse_order(msg, order = nil)
   { msg: msg, order: order, invert: invert }
 end
 
-def clean_userlevel_message(msg)
-  msg.sub(/(for)?\s*\w*userlevel\w*/i, '')
-end
-
 # Parse a quoted term from a string. Features:
 # - Can handle quotes themselves, if they're escaped
 # - An array of prefixes to match before the quoted term (can also be a single string)
@@ -531,20 +527,25 @@ def parse_string_or_id(msg, quoted: nil, final: nil, remove: false)
   name, msg = parse_term(msg, quoted: quoted, remove: true)
   return (remove ? [name, msg] : name) if !name.empty?
   name, msg = parse_term(msg, final: final, remove: true)
-  return '' if name.empty?
   name = name.strip.to_i if is_num(name)
   return (remove ? [name, msg] : name)
+rescue
+  remove ? ['', msg] : ''
 end
-
-# TODO: Allow to search AKA's in the following function, perhaps with a bool
-# parameter to specify
 
 # Parse userlevel author from a message. Might return a string if a name is found,
 # or an integer if an ID is found.
 def parse_userlevel_author(msg, remove: false)
-  name, msg = parse_string_or_id(msg, quoted: ['by', 'author'], final: ['by'], remove: true)
-  name.strip! if name.is_a?(String)
+  name, msg = parse_term(msg, quoted: ['author id'], remove: true)
+  if !name.empty? && is_num(name)
+    name = name.strip.to_i
+  else
+    name, msg = parse_string_or_id(msg, quoted: ['by', 'author'], final: ['by'], remove: true)
+    name.strip! if name.is_a?(String)
+  end
   remove ? [name, msg] : name
+rescue
+  remove ? ['', msg] : ''
 end
 
 # Parse userlevel title from a message. Might return a string if a name is found,
@@ -558,7 +559,13 @@ def parse_userlevel_title(msg, remove: false, full: true)
     name = name.strip.to_i if is_num(name)
   end
   remove ? [name, msg] : name
+rescue
+  remove ? ['', msg] : ''
 end
+
+# TODO: Adapt all uses of "author" in userlevels.rb to the new system, both when
+# using the author directly, as well as when calling one of the functions from io.rb
+# that have changed (parse_title_and_author, parse_userlevel, etc).
 
 # The following function is supposed to modify the message!
 #
@@ -567,21 +574,21 @@ end
 # without quotes if the author comes before the name). The one without
 # quotes must go at the end, so that everything after the particle is taken to
 # be the title/author name.
-def parse_title_and_author(msg)
-  title, msg = parse_userlevel_title(msg, remove: true)
+#
+# 'full' allows for the title to default to the whole msg if no prefix is found
+def parse_title_and_author(msg, full = true)
   author, msg = parse_userlevel_author(msg, remove: true)
-  { msg: msg, search: title, author: author }
+  title, msg = parse_userlevel_title(msg, remove: true, full: full) # Parse last, since title can be whole msg if no "for" is found
+  [title, author, msg]
 end
-
-# TODO: Use UserlevelAuthor for querying in the following function.
-# TODO: Thoroughly test all possibilities
 
 # Parse a userlevel from a message by looking for a title or an ID, as well as
 # an author or author ID, optionally.
 def parse_userlevel(msg)
   # --- PARSE message elements
 
-  h = parse_title_and_author(msg)
+  title, author, msg = parse_title_and_author(msg, true)
+  author = UserlevelAuthor.parse(author)
 
   # --- FETCH userlevel(s)
   empty = {
@@ -593,25 +600,28 @@ def parse_userlevel(msg)
   err   = ""
   count = 0
 
-  # TODO: Finish the following, by building specific error message
-  # TODO: Use sanitize_sql_like to escape %'s and _'s
   # TODO: Use this code for the userlevel_browse function too, perhaps abstract
 
-  if h[:search].is_a?(Integer)
-    query = Userlevel.where(id: h[:search])
-    err = "No userlevel with ID `#{id}` found."
-  elsif !(h[:search].empty? && h[:author].is_a?(String) && h[:author].empty?)
-    query = query.where("title LIKE ?", "%" + h[:search][0...128] + "%") if !h[:search].empty?
-    query = query.where(author_id: h[:author]) if h[:author].is_a?(Integer)
-    query = query.where("author LIKE ?", "%" + h[:author][0...16] + "%") if !h[:author].empty?
-    err = "No userlevel with title `#{title}`#{" by author `#{author}`" if !author.empty?} found."
+  if title.is_a?(Integer)
+    query = Userlevel.where(id: title)
+    err = "No userlevel with ID #{verbatim(title)} found."
   else
-    return empty
+    errs = []
+    if !title.empty?
+      query = Userlevel.where_like(query, 'title', title[0...128])
+      errs << "with title #{verbatim(title[0...128])}"
+    end
+    if !author.nil?
+      query = query.where(author: author) 
+      errs << "by author #{verbatim(author.name)}"
+    end
+    err = "No userlevel #{errs.join(' ')} found."
   end
 
   # --- Prepare return depending on map count
   ret   = ""
   count = query.count
+  author = author.name if author.is_a?(UserlevelAuthor)
   case count
   when 0
     ret = err
@@ -620,7 +630,7 @@ def parse_userlevel(msg)
   else
     ret = "Multiple matching maps found. Please refine terms or use the userlevel ID:"
   end
-  { query: query, msg: ret, count: count, title: title, author: author }
+  { query: query, msg: ret, count: count, title: title.to_s, author: author.to_s }
 end
 
 # The palette may or may not be quoted, but it MUST go at the end of the command

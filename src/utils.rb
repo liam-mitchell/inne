@@ -57,7 +57,14 @@ def _unpack(bytes)
 end
 
 def is_num(str)
+  return false if !str.is_a?(String)
   str.strip == str[/\d+/i]
+end
+
+def verbatim(str)
+  str = str.to_s
+  return "` `" if str.empty?
+  "`#{str.gsub('`', '')}`"
 end
 
 def bench(action)
@@ -255,8 +262,12 @@ def assert_permissions(event, roles = [])
   raise error if !granted
 end
 
+def clean_userlevel_message(msg)
+  msg.sub(/(for|of)?\s*\w*userlevel\w*\s*/i, '').strip
+end
+
 def remove_word_first(msg, word)
-  msg.sub(/\w*#{word}\w*/i, '')
+  msg.sub(/\s*\w*#{word}\w*\s*/i, '').strip
 end
 
 # DISTANCE BETWEEN STRINGS

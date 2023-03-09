@@ -1669,8 +1669,10 @@ end
 
 def testa(event)
   assert_permissions(event)
-  maps = send_userlevel_browse(nil, socket: event.content)
-  Userlevel::dump_query(maps, 10, 0)
+#  maps = send_userlevel_browse(nil, socket: event.content)
+#  Userlevel::dump_query(maps, 10, 0)
+  p = UserlevelAuthor.parse(parse_userlevel_author(event.content))
+  event << "Found: #{p.name}"
 end
 
 # TODO set level of the day on startup

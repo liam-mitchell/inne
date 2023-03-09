@@ -6,6 +6,21 @@ require_relative 'utils.rb'
 require_relative 'io.rb'
 require_relative 'models.rb'
 
+# monkey patch
+module ActiveRecord::QueryMethods
+  def where_like(field, str)
+    return self if field.empty? || str.empty?
+    self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
+  end
+end
+
+class ActiveRecord::Base
+  def self.where_like(field, str)
+    return self if field.empty? || str.empty?
+    self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
+  end
+end
+
 # Contains map data (tiles and objects) in a different table for performance reasons.
 class UserlevelData < ActiveRecord::Base
 end
@@ -14,9 +29,60 @@ class UserlevelTab < ActiveRecord::Base
 end
 
 class UserlevelAuthor < ActiveRecord::Base
+  alias_attribute :akas, :userlevel_akas
+  has_many :userlevels, foreign_key: :author_id
+  has_many :userlevel_akas, foreign_key: :author_id
+
+  # Parse a userlevel author based on a search term:
+  # Integer:
+  #   Search as the author ID
+  # String:
+  #   Search as part of the name, or optionally, also of the aka's (old names)
+  # Number of results:
+  #     0 - Raise error of no matches
+  #     1 - Return author
+  #   <20 - Print matches
+  #  >=20 - Raise error of too many matches
+  def self.parse(term, aliases = true)
+    if term.is_a?(Integer)
+      p = self.find(term) rescue nil
+      raise "Userlevel author with ID #{verbatim(term)} not found." if p.nil?
+      return p
+    end
+    raise "Couldn't parse userlevel author." if !term.is_a?(String)
+    return nil if term.empty?
+    p = self.where_like('name', term[0...16])
+    case p.count
+    when 0
+      raise "No author found by the name #{verbatim(term)}." if !aliases
+      p = UserlevelAka.where_like('name', term[0...16]).map(&:author).uniq
+      case p.count
+      when 0
+        raise "No author found by the name (current or old) #{verbatim(term)}."
+      when 1
+        return p.first
+      else
+        raise "Too many author matches! (#{p.count}). Please refine author name." if p.count > 20
+        matches = p.map{ |a| "#{"%6d" % a.id} - #{a.name}" }.join("\n")
+        raise "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
+      end
+    when 1
+      return p.first
+    else
+      raise "Too many author matches! (#{p.count}). Please refine author name." if p.count > 20
+      matches = p.pluck(:id, :name).map{ |id, name| "#{"%6d" % id} - #{name}" }.join("\n")
+      raise "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
+    end
+  end
+rescue RuntimeError
+  raise
+rescue
+  nil
 end
 
 class UserlevelAka < ActiveRecord::Base
+  alias_attribute :author, :userlevel_author
+  belongs_to :userlevel_author, foreign_key: :author_id
 end
 
 # We create aliases "player" and "scores" so we don't have to specify "userlevel_"
@@ -137,7 +203,9 @@ end
 class Userlevel < ActiveRecord::Base
   include HighScore
   alias_attribute :scores, :userlevel_scores
+  alias_attribute :author, :userlevel_author
   has_many :userlevel_scores
+  belongs_to :userlevel_author, foreign_key: :author_id
   enum mode: [:solo, :coop, :race]
   # Attributes:
   #   id        - ID of the userlevel in Metanet's database (and ours)
@@ -251,6 +319,15 @@ class Userlevel < ActiveRecord::Base
 
   def self.serial(maps)
     maps.map(&:as_json).map(&:symbolize_keys)
+    maps.map{ |m|
+      {
+        id:     m.id,
+        author: m.author.name,
+        title:  m.title,
+        date:   m.date,
+        favs:   m.favs
+      }
+    }
   end
 
 =begin
@@ -691,6 +768,10 @@ class Userlevel < ActiveRecord::Base
     sanitize_sql_for_conditions([string, par])
   end
 
+  def self.where_like(query, field, str)
+    query.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
+  end
+
   def tiles
     Userlevel.decode_tiles(UserlevelData.find(self.id).tile_data)
   end
@@ -997,10 +1078,9 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   order  = h[:order]
   invert = h[:invert]
   if query.nil?
-    h      = parse_title_and_author(msg) # Updates msg
-    msg    = h[:msg]
-    search = unescape(h[:search])
-    author = unescape(h[:author])
+    search, author, msg = parse_title_and_author(msg, false)
+    search = unescape(search) if search.is_a?(String)
+    author = unescape(author) if author.is_a?(String)
   else
     search = query[:title]
     author = query[:author]
@@ -1063,7 +1143,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     tab:   USERLEVEL_TABS[cat][:name],
     mode:  MODES[mode],
     edit:  !initial,
-    int:   count > 1
+    int:   !(initial && count == 0)
   )
 rescue => e
   err(e)
@@ -1108,7 +1188,7 @@ def send_userlevel_download(event)
   msg = remove_word_first(msg, 'download')
   send_userlevel_individual(event, msg){ |map|
     output = "Downloading userlevel `" + map[:query].title + "` with ID `" + map[:query].id.to_s
-    output += "` by `" + (map[:query].author.to_s.empty? ? " " : map[:query].author.to_s) + "` on " + Time.now.to_s + ".\n"
+    output += "` by `" + (map[:query].author.name.empty? ? " " : map[:query].author.name) + "` on " + Time.now.to_s + ".\n"
     event << output
     send_file(event, map[:query].convert, map[:query].id.to_s, true)
   }
@@ -1122,7 +1202,7 @@ def send_userlevel_screenshot(event, userlevel = nil)
   h = parse_palette(msg)
   send_userlevel_individual(event, h[:msg]){ |map|
     output = "#{h[:error]}Screenshot of userlevel `#{map[:query].title}` with ID `#{map[:query].id.to_s}"
-    output += "` by `#{map[:query].author.to_s.empty? ? " " : map[:query].author.to_s}` using palette `"
+    output += "` by `#{map[:query].author.name.empty? ? " " : map[:query].author.name}` using palette `"
     output += "#{h[:palette]}` on #{Time.now.to_s}.\n"
     event << output
     send_file(event, map[:query].screenshot(h[:palette]), map[:query].id.to_s + ".png", true)
@@ -1134,7 +1214,7 @@ def send_userlevel_scores(event)
   msg = remove_word_first(msg, 'scores')
   send_userlevel_individual(event, msg){ |map|
     output = "Scores of userlevel `" + map[:query].title + "` with ID `" + map[:query].id.to_s
-    output += "` by `" + (map[:query].author.to_s.empty? ? " " : map[:query].author.to_s) + "` on " + Time.now.to_s + ".\n"
+    output += "` by `" + (map[:query].author.name.empty? ? " " : map[:query].author.name) + "` on " + Time.now.to_s + ".\n"
     event << output + "```" + map[:query].format_scores + "```"
   }
 end
