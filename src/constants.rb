@@ -109,7 +109,7 @@ COOL           = true               # Emoji for CKC in leaderboards
 # Individual flags for each thread / task
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
-UPDATE_STATUS     = false # Thread to regularly update the bot's status
+UPDATE_STATUS     = true # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories

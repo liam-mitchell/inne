@@ -1,3 +1,4 @@
+require 'time'
 require 'chunky_png' # for screenshot generation
 #require 'oily_png' # more efficient screenshot generation (broken?)
 include ChunkyPNG::Color
@@ -394,7 +395,7 @@ class Userlevel < ActiveRecord::Base
         author_id: author != "null" ? parse_int(h[4..7]) : -1,
         author: author,
         favs: parse_int(h[24..27]),
-        date: format_date(h[28..-1].join)
+        date: Time.strptime(h[28..-1].join, "%Y-%m-%d-%H:%M").strftime("%Y-%m-%d %H:%M:%S")
       }
     }
     i = 0
@@ -418,7 +419,6 @@ class Userlevel < ActiveRecord::Base
           entry = Userlevel.find_or_create_by(id: map[:id])
           values = {
             title: map[:title],
-            author: map[:author],
             author_id: map[:author_id],
             favs: map[:favs],
             date: map[:date],
