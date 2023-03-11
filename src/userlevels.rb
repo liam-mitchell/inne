@@ -75,6 +75,20 @@ class UserlevelAuthor < ActiveRecord::Base
       raise "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
     end
   end
+
+  # Add an A.K.A. to the author (old name)
+  def aka(str, time)
+    str = INVALID_NAMES.include?(str) ? '' : str
+    return if !self.akas.where(name: str).empty?
+    UserlevelAka.create(author_id: self.id, name: str, date: time)
+  end
+
+  # Change author name, taking restrictions into account
+  def rename(str, time = nil)
+    str = INVALID_NAMES.include?(str) ? '' : str
+    self.update(name: str)
+    aka(str, !time.nil? ? time : Time.now.strftime(DATE_FORMAT_SQL))
+  end
 rescue RuntimeError
   raise
 rescue
@@ -209,18 +223,19 @@ class Userlevel < ActiveRecord::Base
   belongs_to :userlevel_author, foreign_key: :author_id
   enum mode: [:solo, :coop, :race]
   # Attributes:
-  #   id        - ID of the userlevel in Metanet's database (and ours)
-  #   author    - Map author name
-  #   author_id - Map author user ID in Metanet's database
-  #   title     - Map title
-  #   favs      - Number of favourites / ++s
-  #   date      - Date of publishing [dd/mm/yy hh:mm] UTC times
-  #   mode      - Playing mode [0 - Solo, 1 - Coop, 2 - Race]
-  #   tiles     - Tile data compressed in zlib, stored in userlevel_data
-  #   objects   - Object data compressed in zlib, stored in userlevel_data
+  #   id           - ID of the userlevel in Metanet's database (and ours)
+  #   author_id    - Map author user ID in Metanet's database (and ours)
+  #   title        - Map title
+  #   favs         - Number of favourites / ++s
+  #   date         - Date of publishing, UTC times
+  #   mode         - Playing mode [0 - Solo, 1 - Coop, 2 - Race]
+  #   score_update - When the scores were last updated in the db
+  #   map_update   - When the map properties (like favs) were last updated in the db
+  #   tiles        - Tile data compressed in zlib, stored in userlevel_data
+  #   objects      - Object data compressed in zlib, stored in userlevel_data
   # Note: For details about how map data is stored, see the encode_ and decode_ methods below.
 
-  # 'pref' is the drawing preference for overlaps, the lower the better
+  # 'pref' is the drawing preference for overlaps, the lower the higher
   # 'att' is the number of attributes they have in the old format (in the new one it's always 5)
   # 'old' is the ID in the old format, '-1' if it didn't exist
   # 'pal' is the index at which the colors of the object start in the palette image
@@ -297,7 +312,6 @@ class Userlevel < ActiveRecord::Base
   DIM     = 44
   WIDTH   = DIM * (COLUMNS + 2)
   HEIGHT  = DIM * (ROWS + 2)
-  INVALID_NAMES = [nil, "null", ""]
 
   def self.mode(mode)
     mode == -1 ? Userlevel : Userlevel.where(mode: mode)
@@ -319,13 +333,12 @@ class Userlevel < ActiveRecord::Base
   end
 
   def self.serial(maps)
-    maps.map(&:as_json).map(&:symbolize_keys)
     maps.map{ |m|
       {
         id:     m.id,
-        author: m.author.name,
+        author: (m.author.name rescue ""),
         title:  m.title,
-        date:   m.date,
+        date:   m.date.strftime(DATE_FORMAT_OUT),
         favs:   m.favs
       }
     }
@@ -371,61 +384,69 @@ class Userlevel < ActiveRecord::Base
     retry
   end
 
-  # Format of query result: Header (48B) + adjacent map headers (44B each) + adjacent map data blocks (variable length).
-  # 1) Header format: Date (16B), map count (4B), page (4B), unknown (4B), category (4B), game mode (4B), unknown (12B).
-  # 2) Map header format: Map ID (4B), user ID (4B), author name (16B), # of ++'s (4B), date of publishing (16B).
-  # 3) Map data block format: Size of block (4B), # of objects (2B), zlib-compressed map data.
-  # Uncompressed map data format: Header (30B) + title (128B) + null (18B) + map data (variable).
-  # 1) Header format: Unknown (4B), game mode (4B), unknown (4B), user ID (4B), unknown (14B).
-  # 2) Map format: Tile data (966B, 1B per tile), object counts (80B, 2B per object type), objects (variable, 5B per object).
+  # Parse binary file with userlevel collection received from N++'s server
   def self.parse(levels, update = false)
+    # Parse header (48B)
+    return nil if levels.size < 48
     header = {
-      date: format_date(levels[0..15].to_s),
-      count: parse_int(levels[16..19]),
-      page: parse_int(levels[20..23]),
-      category: parse_int(levels[28..31]),
-      mode: parse_int(levels[32..35])
+      date:    levels[0...16],           # Rough date of query
+      count:   _unpack(levels[16...20]), # Map count in this collection (<= 500)
+      page:    _unpack(levels[20...24]), # Page number (>= 0)
+      type:    _unpack(levels[24...28]), # Playable type (always 0, e.g., Level)
+      qt:      _unpack(levels[28...32]), # Query type (0-36)
+      mode:    _unpack(levels[32...36]), # Game mode (0 = Solo, 1 = Coop, 2 = Race, 3 = HC)
+      cache:   _unpack(levels[36...40]), # Cache duration in seconds (usually 1200 or 5)
+      max:     _unpack(levels[40...44]), # Max page size (usually 500 or 25)
+      unknown: _unpack(levels[44...48])  # Unknown field (usually 0 or 5)
     }
-    # Note: When parsing user input (map titles and authors), we stop reading at the first null character,
-    # everything after that is (should be) padding. Then, we remove non-ASCII characters.
-    maps = levels[48 .. 48 + 44 * header[:count] - 1].scan(/./m).each_slice(44).to_a.map { |h|
-      author = h[8..23].join.split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 126) ? nil : b.chr }.compact.join.strip
+
+    # Parse map headers (44B each)
+    return nil if levels.size < 48 + 44 * header[:count]
+    maps = levels[48 ... 48 + 44 * header[:count]].chars.each_slice(44).map { |h|
       {
-        id: parse_int(h[0..3]),
-        author_id: author != "null" ? parse_int(h[4..7]) : -1,
-        author: author,
-        favs: parse_int(h[24..27]),
-        date: Time.strptime(h[28..-1].join, "%Y-%m-%d-%H:%M").strftime("%Y-%m-%d %H:%M:%S")
+        id:        _unpack(h[0...4], 'l<'),   # Userlevel ID
+        author_id: _unpack(h[4...8], 'l<'),   # Author user ID (-1 if not found)
+        author:    parse_str(h[8...24].join), # Author name, truncated to 16 chars
+        favs:      _unpack(h[24...28], 'l<'), # ++ count
+        date:      Time.strptime(h[28..-1].join, DATE_FORMAT_IN).strftime(DATE_FORMAT_SQL)
       }
     }
+
+    # Parse map data (variable length blocks)
     i = 0
     offset = 48 + header[:count] * 44
     while i < header[:count]
-      len = parse_int(levels[offset..offset + 3])
-      maps[i][:object_count] = parse_int(levels[offset + 4..offset + 5])
-      map = Zlib::Inflate.inflate(levels[offset + 6..offset + len - 1])
-      maps[i][:title] = map[30..157].split("\x00")[0].to_s.each_byte.map{ |b| (b < 32 || b > 126) ? nil : b.chr }.compact.join.strip
-      maps[i][:tiles] = map[176..1141].scan(/./m).map{ |b| parse_int(b) }.each_slice(42).to_a
-      maps[i][:objects] = map[1222..-1].scan(/./m).map{ |b| parse_int(b) }.each_slice(5).to_a
+      # Parse mini-header (6B)
+      break if levels.size < offset + 6
+      len = _unpack(levels[offset...offset + 4])                 # Block length (4B)
+      maps[i][:count] = _unpack(levels[offset + 4...offset + 6]) # Object count (2B)
+
+      # Parse compressed data
+      break if levels.size < offset + len
+      map = Zlib::Inflate.inflate(levels[offset + 6...offset + len])
+      maps[i][:title] = parse_str(map[30...158])
+      maps[i][:tiles] = map[176...1142].bytes.each_slice(42).to_a
+      maps[i][:objects] = map[1222..-1].bytes.each_slice(5).to_a
       offset += len
       i += 1
     end
+
+    # Update database
     result = []
-    # Update database. We pack the tile data into a binary string and compress it using zlib.
-    # We do the same for object data, except we transpose it first (usually getting better compression).
     ActiveRecord::Base.transaction do
       maps.each{ |map|
         if update
-          entry = Userlevel.find_or_create_by(id: map[:id])
-          values = {
-            title: map[:title],
+          # Userlevel object
+          entry = Userlevel.find_or_create_by(id: map[:id]).update(
+            title:     map[:title],
             author_id: map[:author_id],
-            favs: map[:favs],
-            date: map[:date],
-            mode: header[:mode]
-          }
-          if INVALID_NAMES.include?(map[:author]) then values.delete(:author) end
-          entry.update(values)
+            favs:      map[:favs],
+            date:      map[:date],
+            mode:      header[:mode]
+          )
+          # Userlevel author
+          UserlevelAuthor.find_or_create_by(id: map[:author_id]).rename(map[:author], map[:date])
+          # Userlevel map data
           UserlevelData.find_or_create_by(id: map[:id]).update(
             tile_data: encode_tiles(map[:tiles]),
             object_data: encode_objects(map[:objects])
@@ -445,15 +466,15 @@ class Userlevel < ActiveRecord::Base
   # Dump 48 byte header used by the game for userlevel queries
   def self.query_header(count, cat, mode)
     mcount  = QUERY_LIMIT_SOFT
-    header  = Time.now.strftime("%Y-%m-%d-%H:%M") # Date of query  (16B)
-    header += _pack(count,  4)                    # Map count      ( 4B)
-    header += _pack(0,      4)                    # Query page     ( 4B)
-    header += _pack(0,      4)                    # Type           ( 4B)
-    header += _pack(cat,    4)                    # Query category ( 4B)
-    header += _pack(mode,   4)                    # Game mode      ( 4B)
-    header += _pack(5,      4)                    # Cache duration ( 4B)
-    header += _pack(mcount, 4)                    # Max page size  ( 4B)
-    header += _pack(0,      4)                    # ?              ( 4B)
+    header  = Time.now.strftime(DATE_FORMAT_IN) # Date of query  (16B)
+    header += _pack(count,  4)                  # Map count      ( 4B)
+    header += _pack(0,      4)                  # Query page     ( 4B)
+    header += _pack(0,      4)                  # Type           ( 4B)
+    header += _pack(cat,    4)                  # Query category ( 4B)
+    header += _pack(mode,   4)                  # Game mode      ( 4B)
+    header += _pack(5,      4)                  # Cache duration ( 4B)
+    header += _pack(mcount, 4)                  # Max page size  ( 4B)
+    header += _pack(0,      4)                  # ?              ( 4B)
     header
   end
 

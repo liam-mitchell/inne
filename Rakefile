@@ -5,8 +5,12 @@ require 'rails'
 require 'yaml'
 require 'yaml_db'
 
+require_relative 'src/constants.rb'
 require_relative 'src/models.rb'
 require_relative 'src/messages.rb'
+
+# Supress warnings, too spammy in migrations!
+$VERBOSE = nil
 
 module Rails
   def Rails.env

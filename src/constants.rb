@@ -45,9 +45,10 @@ CONTENT_ID     = 197793786389200896 # ... (#content-creation)
 DISCORD_LIMIT  = 2000               # Message character limit
 
 # <--------------------------------------------------------------------------->
-# <------                   INPUT FORMAT VARIABLES                      ------>
+# <------                       FORMAT VARIABLES                        ------>
 # <--------------------------------------------------------------------------->
 
+# Input
 LEVEL_PATTERN     = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
 LEVEL_PATTERN_D   = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
 EPISODE_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
@@ -56,16 +57,18 @@ STORY_PATTERN     = /(S[ILU]?)-?([0-9][0-9]?)/i
 NAME_PATTERN      = /(for|of) (.*)[\.\?]?/i
 MAX_ENTRIES       = 20 # maximum number of entries on methods with user input, to avoid spam
 
-# <--------------------------------------------------------------------------->
-# <------                  OUTPUT FORMAT VARIABLES                      ------>
-# <--------------------------------------------------------------------------->
-
+# Output
 NUM_ENTRIES     = 20   # number of entries to show on most methods
 SCORE_PADDING   =  0   #         fixed    padding, 0 for no fixed padding
 DEFAULT_PADDING = 15   # default variable padding, never make 0
 MAX_PADDING     = 15   # max     variable padding, 0 for no maximum
 MAX_PAD_GEN     = 80   # max padding for general strings (not player names)
 TRUNCATE_NAME   = true # truncate name when it exceeds the maximum padding
+
+# Dates
+DATE_FORMAT_IN  = "%Y-%m-%d-%H:%M"    # Date format used by N++
+DATE_FORMAT_OUT = "%y/%m/%d %H:%M"    # Date format used by outte
+DATE_FORMAT_SQL = "%Y-%m-%d %H:%M:%S" # Date format required by MySQL
 
 # <--------------------------------------------------------------------------->
 # <------                   USERLEVEL VARIABLES                         ------>
@@ -89,6 +92,7 @@ USERLEVEL_TABS = {
   11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
 }
 USERLEVEL_REPORT_SIZE = 500 # Number of userlevels to include in daily rankings
+INVALID_NAMES = [nil, "null", ""] # Names that correspond to invalid players
 
 # <--------------------------------------------------------------------------->
 # <------                       JOKE VARIABLES                          ------>

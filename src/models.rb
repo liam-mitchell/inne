@@ -109,6 +109,7 @@ module HighScore
       if SHOW_ERRORS
         err("#{err}: #{e}")
       end
+      sleep(0.25)
       retry
     else
       return nil

@@ -51,9 +51,22 @@ def _pack(n, size)
   }.join.force_encoding("ascii-8bit")
 end
 
-def _unpack(bytes)
+def _unpack(bytes, fmt = nil)
+  if bytes.is_a?(Array) then bytes = bytes.join end
+  if !bytes.is_a?(String) then bytes.to_s end
+  i = bytes.unpack(fmt)[0] if !fmt.nil?
+  i ||= bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+rescue
   if bytes.is_a?(Array) then bytes = bytes.join end
   bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+end
+
+def to_utf8(str)
+  str.bytes.reject{ |b| b < 32 || b == 127 }.map(&:chr).join.force_encoding('UTF-8').scrub('')
+end
+
+def parse_str(str)
+  to_utf8(str.split("\x00")[0].to_s).strip
 end
 
 def is_num(str)
