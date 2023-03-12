@@ -19,7 +19,7 @@ class CreateUserlevelAuthors < ActiveRecord::Migration[5.1]
       count = Userlevel.count.to_i
       Userlevel.order(id: :asc).pluck(:author_id, :author_temp, :date).each_with_index{ |u, i|
         print("Creating userlevel author and aka for userlevel #{i + 1} / #{count}...".ljust(80, ' ') + "\r")
-        date = Time.strptime(u[2], "%d/%m/%y %H:%M").strftime(DATE_FORMAT_SQL)
+        date = Time.strptime(u[2], "%d/%m/%y %H:%M").strftime(DATE_FORMAT_MYSQL)
         UserlevelAuthor.where(id: u[0]).first_or_create(id: u[0]).rename(u[1], date)
       }
     end

@@ -11,19 +11,6 @@ def parse_int(bytes)
   bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
 end
 
-# Reformat date strings received by queries to the server
-def format_date(date)
-  date.gsub!(/-/,"/")
-  date[-6] = " "
-  date = date[2..-1]
-  date[0..7].split("/").reverse.join("/") + date[-6..-1]
-end
-
-# Reformat date string back to the format the server users
-def reformat_date(date)
-  '20' + date[0..7].split('/').reverse.join('-') + '-' + date[-5..-1]
-end
-
 def to_ascii(s)
   s.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
 end
@@ -392,8 +379,8 @@ def set_channels(event = nil)
     return
   end
   fix_potato
-  puts "Main channel: #{$channel.name}."            if !$channel.nil?
+  puts "Main channel:    #{$channel.name}."         if !$channel.nil?
   puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
-  puts "Nv2 channel: #{$nv2_channel.name}.        " if !$nv2_channel.nil?
+  puts "Nv2 channel:     #{$nv2_channel.name}."     if !$nv2_channel.nil?
   puts "Content channel: #{$content_channel.name}." if !$content_channel.nil?
 end

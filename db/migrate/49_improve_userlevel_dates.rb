@@ -16,7 +16,7 @@ class ImproveUserlevelDates < ActiveRecord::Migration[5.1]
     ActiveRecord::Base.transaction do
       Userlevel.all.each_with_index{ |u, i|
         print "Reformatting date #{i + 1} / #{count}...".ljust(80, ' ') + "\r"
-        u.update(date: Time.strptime(u.date_temp, "%d/%m/%y %H:%M").strftime(DATE_FORMAT_SQL))
+        u.update(date: Time.strptime(u.date_temp, "%d/%m/%y %H:%M").strftime(DATE_FORMAT_MYSQL))
       }
     end
     puts ""

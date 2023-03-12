@@ -66,9 +66,9 @@ MAX_PAD_GEN     = 80   # max padding for general strings (not player names)
 TRUNCATE_NAME   = true # truncate name when it exceeds the maximum padding
 
 # Dates
-DATE_FORMAT_IN  = "%Y-%m-%d-%H:%M"    # Date format used by N++
-DATE_FORMAT_OUT = "%y/%m/%d %H:%M"    # Date format used by outte
-DATE_FORMAT_SQL = "%Y-%m-%d %H:%M:%S" # Date format required by MySQL
+DATE_FORMAT_NPP   = "%Y-%m-%d-%H:%M"    # Date format used by N++
+DATE_FORMAT_OUTTE = "%Y/%m/%d %H:%M"    # Date format used by outte
+DATE_FORMAT_MYSQL = "%Y-%m-%d %H:%M:%S" # Date format required by MySQL
 
 # <--------------------------------------------------------------------------->
 # <------                   USERLEVEL VARIABLES                         ------>
@@ -113,7 +113,7 @@ COOL           = true               # Emoji for CKC in leaderboards
 # Individual flags for each thread / task
 OFFLINE_MODE      = false # Disables most intensive online functionalities
 OFFLINE_STRICT    = false # Disables all online functionalities of outte
-UPDATE_STATUS     = true # Thread to regularly update the bot's status
+UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
 UPDATE_HISTORY    = false # Thread to regularly update highscoring histories

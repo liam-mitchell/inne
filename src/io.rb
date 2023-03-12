@@ -43,9 +43,10 @@ def compute_pages(count = 1, page = 1, pagesize = PAGE_SIZE)
 end
 
 # Parse game mode from string. If explicit is set, one of the 3 modes must be
-# set (defaulting to 'solo'), otherwise, it defaults to 'all'.
-def parse_mode(msg, explicit = false)
-  !!msg[/race/i] ? 'race' : (!!msg[/coop/i] ? 'coop' : (explicit ? 'solo' : (!!msg[/solo/i] ? 'solo' : 'all')))
+# set (defaulting to 'solo'), otherwise, it defaults to 'all', or nil if
+# 'null' is true
+def parse_mode(msg, explicit = false, null = false)
+  !!msg[/\brace\b/i] ? 'race' : (!!msg[/\bcoop\b/i] ? 'coop' : (explicit ? 'solo' : (!!msg[/\bsolo\b/i] ? 'solo' : (null ? nil : 'all'))))
 end
 
 # Optionally allow to parse multiple types, for retrocompat
@@ -128,6 +129,7 @@ end
 # implicit: the player will be inferred from their user, without even parsing the comment
 # third: allow for 3rd person specification "is xela" rather than "for xela"
 def parse_player(msg, username, userlevel = false, explicit = false, enforce = false, implicit = false, third = false)
+  msg = msg.gsub(/"/, '')
   p = msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
   playerClass = userlevel ? UserlevelPlayer : Player
 
@@ -563,6 +565,19 @@ rescue
   remove ? ['', msg] : ''
 end
 
+# Same as above, but using both prepositions
+def parse_userlevel_both(msg, remove: false, full: false)
+  name, msg = parse_string_or_id(msg, quoted: ['for', 'by', 'author'], final: ['for', 'by'], remove: true)
+  name.strip! if name.is_a?(String)
+  if name.is_a?(String) && name.empty? && full
+    name, msg = msg, ''
+    name = name.strip.to_i if is_num(name)
+  end
+  remove ? [name, msg] : name
+rescue
+  remove ? ['', msg] : ''
+end
+
 # TODO: Adapt all uses of "author" in userlevels.rb to the new system, both when
 # using the author directly, as well as when calling one of the functions from io.rb
 # that have changed (parse_title_and_author, parse_userlevel, etc).
@@ -578,8 +593,15 @@ end
 # 'full' allows for the title to default to the whole msg if no prefix is found
 def parse_title_and_author(msg, full = true)
   author, msg = parse_userlevel_author(msg, remove: true)
-  title, msg = parse_userlevel_title(msg, remove: true, full: full) # Parse last, since title can be whole msg if no "for" is found
+  title, msg = parse_userlevel_title(msg, remove: true, full: full) # Keep last! (title can be whole msg if no "for" is found)
   [title, author, msg]
+end
+
+def parse_author(msg, rais = true)
+  UserlevelAuthor.parse(parse_userlevel_author(msg))
+rescue
+  raise# if rais
+  nil
 end
 
 # Parse a userlevel from a message by looking for a title or an ID, as well as
@@ -815,8 +837,9 @@ def format_max(max)
   !max.nil? ? " [MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ''
 end
 
-def format_author(name)
-  !name.empty? ? "on maps by `#{name}`" : ''
+def format_author(author)
+  return '' if !author.is_a?(UserlevelAuthor)
+  "on maps by `#{author.name}`"
 end
 
 def format_block(str)

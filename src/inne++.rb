@@ -152,7 +152,6 @@ end
 def update_status
   while(true)
     sleep(WAIT) # prevent crazy loops
-    puts "Updating status..."
     if !OFFLINE_STRICT
       (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
       $status_update = Time.now.to_i
@@ -161,7 +160,6 @@ def update_status
       get_current(Story).update_scores
     end
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
-    puts "Updated status"
     sleep(STATUS_UPDATE_FREQUENCY)
   end
 rescue
