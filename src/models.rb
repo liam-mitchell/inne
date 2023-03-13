@@ -38,13 +38,7 @@ module MonkeyPatches
     ::Discordrb.const_set("LOG_TIMESTAMP_FORMAT", DATE_FORMAT_LOG)
     ::Discordrb::Logger.class_eval do
       def simple_write(stream, message, mode, thread_name, timestamp)
-        bold   = ::Discordrb::Logger::FORMAT_BOLD
-        reset  = ::Discordrb::Logger::FORMAT_RESET
-        header = mode[:long]
-        symbol = mode[:short]
-        fmt    = mode[:format_code]
-        stream.puts "[#{timestamp}] #{bold}#{fmt}#{symbol}#{reset} #{fmt}#{message}#{reset}"
-        stream.flush
+        Log.write(message, mode[:long].downcase.to_sym)
       end
     end
   end

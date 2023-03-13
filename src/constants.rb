@@ -18,6 +18,7 @@ LOG            = true  # Log stuff to the terminal (superseeds the next 3 ones)
 LOG_INFO       = true  # Log info to the terminal
 LOG_WARNINGS   = true  # Log warnings to the terminal
 LOG_ERRORS     = true  # Log errors to the terminal
+LOG_FANCY      = true  # Format logs (bold, colors...)
 LOG_TO_FILE    = false # Export logs and errors into external file
 LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)
 LOG_REPORT     = false # Export new weekly scores to a file

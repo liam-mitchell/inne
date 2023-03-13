@@ -11,28 +11,52 @@ ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 # TODO: Perhaps design a more serious logging class, with different levels,
 # from minimal to debug/trace, and use it throughout the program. In that case,
 # only export to file a low logging level, like the standard one.
-# TODO: Add ANSI codes, for bold and colors, and use same system as the new custom
-# Discordrb log format
-def _log(msg, header)
-  return if !LOG
-  stream = STDOUT
-  stream = STDERR if ['warning', 'error'].include?(header.downcase)
-  msg = "\r[#{Time.now.strftime(DATE_FORMAT_LOG)}] [#{header}] #{msg}"
-  stream.puts msg
-  File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
+module Log
+
+  MODES = {
+    debug: { long: 'DEBUG', short: 'D', fmt: '' },
+    good:  { long: 'GOOD',  short: '✓', fmt: "\u001B[32m" }, # green
+    info:  { long: 'INFO',  short: 'i', fmt: '' },
+    warn:  { long: 'WARN',  short: '!', fmt: "\u001B[33m" }, # yellow
+    error: { long: 'ERROR', short: '✗', fmt: "\u001B[31m" }, # red
+    out:   { long: 'OUT',   short: '→', fmt: "\u001B[36m" }, # cyan
+    in:    { long: 'IN',    short: '←', fmt: "\u001B[35m" }, # purple
+    fatal: { long: 'FATAL', short: 'F', fmt: "\u001B[41m" } # red background
+  }
+
+  BOLD  = "\u001B[1m"
+  RESET = "\u001B[0m"
+
+  def self.write(msg, mode)
+    return if !LOG
+    stream = STDOUT
+    stream = STDERR if [:warn, :error, :fatal].include?(mode)
+    m = MODES[mode] || MODES[:info]
+    date = Time.now.strftime(DATE_FORMAT_LOG)
+    header = LOG_FANCY ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]"
+    text = LOG_FANCY ? "#{m[:fmt]}#{msg}#{RESET}" : msg
+    msg = "\r[#{date}] #{header} #{text}"
+    stream.puts msg
+    stream.flush
+    File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
+  end
+
+  def self.log(msg)
+    write(msg, :info) if LOG_INFO
+  end
+  
+  def self.warn(msg)
+    write(msg, :warn) if LOG_WARNINGS
+  end
+  
+  def self.err(msg)
+    write(msg, :error) if LOG_ERRORS
+  end
 end
 
-def log(msg)
-  _log(msg, 'INFO') if LOG_INFO
-end
-
-def warn(msg)
-  _log(msg, 'WARNING') if LOG_WARNINGS
-end
-
-def err(msg)
-  _log(msg, 'ERROR') if LOG_ERRORS
-end
+def log(msg) Log.log(msg) end
+def warn(msg) Log.warn(msg) end
+def err(msg) Log.err(msg) end
 
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute
