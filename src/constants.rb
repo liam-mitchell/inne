@@ -5,13 +5,22 @@
 TEST           = true  # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
-LOG_SQL        = false # Log _all_ SQL queries to the console (for debugging)
-LOG            = false # Export logs and errors into external file
-LOG_REPORT     = false # Log new weekly scores that appear in the report
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
+
+# <--------------------------------------------------------------------------->
+# <------                     LOGGING VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+LOG            = true  # Log stuff to the terminal (superseeds the next 3 ones)
+LOG_INFO       = true  # Log info to the terminal
+LOG_WARNINGS   = true  # Log warnings to the terminal
+LOG_ERRORS     = true  # Log errors to the terminal
+LOG_TO_FILE    = false # Export logs and errors into external file
+LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)
+LOG_REPORT     = false # Export new weekly scores to a file
 
 # <--------------------------------------------------------------------------->
 # <------                     INTERNAL VARIABLES                        ------>
@@ -21,16 +30,20 @@ WAIT           = 1     # Seconds to wait between each iteration of the infinite 
 BENCHMARK      = false # Benchmark and log functions (for optimization)
 BENCH_MSGS     = false # Benchmark functions _in messages_
 DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
-CONFIG         = YAML.load_file('db/config.yml')[DATABASE_ENV]
+CONFIG         = 'db/config.yml'
 
 # <--------------------------------------------------------------------------->
 # <------                     NETWORK VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
+OFFLINE_MODE   = false   # Disables most intensive online functionalities
+OFFLINE_STRICT = false   # Disables all online functionalities of outte
 RETRIES        = 50      # Redownload attempts for boards / demos
 ATTEMPT_LIMIT  = 5       # Redownload attempts in general (bigger files)
 INVALID_RESP   = '-1337' # N++'s server response when Steam ID is inactive
 DEFAULT_TYPES  = ['Level', 'Episode'] # Default highscoreable types
+
+UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 
 # <--------------------------------------------------------------------------->
 # <------                     DISCORD VARIABLES                         ------>
@@ -43,6 +56,14 @@ USERLEVELS_ID  = 221721273405800458 # ... (#mapping)
 NV2_ID         = 197774025844457472 # ... (#nv2)
 CONTENT_ID     = 197793786389200896 # ... (#content-creation)
 DISCORD_LIMIT  = 2000               # Message character limit
+
+# <--------------------------------------------------------------------------->
+# <------                  MONKEY PATCHING VARIABLES                    ------>
+# <--------------------------------------------------------------------------->
+
+MONKEY_PATCH               = true # Enable monkey patches globally
+MONKEY_PATCH_ACTIVE_RECORD = true # Enable ActiveRecord monkey patches (must!)
+MONKEY_PATCH_DISCORDRB     = true # Enable Discordrb monkey patches (optional)
 
 # <--------------------------------------------------------------------------->
 # <------                       FORMAT VARIABLES                        ------>
@@ -66,9 +87,10 @@ MAX_PAD_GEN     = 80   # max padding for general strings (not player names)
 TRUNCATE_NAME   = true # truncate name when it exceeds the maximum padding
 
 # Dates
-DATE_FORMAT_NPP   = "%Y-%m-%d-%H:%M"    # Date format used by N++
-DATE_FORMAT_OUTTE = "%Y/%m/%d %H:%M"    # Date format used by outte
-DATE_FORMAT_MYSQL = "%Y-%m-%d %H:%M:%S" # Date format required by MySQL
+DATE_FORMAT_NPP   = "%Y-%m-%d-%H:%M"       # Date format used by N++
+DATE_FORMAT_OUTTE = "%Y/%m/%d %H:%M"       # Date format used by outte
+DATE_FORMAT_MYSQL = "%Y-%m-%d %H:%M:%S"    # Date format required by MySQL
+DATE_FORMAT_LOG   = "%Y/%m/%d %H:%M:%S.%L" # Date format used for terminal logs
 
 # <--------------------------------------------------------------------------->
 # <------                   USERLEVEL VARIABLES                         ------>
@@ -101,18 +123,25 @@ INVALID_NAMES = [nil, "null", ""] # Names that correspond to invalid players
 POTATO         = true               # joke they have in the nv2 channel
 POTATO_RATE    = 1                  # seconds between potato checks
 POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
-FRUITS         = [':potato:', ':tomato:', ':eggplant:', ':peach:', ':carrot:', ':pineapple:', ':cucumber:', ':cheese:']
 MISHU          = true               # MishNUB joke
 MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 COOL           = true               # Emoji for CKC in leaderboards
+FRUITS         = [                  # Emojis for the potato joke
+  ':potato:',
+  ':tomato:',
+  ':eggplant:',
+  ':peach:',
+  ':carrot:',
+  ':pineapple:',
+  ':cucumber:',
+  ':cheese:'
+]
 
 # <--------------------------------------------------------------------------->
 # <------                       TASK VARIABLES                          ------>
 # <--------------------------------------------------------------------------->
 
 # Individual flags for each thread / task
-OFFLINE_MODE      = false # Disables most intensive online functionalities
-OFFLINE_STRICT    = false # Disables all online functionalities of outte
 UPDATE_STATUS     = false # Thread to regularly update the bot's status
 UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
 UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
@@ -128,24 +157,24 @@ UPDATE_USER_TABS  = false # Thread to regularly update userlevel tabs (best, fea
 REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
 REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
 
-# Update frequencies for each task
-STATUS_UPDATE_FREQUENCY     = CONFIG['status_update_frequency']     ||            5 * 60 # every 5 mins
-TWITCH_UPDATE_FREQUENCY     = CONFIG['twitch_update_frequency']     ||                60 # every 1 min
-HIGHSCORE_UPDATE_FREQUENCY  = CONFIG['highscore_update_frequency']  ||      24 * 60 * 60 # daily
-HISTORY_UPDATE_FREQUENCY    = CONFIG['history_update_frequency']    ||      24 * 60 * 60 # daily
-DEMO_UPDATE_FREQUENCY       = CONFIG['demo_update_frequency']       ||      24 * 60 * 60 # daily
-LEVEL_UPDATE_FREQUENCY      = CONFIG['level_update_frequency']      ||      24 * 60 * 60 # daily
-EPISODE_UPDATE_FREQUENCY    = CONFIG['episode_update_frequency']    ||  7 * 24 * 60 * 60 # weekly
-STORY_UPDATE_FREQUENCY      = CONFIG['story_update_frequency']      || 30 * 24 * 60 * 60 # monthly (roughly)
-REPORT_UPDATE_FREQUENCY     = CONFIG['report_update_frequency']     ||      24 * 60 * 60 # daily
-REPORT_UPDATE_SIZE          = CONFIG['report_update_size']          ||  7 * 24 * 60 * 60 # last 7 days
-SUMMARY_UPDATE_SIZE         = CONFIG['summary_update_size']         ||  1 * 24 * 60 * 60 # last day
-USERLEVEL_SCORE_FREQUENCY   = CONFIG['userlevel_score_frequency']   ||      24 * 60 * 60 # daily
-USERLEVEL_UPDATE_RATE       = CONFIG['userlevel_update_rate']       ||                15 # every 5 secs
-USERLEVEL_HISTORY_FREQUENCY = CONFIG['userlevel_history_frequency'] ||      24 * 60 * 60 # daily
-USERLEVEL_REPORT_FREQUENCY  = CONFIG['userlevel_report_frequency']  ||      24 * 60 * 60 # daily
-USERLEVEL_TAB_FREQUENCY     = CONFIG['userlevel_tab_frequency']     ||      24 * 60 * 60 # daily
-USERLEVEL_DOWNLOAD_CHUNK    = CONFIG['userlevel_download_chunk']    ||               100 # 100 maps at a time
+# Update frequencies for each task, in seconds
+STATUS_UPDATE_FREQUENCY     =             5 * 60
+TWITCH_UPDATE_FREQUENCY     =                 60
+HIGHSCORE_UPDATE_FREQUENCY  =       24 * 60 * 60
+HISTORY_UPDATE_FREQUENCY    =       24 * 60 * 60
+DEMO_UPDATE_FREQUENCY       =       24 * 60 * 60
+LEVEL_UPDATE_FREQUENCY      =       24 * 60 * 60
+EPISODE_UPDATE_FREQUENCY    =   7 * 24 * 60 * 60
+STORY_UPDATE_FREQUENCY      =  30 * 24 * 60 * 60 # Not used (published 1st of each month)
+REPORT_UPDATE_FREQUENCY     =       24 * 60 * 60
+REPORT_UPDATE_SIZE          =   7 * 24 * 60 * 60
+SUMMARY_UPDATE_SIZE         =   1 * 24 * 60 * 60
+USERLEVEL_SCORE_FREQUENCY   =       24 * 60 * 60
+USERLEVEL_UPDATE_RATE       =                 15
+USERLEVEL_HISTORY_FREQUENCY =       24 * 60 * 60
+USERLEVEL_REPORT_FREQUENCY  =       24 * 60 * 60
+USERLEVEL_TAB_FREQUENCY     =       24 * 60 * 60
+USERLEVEL_DOWNLOAD_CHUNK    =                100
 
 # <--------------------------------------------------------------------------->
 # <------                      TWITCH VARIABLES                         ------>

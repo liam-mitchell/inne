@@ -1,6 +1,7 @@
 Eddy's TODO list for inne:
 
-- ADD NEW COMMANDS TO HELP / README
+- Revamp help / commands, with navigation buttons, select menus, etc
+- Simplify README, with a brief description but without commands, update stuff like contributors and dates
 - In "parse_player", we should check for an identified player name for a given user first, and THEN for the actual user name. This is because, if someone identifies, we should give priority to that name, even if it differs from their actual username.
 - Restart process when it gets killed, maybe even restart it daily to prevent the memory leak.
 - Distribution of scores: top20 episode distribution = first show some stats regarding top20s per episode (most top20s in an ep, least, average, etc), then a file with all episodes sorted by # of top20s). Parameters: type, rank (top20, 0th, etc), distribution type (by episodes, by rows, by tabs).
@@ -63,6 +64,7 @@ Eddy's TODO list for inne:
 - Fix random userlevel function, the new send_userlevel_individual approach broke it.
 - Send message if the command was not understood, i.e., if no function was executed, but not in DM's. We can do this by having a flag that each function sets to true when it's executed, and then check it at the end. We can also use this flag to prevent executing 2 functions on the same command, which means we could also control the flow by changing the order of the function calls at the bottom.
 - Use the new "where_like" function whenever useful (e.g., userlevel_browse, search_player, etc)
+- Implement a more serious logging class, with different levels (minimal, standard, debug, trace, etc), and use it throughout the program. Obviously, when exporting to a file, only export a low level by default, like the standard one.
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.

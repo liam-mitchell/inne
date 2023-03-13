@@ -28,804 +28,122 @@
 # We use some gems directly from Github repositories (in particular, Discordrb,
 # so that we can use the latest features, not present in the outdated RubyGems
 # version). This is supported by Bundler but not by RubyGems directly. The next
-# two lines makes makes these gems available / visible.
+# two lines makes these gems available / visible.
 require 'rubygems'
 require 'bundler/setup'
 
-# Included gems
+# Gems useful throughout the entire program
+# (each source file might contain further specific gems)
+require 'byebug'
 require 'discordrb'
 require 'json'
 require 'net/http'
-require 'thread'
+require 'time'
 require 'yaml'
-require 'byebug'
-require 'socket'
+require 'zlib'
 
-# Import other source files
+# Import all other source files
+# (each source file still imports all the ones it needs, to keep track)
 require_relative 'constants.rb'
 require_relative 'utils.rb'
+require_relative 'io.rb'
 require_relative 'interactions.rb'
 require_relative 'models.rb'
 require_relative 'messages.rb'
+require_relative 'userlevels.rb'
+require_relative 'threads.rb'
 
-def log(msg)
-  puts "[INFO] [#{Time.now}] #{msg}"
-  open('../LOG', 'a') { |f| f.puts "[INFO] [#{Time.now}] #{msg}" } if LOG
-end
-
-def err(msg)
-  STDERR.puts "[ERROR] [#{Time.now}] #{msg}"
-  open('../LOG', 'a') { |f| f.puts "[ERROR] [#{Time.now}] #{msg}" } if LOG
-end
-
-def get_current(type)
-  type.find_by(name: GlobalProperty.find_by(key: "current_#{type.to_s.downcase}").value)
-end
-
-def set_current(type, curr)
-  GlobalProperty.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
-end
-
-def get_next(type)
-  query = type.where(completed: nil)
-  type.update_all(completed: nil) if query.count <= 0
-  ret = type.where(completed: nil).sample
-  ret.update(completed: true)
-  ret
-end
-
-def get_next_update(type)
-  Time.parse(GlobalProperty.find_by(key: "next_#{type.to_s.downcase}_update").value)
-end
-
-def set_next_update(type, time)
-  GlobalProperty.find_or_create_by(key: "next_#{type.to_s.downcase}_update").update(value: time.to_s)
-end
-
-def get_saved_scores(type)
-  JSON.parse(GlobalProperty.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
-end
-
-def set_saved_scores(type, curr)
-  GlobalProperty.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
-    .update(value: curr.scores.to_json(include: {player: {only: :name}}))
-end
-
-def get_last_steam_id
-  GlobalProperty.find_or_create_by(key: "last_steam_id").value
-end
-
-def set_last_steam_id(id)
-  GlobalProperty.find_or_create_by(key: "last_steam_id").update(value: id)
-end
-
-def update_last_steam_id
-  current   = (User.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
-  next_user = (User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first) rescue nil
-  set_last_steam_id(next_user.steam_id) if !next_user.nil?
-end
-
-def activate_last_steam_id
-  p = User.find_by(steam_id: get_last_steam_id)
-  p.update(last_active: Time.now) if !p.nil?
-end
-
-def deactivate_last_steam_id
-  p = User.find_by(steam_id: get_last_steam_id)
-  p.update(last_inactive: Time.now) if !p.nil?   
-end
-
-# This corrects a datetime in the database when it's out of
-# phase (e.g. after a long downtime of the bot).
-def correct_time(time, frequency)
-  time -= frequency while time > Time.now
-  time += frequency while time < Time.now
-  time
-end
-
-# Pings a role by name (returns ping string)
-def ping(rname)
-  server = TEST ? $bot.servers.values.first : $bot.servers[SERVER_ID]
-  if server.nil?
-    log("server not found")
-    return ""
-  end
-
-  role = server.roles.select{ |r| r.name == rname }.first
-  if role != nil
-    if role.mentionable
-      return role.mention
-    else
-      log("role #{rname} in server #{server.name} not mentionable")
-      return ""
-    end
-  else
-    log("role #{rname} not found in server #{server.name}")
-    return ""
-  end
-end
-
-# Periodically perform several useful tasks:
-# - Update scores for lotd, eotw and cotm.
-# - Update database with newest userlevels from all playing modes.
-# - Update bot's status (it only lasts so much).
-def update_status
-  while(true)
-    sleep(WAIT) # prevent crazy loops
-    if !OFFLINE_STRICT
-      (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
-      $status_update = Time.now.to_i
-      get_current(Level).update_scores
-      get_current(Episode).update_scores
-      get_current(Story).update_scores
-    end
-    $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
-    sleep(STATUS_UPDATE_FREQUENCY)
-  end
-rescue
-  retry
-end
-
-def update_twitch
-  if $content_channel.nil?
-    err("not connected to a channel, not sending twitch report")
-    raise
-  end
-  if $twitch_token.nil?
-    $twitch_token = Twitch::get_twitch_token
-    Twitch::update_twitch_streams
-  end
-  while(true)
-    sleep(WAIT)
-    Twitch::update_twitch_streams
-    Twitch::new_streams.each{ |game, list|
-      list.each{ |stream|
-        Twitch::post_stream(stream)
-      }
-    }
-    sleep(TWITCH_UPDATE_FREQUENCY)
-  end
+def monkey_patch
+  MonkeyPatches.apply
+  log("Applied monkey patches")
 rescue => e
-  err(e)
-  sleep(WAIT)
-  retry
+  err("Failed to apply monkey patches: #{e}")
+  exit
 end
 
-def download_demos
-  log("updating demos...")
-  ids = Demo.where.not(demo: nil).or(Demo.where(expired: true)).pluck(:id)
-  archives = Archive.where.not(id: ids).pluck(:id, :replay_id, :highscoreable_type)
-  count = archives.size
-  archives.each_with_index do |ar, i|
-    attempts ||= 0
-    ActiveRecord::Base.transaction do
-      demo = Demo.find_or_create_by(id: ar[0])
-      demo.update(replay_id: ar[1], htype: Demo.htypes[ar[2].to_s.downcase])
-      demo.update_demo
-    end
-  rescue => e
-    err("error updating demo with ID #{ar[0].to_s}: #{e}")
-    ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
-  end
-  log("updated demos")
-  return true
+def initialize_vars
+  $config          = nil
+  $channel         = nil
+  $mapping_channel = nil
+  $nv2_channel     = nil
+  $content_channel = nil
+  $last_potato     = Time.now.to_i
+  $potato          = 0
+  $last_mishu      = nil
+  $status_update   = Time.now.to_i
+  $twitch_token    = nil
+  $twitch_streams  = {}
+  $boot_time       = Time.now.to_i
+  log("Initialized global variables")
 rescue => e
-  err("error updating demos: #{e}")
-  return false
+  err("Failed to initialize global variables: #{e}")
+  exit
 end
 
-def start_demos
-  while true
-    sleep(WAIT) # prevent crazy loops
-    next_demo_update = correct_time(get_next_update('demo'), DEMO_UPDATE_FREQUENCY)
-    set_next_update('demo', next_demo_update)
-    delay = next_demo_update - Time.now
-    sleep(delay) unless delay < 0
-    next if !download_demos
-  end
+def load_config
+  $config = YAML.load_file(CONFIG)[DATABASE_ENV]
+  log("Loaded config")
 rescue => e
-  err("error updating demos: #{e}")
-  retry
+  err("Failed to load config: #{e}")
+  exit
 end
 
-def send_report
-  log("sending highscoring report...")
-  if $channel.nil?
-    err("not connected to a channel, not sending highscoring report")
-    return false
-  end
-
-  base  = Time.new(2020, 9, 3, 0, 0, 0, "+00:00").to_i # when archiving begun
-  time  = [Time.now.to_i - REPORT_UPDATE_SIZE,  base].max
-  time2 = [Time.now.to_i - SUMMARY_UPDATE_SIZE, base].max
-  now   = Time.now.to_i
-  pad   = [2, DEFAULT_PADDING, 6, 6, 6, 5, 4]
-  log   = [] if LOG_REPORT
-
-  changes = Archive.where("unix_timestamp(date) > #{time}")
-                   .order('date desc')
-                   .map{ |ar| [ar.metanet_id, ar.find_rank(time), ar.find_rank(now), ar.highscoreable, ar.score] }
-                   .group_by{ |s| s[0] }
-                   .map{ |id, scores|
-                         [
-                           id,
-                           scores.group_by{ |s| s[3] }
-                                 .map{ |highscoreable, versions|
-                                       max = versions.map{ |v| v[4] }.max
-                                       versions.select{ |v| v[4] == max }.first
-                                     }
-                         ]
-                       }
-                   .map{ |id, scores|
-                         log << [Player.find_by(metanet_id: id).name, scores.sort_by{ |s| [s[2], s[3].id] }] if LOG_REPORT
-                         {
-                           player: Player.find_by(metanet_id: id).name,
-                           points: scores.map{ |s| s[1] - s[2] }.sum,
-                           top20s: scores.select{ |s| s[1] == 20 }.size,
-                           top10s: scores.select{ |s| s[1] > 9 && s[2] <= 9 }.size,
-                           top05s: scores.select{ |s| s[1] > 4 && s[2] <= 4 }.size,
-                           zeroes: scores.select{ |s| s[2] == 0 }.size
-                         }
-                       }
-                   .sort_by{ |p| -p[:points] }
-                   .each_with_index
-                   .map{ |p, i|
-                         values = p.values.prepend(i)
-                         values.each_with_index.map{ |v, j|
-                           s = v.to_s.rjust(pad[j], " ")[0..pad[j]-1]
-                           s += " |" if [0, 1, 2].include?(j)
-                           s
-                         }.join(" ")
-                       }
-                   .take(20)
-                   .join("\n")
-
-  header = ["", "Player", "Points", "Top20s", "Top10s", "Top5s", "0ths"]
-             .each_with_index
-             .map{ |h, i|
-                   s = h.ljust(pad[i], " ")
-                   s += " |" if [0, 1, 2].include?(i)
-                   s
-                 }
-             .join(" ")
-  sep = "-" * (pad.sum + pad.size + 5)
-
-  $channel.send_message("**Weekly highscoring report**:```#{header}\n#{sep}\n#{changes}```")
-  if LOG_REPORT
-    log_text = log.sort_by{ |name, scores| name }.map{ |name, scores|
-      scores.map{ |s|
-        name[0..14].ljust(15, " ") + " " + (s[1] == 20 ? " x  " : s[1].ordinalize).rjust(4, "0") + "->" + s[2].ordinalize.rjust(4, "0") + " " + s[3].name.ljust(10, " ") + " " + ("%.3f" % (s[4].to_f / 60.0))
-      }.join("\n")
-    }.join("\n")
-    File.write("../report_log", log_text)
-  end
-
-  sleep(1)
-  # Compute, for levels, episodes and stories, the following quantities:
-  # Seconds of total score gained.
-  # Seconds of total score in 19th gained.
-  # Total number of changes.
-  # Total number of involved players.
-  # Total number of involved highscoreables.
-  total = { "Level" => [0, 0, 0, 0, 0], "Episode" => [0, 0, 0, 0, 0], "Story" => [0, 0, 0, 0, 0] }
-  changes = Archive.where("unix_timestamp(date) > #{time2}")
-                   .order('date desc')
-                   .map{ |ar|
-                     total[ar.highscoreable.class.to_s][2] += 1
-                     [ar.metanet_id, ar.highscoreable]
-                   }
-  changes.group_by{ |s| s[1].class.to_s }
-         .each{ |klass, scores|
-                total[klass][3] = scores.uniq{ |s| s[0]    }.size
-                total[klass][4] = scores.uniq{ |s| s[1].id }.size
-              }
-  changes.map{ |h| h[1] }
-         .uniq
-         .each{ |h|
-                total[h.class.to_s][0] += Archive.scores(h, now).first[1] - Archive.scores(h, time).first[1]
-                total[h.class.to_s][1] += Archive.scores(h, now).last[1] - Archive.scores(h, time).last[1]
-              }
-
-  total = total.map{ |klass, n|
-    "• There were **#{n[2]}** new scores by **#{n[3]}** players in **#{n[4]}** #{klass.downcase.pluralize}, making the boards **#{"%.3f" % [n[1].to_f / 60.0]}** seconds harder and increasing the total 0th score by **#{"%.3f" % [n[0].to_f / 60.0]}** seconds."
-  }.join("\n")
-  $channel.send_message("**Daily highscoring summary**:\n" + total)
-
-  log("highscoring report sent")  
-  return true
-end
-
-def start_report
-  begin
-    if TEST && TEST_REPORT
-      raise if !send_report
-    else
-      while true
-        sleep(WAIT) # prevent crazy loops
-        next_report_update = correct_time(get_next_update('report'), REPORT_UPDATE_FREQUENCY)
-        set_next_update('report', next_report_update)
-        delay = next_report_update - Time.now
-        sleep(delay) unless delay < 0
-        next if !send_report
-      end
-    end
-  rescue => e
-    err("error sending highscoring report: #{e}")
-    sleep(WAIT)
-    retry
-  end
-end
-
-def send_userlevel_report
-  log("sending userlevel highscoring report...")
-  if $channel.nil?
-    err("not connected to a channel, not sending highscoring report")
-    return false
-  end
-
-  zeroes = Userlevel.rank(:rank, true, 0)
-                    .each_with_index
-                    .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name)} - #{"%3d" % p[1]}" }
-                    .join("\n")
-  points = Userlevel.rank(:points, false, 0)
-                    .each_with_index
-                    .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name)} - #{"%3d" % p[1]}" }
-                    .join("\n")
-
-  $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
-  $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n```#{zeroes}```")
-  $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
-  log("userlevel highscoring report sent")
-  return true
-end
-
-def start_userlevel_report
-  begin
-    while true
-      sleep(WAIT) # prevent crazy loops
-      next_userlevel_report_update = correct_time(get_next_update('userlevel_report'), USERLEVEL_REPORT_FREQUENCY)
-      set_next_update('userlevel_report', next_userlevel_report_update)
-      delay = next_userlevel_report_update - Time.now
-      sleep(delay) unless delay < 0
-      next if !send_userlevel_report
-    end
-  rescue => e
-    err("error sending userlevel highscoring report: #{e}")
-    retry
-  end
-end
-
-def download_high_scores
-  log("downloading high scores...")
-  # We handle exceptions within each instance so that they don't force
-  # a retry of the whole function.
-  # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
-  [Level, Episode, Story].each do |type|
-    type.all.each do |o|
-      attempts ||= 0
-      o.update_scores
-    rescue => e
-      err("error updating high scores for #{o.class.to_s.downcase} #{o.id.to_s}: #{e}")
-      ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
-    end
-  end
-  log("downloaded high scores")
-  return true
-rescue
-  err("error download high scores")
-  return false
-end
-
-def start_high_scores
-  begin
-    while true
-      sleep(WAIT) # prevent crazy loops
-      next_score_update = correct_time(get_next_update('score'), HIGHSCORE_UPDATE_FREQUENCY)
-      set_next_update('score', next_score_update)
-      delay = next_score_update - Time.now
-      sleep(delay) unless delay < 0
-      next if !download_high_scores
-    end
-  rescue => e
-    err("error updating high scores: #{e}")
-    retry
-  end
-end
-
-# Histories this way, stored in bulk in the database, are deprecated.
-# We now using a differential table with all new scores, called 'archives'.
-# So we can rebuild the boards at any given point in time with precision.
-def update_histories
-  log("updating histories...")
-  now = Time.now
-  [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
-    [Level, Episode, Story].each do |type|
-      next if (type == Episode || type == Story) && [:SS, :SS2].include?(tab)
-
-      [1, 5, 10, 20].each do |rank|
-        [true, false].each do |ties|
-          rankings = Score.rank(:rank, type, tab, ties, rank - 1, true)
-          attrs    = RankHistory.compose(rankings, type, tab, rank, ties, now)
-          ActiveRecord::Base.transaction do
-            RankHistory.create(attrs)
-          end
-        end
-      end
-
-      rankings = Score.rank(:points, type, tab, false, nil, true)
-      attrs    = PointsHistory.compose(rankings, type, tab, now)
-      ActiveRecord::Base.transaction do
-        PointsHistory.create(attrs)
-      end
-
-      rankings = Score.rank(:score, type, tab, false, nil, true)
-      attrs    = TotalScoreHistory.compose(rankings, type, tab, now)
-      ActiveRecord::Base.transaction do
-        TotalScoreHistory.create(attrs)
-      end
-    end
-  end
-  log("updated highscore histories")
-  return true
+def connect_db
+  ActiveRecord::Base.establish_connection($config)
+  log("Connected to database")
 rescue => e
-  err("error updating histories: #{e}")
-  return false  
+  err("Failed to connect to the database: #{e}")
+  exit
 end
 
-def start_histories
-  while true
-    sleep(WAIT) # prevent crazy loops
-    next_history_update = correct_time(get_next_update('history'), HISTORY_UPDATE_FREQUENCY)
-    set_next_update('history', next_history_update)
-    delay = next_history_update - Time.now
-    sleep(delay) unless delay < 0
-    next if !update_histories
-  end
+def disconnect_db
+  ActiveRecord::Base.connection_handler.clear_active_connections!
+  ActiveRecord::Base.connection.disconnect!
+  ActiveRecord::Base.connection.close
+  log("Disconnected from database")
 rescue => e
-  err("error updating highscore histories: #{e}")
-  retry
+  err("Failed to disconnect from the database: #{e}")
+  exit
 end
 
-def update_userlevel_histories
-  log("updating userlevel histories...")
-  now = Time.now
-
-  [-1, 1, 5, 10, 20].each{ |rank|
-    rankings = Userlevel.rank(rank == -1 ? :points : :rank, rank == 1 ? true : false, rank - 1, true)
-    attrs    = UserlevelHistory.compose(rankings, rank, now)
-    ActiveRecord::Base.transaction do
-      UserlevelHistory.create(attrs)
-    end
-  }
-
-  log("updated userlevel histories")
-  return true   
+def create_bot
+  $bot = Discordrb::Bot.new(
+    token:     (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']),
+    client_id: $config['client_id'],
+    intents:   [
+      :servers,
+      :server_members,
+      :server_bans,
+      :server_emojis,
+      :server_integrations,
+      :server_webhooks,
+      :server_invites,
+      :server_voice_states,
+      #:server_presences,
+      :server_messages,
+      :server_message_reactions,
+      :server_message_typing,
+      :direct_messages,
+      :direct_message_reactions,
+      :direct_message_typing
+    ]
+  )
+  log("Created bot")
 rescue => e
-  err("error updating userlevel histories: #{e}")
-  return false
+  err("Failed to create bot: #{e}")
+  exit
 end
 
-def start_userlevel_histories
-  while true
-    next_userlevel_history_update = correct_time(get_next_update('userlevel_history'), USERLEVEL_HISTORY_FREQUENCY)
-    set_next_update('userlevel_history', next_userlevel_history_update)
-    delay = next_userlevel_history_update - Time.now
-    sleep(delay) unless delay < 0
-    next if !update_userlevel_histories
-  end
-rescue => e
-  err("error updating userlevel highscore histories: #{e}")
-  retry
-end
-
-def download_userlevel_scores
-  log("updating newest userlevel scores...")
-  Userlevel.where(mode: :solo).order(id: :desc).take(USERLEVEL_REPORT_SIZE).each do |u|
-    attempts ||= 0
-    u.update_scores
-  rescue => e
-    err("error updating highscores for userlevel #{u.id}: #{e}")
-    ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
-  end
-  log("updated userlevel scores")
-  return true
-rescue => e
-  err("error updating userlevel highscores: #{e}")
-  return false
-end
-
-def start_userlevel_scores
-  while true
-    next_userlevel_score_update = correct_time(get_next_update('userlevel_score'), USERLEVEL_SCORE_FREQUENCY)
-    set_next_update('userlevel_score', next_userlevel_score_update)
-    delay = next_userlevel_score_update - Time.now
-    sleep(delay) unless delay < 0
-    next if !download_userlevel_scores
-  end
-rescue => e
-  err("error downloading userlevel highscores: #{e}")
-  retry
-end
-
-def update_all_userlevels_chunk
-  log("updating next userlevel chunk scores...")
-  Userlevel.where(mode: :solo).order('last_update IS NOT NULL, last_update').take(USERLEVEL_DOWNLOAD_CHUNK).each do |u|
-    sleep(USERLEVEL_UPDATE_RATE)
-    attempts ||= 0
-    u.update_scores
-  rescue => e
-    err("error updating highscores for userlevel #{u.id}: #{e}")
-    ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
-  end
-  log("updated userlevel chunk scores")
-  return true
-rescue => e
-  err("error updating userlevel chunk scores: #{e}")
-  return false
-end
-
-def update_all_userlevels
-  log("updating all userlevel scores...")
-  while true
-    update_all_userlevels_chunk
-    sleep(WAIT)
-  end
-rescue => e
-  err("error updating all userlevel scores: #{e}")
-  retry
-end
-
-def update_userlevel_tabs
-  log("updating userlevel tabs")
-  ["solo", "coop", "race"].each_with_index{ |mode, m|
-    [7, 8, 9, 11].each { |qt|
-      tab = USERLEVEL_TABS[qt][:name]
-      page = -1
-      while true
-        page += 1
-        break if !Userlevel::update_relationships(qt, page, m)
-      end
-      if USERLEVEL_TABS[qt][:size] != -1
-        ActiveRecord::Base.transaction do
-          UserlevelTab.where(mode: m, qt: qt).where("`index` >= #{USERLEVEL_TABS[qt][:size]}").delete_all
-        end
-      end
-    }
-  }
-  print(" " * 80 + "\r")
-  log("updated userlevel tabs")
-  return true   
-rescue => e
-  err("error updating userlevel tabs: #{e}")
-  return false
-end
-
-def start_userlevel_tabs
-  while true
-    next_userlevel_tab_update = correct_time(get_next_update('userlevel_tab'), USERLEVEL_TAB_FREQUENCY)
-    set_next_update('userlevel_tab', next_userlevel_tab_update)
-    delay = next_userlevel_tab_update - Time.now
-    sleep(delay) unless delay < 0
-    next if !update_userlevel_tabs
-  end
-rescue => e
-  err("error updating userlevel tabs: #{e}")
-  retry
-end
-
-def send_channel_screenshot(name, caption)
-  name = name.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
-  screenshot = "screenshots/#{name}.jpg"
-  if File.exist? screenshot
-    $channel.send_file(File::open(screenshot), caption: caption)
-  else
-    $channel.send_message(caption + "\nI don't have a screenshot for this one... :(")
-  end
-end
-
-def send_channel_diff(level, old_scores, since)
-  return if level.nil? || old_scores.nil?
-
-  diff = level.format_difference(old_scores)
-  $channel.send_message("Score changes on #{level.format_name} since #{since}:\n```#{diff}```")
-end
-
-def send_channel_reminder
-  $channel.send_message("Also, remember that the current episode of the week is #{get_current(Episode).format_name}.")
-end
-
-def send_channel_story_reminder
-  $channel.send_message("Also, remember that the current column of the month is #{get_current(Story).format_name}.")
-end
-
-def send_channel_next(type)
-  log("sending next #{type.to_s.downcase}")
-  if $channel.nil?
-    err("not connected to a channel, not sending level of the day")
-    return false
-  end
-
-  last = get_current(type)
-  current = get_next(type)
-  set_current(type, current)
-
-  if current.nil?
-    err("no more #{type.to_s.downcase}")
-    return false
-  end
-
-  if !OFFLINE_STRICT
-    if !last.nil?
-      last.update_scores
-    end
-    current.update_scores
-  end
-
-  prefix = (type == Level ? "Time" : "It's also time")
-  duration = (type == Level ? "day" : (type == Episode ? "week" : "month"))
-  time = (type == Level ? "today" : (type == Episode ? "this week" : "this month"))
-  since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
-  typename = type != Story ? type.to_s.downcase : "column"
-
-  caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
-  send_channel_screenshot(current.name, caption)
-  $channel.send_message("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores(current.max_name_length)}```")
-
-  if !OFFLINE_STRICT
-    send_channel_diff(last, get_saved_scores(type), since)
-  else
-    $channel.send_message("Strict offline mode activated, not sending score differences.")
-  end
-  set_saved_scores(type, current)
-
-  return true
-end
-
-def start_level_of_the_day
-  begin
-    episode_day = false
-    story_day = false
-    while true
-      next_level_update = correct_time(get_next_update(Level), LEVEL_UPDATE_FREQUENCY)
-      next_episode_update = correct_time(get_next_update(Episode), EPISODE_UPDATE_FREQUENCY)
-      set_next_update(Level, next_level_update)
-      set_next_update(Episode, next_episode_update)
-      delay = next_level_update - Time.now
-      sleep(delay) unless delay < 0
-
-     if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
-        log("starting level of the day...")
-        next if !send_channel_next(Level)
-        log("sent next level, next update at #{get_next_update(Level).to_s}")
-      end
-
-      if (UPDATE_EPISODE || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
-        sleep(30) # let discord catch up
-        send_channel_next(Episode)
-        episode_day = true
-        log("sent next episode, next update at #{get_next_update(Episode).to_s}")
-      end
-
-      if (UPDATE_STORY || DO_EVERYTHING) && !DO_NOTHING && get_next_update(Story) < Time.now
-        # we add days until we get to the first day of the next month
-        next_story_update = get_next_update(Story)
-        month = next_story_update.month
-        next_story_update += LEVEL_UPDATE_FREQUENCY while next_story_update.month == month
-        set_next_update(Story, next_story_update)
-        sleep(30) # let discord catch up
-        send_channel_next(Story)
-        story_day = true
-        log("sent next story, next update at #{get_next_update(Story).to_s}")
-      end
-
-      if !episode_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_reminder end
-      if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
-      episode_day = false
-      story_day = false
-    end
-  rescue => e
-    err("error updating level of the day: #{e}")
-    retry
-  end
-end
-
-def potato
+def setup_bot
   return if !RESPOND
-  while true
-    sleep(POTATO_RATE)
-    next if $nv2_channel.nil? || $last_potato.nil?
-    if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
-      $nv2_channel.send_message(FRUITS[$potato])
-      log(FRUITS[$potato].gsub(/:/, '') + 'ed nv2')
-      $potato = ($potato + 1) % FRUITS.size
-      $last_potato = Time.now.to_i
-    end
-  end
-end
-
-def mishnub(event)
-  youmean = ["More like ", "You mean ", "Mish... oh, ", "Better known as ", "A.K.A. ", "Also known as "]
-  amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
-  mishu   = ["MishNUB,", "MishWho?,"]
-  fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
-  laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
-  if rand < 0.05 && (event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN)
-    event.send_message(youmean.sample + mishu.sample + amirite.sample + fellas.sample + laugh.sample) 
-    $last_mishu = Time.now.to_i unless event.channel.type == 1
-  end
-end
-
-def robot(event)
-  start  = ["No! ", "Not at all. ", "Negative. ", "By no means. ", "Most certainly not. ", "Not true. ", "Nuh uh. "]
-  middle = ["I can assure you he's not", "Eddy is not a robot", "Master is very much human", "Senpai is a ningen", "Mr. E is definitely human", "Owner is definitely a hooman", "Eddy is a living human being", "Eduardo es una persona"]
-  ending = [".", "!", " >:(", " (ಠ益ಠ)", " (╯°□°)╯︵ ┻━┻"]
-  event.send_message(start.sample + middle.sample + ending.sample)
-end
-
-def startup
-  ActiveRecord::Base.establish_connection(CONFIG)
-  log("initialized")
-  log("next level update at #{get_next_update(Level).to_s}")
-  log("next episode update at #{get_next_update(Episode).to_s}")
-  log("next story update at #{get_next_update(Story).to_s}")
-  log("next score update at #{get_next_update('score')}")
-  sleep(2) # Let the connection catch up
-end
-
-def shutdown
-  log("shutting down")
-  $bot.stop
-end
-
-def watchdog
-  sleep(3) while !$kill_threads
-  shutdown
-end
-
-#$bot = Discordrb::Bot.new token: CONFIG['token'], client_id: CONFIG['client_id']
-$bot = Discordrb::Bot.new(
-  token:     (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']),
-  client_id: CONFIG['client_id'],
-  intents:   [
-    :servers,
-    :server_members,
-    :server_bans,
-    :server_emojis,
-    :server_integrations,
-    :server_webhooks,
-    :server_invites,
-    :server_voice_states,
-    #:server_presences,
-    :server_messages,
-    :server_message_reactions,
-    :server_message_typing,
-    :direct_messages,
-    :direct_message_reactions,
-    :direct_message_typing
-  ]
-)
-$config          = CONFIG
-$channel         = nil
-$mapping_channel = nil
-$nv2_channel     = nil
-$content_channel = nil
-$last_potato     = Time.now.to_i
-$potato          = 0
-$last_mishu      = nil
-$status_update   = Time.now.to_i
-$twitch_token    = nil
-$twitch_streams  = {}
-$boot_time       = Time.now.to_i
-
-if RESPOND
   $bot.mention do |event|
     respond(event)
-    log("mentioned by #{event.user.name}: #{event.content}")
+    log("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
   end
 
   $bot.private_message do |event|
     respond(event)
-    log("private message from #{event.user.name}: #{event.content}")
+    log("DM by #{event.user.name}: #{event.content}")
   end
 
   $bot.message do |event|
@@ -844,32 +162,53 @@ if RESPOND
   $bot.select_menu do |event|
     respond_interaction_menu(event)
   end
+  log("Configured bot")
+rescue => e
+  err("Failed to configure bot: #{e}")
+  exit
 end
 
-puts "the bot's URL is #{$bot.invite_url}"
+def run_bot
+  $bot.run(true)
+  trap("INT") { shutdown }
+  log("Bot connected to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}.")
+rescue => e
+  err("Failed to execute bot: #{e}")
+  exit
+end
 
-startup
-trap("INT") { $kill_threads = true }
+def stop_bot
+  $bot.stop
+  log("Stopped bot")
+rescue => e
+  err("Failed to stop the bot: #{e}\n#{e.backtrace.join("\n")}")
+  exit
+end
 
-$bot.run(true)
-puts "Established connection to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}."
+def shutdown
+  log("Shutting down...")
+  # We need to perform the shutdown in a new thread, because this method
+  # gets called from within a trap context
+  Thread.new {
+    stop_bot
+    disconnect_db
+    unblock_threads
+    exit
+  }
+rescue => e
+  err("Failed to shut down bot: #{e}")
+  exit
+end
+
+# Bot initialization sequence
+monkey_patch
+initialize_vars
+load_config
+connect_db
+create_bot
+setup_bot
+run_bot
 set_channels
+start_threads
 byebug if BYEBUG
-
-$threads = []
-$threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
-$threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { start_level_of_the_day }    # No checks here because they're done individually there
-$threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { start_userlevel_tabs }      if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-$threads << Thread.new { potato }                    if POTATO && !DO_NOTHING
-$threads << Thread.new { Sock::start }               if SOCKET && !DO_NOTHING
-
-wd = Thread.new { watchdog }
-wd.join
+block_threads

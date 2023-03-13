@@ -1,8 +1,7 @@
 require 'ascii_charts'
-require 'damerau-levenshtein'
 require 'gruff'
-require 'zlib'
 require 'zip'
+
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'io.rb'
@@ -1031,8 +1030,8 @@ end
 # Can also be called on demand by the botmaster
 def send_diff(event)
   type = parse_type(event.content) || Level
-  current = get_current(type)
-  old_scores = get_saved_scores(type)
+  current = GlobalProperty.get_current(type)
+  old_scores = GlobalProperty.get_saved_scores(type)
   since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
 
   diff = current.format_difference(old_scores)
@@ -1324,7 +1323,7 @@ else
 end
 
 def send_level_time(event)
-  next_level = get_next_update(Level) - Time.now
+  next_level = GlobalProperty.get_next_update(Level) - Time.now
   next_level_hours = (next_level / (60 * 60)).to_i
   next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
 
@@ -1332,7 +1331,7 @@ def send_level_time(event)
 end
 
 def send_episode_time(event)
-  next_episode = get_next_update(Episode) - Time.now
+  next_episode = GlobalProperty.get_next_update(Episode) - Time.now
 
   next_episode_days = (next_episode / (24 * 60 * 60)).to_i
   next_episode_hours = (next_episode / (60 * 60)).to_i - (next_episode / (24 * 60 * 60)).to_i * 24
@@ -1341,7 +1340,7 @@ def send_episode_time(event)
 end
 
 def send_story_time(event)
-  next_story = get_next_update(Story) - Time.now
+  next_story = GlobalProperty.get_next_update(Story) - Time.now
 
   next_story_days = (next_story / (24 * 60 * 60)).to_i
   next_story_hours = (next_story / (60 * 60)).to_i - (next_story / (24 * 60 * 60)).to_i * 24
@@ -1470,21 +1469,28 @@ def send_help(event)
 end
 
 def send_level(event)
-  event << "The current level of the day is #{get_current(Level).format_name}."
+  event << "The current level of the day is #{GlobalProperty.get_current(Level).format_name}."
 end
 
 def send_episode(event)
-  event << "The current episode of the week is #{get_current(Episode).format_name}."
+  event << "The current episode of the week is #{GlobalProperty.get_current(Episode).format_name}."
 end
 
 def send_story(event)
-  event << "The current column of the month is #{get_current(Story).format_name}."
+  event << "The current column of the month is #{GlobalProperty.get_current(Story).format_name}."
 end
 
 def dump(event)
   assert_permissions(event)
-  log("current level/episode/story: #{get_current(Level).format_name}, #{get_current(Episode).format_name}, #{get_current(Story).format_name}") unless get_current(Level).nil?
-  log("next updates: scores #{get_next_update('score')}, level #{get_next_update(Level)}, episode #{get_next_update(Episode)}, story #{get_next_update(Story)}")
+  lotd = GlobalProperty.get_current(Level).format_name unless GlobalProperty.get_current(Level).nil?
+  eotw = GlobalProperty.get_current(Episode).format_name unless GlobalProperty.get_current(Episode).nil?
+  cotm = GlobalProperty.get_current(Story).format_name unless GlobalProperty.get_current(Story).nil?
+  log("current level/episode/story: #{lotd.to_s}, #{eotw.to_s}, #{cotm.to_s}")
+  score = GlobalProperty.get_next_update('score')
+  lotd  = GlobalProperty.get_next_update(Level)
+  eotw  = GlobalProperty.get_next_update(Episode)
+  cotm  = GlobalProperty.get_next_update(Story)
+  log("next updates: scores #{score}, level #{lotd}, episode #{eotw}, story #{cotm}")
 
   event << "I dumped some things to the log for you to look at."
 end
@@ -1665,6 +1671,39 @@ def sanitize_archives(event)
   event << "* Removed #{counts['player_del']} ignored players." if counts.key?('player_del')
   event << "* Removed #{counts['archive_ind_del']} individual archives." if counts.key?('archive_ind_del')
   event << "* Removed #{counts['orphan_demos']} orphaned demos." if counts.key?('orphan_demos')
+end
+
+def potato
+  return if !RESPOND
+  while true
+    sleep(POTATO_RATE)
+    next if $nv2_channel.nil? || $last_potato.nil?
+    if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
+      $nv2_channel.send_message(FRUITS[$potato])
+      log(FRUITS[$potato].gsub(/:/, '') + 'ed nv2')
+      $potato = ($potato + 1) % FRUITS.size
+      $last_potato = Time.now.to_i
+    end
+  end
+end
+
+def mishnub(event)
+  youmean = ["More like ", "You mean ", "Mish... oh, ", "Better known as ", "A.K.A. ", "Also known as "]
+  amirite = [" amirite", " isn't that right", " huh", " am I right or what", " amirite or amirite"]
+  mishu   = ["MishNUB,", "MishWho?,"]
+  fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
+  laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
+  if rand < 0.05 && (event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN)
+    event.send_message(youmean.sample + mishu.sample + amirite.sample + fellas.sample + laugh.sample) 
+    $last_mishu = Time.now.to_i unless event.channel.type == 1
+  end
+end
+
+def robot(event)
+  start  = ["No! ", "Not at all. ", "Negative. ", "By no means. ", "Most certainly not. ", "Not true. ", "Nuh uh. "]
+  middle = ["I can assure you he's not", "Eddy is not a robot", "Master is very much human", "Senpai is a ningen", "Mr. E is definitely human", "Owner is definitely a hooman", "Eddy is a living human being", "Eduardo es una persona"]
+  ending = [".", "!", " >:(", " (ಠ益ಠ)", " (╯°□°)╯︵ ┻━┻"]
+  event.send_message(start.sample + middle.sample + ending.sample)
 end
 
 def testa(event)

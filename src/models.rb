@@ -1,8 +1,63 @@
+# This file contains the custom Modules and Classes used in the program
+# Including the modifications to 3rd party stuff (monkey patches)
+
 require 'active_record'
+require 'json'
 require 'net/http'
+require 'socket'
+require 'zlib'
+
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 
+# Monkey patches to get some custom behaviour from ActiveRecord and Discordrb
+module MonkeyPatches
+  def self.patch_activerecord
+    # Add custom method "where_like" to Relations. Takes care of:
+    #   - Sanitizing user input
+    #   - Adding wildcards before and after, for substring matches
+    #   - Executing a where query
+    ::ActiveRecord::QueryMethods.class_eval do
+      def where_like(field, str)
+        return self if field.empty? || str.empty?
+        self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
+      end
+    end
+
+    # Add same method to base classes
+    ::ActiveRecord::Base.class_eval do
+      def self.where_like(field, str)
+        return self if field.empty? || str.empty?
+        self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
+      end
+    end
+  end
+
+  # Customize Discordrb's log format to match outte's, for neatness
+  def self.patch_discordrb
+    ::Discordrb.const_set("LOG_TIMESTAMP_FORMAT", DATE_FORMAT_LOG)
+    ::Discordrb::Logger.class_eval do
+      def simple_write(stream, message, mode, thread_name, timestamp)
+        bold   = ::Discordrb::Logger::FORMAT_BOLD
+        reset  = ::Discordrb::Logger::FORMAT_RESET
+        header = mode[:long]
+        symbol = mode[:short]
+        fmt    = mode[:format_code]
+        stream.puts "[#{timestamp}] #{bold}#{fmt}#{symbol}#{reset} #{fmt}#{message}#{reset}"
+        stream.flush
+      end
+    end
+  end
+
+  def self.apply
+    return if !MONKEY_PATCH
+    patch_activerecord if MONKEY_PATCH_ACTIVE_RECORD
+    patch_discordrb if MONKEY_PATCH_DISCORDRB
+  end
+end
+
+# Common functionality for all highscoreables (level, episode, story, userlevel)
+# For example, downloading leaderboards, formatting scores, navigating, etc.
 module HighScore
 
   def self.format_rank(rank)
@@ -90,19 +145,21 @@ module HighScore
     ret
   end
 
+  # TODO: This does not seem specific to the HighScore module
+  #       Move to utils and use it for get_demo in Demo too
   def self.get_data(uri_proc, data_proc, err, *vargs)
     attempts ||= 0
-    initial_id = get_last_steam_id
+    initial_id = GlobalProperty.get_last_steam_id
     response = Net::HTTP.get_response(uri_proc.call(initial_id, *vargs))
     while response.body == INVALID_RESP
-      deactivate_last_steam_id
-      update_last_steam_id
-      break if get_last_steam_id == initial_id
-      response = Net::HTTP.get_response(uri_proc.call(get_last_steam_id))
+      GlobalProperty.deactivate_last_steam_id
+      GlobalProperty.update_last_steam_id
+      break if GlobalProperty.get_last_steam_id == initial_id
+      response = Net::HTTP.get_response(uri_proc.call(GlobalProperty.get_last_steam_id))
     end
     return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
-    activate_last_steam_id
+    GlobalProperty.activate_last_steam_id
     data_proc.call(response.body)
   rescue => e
     if (attempts += 1) < RETRIES
@@ -234,8 +291,7 @@ module HighScore
 
     if updated.nil?
       if SHOW_ERRORS
-        # TODO make this use err()
-        STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve scores from #{scores_uri(get_last_steam_id)}"
+        err("Failed to retrieve scores from #{scores_uri(GlobalProperty.get_last_steam_id)}")
       end
       return -1
     end
@@ -243,23 +299,9 @@ module HighScore
     save_scores(updated)
   rescue => e
     if SHOW_ERRORS
-      err("error updating database with level #{self.id.to_s}: #{e}")
+      err("Error updating database with level #{self.id.to_s}: #{e}")
     end
     return -1
-  end
-
-  def get_replay_info(rank)
-    updated = get_scores
-
-    if updated.nil?
-      if SHOW_ERRORS
-        # TODO make this use err()
-        STDERR.puts "[WARNING] [#{Time.now}] failed to retrieve replay info from #{scores_uri(get_last_steam_id)}"
-      end
-      return
-    end
-
-    updated.select { |score| !IGNORED_PLAYERS.include?(score['user_name']) }.uniq { |score| score['user_name'] }[rank]
   end
 
   def analyze_replay(replay_id)
@@ -1150,6 +1192,76 @@ class User < ActiveRecord::Base
 end
 
 class GlobalProperty < ActiveRecord::Base
+  # Get current lotd/eotw/cotm
+  def self.get_current(type)
+    type.find_by(name: self.find_by(key: "current_#{type.to_s.downcase}").value)
+  end
+  
+  # Set (change) current lotd/eotw/cotm
+  def self.set_current(type, curr)
+    self.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
+  end
+  
+  # Select a new lotd/eotw/cotm at random, and mark the current one as done
+  # When all have been done, clear the marks to be able to start over
+  def self.get_next(type)
+    query = type.where(completed: nil)
+    type.update_all(completed: nil) if query.count <= 0
+    ret = type.where(completed: nil).sample
+    ret.update(completed: true)
+    ret
+  end
+  
+  # Get datetime for the next update of some property (e.g. new lotd, new
+  # database score update, etc)
+  def self.get_next_update(type)
+    Time.parse(self.find_by(key: "next_#{type.to_s.downcase}_update").value)
+  end
+  
+  # Set datetime for the next update of some property
+  def self.set_next_update(type, time)
+    self.find_or_create_by(key: "next_#{type.to_s.downcase}_update").update(value: time.to_s)
+  end
+  
+  # Get the old saved scores for lotd/eotw/cotm (to compare against current scores)
+  def self.get_saved_scores(type)
+    JSON.parse(self.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
+  end
+  
+  # Save the current lotd/eotw/cotm scores (to see changes later)
+  def self.set_saved_scores(type, curr)
+    self.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
+      .update(value: curr.scores.to_json(include: {player: {only: :name}}))
+  end
+
+  # Get the currently active Steam ID to latch onto
+  def self.get_last_steam_id
+    self.find_or_create_by(key: "last_steam_id").value
+  end
+  
+  # Set currently active Steam ID
+  def self.set_last_steam_id(id)
+    self.find_or_create_by(key: "last_steam_id").update(value: id)
+  end
+  
+  # Select a new Steam ID to set (we do it in order, so that we can loop the list)
+  def self.update_last_steam_id
+    current   = (User.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
+    next_user = (User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first) rescue nil
+    set_last_steam_id(next_user.steam_id) if !next_user.nil?
+  end
+  
+  # Mark date of when current Steam ID was active
+  def self.activate_last_steam_id
+    p = User.find_by(steam_id: get_last_steam_id)
+    p.update(last_active: Time.now) if !p.nil?
+  end
+  
+  # Mark date of when current Steam ID was inactive
+  def self.deactivate_last_steam_id
+    p = User.find_by(steam_id: get_last_steam_id)
+    p.update(last_inactive: Time.now) if !p.nil?   
+  end
 end
 
 class RankHistory < ActiveRecord::Base
@@ -1459,20 +1571,21 @@ class Demo < ActiveRecord::Base
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
   end
 
+  # TODO: Use get_data here instead
   def get_demo
     attempts ||= 0
-    initial_id = get_last_steam_id
+    initial_id = GlobalProperty.get_last_steam_id
     response = Net::HTTP.get_response(demo_uri(initial_id))
     while response.body == INVALID_RESP
-      deactivate_last_steam_id
-      update_last_steam_id
-      break if get_last_steam_id == initial_id
-      response = Net::HTTP.get_response(demo_uri(get_last_steam_id))
+      GlobalProperty.deactivate_last_steam_id
+      GlobalProperty.update_last_steam_id
+      break if GlobalProperty.get_last_steam_id == initial_id
+      response = Net::HTTP.get_response(demo_uri(GlobalProperty.get_last_steam_id))
     end
     return 1 if response.code.to_i == 200 && response.body.empty? # replay does not exist
     return nil if response.body == INVALID_RESP
     raise "502 Bad Gateway" if response.code.to_i == 502
-    activate_last_steam_id
+    GlobalProperty.activate_last_steam_id
     response.body
   rescue => e
     if (attempts += 1) < RETRIES
@@ -1761,6 +1874,8 @@ module Sock extend self
     Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
   end
   
+  # TODO: Investigate what happens when we kill the program when a connection
+  # is happening, can the socket remain open?
   def start
     server = TCPServer.new(SOCKET_PORT)
     loop do
@@ -1771,7 +1886,7 @@ module Sock extend self
         log("Proxied request: #{req}")
       end
     end
-  rescue
-    err("Socket failed.")
+  rescue => e
+    err("Socket failed: #{e}")
   end
 end

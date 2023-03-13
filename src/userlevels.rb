@@ -1,26 +1,12 @@
-require 'time'
 require 'chunky_png' # for screenshot generation
+require 'time'
+require 'zlib'
 #require 'oily_png' # more efficient screenshot generation (broken?)
 include ChunkyPNG::Color
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'io.rb'
 require_relative 'models.rb'
-
-# monkey patch
-module ActiveRecord::QueryMethods
-  def where_like(field, str)
-    return self if field.empty? || str.empty?
-    self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
-  end
-end
-
-class ActiveRecord::Base
-  def self.where_like(field, str)
-    return self if field.empty? || str.empty?
-    self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
-  end
-end
 
 # Contains map data (tiles and objects) in a different table for performance reasons.
 class UserlevelData < ActiveRecord::Base
@@ -341,44 +327,11 @@ class Userlevel < ActiveRecord::Base
     }
   end
 
-=begin
-  def self.get_levels(qt = 10, page = 0, mode = 0)
-    initial_id = get_last_steam_id
-    response = Net::HTTP.get(levels_uri(initial_id, qt, page, mode))
-    while response == '-1337'
-      update_last_steam_id
-      break if get_last_steam_id == initial_id
-      response = Net::HTTP.get(levels_uri(get_last_steam_id, qt, page, mode))
-    end
-    return nil if response == '-1337'
-    response
-  rescue => e
-    err("error querying page #{page} of userlevels from category #{qt}: #{e}")
-    retry
-  end
-=end
-
   def self.get_levels(qt = 10, page = 0, mode = 0)
     uri  = Proc.new { |steam_id, qt, page, mode| Userlevel::levels_uri(steam_id, qt, page, mode) }
     data = Proc.new { |data| data }
     err  = "error querying page #{page} of userlevels from category #{qt}"
     HighScore::get_data(uri, data, err, qt, page, mode)
-  end
-
-  # Not used anymore, since we now perform searches in the local db
-  def self.get_search(search = "", page = 0, mode = 0)
-    initial_id = get_last_steam_id
-    response = Net::HTTP.get(search_uri(initial_id, search, page, mode))
-    while response == '-1337'
-      update_last_steam_id
-      break if get_last_steam_id == initial_id
-      response = Net::HTTP.get(search_uri(get_last_steam_id, search, page, mode))
-    end
-    return nil if response == '-1337'
-    response
-  rescue => e
-    err("error searching for userlevels containing \"#{search}\", page nº #{page}: #{e}")
-    retry
   end
 
   # Parse binary file with userlevel collection received from N++'s server
@@ -1671,7 +1624,7 @@ def send_userlevel_time(event)
 end
 
 def send_userlevel_scores_time(event)
-  next_level = get_next_update('userlevel_score') - Time.now
+  next_level = GlobalProperty.get_next_update('userlevel_score') - Time.now
   next_level_hours = (next_level / (60 * 60)).to_i
   next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
 

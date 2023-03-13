@@ -7,7 +7,11 @@ require_relative 'constants.rb'
 # either a MentionEvent or a PrivateMessageEvent) or edited (in which case the
 # event that triggered it must have been either a ButtonEvent or a SelectMenuEvent,
 # or any other future interaction event).
-def fetch_message(event, initial)
+# TODO: If initial is nil, we can deduce it from the event class. Implement this,
+# perhaps even remove the initial part. MentionEvent and PrivateMessageEvent
+# inherit from MessageEvent, and the other 2 inherit from ComponentEvent, use these.
+# Obviously, fix all usages of fetch_message in other files.
+def fetch_message(event, initial = nil)
   if initial # MentionEvent / PrivateMessageEvent
     event.content
   else # ButtonEvent / SelectMenuEvent
@@ -284,11 +288,11 @@ def parse_level_or_episode(msg, partial: false, array: false)
     str = normalize_name(redash_name(story))
     ret = Story.find_by(name: str)
   elsif !msg[/(level of the day|lotd)/i].nil?
-    ret = get_current(Level)
+    ret = GlobalProperty.get_current(Level)
   elsif !msg[/(episode of the week|eotw)/i].nil?
-    ret = get_current(Episode)
+    ret = GlobalProperty.get_current(Episode)
   elsif !msg[/(column of the month|cotm)/i].nil?
-    ret = get_current(Story)
+    ret = GlobalProperty.get_current(Story)
   elsif name
     str = name
     # Parse exact name
@@ -711,6 +715,28 @@ end
 # if 'name' then we accept 'star' for parsing stars as well
 def parse_star(msg, strict = false, name = false)
   !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i] || name && !!msg[/\bstar\b/i]
+end
+
+# Pings a role by name (returns ping string)
+def ping(rname)
+  server = TEST ? $bot.servers.values.first : $bot.servers[SERVER_ID]
+  if server.nil?
+    log("server not found")
+    return ""
+  end
+
+  role = server.roles.select{ |r| r.name == rname }.first
+  if role != nil
+    if role.mentionable
+      return role.mention
+    else
+      log("role #{rname} in server #{server.name} not mentionable")
+      return ""
+    end
+  else
+    log("role #{rname} not found in server #{server.name}")
+    return ""
+  end
 end
 
 def format_rank(rank)

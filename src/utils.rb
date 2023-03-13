@@ -1,8 +1,38 @@
 # Library of general functions useful throughout the program
 
 require 'active_record'
+require 'damerau-levenshtein'
+
 require_relative 'constants.rb'
+require_relative 'models.rb'
+
 ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
+
+# TODO: Perhaps design a more serious logging class, with different levels,
+# from minimal to debug/trace, and use it throughout the program. In that case,
+# only export to file a low logging level, like the standard one.
+# TODO: Add ANSI codes, for bold and colors, and use same system as the new custom
+# Discordrb log format
+def _log(msg, header)
+  return if !LOG
+  stream = STDOUT
+  stream = STDERR if ['warning', 'error'].include?(header.downcase)
+  msg = "\r[#{Time.now.strftime(DATE_FORMAT_LOG)}] [#{header}] #{msg}"
+  stream.puts msg
+  File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
+end
+
+def log(msg)
+  _log(msg, 'INFO') if LOG_INFO
+end
+
+def warn(msg)
+  _log(msg, 'WARNING') if LOG_WARNINGS
+end
+
+def err(msg)
+  _log(msg, 'ERROR') if LOG_ERRORS
+end
 
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute
@@ -83,6 +113,14 @@ def bench(action)
     @t = Time.now
     log("Benchmark #{@step}: #{"%.3fms" % (int * 1000)} (Total: #{"%.3fms" % (@total * 1000)}).")
   end
+end
+
+# This corrects a datetime in the database when it's out of
+# phase (e.g. after a long downtime of the bot).
+def correct_time(time, frequency)
+  time -= frequency while time > Time.now
+  time += frequency while time < Time.now
+  time
 end
 
 # Function to pad (and possibly truncate) a string according to different
@@ -356,7 +394,7 @@ end
 def fix_potato
   last_msg = $nv2_channel.history(1)[0] rescue nil
   $last_potato = last_msg.timestamp.to_i rescue Time.now.to_i
-  if last_msg.author.id == CONFIG['client_id']
+  if last_msg.author.id == $config['client_id']
     $potato = ((FRUITS.index(last_msg.content) + 1) % FRUITS.size) rescue 0
   end
 rescue
