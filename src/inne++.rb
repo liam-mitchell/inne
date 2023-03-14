@@ -51,6 +51,7 @@ require_relative 'interactions.rb'
 require_relative 'models.rb'
 require_relative 'messages.rb'
 require_relative 'userlevels.rb'
+require_relative 'mappacks.rb'
 require_relative 'threads.rb'
 
 def monkey_patch
@@ -138,12 +139,12 @@ def setup_bot
   return if !RESPOND
   $bot.mention do |event|
     respond(event)
-    log("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
+    msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
   end
 
   $bot.private_message do |event|
     respond(event)
-    log("DM by #{event.user.name}: #{event.content}")
+    msg("DM by #{event.user.name}: #{event.content}")
   end
 
   $bot.message do |event|

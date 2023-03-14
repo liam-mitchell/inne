@@ -324,9 +324,6 @@ module HighScore
       cools = 0
     end
     cools
-  rescue => e
-    puts e.backtrace
-    raise
   end
 
   def format_scores(padding = max_name_length)
@@ -804,6 +801,7 @@ class Player < ActiveRecord::Base
   has_many :points_histories
   has_many :total_score_histories
   has_many :player_aliases
+  has_many :mappack_scores
 
   # Deprecated since it's slower, see Score::rank
   def self.rankings(&block)
@@ -1299,7 +1297,7 @@ end
 class TotalScoreHistory < ActiveRecord::Base
   belongs_to :player
   enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
-7
+
   def self.compose(rankings, type, tab, time)
     rankings.select { |r| r[1] > 0 }.map do |r|
       {
@@ -1607,8 +1605,7 @@ class Demo < ActiveRecord::Base
       framecounts << _unpack(raw_replay[9..12])
       raw_replay[30..-1]
     }
-    # Add framecount and goldcount to corresponding archive
-    # before Zlibbing later
+    # Add framecount and goldcount to corresponding archive before Zlibbing later
     if !score.nil?
       framecount = framecounts.sum
       score.update(

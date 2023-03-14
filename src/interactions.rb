@@ -165,11 +165,11 @@ end
 def interaction_add_type_buttons(view, types = [], ties = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    TYPES.each{ |t, v|
+    TYPES.each{ |t|
       r.button(
-        label: t.pluralize,
-        style: types.include?(t.constantize) ? :success : :danger,
-        custom_id: "button:type:#{t.downcase}"
+        label: t[:name].capitalize.pluralize,
+        style: types.include?(t[:name].capitalize.constantize) ? :success : :danger,
+        custom_id: "button:type:#{t[:name].downcase}"
       )
     }
     r.button(label: 'Ties', style: ties ? :success : :danger, custom_id: "button:ties:#{!ties}")

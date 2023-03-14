@@ -1716,10 +1716,7 @@ end
 
 # TODO set level of the day on startup
 def respond(event)
-  msg = event.content
-
-  # strip off the @inne++ mention, if present
-  msg.sub!(/<@!?[0-9]*> */, '') # IDs might have an exclamation mark
+  msg = remove_mention(event.content)
 
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
   if msg =~ /\A\s*lotd\s*\Z/i

@@ -14,10 +14,11 @@ BYEBUG         = false # Breakpoint right after loading the bot
 # <------                     LOGGING VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-LOG            = true  # Log stuff to the terminal (superseeds the next 3 ones)
+LOG            = true  # Log stuff to the terminal (superseeds the next 4 ones)
 LOG_INFO       = true  # Log info to the terminal
 LOG_WARNINGS   = true  # Log warnings to the terminal
 LOG_ERRORS     = true  # Log errors to the terminal
+LOG_MSGS       = true  # Log mentions and DMs to outte
 LOG_FANCY      = true  # Format logs (bold, colors...)
 LOG_TO_FILE    = false # Export logs and errors into external file
 LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)
@@ -233,6 +234,17 @@ TABS = {
   }
 }
 
+# TODO: Complete this with all other modes
+# TODO: Use this wherever TABS is being used, and also in parse_tabs, then delete TABS
+TABS_NEW = {
+  SI:  { code: 'SI', mode: 0, name: 'Intro',           size: 125, files: ['SI'  => 125] },
+  S:   { code: 'S',  mode: 0, name: 'Solo',            size: 600, files: [ 'S'  => 600] },
+  SL:  { code: 'SL', mode: 0, name: 'Legacy',          size: 600, files: ['SL'  => 600] },
+  SU:  { code: 'SU', mode: 0, name: 'Ultimate',        size: 600, files: ['S2'  => 600] },
+  SS:  { code: '?',  mode: 0, name: 'Secret',          size: 120, files: ['SS'  => 120] },
+  SS2: { code: '!',  mode: 0, name: 'Ultimate Secret', size: 120, files: ['SS2' => 120] }
+}
+
 # Different ranking types
 # * For parsing, 'top1' (i.e. 0th) will be removed (default)
 # * For formatting, 'top1' will be changed to '0th'
@@ -264,11 +276,17 @@ MODES = {
 
 # Type-wise max-min for average ranks
 MAXMIN_SCORES = 100   # max-min number of highscores to appear in average point rankings
-TYPES = {
-  "Level"   => [100],
-  "Episode" =>  [50],
-  "Story"   =>  [10]
-}
+
+# Properties of the different playing TYPES
+# NOTE: Do NOT change order, as their index is important
+#   name       - Name of the type AND of the Rails model class
+#   slots      - IDs reserved by N++ to this mode in the db
+#   min_scores - Minimum amount of total scores to be taken into consideration for average rankings
+TYPES = [
+  { name: 'Level',   slots: 20000, min_scores: 100 },
+  { name: 'Episode', slots:  4000, min_scores:  50 },
+  { name: 'Story',   slots:   800, min_scores:  10 }
+]
 
 IGNORED_PLAYERS = [
   "Kronogenics",

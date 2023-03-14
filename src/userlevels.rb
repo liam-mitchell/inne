@@ -1107,7 +1107,7 @@ rescue => e
   puts(e.backtrace)
   err_str = "An error happened, try again, if it keeps failing, contact the botmeister."
   if !socket.nil?
-    log("Error socketing userlevel query.")
+    err("Socketing of userlevel query failed.")
   else
     if initial
       event << err_str

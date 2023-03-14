@@ -15,27 +15,30 @@ module Log
 
   MODES = {
     debug: { long: 'DEBUG', short: 'D', fmt: '' },
-    good:  { long: 'GOOD',  short: '✓', fmt: "\u001B[32m" }, # green
+    good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" }, # green
     info:  { long: 'INFO',  short: 'i', fmt: '' },
-    warn:  { long: 'WARN',  short: '!', fmt: "\u001B[33m" }, # yellow
-    error: { long: 'ERROR', short: '✗', fmt: "\u001B[31m" }, # red
-    out:   { long: 'OUT',   short: '→', fmt: "\u001B[36m" }, # cyan
-    in:    { long: 'IN',    short: '←', fmt: "\u001B[35m" }, # purple
-    fatal: { long: 'FATAL', short: 'F', fmt: "\u001B[41m" } # red background
+    warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" }, # yellow
+    error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" }, # red
+    out:   { long: 'OUT',   short: '→', fmt: "\x1B[36m" }, # cyan
+    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" }, # purple
+    fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" }, # red background
+    msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" }  # blue
   }
 
   BOLD  = "\u001B[1m"
   RESET = "\u001B[0m"
 
-  def self.write(msg, mode)
+  def self.write(msg, mode, header = "", header_mode = nil)
     return if !LOG
     stream = STDOUT
     stream = STDERR if [:warn, :error, :fatal].include?(mode)
     m = MODES[mode] || MODES[:info]
+    m2 = MODES[header_mode] || MODES[:info]
     date = Time.now.strftime(DATE_FORMAT_LOG)
-    header = LOG_FANCY ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]"
+    type = LOG_FANCY ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]"
+    head = !header.empty? ? ((LOG_FANCY ? "#{m2[:fmt]}#{header}#{RESET}" : header) + ": ") : ""
     text = LOG_FANCY ? "#{m[:fmt]}#{msg}#{RESET}" : msg
-    msg = "\r[#{date}] #{header} #{text}"
+    msg = "\r[#{date}] #{type} #{head}#{text}"
     stream.puts msg
     stream.flush
     File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
@@ -52,11 +55,16 @@ module Log
   def self.err(msg)
     write(msg, :error) if LOG_ERRORS
   end
+
+  def self.msg(msg)
+    write(msg, :msg) if LOG_MSGS
+  end
 end
 
 def log(msg) Log.log(msg) end
 def warn(msg) Log.warn(msg) end
 def err(msg) Log.err(msg) end
+def msg(msg) Log.msg(msg) end
 
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute
@@ -237,6 +245,10 @@ def find_max(rank, types, tabs, empty = false)
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
 end
 
+def find_type(type)
+  TYPES.find{ |t| t[:name].downcase == type.to_s.downcase } || TYPES.first
+end
+
 # Finds the minimum number of scores required to appear in a certain
 # average rank/point rankings
 # If 'empty' we allow no types, otherwise default to Level and Episode
@@ -251,7 +263,7 @@ def min_scores(type, tabs, empty = false, a = 0, b = 20, star = false)
     else
       type_min = tabs.map{ |tab| TABS[t.to_s][tab][2] if TABS[t.to_s].key?(tab) }.compact.sum
     end
-    [type_min, TYPES[t.to_s][0]].min
+    [type_min, find_type(t)[:min_scores]].min
   }.sum
   c = star ? 1 : b - a
   ([mins, MAXMIN_SCORES].min * c / 20.0).to_i
@@ -288,6 +300,12 @@ def cplural(word, n, pad = false)
   word = n == 1 ? sing : plur
   pad  = [sing, plur].map(&:length).max
   "%-#{pad}s" % word
+end
+
+# Strip off the @outte++ mention, if present
+# IDs might have an exclamation mark
+def remove_mention(msg)
+  msg.gsub(/<@!?[0-9]*> */, '')
 end
 
 # Permission system:
@@ -441,8 +459,8 @@ def set_channels(event = nil)
     return
   end
   fix_potato
-  puts "Main channel:    #{$channel.name}."         if !$channel.nil?
-  puts "Mapping channel: #{$mapping_channel.name}." if !$mapping_channel.nil?
-  puts "Nv2 channel:     #{$nv2_channel.name}."     if !$nv2_channel.nil?
-  puts "Content channel: #{$content_channel.name}." if !$content_channel.nil?
+  log("Main channel:    #{$channel.name}.")         if !$channel.nil?
+  log("Mapping channel: #{$mapping_channel.name}.") if !$mapping_channel.nil?
+  log("Nv2 channel:     #{$nv2_channel.name}.")     if !$nv2_channel.nil?
+  log("Content channel: #{$content_channel.name}.") if !$content_channel.nil?
 end
