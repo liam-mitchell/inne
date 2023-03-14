@@ -60,6 +60,15 @@ CONTENT_ID     = 197793786389200896 # ... (#content-creation)
 DISCORD_LIMIT  = 2000               # Message character limit
 
 # <--------------------------------------------------------------------------->
+# <------                     DIRECTORY VARIABLES                       ------>
+# <--------------------------------------------------------------------------->
+
+# TODO: Create constants for all other relevant directories (e.g., screenies,
+# migrations, userlevels, etc), and substitute all hardcoded references in the
+# source code.
+DIR_MAPPACKS = './db/mappacks'
+
+# <--------------------------------------------------------------------------->
 # <------                  MONKEY PATCHING VARIABLES                    ------>
 # <--------------------------------------------------------------------------->
 
@@ -237,12 +246,12 @@ TABS = {
 # TODO: Complete this with all other modes
 # TODO: Use this wherever TABS is being used, and also in parse_tabs, then delete TABS
 TABS_NEW = {
-  SI:  { code: 'SI', mode: 0, name: 'Intro',           size: 125, files: ['SI'  => 125] },
-  S:   { code: 'S',  mode: 0, name: 'Solo',            size: 600, files: [ 'S'  => 600] },
-  SL:  { code: 'SL', mode: 0, name: 'Legacy',          size: 600, files: ['SL'  => 600] },
-  SU:  { code: 'SU', mode: 0, name: 'Ultimate',        size: 600, files: ['S2'  => 600] },
-  SS:  { code: '?',  mode: 0, name: 'Secret',          size: 120, files: ['SS'  => 120] },
-  SS2: { code: '!',  mode: 0, name: 'Ultimate Secret', size: 120, files: ['SS2' => 120] }
+  SI:  { code: 'SI', mode: 0, name: 'Intro',           start:    0, size: 125, files: { 'SI'  => 125 } },
+  S:   { code: 'S',  mode: 0, name: 'Solo',            start:  600, size: 600, files: { 'S'   => 600 } },
+  SL:  { code: 'SL', mode: 0, name: 'Legacy',          start: 1200, size: 600, files: { 'SL'  => 600 } },
+  SU:  { code: 'SU', mode: 0, name: 'Ultimate',        start: 2400, size: 600, files: { 'S2'  => 600 } },
+  SS:  { code: '?',  mode: 0, name: 'Secret',          start: 1800, size: 120, files: { 'SS'  => 120 } },
+  SS2: { code: '!',  mode: 0, name: 'Ultimate Secret', start: 3000, size: 120, files: { 'SS2' => 120 } }
 }
 
 # Different ranking types

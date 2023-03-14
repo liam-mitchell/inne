@@ -2,7 +2,8 @@
 class CreateMappacks < ActiveRecord::Migration[5.1]
   def change
     create_table :mappacks do |t|
-      t.string    :title
+      t.string    :name
+      t.string    :code
       t.string    :authors
       t.timestamp :date
     end

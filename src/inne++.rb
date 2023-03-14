@@ -22,6 +22,7 @@
 # 8) You might want to look into 'constants.rb' and configure some variables,
 #    in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID. For testing,
 #    also look into TEST, DO_NOTHING, and DO_EVERYTHING.
+# 9) Make sure the working directory is the bot's root directory when you run it.
 #
 # Contact: https://discord.gg/nplusplus
 
@@ -212,4 +213,5 @@ run_bot
 set_channels
 start_threads
 byebug if BYEBUG
+Mappack.seed
 block_threads
