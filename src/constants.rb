@@ -211,11 +211,26 @@ QUERY_LIMIT_SOFT = 25   # Number of queried userlevels per page
 QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 
 # <--------------------------------------------------------------------------->
-# <------                 HIGHSCORING VARIABLES                         ------>
+# <------                       GAME VARIABLES                          ------>
 # <--------------------------------------------------------------------------->
 
-MIN_TIES = 3 # Minimum number of ties for 0th to be considered maxable
-MAX_SECS = 5 # Difference in seconds to consider two dates equal (for navigation)
+MODES = {
+  -1 => "all",
+   0 => "solo",
+   1 => "coop",
+   2 => "race"
+}
+
+# Properties of the different playing TYPES
+# NOTE: Do NOT change order, as their index is important
+#   name       - Name of the type AND of the Rails model class
+#   slots      - IDs reserved by N++ to this mode in the db
+#   min_scores - Max-min amount of scores to be taken into consideration for average rankings
+TYPES = [
+  { name: 'Level',   slots: 20000, min_scores: 100 },
+  { name: 'Episode', slots:  4000, min_scores:  50 },
+  { name: 'Story',   slots:   800, min_scores:  10 }
+]
 
 # @par1: ID ranges for levels and episodes
 # @par2: Score limits to filter new hacked scores
@@ -254,6 +269,14 @@ TABS_NEW = {
   SS2: { code: '!',  mode: 0, name: 'Ultimate Secret', start: 3000, size: 120, files: { 'SS2' => 120 } }
 }
 
+# <--------------------------------------------------------------------------->
+# <------                    HIGHSCORING VARIABLES                      ------>
+# <--------------------------------------------------------------------------->
+
+MIN_TIES = 3 # Minimum number of ties for 0th to be considered maxable
+MAX_SECS = 5 # Difference in seconds to consider two dates equal (for navigation)
+MAXMIN_SCORES = 100   # max-min number of highscores to appear in average point rankings
+
 # Different ranking types
 # * For parsing, 'top1' (i.e. 0th) will be removed (default)
 # * For formatting, 'top1' will be changed to '0th'
@@ -274,27 +297,6 @@ RTYPES = [
   'score',
   'point',
   'average_point'
-]
-
-MODES = {
-  -1 => "all",
-   0 => "solo",
-   1 => "coop",
-   2 => "race"
-}
-
-# Type-wise max-min for average ranks
-MAXMIN_SCORES = 100   # max-min number of highscores to appear in average point rankings
-
-# Properties of the different playing TYPES
-# NOTE: Do NOT change order, as their index is important
-#   name       - Name of the type AND of the Rails model class
-#   slots      - IDs reserved by N++ to this mode in the db
-#   min_scores - Minimum amount of total scores to be taken into consideration for average rankings
-TYPES = [
-  { name: 'Level',   slots: 20000, min_scores: 100 },
-  { name: 'Episode', slots:  4000, min_scores:  50 },
-  { name: 'Story',   slots:   800, min_scores:  10 }
 ]
 
 IGNORED_PLAYERS = [

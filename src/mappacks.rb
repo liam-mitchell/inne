@@ -1,19 +1,60 @@
 # TODO: This module should contain the functionality common to all maps:
 #       Include it in Userlevels
 module Map
-  # Parse a level in Metanet format (used by Metanet levels only)
-  def self.parse_metanet_data(data)
-    error = "Error parsing Metanet-format map"
+  # pref - Drawing preference (for overlaps): lower = more to the front
+  # att  - Number of object attributes in the old format
+  # old  - ID in the old format, '-1' if it didn't exist
+  # pal  - Index at which the colors of the object start in the palette image
+  OBJECTS = {
+    0x00 => { name: 'ninja',              pref:  4, att: 2, old:  0, pal:  6 },
+    0x01 => { name: 'mine',               pref: 22, att: 2, old:  1, pal: 10 },
+    0x02 => { name: 'gold',               pref: 21, att: 2, old:  2, pal: 14 },
+    0x03 => { name: 'exit',               pref: 25, att: 4, old:  3, pal: 17 },
+    0x04 => { name: 'exit switch',        pref: 20, att: 0, old: -1, pal: 25 },
+    0x05 => { name: 'regular door',       pref: 19, att: 3, old:  4, pal: 30 },
+    0x06 => { name: 'locked door',        pref: 28, att: 5, old:  5, pal: 31 },
+    0x07 => { name: 'locked door switch', pref: 27, att: 0, old: -1, pal: 33 },
+    0x08 => { name: 'trap door',          pref: 29, att: 5, old:  6, pal: 39 },
+    0x09 => { name: 'trap door switch',   pref: 26, att: 0, old: -1, pal: 41 },
+    0x0A => { name: 'launch pad',         pref: 18, att: 3, old:  7, pal: 47 },
+    0x0B => { name: 'one-way platform',   pref: 24, att: 3, old:  8, pal: 49 },
+    0x0C => { name: 'chaingun drone',     pref: 16, att: 4, old:  9, pal: 51 },
+    0x0D => { name: 'laser drone',        pref: 17, att: 4, old: 10, pal: 53 },
+    0x0E => { name: 'zap drone',          pref: 15, att: 4, old: 11, pal: 57 },
+    0x0F => { name: 'chase drone',        pref: 14, att: 4, old: 12, pal: 59 },
+    0x10 => { name: 'floor guard',        pref: 13, att: 2, old: 13, pal: 61 },
+    0x11 => { name: 'bounce block',       pref:  3, att: 2, old: 14, pal: 63 },
+    0x12 => { name: 'rocket',             pref:  8, att: 2, old: 15, pal: 65 },
+    0x13 => { name: 'gauss turret',       pref:  9, att: 2, old: 16, pal: 69 },
+    0x14 => { name: 'thwump',             pref:  6, att: 3, old: 17, pal: 74 },
+    0x15 => { name: 'toggle mine',        pref: 23, att: 2, old: 18, pal: 12 },
+    0x16 => { name: 'evil ninja',         pref:  5, att: 2, old: 19, pal: 77 },
+    0x17 => { name: 'laser turret',       pref:  7, att: 4, old: 20, pal: 79 },
+    0x18 => { name: 'boost pad',          pref:  1, att: 2, old: 21, pal: 81 },
+    0x19 => { name: 'deathball',          pref: 10, att: 2, old: 22, pal: 83 },
+    0x1A => { name: 'micro drone',        pref: 12, att: 4, old: 23, pal: 57 },
+    0x1B => { name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86 },
+    0x1C => { name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88 }
+  }
+
+  # Parse a level in Metanet format
+  # This format is only used internally by the game for the campaign levels,
+  # and differs from the standard userlevel format
+  def self.parse_metanet_map(data, index = nil, file = nil)
+    name = !index.nil? && !file.nil? ? " #{index} from file '#{file}'" : ''
+    error = "Failed to parse Metanet formatted map#{name}"
+    warning = "Abnormality found parsing Metanet formatted map#{name}"
     # Ensure format is "$map_name#map_data#", with map data being hex chars
     if data !~ /^\$(.*)\#(\h+)\#$/
       err("#{error}: Incorrect overall format.")
       return
     end
     title, map_data = $1, $2
+    size = map_data.length
 
     # Map data is dumped binary, so length must be even, and long enough to hold
     # header and tile data
-    if !map_data.length % 2 == 0 || map_data.length / 2 < 4 + 966
+    if size % 2 == 1 || size / 2 < 4 + 23 * 42 + 2 * 26 + 4
       err("#{error}: Incorrect map data length (odd length, or too short).")
       return
     end
@@ -23,20 +64,71 @@ module Map
       err("#{error}: Header missing.")
       return
     end
+    
+    # Parse tiles. Warning if invalid ones are found
     tiles = [map_data[8...1940]].pack('h*').bytes
-
-    # Warning if invalid tiles
     invalid_count = tiles.count{ |t| t > 33 }
     if invalid_count > 0
-      warn("Found #{invalid_count} invalid tiles parsing Metanet-format map")
+      warn("#{warning}: #{invalid_count} invalid tiles.")
     end
 
-    # TODO: Finish parsing objects, add checks for tile IDs, unpaired doors/switches...
+    # Parse objects
+    offset = 1940
+    objects = []
+    OBJECTS.reject{ |id, o| o[:old] == -1 }.sort_by{ |id, o| o[:old] }.each{ |id, type|
+      # Parse object count
+      if size < offset + 4
+        err("#{error}: Object count for ID #{id} not found.")
+        return
+      end
+      count = map_data[offset...offset + 4].scan(/../m).map(&:reverse).join.to_i(16)
+
+      # Parse entities of this type
+      if size < offset + 4 + 2 * count * type[:att]
+        err("#{error}: Object data incomplete for ID #{id}.")
+        return
+      end
+      map_data[offset + 4...offset + 4 + 2 * count * type[:att]].scan(/.{#{2 * type[:att]}}/m).each{ |o|
+        atts = o.pack('h*').bytes
+        if ![3, 6, 8].include?(id)
+          objects << [id] + atts.ljust(4, 0)
+        else # Doors need special handling
+          objects << [id] + atts[0..-3].ljust(4, 0) # Door
+          objects << [id + 1] + atts[-2..-1].ljust(4, 0) # Door switch
+        end
+      }
+      offset += 4 + 2 * count * type[:att]
+    }
+    # Sort objects by ID, but:
+    #   1) In a stable way, i.e., maintaining the order of tied elements
+    #   2) The pairs 6/7 and 8/9 are not sorted, but maintained staggered
+    # Both are important to respect N++'s data format
+    objects = objects.stable_sort_by{ |o| o[0] == 7 ? 6 : o[0] == 9 ? 8 : o[0] }
+
+    # Warnings if footer is incorrect
+    if size != offset + 8
+      warn("#{warning}: Incorrect footer length.")
+    elsif map_data[offset..-1] != '00000000'
+      warn("#{warning}: Incorrect footer format.")
+    end
+
+    # Return map elements
+    { title: title, tiles: tiles, objects: objects }
   end
 
-  # TODO: Write method
-  def self.parse_metanet_file
+  # Parse a text file containing maps in Metanet format, one per line
+  # This is the format used by the game to store the main campaign of levels
+  def self.parse_metanet_file(file, limit)
+    if !File.file?(file)
+      err("File '#{File.basename(file)}' not found parsing Metanet file")
+      return
+    end
 
+    File.binread(file).split("\n").take(limit).each_with_index.map{ |m, i|
+      parse_metanet_map(m, i, File.basename(file))
+    }
+  rescue
+    err("Error parsing Metanet map file '#{File.basename(file)}'")
   end
 end
 
@@ -51,15 +143,19 @@ class Mappack < ActiveRecord::Base
   # TODO: Add botmaster command to execute this function
   # TODO: Add botmaster command to add remaining details to a mappack (title,
   #       authors, etc)
-  def self.seed
+  def self.seed(update = false)
     if !Dir.exist?(DIR_MAPPACKS)
-      warn("Mappacks directory not found, not seeding")
+      err("Mappacks directory not found, not seeding")
       return
     end
+
     Dir.entries(DIR_MAPPACKS).select{ |d| !!d[/\d+_.+/] }.sort.each{ |d|
       id, code = d.split('_')
-      if !Mappack.find_by(code: code)
+      mappack = Mappack.find_by(code: code)
+      if mappack.nil?
         Mappack.create(id: id, code: code).read
+      elsif update
+        mappack.read
       end
     }
   rescue
@@ -69,14 +165,16 @@ class Mappack < ActiveRecord::Base
   def read
     dir = File.join(DIR_MAPPACKS, "#{id}_#{code}")
     if !Dir.exist?(dir)
-      warn("Directory for mappack '#{code}' not found, not reading")
+      err("Directory for mappack '#{code}' not found, not reading")
       return
     end
+
     files = Dir.entries(dir).select{ |f|
       path = File.join(dir, f)
       File.file?(path) && File.extname(path) == ".txt"
     }
     warn("No appropriate files found in directory for mappack '#{code}'") if files.count == 0
+
     files.each{ |f|
       tab_code = f[0..-5]
       tab = TABS_NEW.find{ |tab, attr| attr[:files].key?(tab_code) }
@@ -84,8 +182,11 @@ class Mappack < ActiveRecord::Base
         warn("Unrecognized file '#{tab_code}' parsing mappack '#{code}'")
         next
       end
-      # TODO: Finish this, by calling Map.parse_metanet_file, and filling the db
+      Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code])
+      # TODO: Finish this, by filling db
     }
+  rescue
+    err("Error reading mappack '#{code}'")
   end
 end
 

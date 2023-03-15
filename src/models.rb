@@ -10,8 +10,23 @@ require 'zlib'
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 
-# Monkey patches to get some custom behaviour from ActiveRecord and Discordrb
+# Monkey patches to get some custom behaviour from a few core classes,
+# as well as ActiveRecord and Discordrb
 module MonkeyPatches
+  def self.patch_core
+    # Add justification to arrays, like for strings
+    ::Array.class_eval do
+      def rjust(n, x) Array.new([0, n - length].max, x) + self end
+      def ljust(n, x) self + Array.new([0, n - length].max, x) end
+    end
+
+    # Stable sorting, i.e., ensures ties maintain their order
+    ::Enumerable.class_eval do
+      def stable_sort;    sort_by.with_index{ |x, idx| [      x,  idx] } end
+      def stable_sort_by; sort_by.with_index{ |x, idx| [yield(x), idx] } end
+    end
+  end
+
   def self.patch_activerecord
     # Add custom method "where_like" to Relations. Takes care of:
     #   - Sanitizing user input
@@ -191,12 +206,11 @@ module HighScore
     HighScore::get_data(uri, data, err)
   end
 
-  # Remove hackers and cheaters both by implementing the ignore lists and the score thresholds.
+  # Sanitize received leaderboard data:
+  #   - Reject scores by blacklisted players (hackers / cheaters)
+  #   - Reject incorrect scores submitted accidentally by legitimate players
+  #   - Patch score of runs submitted using old versions of the map, with different amount of gold
   def clean_scores(boards)
-    # Remove potential duplicates
-    # Edit: Commented because now we're storing Metanet IDs, names can repeat
-    #boards.uniq!{ |s| s['user_name'] }
-
     # Compute score upper limit
     if self.class == Userlevel
       limit = 2 ** 32 - 1 # No limit
