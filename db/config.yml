@@ -19,8 +19,6 @@ outte:
   password: root
   pool: 50
   timeout: 5000
-  client_id: 535634130436620298
-  twitch_id: 52j5aq7i673l4qa6cj7x6gcdrlm39h
 
 outte_test:
   adapter: mysql2
@@ -33,8 +31,6 @@ outte_test:
   password: root
   pool: 50
   timeout: 5000
-  client_id: 684546320962158670
-  twitch_id: 52j5aq7i673l4qa6cj7x6gcdrlm39h
 
 development:
   adapter: mysql2

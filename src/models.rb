@@ -60,6 +60,7 @@ module MonkeyPatches
 
   def self.apply
     return if !MONKEY_PATCH
+    patch_core if MONKEY_PATCH_CORE
     patch_activerecord if MONKEY_PATCH_ACTIVE_RECORD
     patch_discordrb if MONKEY_PATCH_DISCORDRB
   end
@@ -1710,8 +1711,8 @@ module Twitch extend self
     res = Net::HTTP.post_form(
       URI.parse("https://id.twitch.tv/oauth2/token"),
       {
-        client_id: $config['twitch_id'],
-        client_secret: ENV['TWITCH_SECRET'],
+        client_id: $config['twitch_client'],
+        client_secret: $config['twitch_secret'],
         grant_type: 'client_credentials'
       }
     )
@@ -1740,7 +1741,7 @@ module Twitch extend self
         uri.request_uri,
         {
           'Authorization' => "Bearer #{$twitch_token}",
-          'Client-Id' => $config['twitch_id']
+          'Client-Id' => $config['twitch_client']
         }
       )
       if res.code.to_i == 401
@@ -1779,7 +1780,7 @@ module Twitch extend self
         uri.request_uri,
         {
           'Authorization' => "Bearer #{$twitch_token}",
-          'Client-Id' => $config['twitch_id']
+          'Client-Id' => $config['twitch_client']
         }
       )
       if res.code.to_i == 401

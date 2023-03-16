@@ -84,6 +84,10 @@ end
 
 def load_config
   $config = YAML.load_file(CONFIG)[DATABASE_ENV]
+  $config['discord_client'] = (TEST ? ENV['DISCORD_CLIENT_TEST'] : ENV['DISCORD_CLIENT']).to_i
+  $config['discord_secret'] =  TEST ? ENV['DISCORD_TOKEN_TEST']  : ENV['DISCORD_TOKEN']
+  $config['twitch_client']  = ENV['TWITCH_CLIENT'].to_i
+  $config['twitch_secret']  = ENV['TWITCH_SECRET']
   log("Loaded config")
 rescue => e
   err("Failed to load config: #{e}")
@@ -110,8 +114,8 @@ end
 
 def create_bot
   $bot = Discordrb::Bot.new(
-    token:     (TEST ? ENV['DISCORD_TOKEN_TEST'] : ENV['DISCORD_TOKEN']),
-    client_id: $config['client_id'],
+    token:     $config['discord_secret'],
+    client_id: $config['discord_client'],
     intents:   [
       :servers,
       :server_members,
@@ -137,31 +141,42 @@ rescue => e
 end
 
 def setup_bot
-  return if !RESPOND
+  $bot.private_message do |event|
+    return if !RESPOND && event.user.id != BOTMASTER_ID
+    special = event.user.id == BOTMASTER_ID && event.content[0] == '!'
+    special ? respond_special(event) : respond(event)
+    str = special ? 'Special ' : ''
+    str = "#{str}DM by #{event.user.name}: #{event.content}"
+    special ? succ(str) : msg(str)
+  end
+
   $bot.mention do |event|
+    return if !RESPOND && event.user.id != BOTMASTER_ID
     respond(event)
     msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
   end
 
-  $bot.private_message do |event|
-    respond(event)
-    msg("DM by #{event.user.name}: #{event.content}")
-  end
-
   $bot.message do |event|
+    return if !RESPOND && event.user.id != BOTMASTER_ID
     if event.channel == $nv2_channel
       $last_potato = Time.now.to_i
       $potato = 0
     end
     mishnub(event) if MISHU && event.content.downcase.include?("mishu")
     robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
+    if event.content[0] == '!' && event.user.id == BOTMASTER_ID && event.channel.type != 1
+      respond_special(event)
+      succ("Special command: #{event.content}")
+    end
   end
 
   $bot.button do |event|
+    return if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_button(event)
   end
 
   $bot.select_menu do |event|
+    return if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_menu(event)
   end
   log("Configured bot")
@@ -173,6 +188,7 @@ end
 def run_bot
   $bot.run(true)
   trap("INT") { shutdown }
+  leave_unknown_servers
   log("Bot connected to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}.")
 rescue => e
   err("Failed to execute bot: #{e}")
@@ -213,5 +229,5 @@ run_bot
 set_channels
 start_threads
 byebug if BYEBUG
-Mappack.seed
+#Mappack.seed(true)
 block_threads

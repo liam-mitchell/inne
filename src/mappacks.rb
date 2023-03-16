@@ -37,11 +37,31 @@ module Map
     0x1C => { name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88 }
   }
 
+  def self.encode_tiles(tiles)
+    Zlib::Deflate.deflate(tiles.flatten.map{ |t| _pack(t, 1) }.join, 9)
+  end
+
+  def self.encode_objects(objects)
+    Zlib::Deflate.deflate(objects.transpose.flatten.map{ |t| _pack(t, 1) }.join, 9)
+  end
+
+  def self.decode_tiles(tile_data)
+    Zlib::Inflate.inflate(tile_data).scan(/./m).map{ |b| _unpack(b) }.each_slice(42).to_a
+  end
+
+  def self.decode_objects(object_data)
+    dec = Zlib::Inflate.inflate(object_data)
+    dec.scan(/./m).map{ |b| _unpack(b) }.each_slice((dec.size / 5).round).to_a.transpose
+  end
+
   # Parse a level in Metanet format
   # This format is only used internally by the game for the campaign levels,
   # and differs from the standard userlevel format
-  def self.parse_metanet_map(data, index = nil, file = nil)
-    name = !index.nil? && !file.nil? ? " #{index} from file '#{file}'" : ''
+  def self.parse_metanet_map(data, index = nil, file = nil, pack = nil)
+    name =  ''
+    name += " #{index}"       if !index.nil?
+    name += " from '#{file}'" if !file.nil?
+    name += " for '#{pack}'"  if !pack.nil?
     error = "Failed to parse Metanet formatted map#{name}"
     warning = "Abnormality found parsing Metanet formatted map#{name}"
     # Ensure format is "$map_name#map_data#", with map data being hex chars
@@ -89,7 +109,7 @@ module Map
         return
       end
       map_data[offset + 4...offset + 4 + 2 * count * type[:att]].scan(/.{#{2 * type[:att]}}/m).each{ |o|
-        atts = o.pack('h*').bytes
+        atts = [o].pack('h*').bytes
         if ![3, 6, 8].include?(id)
           objects << [id] + atts.ljust(4, 0)
         else # Doors need special handling
@@ -118,17 +138,22 @@ module Map
 
   # Parse a text file containing maps in Metanet format, one per line
   # This is the format used by the game to store the main campaign of levels
-  def self.parse_metanet_file(file, limit)
+  def self.parse_metanet_file(file, limit, pack)
+    fn = File.basename(file)
     if !File.file?(file)
-      err("File '#{File.basename(file)}' not found parsing Metanet file")
+      err("File '#{fn}' not found parsing Metanet file")
       return
     end
 
-    File.binread(file).split("\n").take(limit).each_with_index.map{ |m, i|
-      parse_metanet_map(m, i, File.basename(file))
+    maps = File.binread(file).split("\n").take(limit)
+    count = maps.count
+    maps.each_with_index.map{ |m, i|
+      log("Parsing map #{"%-3d" % (i + 1)} / #{count} from '#{fn}' for '#{pack}'...", newline: false)
+      parse_metanet_map(m, i, File.basename(file), pack)
     }
-  rescue
-    err("Error parsing Metanet map file '#{File.basename(file)}'")
+    succ("Parsed Metanet map file '#{File.basename(file)}'", pad: true)
+  rescue => e
+    err("Error parsing Metanet map file '#{File.basename(file)}' for '#{pack}': #{e}")
   end
 end
 
@@ -182,8 +207,17 @@ class Mappack < ActiveRecord::Base
         warn("Unrecognized file '#{tab_code}' parsing mappack '#{code}'")
         next
       end
-      Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code])
-      # TODO: Finish this, by filling db
+      Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code], code)
+         .each_with_index{ |m, i|
+        MappackLevel.find_or_create_by(id: TYPES[0][:slots] * id + i).update(
+          inner_id:   i,
+          mappack_id: id,
+          mode:       tab[1][:mode],
+          tab:        tab[0],
+          episode_id: i / 5,
+          name:       code.upcase + '-'
+        )
+      }
     }
   rescue
     err("Error reading mappack '#{code}'")
@@ -202,7 +236,7 @@ class MappackLevel < ActiveRecord::Base
   has_many :mappack_archives, as: :highscoreable
   belongs_to :mappack
   belongs_to :mappack_episode, foreign_key: :episode_id
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
 end
 
 class MappackEpisode < ActiveRecord::Base
@@ -215,7 +249,7 @@ class MappackEpisode < ActiveRecord::Base
   has_many :mappack_archives, as: :highscoreable
   belongs_to :mappack
   belongs_to :mappack_story, foreign_key: :story_id
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
 end
 
 class MappackStory < ActiveRecord::Base
@@ -226,7 +260,7 @@ class MappackStory < ActiveRecord::Base
   has_many :mappack_scores, ->{ order(:rank) }, as: :highscoreable
   has_many :mappack_archives, as: :highscoreable
   belongs_to :mappack
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
 end
 
 class MappackScore < ActiveRecord::Base
@@ -241,11 +275,13 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
 end
 
 class MappackArchive < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
+  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
 end
 
 class MappackDemo < ActiveRecord::Base

@@ -1680,7 +1680,7 @@ def potato
     next if $nv2_channel.nil? || $last_potato.nil?
     if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
       $nv2_channel.send_message(FRUITS[$potato])
-      log(FRUITS[$potato].gsub(/:/, '') + 'ed nv2')
+      log(FRUITS[$potato].gsub(/:/, '').capitalize + 'ed nv2')
       $potato = ($potato + 1) % FRUITS.size
       $last_potato = Time.now.to_i
     end
@@ -1710,13 +1710,35 @@ def testa(event)
   assert_permissions(event)
 #  maps = send_userlevel_browse(nil, socket: event.content)
 #  Userlevel::dump_query(maps, 10, 0)
-  p = UserlevelAuthor.parse(parse_userlevel_author(event.content))
-  event << "Found: #{p.name}"
+#  p = UserlevelAuthor.parse(parse_userlevel_author(event.content))
+#  event << "Found: #{p.name}"
 end
 
-# TODO set level of the day on startup
+def send_reaction(event)
+  msg = remove_command(event.content)
+  return if msg !~ /^(\d+)\s*(.*)/
+  react(event.channel, $1.to_i, $2)
+end
+
+def send_unreaction(event)
+  msg = remove_command(event.content)
+  return if msg !~ /^\d+/
+  msg =~ /^(\d+)\s*(.*)/i
+  id, name = $1, $2
+  unreact(event.channel, $1.to_i, $2.strip)
+end
+
+def respond_special(event)
+  assert_permissions(event)
+  msg = event.content.strip
+  cmd = msg[/^!(\w+)/i, 1]
+  return if cmd.nil?
+  send_reaction(event) if cmd == 'react'
+  send_unreaction(event) if cmd == 'unreact'
+end
+
 def respond(event)
-  msg = remove_mention(event.content)
+  msg = remove_mentions(event.content)
 
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
   if msg =~ /\A\s*lotd\s*\Z/i

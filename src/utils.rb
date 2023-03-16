@@ -25,10 +25,10 @@ module Log
     msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" }  # blue
   }
 
-  BOLD  = "\u001B[1m"
-  RESET = "\u001B[0m"
+  BOLD  = "\x1B[1m"
+  RESET = "\x1B[0m"
 
-  def self.write(msg, mode, header = "", header_mode = nil)
+  def self.write(msg, mode, header = "", header_mode = nil, newline: true, pad: false)
     return if !LOG
     stream = STDOUT
     stream = STDERR if [:warn, :error, :fatal].include?(mode)
@@ -39,32 +39,38 @@ module Log
     head = !header.empty? ? ((LOG_FANCY ? "#{m2[:fmt]}#{header}#{RESET}" : header) + ": ") : ""
     text = LOG_FANCY ? "#{m[:fmt]}#{msg}#{RESET}" : msg
     msg = "\r[#{date}] #{type} #{head}#{text}"
-    stream.puts msg
+    msg = msg.ljust(120, ' ') if pad
+    newline ? stream.puts(msg) : stream.print(msg)
     stream.flush
     File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
   end
 
-  def self.log(msg)
-    write(msg, :info) if LOG_INFO
+  def self.log(msg, **kwargs)
+    write(msg, :info, kwargs) if LOG_INFO
   end
   
-  def self.warn(msg)
-    write(msg, :warn) if LOG_WARNINGS
+  def self.warn(msg, **kwargs)
+    write(msg, :warn, kwargs) if LOG_WARNINGS
   end
   
-  def self.err(msg)
-    write(msg, :error) if LOG_ERRORS
+  def self.err(msg, **kwargs)
+    write(msg, :error, kwargs) if LOG_ERRORS
   end
 
-  def self.msg(msg)
-    write(msg, :msg) if LOG_MSGS
+  def self.msg(msg, **kwargs)
+    write(msg, :msg, kwargs) if LOG_MSGS
+  end
+
+  def self.succ(msg, **kwargs)
+    write(msg, :good, kwargs) if LOG_SUCCESS
   end
 end
 
-def log(msg) Log.log(msg) end
-def warn(msg) Log.warn(msg) end
-def err(msg) Log.err(msg) end
-def msg(msg) Log.msg(msg) end
+def log(msg,  **kwargs) Log.log(msg,  kwargs) end
+def warn(msg, **kwargs) Log.warn(msg, kwargs) end
+def err(msg,  **kwargs) Log.err(msg,  kwargs) end
+def msg(msg,  **kwargs) Log.msg(msg,  kwargs) end
+def succ(msg, **kwargs) Log.succ(msg, kwargs) end
 
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute
@@ -304,8 +310,18 @@ end
 
 # Strip off the @outte++ mention, if present
 # IDs might have an exclamation mark
-def remove_mention(msg)
-  msg.gsub(/<@!?[0-9]*> */, '')
+def remove_mentions(msg)
+  msg.gsub(/<@!?[0-9]*>\s*/, '')
+end
+
+def remove_command(msg)
+  msg.sub(/^!\w+\s*/i, '').strip
+end
+
+# Computes the name of a highscoreable based on the ID and type, e.g.:
+# Type = 0, ID = 2637 ---> SU-C-09-02
+def compute_name(id, type)
+
 end
 
 # Permission system:
@@ -348,6 +364,42 @@ end
 
 def remove_word_first(msg, word)
   msg.sub(/\s*\w*#{word}\w*\s*/i, '').strip
+end
+
+# Find emoji by ID or name
+def find_emoji(key, server = nil)
+  server = server || $bot.servers[SERVER_ID] || $bot.servers.first
+  return if server.nil?
+  if key.is_a?(Integer)
+    server.emojis[key]
+  elsif key.is_a?(String)
+    server.emojis.find{ |id, e| e.name.downcase.include?(key.downcase) }[1]
+  else
+    nil
+  end
+rescue
+  nil
+end
+
+# React to a Discord msg (by ID) with an emoji (by Unicode or name)
+def react(channel, msg_id, emoji)
+  emoji = find_emoji(emoji, channel.server) if emoji.ascii_only?
+  channel.message(msg_id).react(emoji)
+rescue
+end
+
+def unreact(channel, msg_id, emoji = '')
+  msg = channel.message(msg_id)
+  if emoji.empty?
+    msg.my_reactions.each{ |r|
+      emoji = r.name.ascii_only? ? find_emoji(r.name, channel.server) : r.name
+      msg.delete_own_reaction(emoji)
+    }
+  else
+    emoji = find_emoji(emoji, channel.server) if emoji.ascii_only?
+    msg.delete_own_reaction(emoji)
+  end
+rescue
 end
 
 # DISTANCE BETWEEN STRINGS
@@ -436,7 +488,7 @@ end
 def fix_potato
   last_msg = $nv2_channel.history(1)[0] rescue nil
   $last_potato = last_msg.timestamp.to_i rescue Time.now.to_i
-  if last_msg.author.id == $config['client_id']
+  if last_msg.author.id == $config['discord_client']
     $potato = ((FRUITS.index(last_msg.content) + 1) % FRUITS.size) rescue 0
   end
 rescue
@@ -463,4 +515,15 @@ def set_channels(event = nil)
   log("Mapping channel: #{$mapping_channel.name}.") if !$mapping_channel.nil?
   log("Nv2 channel:     #{$nv2_channel.name}.")     if !$nv2_channel.nil?
   log("Content channel: #{$content_channel.name}.") if !$content_channel.nil?
+end
+
+def leave_unknown_servers
+  names = []
+  $bot.servers.each{ |id, s|
+    if !SERVER_WHITELIST.include?(id)
+      names << s.name
+      s.leave
+    end
+  }
+  warn("Left #{names.count} unknown servers: #{names.join(', ')}") if names.count > 0
 end

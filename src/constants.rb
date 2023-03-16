@@ -14,11 +14,12 @@ BYEBUG         = false # Breakpoint right after loading the bot
 # <------                     LOGGING VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-LOG            = true  # Log stuff to the terminal (superseeds the next 4 ones)
+LOG            = true  # Log stuff to the terminal (superseeds the next 5 ones)
 LOG_INFO       = true  # Log info to the terminal
 LOG_WARNINGS   = true  # Log warnings to the terminal
 LOG_ERRORS     = true  # Log errors to the terminal
 LOG_MSGS       = true  # Log mentions and DMs to outte
+LOG_SUCCESS    = true  # Log successes
 LOG_FANCY      = true  # Format logs (bold, colors...)
 LOG_TO_FILE    = false # Export logs and errors into external file
 LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)
@@ -59,6 +60,13 @@ NV2_ID         = 197774025844457472 # ... (#nv2)
 CONTENT_ID     = 197793786389200896 # ... (#content-creation)
 DISCORD_LIMIT  = 2000               # Message character limit
 
+# Despite the bot being public, so that the botmaster does not need to be a mod
+# of the server, we only allow select servers. Otherwise randos could add outte.
+SERVER_WHITELIST = [
+  SERVER_ID,          # N++
+  535635802386857995  # Test server
+]
+
 # <--------------------------------------------------------------------------->
 # <------                     DIRECTORY VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
@@ -73,6 +81,7 @@ DIR_MAPPACKS = './db/mappacks'
 # <--------------------------------------------------------------------------->
 
 MONKEY_PATCH               = true # Enable monkey patches globally
+MONKEY_PATCH_CORE          = true # Enable Kernel patches (must!)
 MONKEY_PATCH_ACTIVE_RECORD = true # Enable ActiveRecord monkey patches (must!)
 MONKEY_PATCH_DISCORDRB     = true # Enable Discordrb monkey patches (optional)
 
@@ -261,12 +270,67 @@ TABS = {
 # TODO: Complete this with all other modes
 # TODO: Use this wherever TABS is being used, and also in parse_tabs, then delete TABS
 TABS_NEW = {
-  SI:  { code: 'SI', mode: 0, name: 'Intro',           start:    0, size: 125, files: { 'SI'  => 125 } },
-  S:   { code: 'S',  mode: 0, name: 'Solo',            start:  600, size: 600, files: { 'S'   => 600 } },
-  SL:  { code: 'SL', mode: 0, name: 'Legacy',          start: 1200, size: 600, files: { 'SL'  => 600 } },
-  SU:  { code: 'SU', mode: 0, name: 'Ultimate',        start: 2400, size: 600, files: { 'S2'  => 600 } },
-  SS:  { code: '?',  mode: 0, name: 'Secret',          start: 1800, size: 120, files: { 'SS'  => 120 } },
-  SS2: { code: '!',  mode: 0, name: 'Ultimate Secret', start: 3000, size: 120, files: { 'SS2' => 120 } }
+  SI: {
+    code:   'SI',
+    mode:   0,
+    name:   'Intro',
+    start:  0,
+    size:   125,
+    files:  { 'SI'  => 125 },
+    x:      false,
+    secret: false
+  },
+  S: {
+    code:   'S',
+    mode:   0,
+    name:   'Solo',
+    start:  600,
+    size:   600,
+    files:  { 'S'   => 600 },
+    x:      true,
+    secret: false
+  },
+  SL: 
+  {
+    code:   'SL',
+    mode:   0,
+    name:   'Legacy',
+    start:  1200,
+    size:   600,
+    files:  { 'SL'  => 600 },
+    x:      true,
+    secret: false
+  },
+  SU: {
+    code:   'SU',
+    mode:   0,
+    name:   'Ultimate',
+    start:  2400,
+    size:   600,
+    files:  { 'S2'  => 600 },
+    x:      true,
+    secret: false
+  },
+  SS: {
+    code:   '?',
+    mode:   0,
+    name:   'Secret',
+    start:  1800,
+    size:   120,
+    files:  { 'SS'  => 120 },
+    x:      true,
+    secret: true,
+  },
+  SS2: {
+    code:   '!',
+    mode:   0,
+    name:   'Ultimate Secret',
+    start:  3000,
+    size:   120,
+    files:  { 'SS2' => 120 },
+    x:      true,
+    secret: true
+  }
 }
 
 # <--------------------------------------------------------------------------->
