@@ -366,6 +366,26 @@ def remove_word_first(msg, word)
   msg.sub(/\s*\w*#{word}\w*\s*/i, '').strip
 end
 
+# Find Discord server the bot is in, by name
+def find_server(name)
+  $bot.servers.find{ |id, s| s.name.downcase.include?(name.downcase) } rescue nil
+end
+
+# Find Discord channel by name, server optional
+def find_channel(name, server = nil)
+  if server
+    find_server(server).channels.find{ |c| c.name.downcase.include?(name.downcase) } rescue nil
+  else
+    $bot.servers.each{ |id, s|
+      channel = s.channels.find{ |c| c.name.downcase.include?(name.downcase) }
+      return channel if !channel.nil?
+    }
+    return nil
+  end
+rescue
+  nil
+end
+
 # Find emoji by ID or name
 def find_emoji(key, server = nil)
   server = server || $bot.servers[SERVER_ID] || $bot.servers.first
@@ -383,23 +403,30 @@ end
 
 # React to a Discord msg (by ID) with an emoji (by Unicode or name)
 def react(channel, msg_id, emoji)
-  emoji = find_emoji(emoji, channel.server) if emoji.ascii_only?
-  channel.message(msg_id).react(emoji)
-rescue
+  channel = find_channel(channel) rescue nil
+  raise 'Channel not found' if channel.nil?
+  msg = channel.message(msg_id.to_i) rescue nil
+  raise 'Message not found' if msg.nil?
+  emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
+  raise 'Emoji not found' if emoji.nil?
+  msg.react(emoji)
 end
 
-def unreact(channel, msg_id, emoji = '')
-  msg = channel.message(msg_id)
-  if emoji.empty?
+def unreact(channel, msg_id, emoji = nil)
+  channel = find_channel(channel) rescue nil
+  raise 'Channel not found' if channel.nil?
+  msg = channel.message(msg_id.to_i) rescue nil
+  raise 'Message not found' if msg.nil?
+  if emoji.nil?
     msg.my_reactions.each{ |r|
       emoji = r.name.ascii_only? ? find_emoji(r.name, channel.server) : r.name
       msg.delete_own_reaction(emoji)
     }
   else
-    emoji = find_emoji(emoji, channel.server) if emoji.ascii_only?
+    emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
+    raise 'Emoji not found' if emoji.nil?
     msg.delete_own_reaction(emoji)
   end
-rescue
 end
 
 # DISTANCE BETWEEN STRINGS
@@ -511,10 +538,10 @@ def set_channels(event = nil)
     return
   end
   fix_potato
-  log("Main channel:    #{$channel.name}.")         if !$channel.nil?
-  log("Mapping channel: #{$mapping_channel.name}.") if !$mapping_channel.nil?
-  log("Nv2 channel:     #{$nv2_channel.name}.")     if !$nv2_channel.nil?
-  log("Content channel: #{$content_channel.name}.") if !$content_channel.nil?
+  log("Main channel:    #{$channel.name}")         if !$channel.nil?
+  log("Mapping channel: #{$mapping_channel.name}") if !$mapping_channel.nil?
+  log("Nv2 channel:     #{$nv2_channel.name}")     if !$nv2_channel.nil?
+  log("Content channel: #{$content_channel.name}") if !$content_channel.nil?
 end
 
 def leave_unknown_servers

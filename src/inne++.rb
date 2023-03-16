@@ -142,7 +142,7 @@ end
 
 def setup_bot
   $bot.private_message do |event|
-    return if !RESPOND && event.user.id != BOTMASTER_ID
+    next if !RESPOND && event.user.id != BOTMASTER_ID
     special = event.user.id == BOTMASTER_ID && event.content[0] == '!'
     special ? respond_special(event) : respond(event)
     str = special ? 'Special ' : ''
@@ -151,13 +151,13 @@ def setup_bot
   end
 
   $bot.mention do |event|
-    return if !RESPOND && event.user.id != BOTMASTER_ID
+    next if !RESPOND && event.user.id != BOTMASTER_ID
     respond(event)
     msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
   end
 
   $bot.message do |event|
-    return if !RESPOND && event.user.id != BOTMASTER_ID
+    next if !RESPOND && event.user.id != BOTMASTER_ID
     if event.channel == $nv2_channel
       $last_potato = Time.now.to_i
       $potato = 0
@@ -171,12 +171,12 @@ def setup_bot
   end
 
   $bot.button do |event|
-    return if !RESPOND && event.user.id != BOTMASTER_ID
+    next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_button(event)
   end
 
   $bot.select_menu do |event|
-    return if !RESPOND && event.user.id != BOTMASTER_ID
+    next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_menu(event)
   end
   log("Configured bot")

@@ -739,6 +739,13 @@ def ping(rname)
   end
 end
 
+# Parse arguments and flags CLI-style:
+# Arg names must start with a dash and be alphanumeric (underscores allowed)
+# Arg values can be anything but whitespace, they cannot start with a dash
+def parse_flags(msg)
+  msg.scan(/-(\w+) ([^\s-]\S*)?/).uniq{ |e| e[0] }.to_h.symbolize_keys
+end
+
 def format_rank(rank)
   rank.to_i == 1 ? '0th' : "top #{rank}"
 end

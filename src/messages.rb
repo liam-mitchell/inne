@@ -1716,16 +1716,14 @@ end
 
 def send_reaction(event)
   msg = remove_command(event.content)
-  return if msg !~ /^(\d+)\s*(.*)/
-  react(event.channel, $1.to_i, $2)
+  flags = parse_flags(msg)
+  react(flags[:c], flags[:m], flags[:r])
 end
 
 def send_unreaction(event)
   msg = remove_command(event.content)
-  return if msg !~ /^\d+/
-  msg =~ /^(\d+)\s*(.*)/i
-  id, name = $1, $2
-  unreact(event.channel, $1.to_i, $2.strip)
+  flags = parse_flags(msg)
+  unreact(flags[:c], flags[:m], flags[:r])
 end
 
 def respond_special(event)
@@ -1735,6 +1733,8 @@ def respond_special(event)
   return if cmd.nil?
   send_reaction(event) if cmd == 'react'
   send_unreaction(event) if cmd == 'unreact'
+rescue RuntimeError => e
+  event << e
 end
 
 def respond(event)
