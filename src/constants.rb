@@ -276,7 +276,7 @@ TABS_NEW = {
     name:   'Intro',
     start:  0,
     size:   125,
-    files:  { 'SI'  => 125 },
+    files:  { 'SI' => 125 },
     x:      false,
     secret: false
   },
@@ -286,7 +286,7 @@ TABS_NEW = {
     name:   'Solo',
     start:  600,
     size:   600,
-    files:  { 'S'   => 600 },
+    files:  { 'S' => 600 },
     x:      true,
     secret: false
   },
@@ -297,7 +297,7 @@ TABS_NEW = {
     name:   'Legacy',
     start:  1200,
     size:   600,
-    files:  { 'SL'  => 600 },
+    files:  { 'SL' => 600 },
     x:      true,
     secret: false
   },
@@ -307,7 +307,7 @@ TABS_NEW = {
     name:   'Ultimate',
     start:  2400,
     size:   600,
-    files:  { 'S2'  => 600 },
+    files:  { 'S2' => 600 },
     x:      true,
     secret: false
   },
@@ -317,7 +317,7 @@ TABS_NEW = {
     name:   'Secret',
     start:  1800,
     size:   120,
-    files:  { 'SS'  => 120 },
+    files:  { 'SS' => 120 },
     x:      true,
     secret: true,
   },

@@ -321,7 +321,22 @@ end
 # Computes the name of a highscoreable based on the ID and type, e.g.:
 # Type = 0, ID = 2637 ---> SU-C-09-02
 def compute_name(id, type)
-
+  tab = TABS_NEW.find{ |_, t| (t[:start]...t[:start] + t[:size]).include?(id) }
+  return nil if tab.nil?
+  tab = tab[1]
+  tab_offset = id - tab[:start]
+  file_offset = tab_offset
+  count = tab[:files].values[0]
+  tab[:files].values.inject(0){ |sum, n|
+    if sum <= tab_offset
+      file_offset = tab_offset - sum
+      count = n
+    end
+    sum + n
+  }
+  rows = tab[:x] ? 6 : 5
+  cols = count / rows
+  episode_offset = file_offset / 5
 end
 
 # Permission system:
@@ -332,6 +347,7 @@ end
 #   Currently implemented roles:
 #     1) botmaster: Only the manager of the bot can execute them (matches
 #                   Discord's user ID with a constant).
+#     2) dmmc: For executing the function to batch-generate screenies of DMMC.
 #
 #   The following functions then check if the user who tried to execute a
 #   certain function belongs to any of the permitted roles for it.

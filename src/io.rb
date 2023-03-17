@@ -604,7 +604,7 @@ end
 def parse_author(msg, rais = true)
   UserlevelAuthor.parse(parse_userlevel_author(msg))
 rescue
-  raise# if rais
+  raise if rais
   nil
 end
 
@@ -634,7 +634,7 @@ def parse_userlevel(msg)
   else
     errs = []
     if !title.empty?
-      query = Userlevel.where_like(query, 'title', title[0...128])
+      query = query.where_like('title', title[0...128])
       errs << "with title #{verbatim(title[0...128])}"
     end
     if !author.nil?
@@ -872,7 +872,7 @@ end
 
 def format_author(author)
   return '' if !author.is_a?(UserlevelAuthor)
-  "on maps by `#{author.name}`"
+  "on maps by #{verbatim(author.name)}"
 end
 
 def format_block(str)

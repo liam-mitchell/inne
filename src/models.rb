@@ -283,8 +283,8 @@ module HighScore
         end
       end
       if self.class == Userlevel
-        self.update(last_update: Time.now)
-        self.update(scored:      true)     if updated.size > 0
+        self.update(score_update: Time.now.strftime(DATE_FORMAT_MYSQL))
+        self.update(scored: true) if updated.size > 0
       else
         scores.where("rank < #{find_coolness}").update_all(cool: true)
         scores.where(player_id: stars).update_all(star: true)

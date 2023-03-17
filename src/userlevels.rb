@@ -388,11 +388,12 @@ class Userlevel < ActiveRecord::Base
         if update
           # Userlevel object
           entry = Userlevel.find_or_create_by(id: map[:id]).update(
-            title:     map[:title],
-            author_id: map[:author_id],
-            favs:      map[:favs],
-            date:      map[:date],
-            mode:      header[:mode]
+            title:      map[:title],
+            author_id:  map[:author_id],
+            favs:       map[:favs],
+            date:       map[:date],
+            mode:       header[:mode],
+            map_update: Time.now.strftime(DATE_FORMAT_MYSQL)
           )
           # Userlevel author
           UserlevelAuthor.find_or_create_by(id: map[:author_id]).rename(map[:author], map[:date])
