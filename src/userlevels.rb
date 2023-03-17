@@ -729,10 +729,6 @@ class Userlevel < ActiveRecord::Base
     sanitize_sql_for_conditions([string, par])
   end
 
-  def self.where_like(query, field, str)
-    query.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
-  end
-
   def tiles
     Userlevel.decode_tiles(UserlevelData.find(self.id).tile_data)
   end

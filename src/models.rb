@@ -33,17 +33,21 @@ module MonkeyPatches
     #   - Adding wildcards before and after, for substring matches
     #   - Executing a where query
     ::ActiveRecord::QueryMethods.class_eval do
-      def where_like(field, str)
+      def where_like(field, str, partial: true)
         return self if field.empty? || str.empty?
-        self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
+        str = sanitize_sql_like(str.downcase)
+        str = "%" + str + "%" if partial
+        self.where("LOWER(#{field}) LIKE (?)", str)
       end
     end
 
     # Add same method to base classes
     ::ActiveRecord::Base.class_eval do
-      def self.where_like(field, str)
+      def self.where_like(field, str, partial: true)
         return self if field.empty? || str.empty?
-        self.where("#{field} LIKE (?)", "%" + sanitize_sql_like(str) + "%")
+        str = sanitize_sql_like(str.downcase)
+        str = "%" + str + "%" if partial
+        self.where("LOWER(#{field}) LIKE (?)", str)
       end
     end
   end
@@ -535,7 +539,7 @@ class Episode < ActiveRecord::Base
 
   def splits(rank = 0)
     acc = 90
-    Level.where("UPPER(name) LIKE ?", name.upcase + '%').map{ |l| acc += l.scores[rank].score - 90 }
+    self.levels.map{ |l| acc += l.scores[rank].score - 90 }
   rescue
     nil
   end

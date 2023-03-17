@@ -370,9 +370,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   #   (note we used "event.send_message" rather than "event <<",
   #   which means it got sent immediately so we don't have to wait
   #   for these 5 level updates)
-  if scores.is_a?(Episode)
-    Level.where("UPPER(name) LIKE ?", scores.name.upcase + '%').each(&:update_scores) if !offline && !OFFLINE_STRICT
-  end
+  scores.levels.each(&:update_scores) if scores.is_a?(Episode) && !offline && !OFFLINE_STRICT
 end
 
 # Navigating scores: Main differences:
@@ -1637,7 +1635,7 @@ def send_dmmc(event)
   assert_permissions(event, ['dmmc'])
   msg        = event.content.remove('dmmcize').strip
   limit      = 30
-  levels     = Userlevel.where(Userlevel.sanitize("UPPER(title) LIKE ?", "%" + msg.upcase + "%")).to_a[0..limit - 1]
+  levels     = Userlevel.where_like('title', msg).to_a[0..limit - 1]
   count      = levels.count
   palettes   = Userlevel::THEMES.dup
   response   = nil

@@ -296,7 +296,10 @@ def parse_level_or_episode(msg, partial: false, array: false)
   elsif name
     str = name
     # Parse exact name
-    ret = ["Multiple matches found for #{name}", Level.where("UPPER(longname) LIKE ?", name.upcase).to_a]
+    ret = [
+      "Multiple matches found for #{name}",
+      Level.where_like('longname', name, partial: false).to_a
+    ]
     ret = ret[1][0] if !partial || ret[1].size == 1
     # Parse level alias
     if ret.nil? || ret.is_a?(Array) && ret[1].empty?
@@ -326,7 +329,7 @@ def search_level(msg)
     # Partial matches
     ret = [
       "Multiple partial matches found for #{name}",
-      Level.where("UPPER(longname) LIKE ?", '%' + name.upcase + '%').to_a
+      Level.where_like('longname', name).to_a
     ]
     # If no result, minimize string distance
     if ret[1].empty?
