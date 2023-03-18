@@ -54,7 +54,6 @@ module MonkeyPatches
 
   # Customize Discordrb's log format to match outte's, for neatness
   def self.patch_discordrb
-    ::Discordrb.const_set("LOG_TIMESTAMP_FORMAT", DATE_FORMAT_LOG)
     ::Discordrb::Logger.class_eval do
       def simple_write(stream, message, mode, thread_name, timestamp)
         Log.write(message, mode[:long].downcase.to_sym)

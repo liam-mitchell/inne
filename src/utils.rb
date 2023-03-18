@@ -321,22 +321,42 @@ end
 # Computes the name of a highscoreable based on the ID and type, e.g.:
 # Type = 0, ID = 2637 ---> SU-C-09-02
 def compute_name(id, type)
-  tab = TABS_NEW.find{ |_, t| (t[:start]...t[:start] + t[:size]).include?(id) }
+  # Fetch corresponding tab
+  tab = TABS_NEW.find{ |_, t| (t[:start]...t[:start] + t[:size]).include?(id * 5 ** type) }
   return nil if tab.nil?
   tab = tab[1]
-  tab_offset = id - tab[:start]
+
+  # Precompute some values
+  rows = tab[:x] ? 6 : 5
+  f = 5 ** type
+  f2 = type < 2 ? f : 5 * rows
+
+  # Compute offset in tab and file
+  tab_offset = id - tab[:start] / f
   file_offset = tab_offset
-  count = tab[:files].values[0]
+  count = tab[:files].values[0] / f2
   tab[:files].values.inject(0){ |sum, n|
     if sum <= tab_offset
       file_offset = tab_offset - sum
-      count = n
+      count = n / f2
     end
-    sum + n
+    sum + n / f2
   }
-  rows = tab[:x] ? 6 : 5
-  cols = count / rows
+
+  #
+  cols = count / (5 * rows)
+  pad = tab_offset - file_offset
   episode_offset = file_offset / 5
+  if tab[:x] && episode_offset >= 5 * count / (5 * 6)
+    letter = 'X'
+    column_offset = episode_offset % cols
+  else
+    letter = ('A'..'E').to_a[episode_offset % 5]
+    column_offset = episode_offset / 5
+  end
+  col = column_offset + pad / (5 * rows)
+  lvl = tab_offset % 5
+  "#{tab[:code]}-#{letter}-#{"%02d" % col}-#{"%02d" % lvl}"
 end
 
 # Permission system:
