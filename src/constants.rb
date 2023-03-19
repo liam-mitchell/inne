@@ -2,13 +2,13 @@
 # <------                   DEVELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = false  # Switch to the local test bot
+TEST           = true  # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
-RESPOND        = false  # Respond to pings / DMs (for testing)
-BYEBUG         = false # Breakpoint right after loading the bot
+RESPOND        = true  # Respond to pings / DMs (for testing)
+BYEBUG         = true # Breakpoint right after loading the bot
 
 # <--------------------------------------------------------------------------->
 # <------                     LOGGING VARIABLES                         ------>

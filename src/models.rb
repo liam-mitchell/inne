@@ -352,7 +352,7 @@ module HighScore
 
   def difference(old)
     scores.map do |score|
-      oldscore = old.find { |o| o['player']['name'] == score.player.name }
+      oldscore = old.find { |o| o['player_id'] == score.player_id }
       change = nil
 
       if oldscore
