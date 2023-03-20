@@ -327,6 +327,10 @@ end
 #   4) Lastly, and perhaps most importantly, some tabs in Coop and Race are
 #      actually split in multiple files, with the corresponding bits of
 #      X row staggered at the end of each one.
+# NOTE: Some invalid IDs will return valid names rather than nil, e.g., if
+# type is story and ID = 120, it will return "!-00", a non-existing story.
+# This is a consequence of the algorithm, but it's harmless if only correct
+# IDs are inputted.
 def compute_name(id, type)
   return nil if ![0, 1, 2].include?(type)
   f = 5 ** type # scaling factor

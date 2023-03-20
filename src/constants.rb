@@ -267,12 +267,12 @@ TABS = {
   }
 }
 
-# TODO: Complete this with all other modes
 # TODO: Use this wherever TABS is being used, and also in parse_tabs, then delete TABS
 TABS_NEW = {
   SI: {
     code:   'SI',
     mode:   0,
+    tab:    0,
     name:   'Intro',
     start:  0,
     size:   125,
@@ -283,6 +283,7 @@ TABS_NEW = {
   S: {
     code:   'S',
     mode:   0,
+    tab:    1,
     name:   'Solo',
     start:  600,
     size:   600,
@@ -290,10 +291,10 @@ TABS_NEW = {
     x:      true,
     secret: false
   },
-  SL: 
-  {
+  SL: {
     code:   'SL',
     mode:   0,
+    tab:    2,
     name:   'Legacy',
     start:  1200,
     size:   600,
@@ -301,19 +302,10 @@ TABS_NEW = {
     x:      true,
     secret: false
   },
-  SU: {
-    code:   'SU',
-    mode:   0,
-    name:   'Ultimate',
-    start:  2400,
-    size:   600,
-    files:  { 'S2' => 600 },
-    x:      true,
-    secret: false
-  },
   SS: {
     code:   '?',
     mode:   0,
+    tab:    3,
     name:   'Secret',
     start:  1800,
     size:   120,
@@ -321,15 +313,93 @@ TABS_NEW = {
     x:      true,
     secret: true,
   },
+  SU: {
+    code:   'SU',
+    mode:   0,
+    tab:    4,
+    name:   'Ultimate',
+    start:  2400,
+    size:   600,
+    files:  { 'S2' => 600 },
+    x:      true,
+    secret: false
+  },
   SS2: {
     code:   '!',
     mode:   0,
+    tab:    5,
     name:   'Ultimate Secret',
     start:  3000,
     size:   120,
     files:  { 'SS2' => 120 },
     x:      true,
     secret: true
+  },
+  CI: {
+    code:   'CI',
+    mode:   1,
+    tab:    0,
+    name:   'Coop Intro',
+    start:  4200,
+    size:   50,
+    files:  { 'CI' => 50 },
+    x:      false,
+    secret: false
+  },
+  C: {
+    code:   'C',
+    mode:   1,
+    tab:    1,
+    name:   'Coop',
+    start:  4800,
+    size:   600,
+    files:  { 'C' => 300, 'C2' => 300 },
+    x:      true,
+    secret: false
+  },
+  CL: {
+    code:   'CL',
+    mode:   1,
+    tab:    2,
+    name:   'Coop Legacy',
+    start:  5400,
+    size:   330,
+    files:  { 'CL' => 120, 'CL2' => 210 },
+    x:      true,
+    secret: false
+  },
+  RI: {
+    code:   'RI',
+    mode:   2,
+    tab:    0,
+    name:   'Race Intro',
+    start:  8400,
+    size:   25,
+    files:  { 'RI' => 25 },
+    x:      false,
+    secret: false
+  },
+  R: {
+    code:   'R',
+    mode:   2,
+    tab:    1,
+    name:   'Race',
+    start:  9000,
+    size:   600,
+    files:  { 'R' => 300, 'R2' => 300 },
+    x:      true,
+    secret: false
+  },
+  RL: {
+    code:   'RL',
+    mode:   2,
+    tab:    2,
+    name:   'Race Legacy',
+    start:  9600,
+    size:   570,
+    files:  { 'RL' => 120, 'RL2' => 450 },
+    x:      true,
+    secret: false
   }
 }
 
