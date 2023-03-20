@@ -236,7 +236,7 @@ class MappackLevel < ActiveRecord::Base
   has_many :mappack_archives, as: :highscoreable
   belongs_to :mappack
   belongs_to :mappack_episode, foreign_key: :episode_id
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 
 class MappackEpisode < ActiveRecord::Base
@@ -249,7 +249,7 @@ class MappackEpisode < ActiveRecord::Base
   has_many :mappack_archives, as: :highscoreable
   belongs_to :mappack
   belongs_to :mappack_story, foreign_key: :story_id
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 
 class MappackStory < ActiveRecord::Base
@@ -260,7 +260,7 @@ class MappackStory < ActiveRecord::Base
   has_many :mappack_scores, ->{ order(:rank) }, as: :highscoreable
   has_many :mappack_archives, as: :highscoreable
   belongs_to :mappack
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 
 class MappackScore < ActiveRecord::Base
@@ -275,13 +275,13 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 
 class MappackArchive < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2, :CI, :C, :CL, :RI, :R, :RL]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 
 class MappackDemo < ActiveRecord::Base

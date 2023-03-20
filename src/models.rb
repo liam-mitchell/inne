@@ -388,7 +388,7 @@ module HighScore
   #   appears in the game).
   def nav(c)
     tabs    = self.class.to_s == "Level" ? 6 : 4
-    ids     = [:SI, :S, :SU, :SL, :SS, :SS2][0.. tabs - 1].map{ |t| [ TABS[self.class.to_s][t][0][0], TABS[self.class.to_s][t][0][-1] ] }
+    ids     = [:SI, :S, :SU, :SL, :SS, :SS2][0...tabs].map{ |t| [ TABS[self.class.to_s][t][0][0], TABS[self.class.to_s][t][0][-1] ] }
     new_id  = nil
     new_id2 = nil
 
@@ -438,7 +438,7 @@ class Level < ActiveRecord::Base
   has_many :challenges
   has_many :level_aliases
   belongs_to :episode
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   def add_alias(a)
     LevelAlias.find_or_create_by(level: self, alias: a)
@@ -459,7 +459,7 @@ class Episode < ActiveRecord::Base
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :levels
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   def self.cleanliness(tabs, rank = 0)
     bench(:start) if BENCHMARK
@@ -548,7 +548,7 @@ class Story < ActiveRecord::Base
   include HighScore
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   def format_name
     "#{name}"
@@ -562,7 +562,7 @@ class Score < ActiveRecord::Base
   belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
   belongs_to :story,   -> { where(scores: {highscoreable_type: 'Story'}) },   foreign_key: 'highscoreable_id'
 #  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
-  enum tab:  [ :SI, :S, :SU, :SL, :SS, :SS2 ]
+  enum tab:  TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # Filter all scores by type, tabs, rank, etc.
   # Param 'level' indicates how many filters to apply
@@ -760,7 +760,7 @@ class Score < ActiveRecord::Base
 
   def self.total_scores(type, tabs, secrets)
     bench(:start) if BENCHMARK
-    tabs = (tabs.empty? ? [:SI, :S, :SL, :SU, :SS, :SS2] : tabs)
+    tabs = (tabs.empty? ? [:SI, :S, :SL, :SS, :SU, :SS2] : tabs)
     tabs = (secrets ? tabs : tabs - [:SS, :SS2])
     ret = self.where(highscoreable_type: type.to_s, tab: tabs, rank: 0)
               .pluck('SUM(score)', 'COUNT(score)')
@@ -1276,7 +1276,7 @@ end
 
 class RankHistory < ActiveRecord::Base
   belongs_to :player
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   def self.compose(rankings, type, tab, rank, ties, time)
     rankings.select { |r| r[1] > 0 }.map do |r|
@@ -1296,7 +1296,7 @@ end
 
 class PointsHistory < ActiveRecord::Base
   belongs_to :player
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   def self.compose(rankings, type, tab, time)
     rankings.select { |r| r[1] > 0 }.map do |r|
@@ -1314,7 +1314,7 @@ end
 
 class TotalScoreHistory < ActiveRecord::Base
   belongs_to :player
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   def self.compose(rankings, type, tab, time)
     rankings.select { |r| r[1] > 0 }.map do |r|
@@ -1385,7 +1385,7 @@ end
 class Archive < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
-  enum tab: [:SI, :S, :SU, :SL, :SS, :SS2]
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # Returns the leaderboards at a particular point in time
   def self.scores(highscoreable, date)

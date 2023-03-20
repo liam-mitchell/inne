@@ -268,6 +268,7 @@ TABS = {
 }
 
 # TODO: Use this wherever TABS is being used, and also in parse_tabs, then delete TABS
+# All tab information. DO NOT change order (it's mapped to the database)
 TABS_NEW = {
   SI: {
     code:   'SI',

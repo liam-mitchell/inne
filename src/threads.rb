@@ -316,7 +316,7 @@ end
 def update_histories
   log("updating histories...")
   now = Time.now
-  [:SI, :S, :SU, :SL, :SS, :SS2].each do |tab|
+  [:SI, :S, :SL, :SS, :SU, :SS2].each do |tab|
     [Level, Episode, Story].each do |type|
       next if (type == Episode || type == Story) && [:SS, :SS2].include?(tab)
 
