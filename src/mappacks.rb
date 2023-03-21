@@ -36,6 +36,48 @@ module Map
     0x1B => { name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86 },
     0x1C => { name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88 }
   }
+  FIXED_OBJECTS = [0, 1, 2, 3, 4, 7, 9, 16, 17, 18, 19, 21, 22, 24, 25, 28]
+  THEMES = [
+    "acid",           "airline",         "argon",         "autumn",
+    "BASIC",          "berry",           "birthday cake", "bloodmoon",
+    "blueprint",      "bordeaux",        "brink",         "cacao",
+    "champagne",      "chemical",        "chococherry",   "classic",
+    "clean",          "concrete",        "console",       "cowboy",
+    "dagobah",        "debugger",        "delicate",      "desert world",
+    "disassembly",    "dorado",          "dusk",          "elephant",
+    "epaper",         "epaper invert",   "evening",       "F7200",
+    "florist",        "formal",          "galactic",      "gatecrasher",
+    "gothmode",       "grapefrukt",      "grappa",        "gunmetal",
+    "hazard",         "heirloom",        "holosphere",    "hope",
+    "hot",            "hyperspace",      "ice world",     "incorporated",
+    "infographic",    "invert",          "jaune",         "juicy",
+    "kicks",          "lab",             "lava world",    "lemonade",
+    "lichen",         "lightcycle",      "line",          "m",
+    "machine",        "metoro",          "midnight",      "minus",
+    "mir",            "mono",            "moonbase",      "mustard",
+    "mute",           "nemk",            "neptune",       "neutrality",
+    "noctis",         "oceanographer",   "okinami",       "orbit",
+    "pale",           "papier",          "papier invert", "party",
+    "petal",          "PICO-8",          "pinku",         "plus",
+    "porphyrous",     "poseidon",        "powder",        "pulse",
+    "pumpkin",        "QDUST",           "quench",        "regal",
+    "replicant",      "retro",           "rust",          "sakura",
+    "shift",          "shock",           "simulator",     "sinister",
+    "solarized dark", "solarized light", "starfighter",   "sunset",
+    "supernavy",      "synergy",         "talisman",      "toothpaste",
+    "toxin",          "TR-808",          "tycho",         "vasquez",
+    "vectrex",        "vintage",         "virtual",       "vivid",
+    "void",           "waka",            "witchy",        "wizard",
+    "wyvern",         "xenon",           "yeti"
+  ]
+  DEFAULT_PALETTE = "vasquez"
+  PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
+  BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
+  ROWS    = 23
+  COLUMNS = 42
+  DIM     = 44
+  WIDTH   = DIM * (COLUMNS + 2)
+  HEIGHT  = DIM * (ROWS + 2)
 
   def self.encode_tiles(tiles)
     Zlib::Deflate.deflate(tiles.flatten.map{ |t| _pack(t, 1) }.join, 9)
@@ -156,6 +198,195 @@ module Map
   rescue => e
     err("Error parsing Metanet map file '#{fn}' for '#{pack}': #{e}")
     nil
+  end
+
+  def tiles
+    Map.decode_tiles(data.tile_data)
+  end
+
+  def objects
+    Map.decode_objects(data.object_data)
+  end
+
+  def format_scores
+    update_scores if !OFFLINE_STRICT
+    if scores.count == 0
+      board = "This userlevel has no highscores!"
+    else
+      board = scores.map{ |s| { score: s.score / 60.0, player: s.player.name } }
+      pad = board.map{ |s| s[:score] }.max.to_i.to_s.length + 4
+      board.each_with_index.map{ |s, i|
+        "#{HighScore.format_rank(i)}: #{format_string(s[:player])} - #{"%#{pad}.3f" % [s[:score]]}"
+      }.join("\n")
+    end
+  end
+
+  # Generate a file with the usual userlevel format
+  # If query is true, then the format for userlevel query files is used (slightly
+  # different header, shorter)
+  def convert(query = false)
+    objs = self.objects
+    # HEADER
+    data = ""
+    if !query
+      data << ("\x00" * 4).force_encoding("ascii-8bit") # magic number ?
+      data << _pack(1230 + 5 * objs.size, 4)            # Filesize
+    end
+    data << ("\xFF" * 4).force_encoding("ascii-8bit")   # Level ID (unset)
+    data << _pack(Userlevel.modes[self.mode], 4)        # Game mode
+    data << _pack(37, 4)                                # QT (unset, max is 36)
+    data << (query ? _pack(self.author_id, 4) : ("\xFF" * 4).force_encoding("ascii-8bit"))
+    data << ("\x00" * 4).force_encoding("ascii-8bit")   # Fav count (unset)
+    data << ("\x00" * 10).force_encoding("ascii-8bit")  # Date SystemTime (unset)
+    data << self.title[0..126].ljust(128,"\x00").force_encoding("ascii-8bit") # map title
+    data << ("\x00" * 16).force_encoding("ascii-8bit")  # Author name (unset)
+    data << ("\x00" * 2).force_encoding("ascii-8bit")   # Padding
+
+    # MAP DATA
+    tile_data = self.tiles.flatten.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join
+    object_counts = [0] * 40
+    object_data = ""
+    objs.each{ |o| object_counts[o[0]] += 1 }
+    objs.group_by{ |o| o[0] }
+    object_counts[7] = 0
+    object_counts[9] = 0
+    object_counts = object_counts.map{ |c| _pack(c, 2) }.join
+    object_data = objs.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
+=begin # Don't remove, as this is the code that works if objects aren't already sorted in the database
+    OBJECTS.sort_by{ |id, entity| id }.each{ |id, entity|
+      if ![7,9].include?(id) # ignore door switches for counting
+        object_counts << objs.select{ |o| o[0] == id }.size.to_s(16).rjust(4,"0").scan(/../).reverse.map{ |b| [b].pack('H*')[0] }.join
+      else
+        object_counts << "\x00\x00"
+      end
+      if ![6,7,8,9].include?(id) # doors must once again be treated differently
+        object_data << objs.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
+      elsif [6,8].include?(id)
+        doors = objs.select{ |o| o[0] == id }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
+        switches = objs.select{ |o| o[0] == id + 1 }.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }
+        object_data << doors.zip(switches).flatten.join
+      end
+    }
+=end
+    data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
+    data
+  end
+
+  # <-------------------------------------------------------------------------->
+  #                           SCREENSHOT GENERATOR
+  # <-------------------------------------------------------------------------->
+
+  def coord(n) # transform N++ coordinates into pixel coordinates
+    DIM * n.to_f / 4
+  end
+
+  def check_dimensions(image, x, y) # ensure image is within limits
+    x >= 0 && y >= 0 && x <= WIDTH - image.width && y <= HEIGHT - image.height
+  end
+
+  # The following two methods are used for theme generation
+  def mask(image, before, after, bg = WHITE, tolerance = 0.5)
+    new_image = ChunkyPNG::Image.new(image.width, image.height, TRANSPARENT)
+    image.width.times{ |x|
+      image.height.times{ |y|
+        score = euclidean_distance_rgba(image[x,y], before).to_f / MAX_EUCLIDEAN_DISTANCE_RGBA
+        if score < tolerance then new_image[x,y] = ChunkyPNG::Color.compose(after, bg) end
+      }
+    }
+    new_image
+  end
+
+  # Generate the image of an object in the specified palette, by painting and combining each layer.
+  # Note: "special" indicates that we take the special version of the layers. In practice,
+  # this is used because we can't rotate images 45 degrees with this library, so we have a
+  # different image for that, which we call special.
+  def generate_object(object_id, palette_id, object = true, special = false)
+    # Select necessary layers
+    parts = Dir.entries("images/#{object ? "object" : "tile"}_layers").select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
+    parts_normal = parts.select{ |file| file[-6] == "-" }
+    parts_special = parts.select{ |file| file[-6] == "s" }
+    parts = (!special ? parts_normal : (parts_special.empty? ? parts_normal : parts_special))
+
+    # Paint and combine the layers
+    masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file("images/#{object ? "object" : "tile"}_layers/" + part)] }
+    images = masks.map{ |mask| mask(mask[1], BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id]) }
+    dims = [ [DIM, *images.map{ |i| i.width }].max, [DIM, *images.map{ |i| i.height }].max ]
+    output = ChunkyPNG::Image.new(*dims, TRANSPARENT)
+    images.each{ |image| output.compose!(image, 0, 0) }
+    output
+  end
+
+  def screenshot(theme = DEFAULT_PALETTE)
+    bench(:start) if BENCHMARK
+    themes = THEMES.map(&:downcase)
+    theme = theme.downcase
+    if !themes.include?(theme) then theme = DEFAULT_PALETTE end
+
+    # INITIALIZE IMAGES
+    tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, themes.index(theme), false)] }.to_h
+    object = OBJECTS.keys.map{ |o| [o, generate_object(o, themes.index(theme))] }.to_h
+    object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, themes.index(theme), true, true)] }.to_h
+    object.merge!(object_special)
+    border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
+    image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, themes.index(theme)])
+
+    # PARSE MAP
+    tiles = self.tiles.map(&:dup)
+    objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
+    objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
+
+    # PAINT OBJECTS
+    objects.each do |o|
+      new_object = !(o[3] % 2 == 1 && [10, 11].include?(o[0])) ? object[o[0]] : object[o[0] + 29]
+      if !FIXED_OBJECTS.include?(o[0]) then (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } end
+      if check_dimensions(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
+        image.compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
+      end
+    end
+
+    # PAINT TILES
+    tiles.each{ |row| row.unshift(1).push(1) }
+    tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2))
+    tiles = tiles.map{ |row| row.map{ |tile| tile > 33 ? 0 : tile } } # remove glitched tiles
+    tiles.each_with_index do |slice, row|
+      slice.each_with_index do |t, column|
+        if t == 0 || t == 1 # empty and full tiles
+          new_tile = tile[t]
+        elsif t >= 2 && t <= 17 # half tiles and curved slopes
+          new_tile = tile[t - (t - 2) % 4]
+          (1 .. (t - 2) % 4).each{ |i| new_tile = new_tile.rotate_clockwise }
+        elsif t >= 18 && t <= 33 # small and big straight slopes
+          new_tile = tile[t - (t - 2) % 4]
+          if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
+          if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
+        else
+          new_tile = tile[0]
+        end
+        image.compose!(new_tile, DIM * column, DIM * row)
+      end
+    end
+
+    # PAINT TILE BORDERS
+    edge = ChunkyPNG::Image.from_file('images/b.png')
+    edge = mask(edge, BLACK, PALETTE[1, themes.index(theme)])
+    (0 .. ROWS).each do |row| # horizontal
+      (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
+        tile_a = tiles[row][col / 2]
+        tile_b = tiles[row + 1][col / 2]
+        bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
+        if bool == 1 then image.compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) end
+      end
+    end
+    (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
+      (0 .. COLUMNS).each do |col|
+        tile_a = tiles[row / 2][col]
+        tile_b = tiles[row / 2][col + 1]
+        bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
+        if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
+      end
+    end
+    bench(:step) if BENCHMARK
+    image.to_blob
   end
 end
 
@@ -317,6 +548,7 @@ class MappackData < ActiveRecord::Base
 end
 
 class MappackLevel < ActiveRecord::Base
+  include Map
   alias_attribute :scores, :mappack_scores
   alias_attribute :archives, :mappack_archives
   alias_attribute :episode, :mappack_episode
@@ -325,6 +557,10 @@ class MappackLevel < ActiveRecord::Base
   belongs_to :mappack
   belongs_to :mappack_episode, foreign_key: :episode_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  def data
+    MappackData.find(self.id)
+  end
 end
 
 class MappackEpisode < ActiveRecord::Base
@@ -373,5 +609,10 @@ class MappackArchive < ActiveRecord::Base
 end
 
 class MappackDemo < ActiveRecord::Base
+
+end
+
+def respond_mappacks(event)
+  msg = remove_mentions(event.content)
 
 end

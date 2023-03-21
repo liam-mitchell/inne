@@ -435,11 +435,11 @@ def assert_permissions(event, roles = [])
 end
 
 def clean_userlevel_message(msg)
-  msg.sub(/(for|of)?\s*\w*userlevel\w*\s*/i, '').strip
+  msg.sub(/(for|of)?\w*userlevel\w*/i, '').squish
 end
 
 def remove_word_first(msg, word)
-  msg.sub(/\s*\w*#{word}\w*\s*/i, '').strip
+  msg.sub(/\w*#{word}\w*/i, '').squish
 end
 
 # Find Discord server the bot is in, by name

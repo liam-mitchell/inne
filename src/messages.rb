@@ -1729,14 +1729,21 @@ def send_mappack_seed(event)
   event << "Seeded mappacks"
 end
 
+def send_mappack_screenshot(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  send_file(event, MappackLevel.find(flags[:id]).screenshot, flags[:id].to_s + ".png", true)
+end
+
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
   cmd = msg[/^!(\w+)/i, 1]
   return if cmd.nil?
-  send_reaction(event)     if cmd == 'react'
-  send_unreaction(event)   if cmd == 'unreact'
-  send_mappack_seed(event) if cmd == 'mappack_seed'
+  send_reaction(event)           if cmd == 'react'
+  send_unreaction(event)         if cmd == 'unreact'
+  send_mappack_seed(event)       if cmd == 'mappack_seed'
+  send_mappack_screenshot(event) if cmd == 'mappack_screenshot'
 rescue RuntimeError => e
   event << e
 end
@@ -1759,6 +1766,12 @@ def respond(event)
   # userlevel methods
   if !!msg[/userlevel/i]
     respond_userlevels(event)
+    return
+  end
+
+  # mappack methods
+  if !!msg[/mappack/i]
+    respond_mappacks(event)
     return
   end
 
