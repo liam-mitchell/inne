@@ -147,13 +147,15 @@ module Map
 
     maps = File.binread(file).split("\n").take(limit)
     count = maps.count
-    maps.each_with_index.map{ |m, i|
-      log("Parsing map #{"%-3d" % (i + 1)} / #{count} from '#{fn}' for '#{pack}'...", newline: false)
-      parse_metanet_map(m, i, File.basename(file), pack)
+    maps = maps.each_with_index.map{ |m, i|
+      dbg("Parsing map #{"%-3d" % (i + 1)} / #{count} from '#{fn}' for '#{pack}'...", newline: false)
+      parse_metanet_map(m, i, fn, pack)
     }
-    succ("Parsed Metanet map file '#{File.basename(file)}'", pad: true)
+    Log.clear
+    maps
   rescue => e
-    err("Error parsing Metanet map file '#{File.basename(file)}' for '#{pack}': #{e}")
+    err("Error parsing Metanet map file '#{fn}' for '#{pack}': #{e}")
+    nil
   end
 end
 
@@ -164,10 +166,13 @@ class Mappack < ActiveRecord::Base
   has_many :mappack_levels
   has_many :mappack_episodes
   has_many :mappack_stories
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # TODO: Add botmaster command to execute this function
   # TODO: Add botmaster command to add remaining details to a mappack (title,
   #       authors, etc)
+  # Parse all mappacks in the mappack directory into the database
+  # Only reads the newly added mappacks, unless 'update' is true
   def self.seed(update = false)
     if !Dir.exist?(DIR_MAPPACKS)
       err("Mappacks directory not found, not seeding")
@@ -187,38 +192,121 @@ class Mappack < ActiveRecord::Base
     err("Error seeding mappacks to database")
   end
 
+  # Parses map files corresponding to this mappack, and updates the database
   def read
+    # Check for mappack directory
+    log("Parsing mappack '#{code}'...")
     dir = File.join(DIR_MAPPACKS, "#{id}_#{code}")
     if !Dir.exist?(dir)
       err("Directory for mappack '#{code}' not found, not reading")
       return
     end
 
+    # Fetch mappack files
     files = Dir.entries(dir).select{ |f|
       path = File.join(dir, f)
       File.file?(path) && File.extname(path) == ".txt"
-    }
+    }.sort
     warn("No appropriate files found in directory for mappack '#{code}'") if files.count == 0
 
+    # Delete old database records
+    MappackLevel.where(mappack_id: id).delete_all
+    MappackEpisode.where(mappack_id: id).delete_all
+    MappackStory.where(mappack_id: id).delete_all
+
+    # Parse mappack files
+    file_errors = 0
+    map_errors = 0
     files.each{ |f|
+      # Find corresponding tab
       tab_code = f[0..-5]
-      tab = TABS_NEW.find{ |tab, attr| attr[:files].key?(tab_code) }
+      tab = TABS_NEW.find{ |tab, att| att[:files].key?(tab_code) }
       if tab.nil?
         warn("Unrecognized file '#{tab_code}' parsing mappack '#{code}'")
         next
       end
-      Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code], code)
-         .each_with_index{ |m, i|
-        MappackLevel.find_or_create_by(id: TYPES[0][:slots] * id + i).update(
-          inner_id:   i,
+
+      # Parse file
+      maps = Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code], code)
+      if maps.nil?
+        file_errors += 1
+        next
+      end
+
+      # Precompute some indices for the database
+      index          = tab[1][:files].keys.index(tab_code)
+      mappack_offset = TYPES[0][:slots] * id
+      tab_offset     = tab[1][:start]
+      file_offset    = tab[1][:files].values.take(index).sum
+
+      # Create new database records
+      count = maps.count
+      maps.each_with_index{ |map, map_offset|
+        dbg("Creating record #{"%-3d" % (map_offset + 1)} / #{count} from '#{f}' for '#{code}'...", newline: false)
+        if map.nil?
+          map_errors += 1
+          next
+        end
+        tab_id   = file_offset    + map_offset # ID of level within tab
+        inner_id = tab_offset     + tab_id     # ID of level within mappack
+        level_id = mappack_offset + inner_id   # ID of level in database
+
+        # Create mappack level and data
+        MappackLevel.find_or_create_by(id: level_id).update(
+          inner_id:   inner_id,
           mappack_id: id,
           mode:       tab[1][:mode],
           tab:        tab[0],
-          episode_id: i / 5,
-          name:       code.upcase + '-'
+          episode_id: level_id / 5,
+          name:       code.upcase + '-' + compute_name(inner_id, 0),
+          longname:   map[:title].strip,
+        )
+        MappackData.find_or_create_by(id: level_id).update(
+          tile_data:   Map.encode_tiles(map[:tiles]),
+          object_data: Map.encode_objects(map[:objects])
+        )
+
+        # Create corresponding mappack episode, except for secret tabs.
+        next if tab[1][:secret]
+        story = tab[1][:mode] == 0 && (!tab[1][:x] || map_offset < 5 * tab[1][:files][tab_code] / 6)
+        MappackEpisode.find_or_create_by(id: level_id / 5).update(
+          id:         level_id / 5,
+          inner_id:   inner_id / 5,
+          mappack_id: id,
+          mode:       tab[1][:mode],
+          tab:        tab[0],
+          story_id:   story ? level_id / 25 : nil,
+          name:       code.upcase + '-' + compute_name(inner_id / 5, 1)
+        )
+
+        # Create corresponding mappack story, only for non-X-Row Solo.
+        next if !story
+        MappackStory.find_or_create_by(id: level_id / 25).update(
+          id:         level_id / 25,
+          inner_id:   inner_id / 25,
+          mappack_id: id,
+          mode:       tab[1][:mode],
+          tab:        tab[0],
+          name:       code.upcase + '-' + compute_name(inner_id / 25, 2)
         )
       }
+      Log.clear
+
+      # Log results
+      count = maps.count(nil)
+      map_errors += count
+      if count == 0
+        dbg("Parsed file '#{tab_code}' for '#{code}' without errors")
+      else
+        warn("Parsed file '#{tab_code}' for '#{code}' with #{count} errors")
+      end
     }
+
+    if file_errors + map_errors == 0
+      succ("Successfully parsed mappack '#{code}'")
+    else
+      warn("Parsed mappack '#{code}' with #{file_errors} file errors and #{map_errors} map errors")
+    end
   rescue
     err("Error reading mappack '#{code}'")
   end

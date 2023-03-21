@@ -14,13 +14,13 @@ ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 module Log
 
   MODES = {
-    debug: { long: 'DEBUG', short: 'D', fmt: '' },
+    debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[35m" }, # magenta ("in" never happens)
     good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" }, # green
-    info:  { long: 'INFO',  short: 'i', fmt: '' },
+    info:  { long: 'INFO',  short: 'i', fmt: "" },
     warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" }, # yellow
     error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" }, # red
     out:   { long: 'OUT',   short: '→', fmt: "\x1B[36m" }, # cyan
-    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" }, # purple
+    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" }, # magenta
     fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" }, # red background
     msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" }  # blue
   }
@@ -64,6 +64,14 @@ module Log
   def self.succ(msg, **kwargs)
     write(msg, :good, kwargs) if LOG_SUCCESS
   end
+
+  def self.dbg(msg, **kwargs)
+    write(msg, :debug, kwargs) if LOG_DEBUG
+  end
+
+  def self.clear
+    write('', :info, newline: false, pad: true)
+  end
 end
 
 def log(msg,  **kwargs) Log.log(msg,  kwargs) end
@@ -71,6 +79,7 @@ def warn(msg, **kwargs) Log.warn(msg, kwargs) end
 def err(msg,  **kwargs) Log.err(msg,  kwargs) end
 def msg(msg,  **kwargs) Log.msg(msg,  kwargs) end
 def succ(msg, **kwargs) Log.succ(msg, kwargs) end
+def dbg(msg,  **kwargs) Log.dbg(msg,  kwargs) end
 
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute

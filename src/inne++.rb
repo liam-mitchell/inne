@@ -229,5 +229,4 @@ run_bot
 set_channels
 start_threads
 byebug if BYEBUG
-#Mappack.seed(true)
 block_threads

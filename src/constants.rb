@@ -8,18 +8,19 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
-BYEBUG         = true # Breakpoint right after loading the bot
+BYEBUG         = false # Breakpoint right after loading the bot
 
 # <--------------------------------------------------------------------------->
 # <------                     LOGGING VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-LOG            = true  # Log stuff to the terminal (superseeds the next 5 ones)
+LOG            = true  # Log stuff to the terminal (superseeds the next 6 ones)
 LOG_INFO       = true  # Log info to the terminal
 LOG_WARNINGS   = true  # Log warnings to the terminal
 LOG_ERRORS     = true  # Log errors to the terminal
 LOG_MSGS       = true  # Log mentions and DMs to outte
 LOG_SUCCESS    = true  # Log successes
+LOG_DEBUG      = true  # Log debug messages
 LOG_FANCY      = true  # Format logs (bold, colors...)
 LOG_TO_FILE    = false # Export logs and errors into external file
 LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)

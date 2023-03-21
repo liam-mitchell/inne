@@ -1724,13 +1724,19 @@ def send_unreaction(event)
   unreact(flags[:c], flags[:m], flags[:r])
 end
 
+def send_mappack_seed(event)
+  Mappack.seed(true)
+  event << "Seeded mappacks"
+end
+
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
   cmd = msg[/^!(\w+)/i, 1]
   return if cmd.nil?
-  send_reaction(event) if cmd == 'react'
-  send_unreaction(event) if cmd == 'unreact'
+  send_reaction(event)     if cmd == 'react'
+  send_unreaction(event)   if cmd == 'unreact'
+  send_mappack_seed(event) if cmd == 'mappack_seed'
 rescue RuntimeError => e
   event << e
 end

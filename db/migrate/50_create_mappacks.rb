@@ -43,6 +43,7 @@ class CreateMappacks < ActiveRecord::Migration[5.1]
     create_table :mappack_scores do |t|
       t.integer :rank,               index: true, limit: 1
       t.integer :tied_rank,          index: true, limit: 1
+      t.integer :tab,                index: true, limit: 1
       t.integer :player_id,          index: true
       t.integer :mappack_id,         index: true
       t.integer :highscoreable_id,   index: true
@@ -63,6 +64,16 @@ class CreateMappacks < ActiveRecord::Migration[5.1]
 
     create_table :mappack_demos do |t|
       t.binary :demo
+    end
+
+    create_table :mappack_challenges do |t|
+      t.integer :level_id, index: true
+      t.integer :index,    limit: 1
+      t.integer :g,        limit: 1
+      t.integer :t,        limit: 1
+      t.integer :o,        limit: 1
+      t.integer :c,        limit: 1
+      t.integer :e,        limit: 1
     end
   end
 end
