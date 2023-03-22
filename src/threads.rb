@@ -650,7 +650,8 @@ def start_threads
   $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { potato }                    if POTATO && !DO_NOTHING
-  $threads << Thread.new { Sock::start }               if SOCKET && !DO_NOTHING
+  $threads << Thread.new { Sock::start_cuse }          if SOCKET && CUSE_SOCKET && !DO_NOTHING
+  $threads << Thread.new { Sock::start_cle }           if SOCKET && CLE_SOCKET && !DO_NOTHING
   $threads << Thread.new { sleep }
 end
 

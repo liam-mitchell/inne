@@ -211,14 +211,29 @@ TWITCH_BLACKLIST = [
 # <------                      SOCKET VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-# Variables that control the TCP socket we open to listen to the N++ Search
-# Engine, a tool that uses outte's database to perform custom userlevel queries
-# and inject them directly in-game.
+# Variables that control the different TCP servers that outte starts in order
+# to provide custom functionality to N++ players:
+#
+# 1) CUSE - Custom Userlevel Search Engine
+#    Generates custom userlevel searches that users with the corresponding tool
+#    can inject directly into their N++ game to expand the native searching
+#    functionalities by using outte's database of userlevels.
+# 2) CLE - Custom Leaderboard Engine
+#    Provides 3rd party leaderboards hosted in outte's database, that people
+#    with the corresponding tool can connect to, so they can highscore custom
+#    mappacks.
 
-SOCKET           = true # Whether to open socket or not
-SOCKET_PORT      = 8125 # Port to listen to
+SOCKET           = true # Whether to open sockets or not
+CUSE_SCOKET      = true # Open CUSE socket
+CLE_SOCKET       = true # Open CLE socket
+CUSE_PORT        = 8125 # Port for CUSE's TCP server
+CLE_PORT         = 8126 # Port for CLE's TCP server
+
+# CUSE-specific variables
 QUERY_LIMIT_SOFT = 25   # Number of queried userlevels per page
 QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
+
+# CLE-specific variables
 
 # <--------------------------------------------------------------------------->
 # <------                       GAME VARIABLES                          ------>

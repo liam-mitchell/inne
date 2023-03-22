@@ -1873,29 +1873,47 @@ module Sock extend self
     end
     req
   end
-
-  def parse(req)
-    req
-  end
-
-  def handle(req)
-    ret = send_userlevel_browse(nil, socket: req.dup)
-    Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
-  end
   
   # TODO: Investigate what happens when we kill the program when a connection
   # is happening, can the socket remain open?
-  def start
-    server = TCPServer.new(SOCKET_PORT)
+
+  # Start a TCP server at the specified port. Takes 4 blocks:
+  #   - parser:  Parses the raw request
+  #   - handler: Crafts the raw response
+  #   - logger:  Logs appropriate msg to the terminal
+  #   - catcher: Handles exceptions
+  def start(port, parser, handler, logger, catcher)
+    server = TCPServer.new(port)
     loop do
       Thread.start(server.accept) do |client|
-        req = parse(read(client))
-        client.write(handle(req))
+        req = parser.(read(client))
+        client.write(handler.(req))
         client.close
-        log("Proxied request: #{req}")
+        logger.("Proxied request: #{req}")
       end
     end
   rescue => e
-    err("Socket failed: #{e}")
+    catcher.(e)
+  end
+
+  # Starts CUSE server to serve custom userlevel searches
+  def start_cuse
+    handler = lambda { |req|
+      ret = send_userlevel_browse(nil, socket: req.dup)
+      Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
+    }
+    start(
+      CUSE_PORT,
+      ->(req){ req },
+      handler,
+      ->(req){ log("Proxied request: #{req}") },
+      ->(e) { err("Socket failed: #{e}") }
+    )
+  end
+
+  # Start CLE server to serve custom leaderboards
+  def start_cle
+    start(
+    )
   end
 end
