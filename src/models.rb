@@ -1855,14 +1855,14 @@ module Twitch extend self
   end
 end
 
-# The following module encapsulates the functionality of a TCP socket that may
-# optionally be opened with outte to listen to queries for userlevels.
-#
-# This is meant to be the backend of the N++ Search Engine tool, which uses
-# outte's userlevel database and functionality to extend N++'s native userlevel
-# engine, and then proxies Metanet's server and pipes these directly to the game
-# in the format it uses, so that custom searches can be performed in-game.
+# See "Socket Variables" in constants.rb for docs
 module Sock extend self
+  DEFAULT_RESPONSES = {
+    good: "HTTP/1.1 200 OK",
+    bad: "HTTP/1.1 400 Bad Request"
+  }
+
+  # Reads from an open socket
   def read(client)
     req = ""
     begin
@@ -1877,43 +1877,121 @@ module Sock extend self
   # TODO: Investigate what happens when we kill the program when a connection
   # is happening, can the socket remain open?
 
-  # Start a TCP server at the specified port. Takes 4 blocks:
-  #   - parser:  Parses the raw request
-  #   - handler: Crafts the raw response
-  #   - logger:  Logs appropriate msg to the terminal
-  #   - catcher: Handles exceptions
-  def start(port, parser, handler, logger, catcher)
+  # Start a TCP server at the specified port
+  def start(port)
     server = TCPServer.new(port)
     loop do
       Thread.start(server.accept) do |client|
-        req = parser.(read(client))
-        client.write(handler.(req))
+        req = parse(read(client))
+        client.write(handle(req))
         client.close
-        logger.("Proxied request: #{req}")
+        report(req)
       end
     end
   rescue => e
-    catcher.(e)
+    error(e)
   end
 
-  # Starts CUSE server to serve custom userlevel searches
-  def start_cuse
-    handler = lambda { |req|
-      ret = send_userlevel_browse(nil, socket: req.dup)
-      Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
-    }
-    start(
-      CUSE_PORT,
-      ->(req){ req },
-      handler,
-      ->(req){ log("Proxied request: #{req}") },
-      ->(e) { err("Socket failed: #{e}") }
-    )
+  # Methods to parse elements of an HTTP request
+  def parse_start_line(req)
+    req.split("\n")[0].split
+  rescue
+    ['GET', '/', 'HTTP/1.1']
   end
 
-  # Start CLE server to serve custom leaderboards
-  def start_cle
-    start(
-    )
+  def parse_query(req)
+    _, path, _ = parse_start_line(req)
+    path.split('?')[0].split('/')[-1]
+  rescue
+    ''
+  end
+
+  def parse_attributes(req)
+    _, path, _ = parse_start_line(req)
+    path[/\?(.*?)\#/i, 1].split('&').map{ |pair|
+      pair =~ /(.+?)=(.*)/i
+      !$1.nil? && !$2.nil? ? [$1, $2] : nil
+    }.compact.to_h
+  rescue
+    {}
+  end
+
+  def parse_headers(req)
+    req.split("\r\n\r\n")[0].split("\r\n")[1..-1].map{ |h|
+      pair =~ /(.+?):(.*)/i
+      !$1.nil? && !$2.nil? ? [$1.downcase, $2.squish] : nil
+    }.compact.to_h
+  rescue
+    {}
+  end
+
+  def parse_body(req)
+    req.split("\r\n\r\n")[1..-1].join("\r\n\r\n")
+  rescue
+    ''
+  end
+end
+
+module Cuse extend self
+  extend Sock
+
+  def on
+    start(CUSE_PORT)
+  end
+
+  def parse(req)
+    req
+  end
+
+  def handle(req)
+    ret = send_userlevel_browse(nil, socket: req.dup)
+    Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
+  end
+
+  def report(req)
+    log("Proxied CUSE request: #{req}")
+  end
+
+  def error(e)
+    err("CUSE socket failed: #{e}")
+  end
+end
+
+module Cle extend self
+  extend Sock
+
+  def on
+    start(CLE_PORT)
+  end
+
+  def parse(req)
+    req
+  end
+
+  def handle(req)
+    method, path, _ = parse_start_line(req)
+    mappack = path.split('/')[1]
+    query = parse_query(req)
+    case method
+    when 'GET'
+      DEFAULT_RESPONSES[:bad]
+    when 'POST'
+      case query
+      when 'submit_score'
+        # Implement
+      else
+        DEFAULT_RESPONSES[:bad]
+      end
+    else
+      DEFAULT_RESPONSES[:bad]
+    end
+  end
+
+  def report(req)
+    log("Received CLE request: #{parse_start_line(req)[1]}")
+  end
+
+  def error(e)
+    err("CLE socket failed: #{e}")
   end
 end
