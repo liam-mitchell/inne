@@ -561,8 +561,6 @@ class MappackLevel < ActiveRecord::Base
   def data
     MappackData.find(self.id)
   end
-
-  
 end
 
 class MappackEpisode < ActiveRecord::Base

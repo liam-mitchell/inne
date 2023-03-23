@@ -116,6 +116,7 @@ def create_bot
   $bot = Discordrb::Bot.new(
     token:     $config['discord_secret'],
     client_id: $config['discord_client'],
+    log_mode:  :quiet,
     intents:   [
       :servers,
       :server_members,
@@ -208,6 +209,8 @@ def shutdown
   # We need to perform the shutdown in a new thread, because this method
   # gets called from within a trap context
   Thread.new {
+    Cuse.off
+    Cle.off
     stop_bot
     disconnect_db
     unblock_threads

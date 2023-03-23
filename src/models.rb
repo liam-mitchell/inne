@@ -5,6 +5,7 @@ require 'active_record'
 require 'json'
 require 'net/http'
 require 'socket'
+require 'webrick'
 require 'zlib'
 
 require_relative 'constants.rb'
@@ -56,16 +57,52 @@ module MonkeyPatches
   def self.patch_discordrb
     ::Discordrb::Logger.class_eval do
       def simple_write(stream, message, mode, thread_name, timestamp)
-        Log.write(message, mode[:long].downcase.to_sym)
+        Log.write(message, mode[:long].downcase.to_sym, 'DISRB')
+      end
+    end
+  end
+
+  # Customize WEBRick's log format
+  def self.patch_webrick
+    ::WEBrick::BasicLog.class_eval do
+      def initialize(log_file = nil, level = nil)
+        @level = 3
+        @log = $stderr
+      end
+
+      def log(level, data)
+        return if level > @level
+        data.gsub!(/^(?:FATAL|ERROR|WARN |INFO |DEBUG) /, '')
+        mode = [:fatal, :error, :warn, :info, :debug][level - 1] || :info
+        Log.write(data, mode, 'WEBRK')
+      end
+    end
+
+    ::WEBrick::Log.class_eval do
+      def log(level, data)
+        super(level, data)
+      end
+    end
+
+    ::WEBrick::HTTPServer.class_eval do
+      def access_log(config, req, res)
+        param = ::WEBrick::AccessLog::setup_params(config, req, res)
+        @config[:AccessLog].each{ |logger, fmt|
+          str = ::WEBrick::AccessLog::format(fmt.gsub('%T', ''), param)
+          str += " #{"%.3fms" % (1000 * param['T'])}" if fmt.include?('%T')
+          str.squish!
+          fmt.include?('%s') ? lout(str) : lin(str)
+        }
       end
     end
   end
 
   def self.apply
     return if !MONKEY_PATCH
-    patch_core if MONKEY_PATCH_CORE
+    patch_core         if MONKEY_PATCH_CORE
     patch_activerecord if MONKEY_PATCH_ACTIVE_RECORD
-    patch_discordrb if MONKEY_PATCH_DISCORDRB
+    patch_discordrb    if MONKEY_PATCH_DISCORDRB
+    patch_webrick      if MONKEY_PATCH_WEBRICK
   end
 end
 
@@ -1908,7 +1945,7 @@ module Sock extend self
 
   def parse_attributes(req)
     _, path, _ = parse_start_line(req)
-    path[/\?(.*?)\#/i, 1].split('&').map{ |pair|
+    path[/\?(.*?)(#|$)/i, 1].split('&').map{ |pair|
       pair =~ /(.+?)=(.*)/i
       !$1.nil? && !$2.nil? ? [$1, $2] : nil
     }.compact.to_h
@@ -1936,7 +1973,16 @@ module Cuse extend self
   extend Sock
 
   def on
+    log("Start CUSE server")
     start(CUSE_PORT)
+  rescue => e
+    err("Failed to start CUSE server")
+  end
+
+  def off
+    log("Stopped CUSE server")
+  rescue => e
+    err("Failed to stop CUSE server")
   end
 
   def parse(req)
@@ -1961,7 +2007,28 @@ module Cle extend self
   extend Sock
 
   def on
-    start(CLE_PORT)
+    #start(CLE_PORT)
+    @@server = WEBrick::HTTPServer.new(
+      Port: CLE_PORT,
+      AccessLog: [
+        [$stdout, "%h %m %U"],
+        [$stdout, "%s %b bytes %T"]
+      ]
+    )
+    @@server.mount_proc '/' do |req, res|
+      res.body = 'Hello, World!'
+    end
+    log("Started CLE server")
+    @@server.start
+  rescue => e
+    err("Failed to start CLE server: #{e}")
+  end
+
+  def off
+    @@server.shutdown
+    log("Stopped CLE server")
+  rescue => e
+    err("Failed to stop CLE server: #{e}")
   end
 
   def parse(req)

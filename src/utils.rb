@@ -14,7 +14,7 @@ ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 module Log
 
   MODES = {
-    debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[35m" }, # magenta ("in" never happens)
+    debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[3m\x1B[30m" }, # italic gray
     good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" }, # green
     info:  { long: 'INFO',  short: 'i', fmt: "" },
     warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" }, # yellow
@@ -28,17 +28,18 @@ module Log
   BOLD  = "\x1B[1m"
   RESET = "\x1B[0m"
 
-  def self.write(msg, mode, header = "", header_mode = nil, newline: true, pad: false)
+  def self.write(msg, mode, app = 'OUTTE', newline: true, pad: false)
     return if !LOG
     stream = STDOUT
     stream = STDERR if [:warn, :error, :fatal].include?(mode)
     m = MODES[mode] || MODES[:info]
-    m2 = MODES[header_mode] || MODES[:info]
     date = Time.now.strftime(DATE_FORMAT_LOG)
     type = LOG_FANCY ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]"
-    head = !header.empty? ? ((LOG_FANCY ? "#{m2[:fmt]}#{header}#{RESET}" : header) + ": ") : ""
+    app = " (#{app.ljust(5, ' ')[0...5]})"
+    app = LOG_FANCY ? "#{BOLD}#{app}#{RESET}" : app
+    app = LOG_APPS ? app : ''
     text = LOG_FANCY ? "#{m[:fmt]}#{msg}#{RESET}" : msg
-    msg = "\r[#{date}] #{type} #{head}#{text}"
+    msg = "\r[#{date}] #{type}#{app} #{text}"
     msg = msg.ljust(120, ' ') if pad
     newline ? stream.puts(msg) : stream.print(msg)
     stream.flush
@@ -69,6 +70,14 @@ module Log
     write(msg, :debug, kwargs) if LOG_DEBUG
   end
 
+  def self.lin(msg, **kwargs)
+    write(msg, :in, kwargs) if LOG_DEBUG
+  end
+
+  def self.lout(msg, **kwargs)
+    write(msg, :out, kwargs) if LOG_DEBUG
+  end
+
   def self.clear
     write('', :info, newline: false, pad: true)
   end
@@ -80,6 +89,8 @@ def err(msg,  **kwargs) Log.err(msg,  kwargs) end
 def msg(msg,  **kwargs) Log.msg(msg,  kwargs) end
 def succ(msg, **kwargs) Log.succ(msg, kwargs) end
 def dbg(msg,  **kwargs) Log.dbg(msg,  kwargs) end
+def lin(msg,  **kwargs) Log.lin(msg,  kwargs) end
+def lout(msg, **kwargs) Log.lout(msg, kwargs) end
 
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute

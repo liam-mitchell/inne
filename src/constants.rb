@@ -22,6 +22,7 @@ LOG_MSGS       = true  # Log mentions and DMs to outte
 LOG_SUCCESS    = true  # Log successes
 LOG_DEBUG      = true  # Log debug messages
 LOG_FANCY      = true  # Format logs (bold, colors...)
+LOG_APPS       = false  # Append source app to log msgs
 LOG_TO_FILE    = false # Export logs and errors into external file
 LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)
 LOG_REPORT     = false # Export new weekly scores to a file
@@ -85,6 +86,7 @@ MONKEY_PATCH               = true # Enable monkey patches globally
 MONKEY_PATCH_CORE          = true # Enable Kernel patches (must!)
 MONKEY_PATCH_ACTIVE_RECORD = true # Enable ActiveRecord monkey patches (must!)
 MONKEY_PATCH_DISCORDRB     = true # Enable Discordrb monkey patches (optional)
+MONKEY_PATCH_WEBRICK       = true # Enable WEBrick monkey patches (optional)
 
 # <--------------------------------------------------------------------------->
 # <------                       FORMAT VARIABLES                        ------>
