@@ -8,9 +8,9 @@ require_relative 'models.rb'
 
 ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
 
-# TODO: Perhaps design a more serious logging class, with different levels,
-# from minimal to debug/trace, and use it throughout the program. In that case,
-# only export to file a low logging level, like the standard one.
+# TODO: Implement logging levels, and add special command to change it on the fly
+#       :in and :out should probably be on par with debug (spammy!)
+# TODO: Export to file only high-level stuff
 module Log
 
   MODES = {
@@ -71,11 +71,11 @@ module Log
   end
 
   def self.lin(msg, **kwargs)
-    write(msg, :in, kwargs) if LOG_DEBUG
+    write(msg, :in, kwargs) if LOG_IN
   end
 
   def self.lout(msg, **kwargs)
-    write(msg, :out, kwargs) if LOG_DEBUG
+    write(msg, :out, kwargs) if LOG_OUT
   end
 
   def self.clear
