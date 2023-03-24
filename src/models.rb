@@ -87,6 +87,7 @@ module MonkeyPatches
     ::WEBrick::HTTPServer.class_eval do
       def access_log(config, req, res)
         param = ::WEBrick::AccessLog::setup_params(config, req, res)
+        param['U'] = param['U'].split('?')[0].split('/')[-1]
         @config[:AccessLog].each{ |logger, fmt|
           str = ::WEBrick::AccessLog::format(fmt.gsub('%T', ''), param)
           str += " #{"%.3fms" % (1000 * param['T'])}" if fmt.include?('%T')
@@ -1898,6 +1899,7 @@ module Sock extend self
     good: "HTTP/1.1 200 OK",
     bad: "HTTP/1.1 400 Bad Request"
   }
+  @@servers = {}
 
   # Reads from an open socket
   def read(client)
@@ -1915,6 +1917,7 @@ module Sock extend self
   # is happening, can the socket remain open?
 
   # Start a TCP server at the specified port
+=begin
   def start(port)
     server = TCPServer.new(port)
     loop do
@@ -1927,6 +1930,35 @@ module Sock extend self
     end
   rescue => e
     error(e)
+  end
+=end
+  # Start a basic HTTP server at the specified port
+  def start(port, name)
+    # Create WEBrick HTTP server
+    @@servers[name] = WEBrick::HTTPServer.new(
+      Port: port,
+      AccessLog: [
+        [$stdout, "#{name} %h %m %U"],
+        [$stdout, "#{name} %s %b bytes %T"]
+      ]
+    )
+    # Setup callback for requests
+    @@servers[name].mount_proc '/' do |req, res|
+      handle(req, res)
+    end
+    # Start server (blocks thread)
+    log("Started #{name} server")
+    @@servers[name].start
+  rescue => e
+    err("Failed to start #{name} server: #{e}")
+  end
+
+  # Stops server, needs to be summoned from another thread
+  def stop(name)
+    @@servers[name].shutdown
+    log("Stopped #{name} server")
+  rescue => e
+    err("Failed to stop #{name} server: #{e}")
   end
 
   # Methods to parse elements of an HTTP request
@@ -2007,58 +2039,31 @@ module Cle extend self
   extend Sock
 
   def on
-    #start(CLE_PORT)
-    @@server = WEBrick::HTTPServer.new(
-      Port: CLE_PORT,
-      AccessLog: [
-        [$stdout, "%h %m %U"],
-        [$stdout, "%s %b bytes %T"]
-      ]
-    )
-    @@server.mount_proc '/' do |req, res|
-      res.body = 'Hello, World!'
-    end
-    log("Started CLE server")
-    @@server.start
-  rescue => e
-    err("Failed to start CLE server: #{e}")
+    start(CLE_PORT, 'CLE')
   end
 
   def off
-    @@server.shutdown
-    log("Stopped CLE server")
-  rescue => e
-    err("Failed to stop CLE server: #{e}")
+    stop('CLE')
   end
 
-  def parse(req)
-    req
-  end
-
-  def handle(req)
-    method, path, _ = parse_start_line(req)
-    mappack = path.split('/')[1]
-    query = parse_query(req)
-    case method
+  def handle(req, res)
+    mappack = req.path.split('/')[1]
+    query = req.path.split('/')[-1]
+    case req.request_method
     when 'GET'
-      DEFAULT_RESPONSES[:bad]
+      res.status = 400
     when 'POST'
       case query
       when 'submit_score'
-        # Implement
+        res.status = 200
+        res.body = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
       else
-        DEFAULT_RESPONSES[:bad]
+        res.status = 400
       end
     else
-      DEFAULT_RESPONSES[:bad]
+      res.status = 400
     end
-  end
-
-  def report(req)
-    log("Received CLE request: #{parse_start_line(req)[1]}")
-  end
-
-  def error(e)
+  rescue => e
     err("CLE socket failed: #{e}")
   end
 end

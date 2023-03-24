@@ -600,6 +600,67 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  # TODO: Implement for Episodes and Stories
+  # TODO: Add integrity checks
+  def self.add(code, submission)
+    # Craft response
+    res = {
+      'better'    => 0,
+      'score'     => submission['score'].to_i,
+      'rank'      => -1,
+      'replay_id' => -1,
+      'user_id'   => submission['user_id'].to_i,
+      'qt'        => submission['qt'].to_i,
+      'level_id'  => submission['level_id'].to_i
+    }
+
+    # Find mappack
+    mappack = Mappack.find_by(code: code)
+    if mappack.nil?
+      warn("Mappack '#{code}' not found")
+      return res.to_json
+    end
+
+    # Find highscoreable
+    sid = submission['level_id'].to_i
+    level = MappackLevel.find_by(mappack: mappack, inner_id: sid)
+    if level.nil?
+      warn("Level ID:#{sid} for mappack '#{code}' not found")
+      return res.to_json
+    end
+
+    # Find player
+    uid = submission['user_id'].to_i
+    player = Player.find_or_create_by(metanet_id: uid)
+
+    # TODO: Fill rank and tied_rank
+    # TODO: Create archive if score is higher, set previous one to expired
+    # TODO: Create demo is score is higher
+
+    # Update or create score
+    s = (60.0 * submission['score'].to_i / 1000.0).round
+    score = MappackScore.find_or_create_by(highscoreable: level, player: player)
+    if score.score.nil? || score.score < s
+      score.update(
+        tab:        level.tab,
+        mappack_id: mappack.id,
+        score:      s
+      )
+      res['better'] = 1 # Did improve
+    else
+      res['better'] = 0 # Did not improve
+    end
+    res['replay_id'] = score.id # Perhaps choose the archive ID, which will always change if improved
+
+    return res.to_json
+
+    # TODO: Optionally, cut boards to 20 scores?
+  rescue => e
+    err("Failed to add score by ID:#{res['user_id']} in mappack '#{code}': #{e}")
+    res.to_json
+  end
+
 end
 
 class MappackArchive < ActiveRecord::Base
