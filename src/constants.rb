@@ -35,7 +35,7 @@ LOG_DEBUG      = true  # Log debug messages
 LOG_IN         = true  # Log incoming HTTP connections (CUSE, CLE...)
 LOG_OUT        = true  # Log outgoing HTTP connections (CUSE, CLE...)
 LOG_FANCY      = true  # Format logs (bold, colors...)
-LOG_APPS       = false  # Append source app to log msgs
+LOG_APPS       = false # Append source app to log msgs
 LOG_TO_FILE    = false # Export logs and errors into external file
 LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)
 LOG_REPORT     = false # Export new weekly scores to a file
@@ -257,9 +257,9 @@ MODES = {
 #   slots      - IDs reserved by N++ to this mode in the db
 #   min_scores - Max-min amount of scores to be taken into consideration for average rankings
 TYPES = [
-  { name: 'Level',   slots: 20000, min_scores: 100 },
-  { name: 'Episode', slots:  4000, min_scores:  50 },
-  { name: 'Story',   slots:   800, min_scores:  10 }
+  { name: 'Level',   slots: 20000, min_scores: 100, qt: 0 },
+  { name: 'Episode', slots:  4000, min_scores:  50, qt: 1 },
+  { name: 'Story',   slots:   800, min_scores:  10, qt: 4 }
 ]
 
 # @par1: ID ranges for levels and episodes
@@ -489,7 +489,11 @@ IGNORED_PLAYERS = [
   "You have been banned."
 ]
 
-# Problematic hackers? We get rid of them by banning their user IDs
+# More robust to ban players by ID, since the username can be changed
+# Nevertheless, the previous list is also maintained since some old cheaters
+# were removed and we no longer know their ID.
+#
+# TODO: Move Dan and crit to PATCH_IND_DEL, they're not cheaters
 IGNORED_IDS = [
    63944, # Kronogenics
   115572, # Mishu

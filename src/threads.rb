@@ -59,16 +59,13 @@ end
 # Update missing demos (e.g., if they failed to download originally)
 def download_demos
   log("updating demos...")
-  ids = Demo.where.not(demo: nil).or(Demo.where(expired: true)).pluck(:id)
-  archives = Archive.where.not(id: ids).pluck(:id, :replay_id, :highscoreable_type)
-  count = archives.size
+  archives = Archive.where(lost: false)
+                    .joins("LEFT JOIN demos ON demos.id = archives.id")
+                    .where("demos.demo IS NULL")
+                    .pluck(:id, :replay_id, :highscoreable_type)
   archives.each_with_index do |ar, i|
     attempts ||= 0
-    ActiveRecord::Base.transaction do
-      demo = Demo.find_or_create_by(id: ar[0])
-      demo.update(replay_id: ar[1], htype: Demo.htypes[ar[2].to_s.downcase])
-      demo.update_demo
-    end
+    Demo.find_or_create_by(id: ar[0]).update_demo
   rescue => e
     err("error updating demo with ID #{ar[0].to_s}: #{e}")
     ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next

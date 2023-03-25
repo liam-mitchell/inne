@@ -235,10 +235,6 @@ class Userlevel < ActiveRecord::Base
     URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
   end
 
-  def self.search_uri(steam_id, search, page = 0, mode = 0)
-    URI("https://dojo.nplusplus.ninja/prod/steam/search/levels?steam_id=#{steam_id}&steam_auth=&search=#{search}&mode=#{mode}&page=#{page}")
-  end
-
   def self.serial(maps)
     maps.map{ |m|
       {
@@ -255,7 +251,7 @@ class Userlevel < ActiveRecord::Base
     uri  = Proc.new { |steam_id, qt, page, mode| Userlevel::levels_uri(steam_id, qt, page, mode) }
     data = Proc.new { |data| data }
     err  = "error querying page #{page} of userlevels from category #{qt}"
-    HighScore::get_data(uri, data, err, qt, page, mode)
+    get_data(uri, data, err, qt, page, mode)
   end
 
   # Parse binary file with userlevel collection received from N++'s server

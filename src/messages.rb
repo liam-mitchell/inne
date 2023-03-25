@@ -1064,7 +1064,7 @@ def send_analysis(event)
   length   = analysis.map{ |a| a['analysis'].size }.max
   raise "Connection failed" if !length || length == 0
   padding  = Math.log(length, 10).to_i + 1
-  head     = " " * padding + "|" + "JRL|" * analysis.size
+  head     = " " * padding + "|" + "LJR|" * analysis.size
   sep      = "-" * head.size
 
   # We format the result in 3 different ways, only 2 are being used though.
@@ -1075,9 +1075,9 @@ def send_analysis(event)
       [b % 2 == 1, b / 2 % 2 == 1, b / 4 % 2 == 1]
     }.map{ |f|
       frame = ""
+      if f[2] then frame.concat("l") end
       if f[0] then frame.concat("j") end
       if f[1] then frame.concat("r") end
-      if f[2] then frame.concat("l") end
       frame
     }.join(".")
   }.join("\n\n")
@@ -1093,7 +1093,12 @@ def send_analysis(event)
   #   ...
   table_result = analysis.map{ |a|
     table = a['analysis'].map{ |b|
-      [b % 2 == 1 ? "^" : " ", b / 2 % 2 == 1 ? ">" : " ", b / 4 % 2 == 1 ? "<" : " "].push("|")
+      [
+        b / 4 % 2 == 1 ? "<" : " ",
+        b     % 2 == 1 ? "^" : " ",
+        b / 2 % 2 == 1 ? ">" : " "
+        
+      ].push("|")
     }
     while table.size < length do table.push([" ", " ", " ", "|"]) end
     table.transpose
@@ -1107,19 +1112,19 @@ def send_analysis(event)
 
   # Format 3 example:
   #   >>>//...
+  codes = [
+    ['-',  'Nothing'        ],
+    ['^',  'Jump'           ],
+    ['>',  'Right'          ],
+    ['/',  'Right Jump'     ],
+    ['<',  'Left'           ],
+    ['\\', 'Left Jump'      ],
+    ['≤',  'Left Right'     ],
+    ['|',  'Left Right Jump']
+  ]
   key_result = analysis.map{ |a|
     a['analysis'].map{ |f|
-      case f
-      when 0 then "-"
-      when 1 then "^"
-      when 2 then ">"
-      when 3 then "/"
-      when 4 then "<"
-      when 5 then "\\"
-      when 6 then "≤"
-      when 7 then "|"
-      else "?"
-      end
+      codes[f][0] || '?' rescue '?'
     }.join
      .scan(/.{,60}/)
      .reject{ |f| f.empty? }
@@ -1133,25 +1138,15 @@ def send_analysis(event)
   pad = analysis.map{ |a| a['player'].length }.max
   properties = format_block(
     analysis.map{ |a|
-      "[#{format_string(a['player'], pad)}, #{a['score']}, #{a['analysis'].size}f, rank #{a['rank']}, gold #{a['gold']}]"
+      "#{a['rank']}: #{format_string(a['player'], pad)} - #{a['score']} [#{a['analysis'].size}f, #{a['gold']}g]"
     }.join("\n")
   )
   #  - Summary of symbols' meaning
-  codes = {
-    '-'    => 'Nothing',
-    '^'    => 'Jump',
-    '>'    => 'Right',
-    '<'    => 'Left',
-    '/'    => 'Right Jump',
-    '\\\\' => 'Left Jump',
-    '≤'    => 'Left Right',
-    '|'    => 'Left Right Jump'
-  }
-  explanation = "[#{codes.map{ |code, meaning| "**#{code}** #{meaning}" }.join(', ')}]"
+  explanation = "[#{codes.map{ |code, meaning| "**#{Regexp.escape(code)}** #{meaning}" }.join(', ')}]"
   #  - Header of message, and final result (format 2 only used if short enough)
   header = "Replay analysis for #{scores.format_name} #{format_time}.".squish
-  result = "#{header}\n#{properties}#{explanation}"
-  result += format_block(key_result) unless analysis.sum{ |a| a['analysis'].size } > 1080
+  result = "#{header}\n#{properties}"
+  result += "#{explanation}#{format_block(key_result)}" unless analysis.sum{ |a| a['analysis'].size } > 1080
 
   # Send response
   event << result
@@ -1163,7 +1158,7 @@ end
 # Currently unavailable because the db structure changed between CCS and Eddy
 # See the subsequent method for the old code
 def send_history(event)
-  event << "Function not available yet, restructuring being done."
+  event << "Function not available yet, restructuring being done (since 2020 :joy:)."
 end
 
 def send_history2(event)
@@ -1657,18 +1652,17 @@ def send_dmmc(event)
   send_file(event, zip, 'dmmc.zip', true)
 end
 
-# Remove cheated / incorrect archives on command
-# This can happen when scores get incorporated as archives before being ignored
-# Should probably be restricted to botmasters
+# Clean database (remove cheated archives, duplicates, orphaned demos, etc)
+# See Archive::sanitize for more details
 def sanitize_archives(event)
   assert_permissions(event)
   counts = Archive::sanitize
+  if counts.empty?
+    event << "Nothing to sanitize."
+    return
+  end
   event << "Sanitized database:"
-  event << "* Removed #{counts['score_del']} scores by ignored players." if counts.key?('score_del')
-  event << "* Removed #{counts['archive_del']} archives by ignored players." if counts.key?('archive_del')
-  event << "* Removed #{counts['player_del']} ignored players." if counts.key?('player_del')
-  event << "* Removed #{counts['archive_ind_del']} individual archives." if counts.key?('archive_ind_del')
-  event << "* Removed #{counts['orphan_demos']} orphaned demos." if counts.key?('orphan_demos')
+  counts.each{ |name, msg| event << "* #{msg}" }
 end
 
 def potato

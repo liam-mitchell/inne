@@ -6,7 +6,9 @@ require 'damerau-levenshtein'
 require_relative 'constants.rb'
 require_relative 'models.rb'
 
-ActiveRecord::Base.logger = Logger.new(STDOUT) if LOG_SQL
+ActiveRecord::Base.logger = Logger.new(
+  LOG_TO_FILE ? "log" : STDOUT
+) if LOG_SQL
 
 # TODO: Implement logging levels, and add special command to change it on the fly
 #       :in and :out should probably be on par with debug (spammy!)
@@ -28,17 +30,18 @@ module Log
   BOLD  = "\x1B[1m"
   RESET = "\x1B[0m"
 
-  def self.write(msg, mode, app = 'OUTTE', newline: true, pad: false)
+  def self.write(msg, mode, app = 'OUTTE', newline: true, pad: false, fancy: true)
     return if !LOG
+    fancy = false if !LOG_FANCY
     stream = STDOUT
     stream = STDERR if [:warn, :error, :fatal].include?(mode)
     m = MODES[mode] || MODES[:info]
     date = Time.now.strftime(DATE_FORMAT_LOG)
-    type = LOG_FANCY ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]"
+    type = fancy ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]"
     app = " (#{app.ljust(5, ' ')[0...5]})"
-    app = LOG_FANCY ? "#{BOLD}#{app}#{RESET}" : app
+    app = fancy ? "#{BOLD}#{app}#{RESET}" : app
     app = LOG_APPS ? app : ''
-    text = LOG_FANCY ? "#{m[:fmt]}#{msg}#{RESET}" : msg
+    text = fancy ? "#{m[:fmt]}#{msg}#{RESET}" : msg
     msg = "\r[#{date}] #{type}#{app} #{text}"
     msg = msg.ljust(120, ' ') if pad
     newline ? stream.puts(msg) : stream.print(msg)
@@ -91,6 +94,32 @@ def succ(msg, **kwargs) Log.succ(msg, kwargs) end
 def dbg(msg,  **kwargs) Log.dbg(msg,  kwargs) end
 def lin(msg,  **kwargs) Log.lin(msg,  kwargs) end
 def lout(msg, **kwargs) Log.lout(msg, kwargs) end
+
+def get_data(uri_proc, data_proc, err, *vargs)
+  attempts ||= 0
+  initial_id = GlobalProperty.get_last_steam_id
+  response = Net::HTTP.get_response(uri_proc.call(initial_id, *vargs))
+  while response.body == INVALID_RESP
+    GlobalProperty.deactivate_last_steam_id
+    GlobalProperty.update_last_steam_id
+    break if GlobalProperty.get_last_steam_id == initial_id
+    response = Net::HTTP.get_response(uri_proc.call(GlobalProperty.get_last_steam_id, *vargs))
+  end
+  return nil if response.body == INVALID_RESP
+  raise "502 Bad Gateway" if response.code.to_i == 502
+  GlobalProperty.activate_last_steam_id
+  data_proc.call(response.body)
+rescue => e
+  if (attempts += 1) < RETRIES
+    if SHOW_ERRORS
+      err("#{err}: #{e}")
+    end
+    sleep(0.25)
+    retry
+  else
+    return nil
+  end
+end
 
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute

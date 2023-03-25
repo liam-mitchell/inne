@@ -601,6 +601,8 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
+  # TODO: Implement ignore list, don't even add them to the db
+  # TODO: Implement speedrun mode in "Scores around mine" or in "Friends"
   # TODO: Implement for Episodes and Stories
   # TODO: Add integrity checks
   def self.add(code, submission)
@@ -642,9 +644,23 @@ class MappackScore < ActiveRecord::Base
     s = (60.0 * submission['score'].to_i / 1000.0).round
     score = MappackScore.find_or_create_by(highscoreable: level, player: player)
     if score.score.nil? || score.score < s
+      MappackArchive.where(highscoreable: level, player: player).update_all(expired: true)
+      archive = MappackArchive.create(
+        player:        player,
+        metanet_id:    player.metanet_id,
+        highscoreable: level,
+        date:          Time.now.strftime(DATE_FORMAT_MYSQL),
+        expired:       false,
+        score:         s
+      )
+      MappackDemo.create(
+        id: archive.id
+        # TODO: Finish this
+      )
       score.update(
         tab:        level.tab,
         mappack_id: mappack.id,
+        archive:    archive,
         score:      s
       )
       res['better'] = 1 # Did improve
@@ -667,10 +683,16 @@ class MappackArchive < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  def demo
+    MappackDemo.find(self.id)
+  end
 end
 
 class MappackDemo < ActiveRecord::Base
-
+  def archive
+    MappackArchive.find(self.id)
+  end
 end
 
 def respond_mappacks(event)

@@ -54,10 +54,14 @@ module MonkeyPatches
   end
 
   # Customize Discordrb's log format to match outte's, for neatness
+  # Also, disable printing entire backtrace when logging exceptions
   def self.patch_discordrb
     ::Discordrb::Logger.class_eval do
       def simple_write(stream, message, mode, thread_name, timestamp)
         Log.write(message, mode[:long].downcase.to_sym, 'DISRB')
+      end
+      def log_exception(e)
+        error("Exception: #{e.inspect}")
       end
     end
   end
@@ -196,56 +200,16 @@ module HighScore
     ret
   end
 
-  # TODO: This does not seem specific to the HighScore module
-  #       Move to utils and use it for get_demo in Demo too
-  def self.get_data(uri_proc, data_proc, err, *vargs)
-    attempts ||= 0
-    initial_id = GlobalProperty.get_last_steam_id
-    response = Net::HTTP.get_response(uri_proc.call(initial_id, *vargs))
-    while response.body == INVALID_RESP
-      GlobalProperty.deactivate_last_steam_id
-      GlobalProperty.update_last_steam_id
-      break if GlobalProperty.get_last_steam_id == initial_id
-      response = Net::HTTP.get_response(uri_proc.call(GlobalProperty.get_last_steam_id))
-    end
-    return nil if response.body == INVALID_RESP
-    raise "502 Bad Gateway" if response.code.to_i == 502
-    GlobalProperty.activate_last_steam_id
-    data_proc.call(response.body)
-  rescue => e
-    if (attempts += 1) < RETRIES
-      if SHOW_ERRORS
-        err("#{err}: #{e}")
-      end
-      sleep(0.25)
-      retry
-    else
-      return nil
-    end
-  end
-
   def scores_uri(steam_id)
     klass = self.class == Userlevel ? "level" : self.class.to_s.downcase
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}")
-  end
-
-  def replay_uri(steam_id, replay_id)
-    qt = [Level, Userlevel].include?(self.class) ? 0 : (self.class == Episode ? 1 : 4)
-    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
   end
 
   def get_scores
     uri  = Proc.new { |steam_id| scores_uri(steam_id) }
     data = Proc.new { |data| correct_ties(clean_scores(JSON.parse(data)['scores'])) }
     err  = "error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}"
-    HighScore::get_data(uri, data, err)
-  end
-
-  def get_replay(replay_id)
-    uri  = Proc.new { |steam_id| replay_uri(steam_id, replay_id) }
-    data = Proc.new { |data| data }
-    err  = "error getting replay with id #{replay_id} for #{self.class.to_s.downcase} with id #{self.id.to_s}"
-    HighScore::get_data(uri, data, err)
+    get_data(uri, data, err)
   end
 
   # Sanitize received leaderboard data:
@@ -287,14 +251,18 @@ module HighScore
 
   def save_scores(updated)
     ActiveRecord::Base.transaction do
-      # Save * at start, so that we can reassign them again after updating
+      # Save starts so we can reassign them again later
       stars = scores.where(star: true).pluck(:player_id) if self.class != Userlevel
+
+      # Loop through all new scores
       updated.each_with_index do |score, i|
-        # Compute values, userlevels have some differences
-        player = (self.class == Userlevel ? UserlevelPlayer : Player).find_or_create_by(metanet_id: score['user_id'])
+        # Precompute player and score
+        playerclass = self.class == Userlevel ? UserlevelPlayer : Player
+        player = playerclass.find_or_create_by(metanet_id: score['user_id'])
         player.update(name: score['user_name'].force_encoding('UTF-8'))
         scoretime = score['score'] / 1000.0
         scoretime = (scoretime * 60.0).round if self.class == Userlevel
+
         # Update common values
         scores.find_or_create_by(rank: i).update(
           score:     scoretime,
@@ -302,27 +270,35 @@ module HighScore
           player:    player,
           tied_rank: updated.find_index { |s| s['score'] == score['score'] }
         )
-        # Updates for non-userlevels (tab, archive, demos)
-        if self.class != Userlevel
-          scores.find_by(rank: i).update(tab: self.tab, cool: false, star: false)
-          if Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
-            # Update archive
-            ar = Archive.create(
-              replay_id:     score['replay_id'].to_i,
-              player:        Player.find_by(metanet_id: score['user_id']),
-              highscoreable: self,
-              score:         (score['score'] * 60.0 / 1000.0).round,
-              metanet_id:    score['user_id'].to_i,
-              date:          Time.now,
-              tab:           self.tab
-            )
-            # Update demo
-            demo = Demo.find_or_create_by(id: ar.id)
-            demo.update(replay_id: ar.replay_id, htype: Demo.htypes[ar.highscoreable_type.to_s.downcase])
-            demo.update_demo
-          end
-        end
+
+        # Non-userlevel updates (tab, archive, demos)
+        next if self.class == Userlevel
+        scores.find_by(rank: i).update(tab: self.tab, cool: false, star: false)
+
+        # Create archive and demo if they don't already exist
+        next if !Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
+
+        # Update old archives
+        Archive.where(highscoreable: self, player: player).update_all(expired: true)
+
+        # Create archive
+        ar = Archive.create(
+          replay_id:     score['replay_id'].to_i,
+          player:        player,
+          highscoreable: self,
+          score:         (score['score'] * 60.0 / 1000.0).round,
+          metanet_id:    score['user_id'].to_i,
+          date:          Time.now,
+          tab:           self.tab,
+          lost:          false,
+          expired:       false
+        )
+
+        # Create demo
+        Demo.find_or_create_by(id: ar.id).update_demo
       end
+
+      # Update timestamps, cools and stars
       if self.class == Userlevel
         self.update(score_update: Time.now.strftime(DATE_FORMAT_MYSQL))
         self.update(scored: true) if updated.size > 0
@@ -331,6 +307,7 @@ module HighScore
         scores.where(player_id: stars).update_all(star: true)
         scores.where(rank: 0).update(star: true)
       end
+
       # Remove scores stuck at the bottom after ignoring cheaters
       scores.where(rank: (updated.size..19).to_a).delete_all
     end
@@ -352,12 +329,6 @@ module HighScore
       err("Error updating database with level #{self.id.to_s}: #{e}")
     end
     return -1
-  end
-
-  def analyze_replay(replay_id)
-    replay = get_replay(replay_id)
-    demo = Zlib::Inflate.inflate(replay[16..-1])[30..-1]
-    analysis = demo.unpack('H*')[0].scan(/../).map{ |b| b.to_i }[1..-1]
   end
 
   def correct_ties(score_hash)
@@ -840,8 +811,12 @@ class Score < ActiveRecord::Base
     highscoreable.scores.find_by(rank: 0).score - score
   end
 
+  def archive
+    Archive.find_by(replay_id: replay_id, highscoreable: highscoreable)
+  end
+
   def demo
-    Demo.find_by(replay_id: replay_id, htype: Demo.htypes[highscoreable.class.to_s.downcase.to_sym])
+    archive.demo
   end
 
   def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true)
@@ -1423,6 +1398,7 @@ end
 class Archive < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
+  has_one :demo, foreign_key: :id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # Returns the leaderboards at a particular point in time
@@ -1481,7 +1457,11 @@ class Archive < ActiveRecord::Base
     }.join("\n")
   end
 
-  # Clean archive of cheated scores
+  # Clean database:
+  #   - Remove scores, archives and players by blacklisted players
+  #   - Remove orphaned demos (without a corresponding archive)
+  #   - Remove individually blacklisted archives
+  #   - Remove duplicated archives
   def self.sanitize
     # Store results to print summary after sanitization
     ret = {}
@@ -1489,31 +1469,59 @@ class Archive < ActiveRecord::Base
     # Delete scores by ignored players
     query = Score.joins("INNER JOIN players ON players.id = scores.player_id")
                  .where("players.metanet_id" => IGNORED_IDS)
-    ret['score_del'] = query.count.to_i
-    query.each(&:destroy)
+    count = query.count.to_i
+    ret['score_del'] = "Deleted #{count} scores by ignored players." unless count == 0
+    query.delete_all
 
-    # Delete archives by ignored players
+    # Delete archives (and their corresponding demos) by ignored players
     query = Archive.where(metanet_id: IGNORED_IDS)
-    ret['archive_del'] = query.count.to_i
+    count = query.count.to_i
+    ret['archive_del'] = "Deleted #{count} archives by ignored players." unless count == 0
     query.each(&:wipe)
 
     # Delete ignored players
     query = Player.where(metanet_id: IGNORED_IDS)
-    ret['player_del'] = query.count.to_i
-    query.each(&:destroy)
+    count = query.count.to_i
+    ret['player_del'] = "Deleted #{count} ignored players." unless count == 0
+    query.delete_all
 
-    # Delete individual archives
-    ret['archive_ind_del'] = 0
+    # Delete individual incorrect archives
+    count = 0
     ["Level", "Episode", "Story"].each{ |mode|
       query = Archive.where(highscoreable_type: mode, replay_id: PATCH_IND_DEL[mode.downcase.to_sym])
-      ret['archive_ind_del'] += query.count.to_i
+      count += query.count.to_i
       query.each(&:wipe)
     }
+    ret['archive_ind_del'] = "Deleted #{count} incorrect archives." unless count == 0
+
+    # Delete duplicate archives (can happen on accident)
+    duplicates = Archive.group(
+      :highscoreable_type,
+      :highscoreable_id,
+      :player_id,
+      :score
+    ).having('count(score) > 1')
+     .select(:highscoreable_type, :highscoreable_id, :player_id, :score, 'min(date)')
+     .to_a
+    count = 0
+    duplicates.each{ |d|
+      same = Archive.where(
+        highscoreable_type: d.highscoreable_type,
+        highscoreable_id:   d.highscoreable_id,
+        player_id:          d.player_id,
+        score:              d.score
+      ).order(date: :asc).limit(1000).offset(1)
+      count += same.count
+      same.each(&:wipe)
+    }
+    ret['duplicates'] = "Deleted #{count} duplicated archives." unless count == 0
 
     # Delete demos with missing archives
-    query = Demo.where.not(replay_id: Archive.all.pluck(:replay_id))
-    ret['orphan_demos'] = query.count.to_i
-    query.each(&:destroy)
+    query = Demo.joins("LEFT JOIN archives ON archives.id = demos.id")
+                .where("archives.id IS NULL")
+    count = query.count.to_i
+    ret['orphan_demos'] = "Deleted #{count} orphaned demos." unless count == 0
+    query.delete_all
 
     # Patch archives
     # ONLY EXECUTE THIS ONCE!! Otherwise, the scores will be altered multiple times
@@ -1548,128 +1556,34 @@ class Archive < ActiveRecord::Base
     "%.3f" % self.score.to_f / 60.0
   end
 
-  def demo
-    Demo.find(self.id).demo
-  end
-
   # Remove both the archive and its demo from the DB
   def wipe
-    Demo.find(self.id).destroy
+    demo.destroy
     self.destroy
   end
 end
 
-class Demo < ActiveRecord::Base
-  #----------------------------------------------------------------------------#
-  #                    METANET REPLAY FORMAT DOCUMENTATION                     |
-  #----------------------------------------------------------------------------#
-  # REPLAY DATA:                                                               |
-  #    4B  - Query type                                                        |
-  #    4B  - Replay ID                                                         |
-  #    4B  - Level ID                                                          |
-  #    4B  - User ID                                                           |
-  #   Rest - Demo data compressed with zlib                                    |
-  #----------------------------------------------------------------------------#
-  # LEVEL DEMO DATA FORMAT:                                                    |
-  #     1B - Unknown                                                           |
-  #     4B - Data length                                                       |
-  #     4B - Unknown                                                           |
-  #     4B - Frame count                                                       |
-  #     4B - Level ID                                                          |
-  #    13B - Unknown                                                           |
-  #   Rest - Demo                                                              |
-  #----------------------------------------------------------------------------#
-  # EPISODE DEMO DATA FORMAT:                                                  |
-  #     4B - Unknown                                                           |
-  #    20B - Block length for each level demo (5 * 4B)                         |
-  #   Rest - Demo data (5 consecutive blocks, see above)                       |
-  #----------------------------------------------------------------------------#
-  # STORY DEMO DATA FORMAT:                                                    |
-  #     4B - Unknown                                                           |
-  #     4B - Demo data block size                                              |
-  #   100B - Block length for each level demo (25 * 4B)                        |
-  #   Rest - Demo data (25 consecutive blocks, see above)                      |
-  #----------------------------------------------------------------------------#
-  # DEMO FORMAT:                                                               |
-  #   * One byte per frame.                                                    |
-  #   * First bit for jump, second for right and third for left.               |
-  #   * Suicide is 12 (0C).                                                    |
-  #   * The first frame is fictional and must be ignored.                      |
-  #----------------------------------------------------------------------------#
-  enum htype: [:level, :episode, :story]
-
-  def score
-    Archive.find(self.id)
-  end
-
+# Included in Demo and MappackDemo
+module BasicDemo
   def qt
-    case htype.to_sym
-    when :level
-      0
-    when :episode
-      1
-    when :story
-      4
-    else
-      -1 # error checking
-    end
-  end
-
-  def demo_uri(steam_id)
-    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{replay_id}&qt=#{qt}")
-  end
-
-  # TODO: Use get_data here instead
-  def get_demo
-    attempts ||= 0
-    initial_id = GlobalProperty.get_last_steam_id
-    response = Net::HTTP.get_response(demo_uri(initial_id))
-    while response.body == INVALID_RESP
-      GlobalProperty.deactivate_last_steam_id
-      GlobalProperty.update_last_steam_id
-      break if GlobalProperty.get_last_steam_id == initial_id
-      response = Net::HTTP.get_response(demo_uri(GlobalProperty.get_last_steam_id))
-    end
-    return 1 if response.code.to_i == 200 && response.body.empty? # replay does not exist
-    return nil if response.body == INVALID_RESP
-    raise "502 Bad Gateway" if response.code.to_i == 502
-    GlobalProperty.activate_last_steam_id
-    response.body
-  rescue => e
-    if (attempts += 1) < RETRIES
-      if SHOW_ERRORS
-        err("error getting demo with id #{replay_id}: #{e}")
-      end
-      retry
-    else
-      return nil
-    end
+    type = TYPES.find{ |t| t[:name] == archive.highscoreable_type }
+    !type.nil? ? type[:qt] : -1
   end
 
   def parse_demo(replay)
+    htype = archive.highscoreable_type
     data   = Zlib::Inflate.inflate(replay[16..-1])
-    header = {level: 0, episode:  4, story:   8}[htype.to_sym]
-    offset = {level: 0, episode: 24, story: 108}[htype.to_sym]
-    count  = {level: 1, episode:  5, story:  25}[htype.to_sym]
+    header = {'Level' => 0, 'Episode' =>  4, 'Story' =>   8}[htype]
+    offset = {'Level' => 0, 'Episode' => 24, 'Story' => 108}[htype]
+    count  = {'Level' => 1, 'Episode' =>  5, 'Story' =>  25}[htype]
 
-    framecounts = []
-    lengths = (0..count - 1).map{ |d| _unpack(data[header + 4 * d..header + 4 * (d + 1) - 1]) }
-    lengths = [_unpack(data[1..4])] if htype.to_sym == :level
-    demos = (0..count - 1).map{ |d|
-      offset += lengths[d - 1] unless d == 0
-      raw_replay = data[offset..offset + lengths[d] - 1]
-      framecounts << _unpack(raw_replay[9..12])
+    lengths = (0...count).map{ |d| _unpack(data[header + 4 * d...header + 4 * (d + 1)]) }
+    lengths = [_unpack(data[1..4])] if htype == 'Level'
+    lengths.map{ |l|
+      raw_replay = data[offset...offset + l]
+      offset += l
       raw_replay[30..-1]
     }
-    # Add framecount and goldcount to corresponding archive before Zlibbing later
-    if !score.nil?
-      framecount = framecounts.sum
-      score.update(
-        framecount: framecount,
-        gold: framecount != -1 ? (((score.score + framecount).to_f / 60 - 90) / 2).round : -1
-      )
-    end
-    demos
   end
 
   def encode_demo(replay)
@@ -1683,32 +1597,95 @@ class Demo < ActiveRecord::Base
     return (demos.size == 1 ? demos.first.scan(/./m).map(&:ord) : demos.map{ |d| d.scan(/./m).map(&:ord) })
   end
 
-  # Do not delete, it's not redundant, the field in Archive uses this for its
-  # first computation
+  # This is only used in the migration file, to compute the framecount of
+  # preexisting demos. New ones get computed on the fly right after download.
   def framecount
     return -1 if demo.nil?
     demos = decode_demo
-    return (htype.to_sym == :level ? demos.size : demos.map(&:size).sum)
+    return (!demo[0].is_a?(Array) ? demos.size : demos.map(&:size).sum)
+  rescue
+    -1
+  end
+end
+
+#----------------------------------------------------------------------------#
+#                    METANET REPLAY FORMAT DOCUMENTATION                     |
+#----------------------------------------------------------------------------#
+# REPLAY DATA:                                                               |
+#    4B  - Query type                                                        |
+#    4B  - Replay ID                                                         |
+#    4B  - Level ID                                                          |
+#    4B  - User ID                                                           |
+#   Rest - Demo data compressed with zlib                                    |
+#----------------------------------------------------------------------------#
+# LEVEL DEMO DATA FORMAT:                                                    |
+#     1B - Unknown     (0)                                                   |
+#     4B - Data length                                                       |
+#     4B - Unknown     (1)                                                   |
+#     4B - Frame count                                                       |
+#     4B - Level ID                                                          |
+#     4B - Game mode   (0, 1, 2, 4)                                          |
+#     4B - Unknown     (0)                                                   |
+#     1B - Ninja mask  (1, 3)                                                |
+#     4B - Static data (0xFFFFFFFF)                                          |
+#   Rest - Demo                                                              |
+#----------------------------------------------------------------------------#
+# EPISODE DEMO DATA FORMAT:                                                  |
+#     4B - Unknown                                                           |
+#    20B - Block length for each level demo (5 * 4B)                         |
+#   Rest - Demo data (5 consecutive blocks, see above)                       |
+#----------------------------------------------------------------------------#
+# STORY DEMO DATA FORMAT:                                                    |
+#     4B - Unknown                                                           |
+#     4B - Demo data block size                                              |
+#   100B - Block length for each level demo (25 * 4B)                        |
+#   Rest - Demo data (25 consecutive blocks, see above)                      |
+#----------------------------------------------------------------------------#
+# DEMO FORMAT:                                                               |
+#   * One byte per frame.                                                    |
+#   * 1st bit for jump, 2nd for right, 3rd for left, 4th for suicide         |
+#----------------------------------------------------------------------------#
+class Demo < ActiveRecord::Base
+  include BasicDemo
+  belongs_to :archive, foreign_key: :id
+
+  def uri(steam_id)
+    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{archive.replay_id}&qt=#{qt}")
+  end
+
+  def get_demo
+    uri = Proc.new { |steam_id| uri(steam_id) }
+    data = Proc.new { |data| data }
+    err  = "error getting demo with id #{archive.replay_id} "\
+           "for #{archive.highscoreable_type.downcase} "\
+           "with id #{archive.highscoreable_id}"
+    get_data(uri, data, err)
+  end
+
+  def update_archive(framecounts, lost)
+    return if archive.nil?
+    framecount = framecounts.sum
+    archive.update(
+      framecount: framecount,
+      gold: framecount != -1 ? (((archive.score + framecount).to_f / 60 - 90) / 2).round : -1,
+      lost: lost
+    )
   end
 
   def update_demo
+    return nil if !demo.nil?
     replay = get_demo
     return nil if replay.nil? # replay was not fetched successfully
     if replay == 1 # replay does not exist
-      ActiveRecord::Base.transaction do
-        self.update(expired: true)
-      end
+      archive.update(lost: true)
       return nil
     end
-    ActiveRecord::Base.transaction do
-      self.update(
-        demo: encode_demo(parse_demo(replay)),
-        expired: false
-      )
-    end
+    demos = parse_demo(replay)
+    update_archive(demos.map(&:size), false)
+    self.update(demo: encode_demo(demos))
   rescue => e
     if SHOW_ERRORS
-      err("error parsing demo with id #{replay_id}: #{e}")
+      err("error parsing demo with id #{archive.replay_id}: #{e}")
     end
     return nil
   end
