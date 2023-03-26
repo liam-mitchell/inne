@@ -70,7 +70,7 @@ LOG_DEBUG    = true    # Log debug messages
 
 # Control log format
 LOG_FANCY    = true    # Whether rich logs are enabled (bold, colors...)
-LOG_LEVEL    = :normal # Default logging level
+LOG_LEVEL    = :debug  # Default logging level
 LOG_APPS     = false   # Append source app to log msgs
 
 # Others
@@ -462,8 +462,35 @@ RTYPES = [
   'average_point'
 ]
 
-IGNORED_PLAYERS = [
-  "Kronogenics",
+
+# TODO: Move Dan and crit to PATCH_IND_DEL, they're not cheaters
+
+# Players blacklisted from the leaderboards (hackers and cheaters)
+# Keys are the user IDs, values are their known usernames
+BLACKLIST = {
+   63944 => ["Kronogenics"],
+   75839 => ["vorcazm", "Treagus"],
+   76223 => ["TylerDC"],
+  115572 => ["Mishu"],
+  128613 => ["cock unsucker"],
+  146275 => ["Puce"],
+  173617 => ["You have been banned."],
+  201322 => ["dimitry008"],
+  202167 => ["crit a cola drinker"],
+  221472 => ["VexatiousCheff", "vex"],
+  243184 => ["Player"],
+  253072 => ["test8378"],
+  253161 => ["Chara"],
+  276273 => ["DBYT3"],
+  291743 => ["Yup_This_Is_My_Name"],
+  298531 => ["Boringfish"],
+  307030 => ["The_Mega_Force"],
+  325245 => ["Staticwork"]
+}
+
+# Additional blacklisted names whose ID we don't know, since their scores
+# were cleaned long ago (we still hold a grudge tho)
+BLACKLIST_NAMES = [
   "BlueIsTrue",
   "fiordhraoi",
   "cheeseburgur101",
@@ -474,52 +501,8 @@ IGNORED_PLAYERS = [
   "Venom",
   "EpicGamer10075",
   "Altii",
-  "Pu𝐜ͥⷮⷮⷮⷮͥⷮͥⷮe",
   "Floof The Goof",
-  "Prismo",
-  "Mishu",
-  "dimitry008",
-  "Chara",
-  "test8378",
-  "VexatiousCheff",
-  "vex", # VexatiousCheff
-  "DBYT3",
-  "Yup_This_Is_My_Name",
-  "vorcazm",
-  "Treagus", # vorcazm
-  "The_Mega_Force",
-  "Boringfish",
-  "cock unsucker",
-  "TylerDC",
-  "Staticwork",
-  "crit a cola drinker",
-  "You have been banned."
-]
-
-# More robust to ban players by ID, since the username can be changed
-# Nevertheless, the previous list is also maintained since some old cheaters
-# were removed and we no longer know their ID.
-#
-# TODO: Move Dan and crit to PATCH_IND_DEL, they're not cheaters
-IGNORED_IDS = [
-   63944, # Kronogenics
-  115572, # Mishu
-  128613, # cock unsucker
-  201322, # dimitry008
-  146275, # Puce
-  243184, # Player
-  253161, # Chara
-  253072, # test8378
-  221472, # VexatiousCheff / vex
-  276273, # DBYT3
-  291743, # Yup_This_Is_My_Name
-   75839, # vorcazm / Treagus
-  307030, # The_Mega_Force
-  298531, # Boringfish
-   76223, # TylerDC
-  325245, # Staticwork
-  202167, # crit a cola drinker
-  173617  # You have been banned.
+  "Prismo"
 ]
 
 # Patched runs from legitimate players because they were done

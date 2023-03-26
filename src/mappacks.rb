@@ -639,19 +639,26 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
-  # TODO: Implement ignore list, don't even add them to the db
   # TODO: Implement for Episodes and Stories
   # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
   # TODO: Add integrity checks and warnings in Demo.parse
   def self.add(code, submission)
+    # Apply blacklist
+    uid = submission['user_id'].to_i
+    name = "ID:#{uid}"
+    if BLACKLIST.key?(uid)
+      warn("Blacklisted player #{BLACKLIST[uid][0]} submitted a score")
+      return
+    end
+
     # Craft response fields
     res = {
       'better'    => 0,
       'score'     => submission['score'].to_i,
       'rank'      => -1,
       'replay_id' => -1,
-      'user_id'   => submission['user_id'].to_i,
+      'user_id'   => uid,
       'qt'        => submission['qt'].to_i,
       'level_id'  => submission['level_id'].to_i
     }
@@ -672,9 +679,9 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Find player
-    uid = submission['user_id'].to_i
     player = Player.find_or_create_by(metanet_id: uid)
-
+    name = !player.name.nil? ? player.name : "ID:#{player.metanet_id}"
+    
     # Parse demos
     type = TYPES.find{ |t| submission.key?("#{t[:name].downcase}_id") } || TYPES[0]
     demos = Demo.parse(submission['replay_data'], type[:name])
@@ -723,18 +730,31 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Update ranks if necessary
-    rank = -1
-    rank_hs = hs ? level.update_ranks('hs', player.id) : MappackScore.where(highscoreable: level, player: player).minimum(:rank_hs)
-    rank_sr = sr ? level.update_ranks('sr', player.id) : MappackScore.where(highscoreable: level, player: player).minimum(:rank_sr)
+    level.update_ranks('hs') if hs
+    level.update_ranks('sr') if sr
+
+    # Fetch player's best scores, to fill remaining response fields
+    best_hs = MappackScore.where(highscoreable: level, player: player)
+                          .where.not(rank_hs: nil)
+                          .order(rank_hs: :asc)
+                          .first
+    best_sr = MappackScore.where(highscoreable: level, player: player)
+                          .where.not(rank_sr: nil)
+                          .order(rank_sr: :asc)
+                          .first
+    rank_hs = best_hs.rank_hs rescue nil
+    rank_sr = best_sr.rank_sr rescue nil
+    replay_id_hs = best_hs.id rescue nil
+    replay_id_sr = best_sr.id rescue nil
     res['rank'] = rank_hs || rank_sr || -1
+    res['replay_id'] = replay_id_hs || replay_id_sr || -1
 
     # Finish
-    res['replay_id'] = id
-    dbg("Received score by ID:#{res['user_id']} for mappack '#{code}'")
+    dbg("Received score by #{name} for mappack '#{code}'")
     dbg(res.to_json)
     return res.to_json
   rescue => e
-    err("Failed to add score by ID:#{res['user_id']} to mappack '#{code}': #{e}")
+    err("Failed to add score by #{name} to mappack '#{code}': #{e}")
     return nil
   end
 

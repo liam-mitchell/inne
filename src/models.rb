@@ -12,7 +12,7 @@ require_relative 'constants.rb'
 require_relative 'utils.rb'
 
 # Monkey patches to get some custom behaviour from a few core classes,
-# as well as ActiveRecord and Discordrb
+# as well as ActiveRecord, Discordrb and WEBrick
 module MonkeyPatches
   def self.patch_core
     # Add justification to arrays, like for strings
@@ -225,10 +225,10 @@ module HighScore
       TABS[self.class.to_s].each{ |k, v| if v[0].include?(self.id) then limit = v[1]; break end  }
     end
 
-    # Filter out cheated/hacked runs, or accidentally incorrect scores
+    # Filter out cheated/hacked runs, incorrect scores and too high scores
     k = self.class.to_s.downcase.to_sym
     boards.reject!{ |s|
-      IGNORED_PLAYERS.include?(s['user_name']) || IGNORED_IDS.include?(s['user_id']) || PATCH_IND_DEL[k].include?(s['replay_id']) || s['score'] / 1000.0 >= limit
+      BLACKLIST.keys.include?(s['user_id']) || BLACKLIST_NAMES.include?(s['user_name']) || PATCH_IND_DEL[k].include?(s['replay_id']) || s['score'] / 1000.0 >= limit
     }
 
     # Batch patch old incorrect runs
@@ -1468,19 +1468,19 @@ class Archive < ActiveRecord::Base
 
     # Delete scores by ignored players
     query = Score.joins("INNER JOIN players ON players.id = scores.player_id")
-                 .where("players.metanet_id" => IGNORED_IDS)
+                 .where("players.metanet_id" => BLACKLIST.keys)
     count = query.count.to_i
     ret['score_del'] = "Deleted #{count} scores by ignored players." unless count == 0
     query.delete_all
 
     # Delete archives (and their corresponding demos) by ignored players
-    query = Archive.where(metanet_id: IGNORED_IDS)
+    query = Archive.where(metanet_id: BLACKLIST.keys)
     count = query.count.to_i
     ret['archive_del'] = "Deleted #{count} archives by ignored players." unless count == 0
     query.each(&:wipe)
 
     # Delete ignored players
-    query = Player.where(metanet_id: IGNORED_IDS)
+    query = Player.where(metanet_id: BLACKLIST.keys)
     count = query.count.to_i
     ret['player_del'] = "Deleted #{count} ignored players." unless count == 0
     query.delete_all

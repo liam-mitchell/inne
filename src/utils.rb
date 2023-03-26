@@ -267,7 +267,7 @@ def verbatim(str)
   "`#{str.gsub('`', '')}`"
 end
 
-def bench(action)
+def bench(action, msg = nil)
   @t ||= Time.now
   @total ||= 0
   @step ||= 0
@@ -281,7 +281,7 @@ def bench(action)
     int = Time.now - @t
     @total += int
     @t = Time.now
-    log("Benchmark #{@step}: #{"%.3fms" % (int * 1000)} (Total: #{"%.3fms" % (@total * 1000)}).")
+    dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : msg}: #{"%7.3fms" % (int * 1000)} (Total: #{"%7.3fms" % (@total * 1000)}).")
   end
 end
 
