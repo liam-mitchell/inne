@@ -471,7 +471,7 @@ class Mappack < ActiveRecord::Base
 
       # Precompute some indices for the database
       index          = tab[1][:files].keys.index(tab_code)
-      mappack_offset = TYPES[0][:slots] * id
+      mappack_offset = TYPES['Level'][:slots] * id
       tab_offset     = tab[1][:start]
       file_offset    = tab[1][:files].values.take(index).sum
 
@@ -642,7 +642,7 @@ class MappackScore < ActiveRecord::Base
   # TODO: Implement for Episodes and Stories
   # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
-  # TODO: Add integrity checks and warnings in Demo.parse
+  # TODO: Add integrity checks and warnings in Demo.parse, correct stories
   def self.add(code, submission)
     # Apply blacklist
     uid = submission['user_id'].to_i
@@ -652,6 +652,14 @@ class MappackScore < ActiveRecord::Base
       return
     end
 
+    # Parse type
+    type = TYPES.find{ |t, h| submission.key?("#{h[:name].downcase}_id") }[1] rescue nil
+    if type.nil?
+      warn("Score submitted: Type not found")
+      return
+    end
+    id_field = "#{type[:name].downcase}_id"
+
     # Craft response fields
     res = {
       'better'    => 0,
@@ -660,21 +668,21 @@ class MappackScore < ActiveRecord::Base
       'replay_id' => -1,
       'user_id'   => uid,
       'qt'        => submission['qt'].to_i,
-      'level_id'  => submission['level_id'].to_i
+      id_field    => submission[id_field].to_i
     }
 
     # Find mappack
     mappack = Mappack.find_by(code: code)
     if mappack.nil?
-      warn("Adding score: Mappack '#{code}' not found")
+      warn("Score submitted: Mappack '#{code}' not found")
       return
     end
 
     # Find highscoreable
-    sid = submission['level_id'].to_i
-    level = MappackLevel.find_by(mappack: mappack, inner_id: sid)
-    if level.nil?
-      warn("Adding score: Level ID:#{sid} for mappack '#{code}' not found")
+    sid = submission[id_field].to_i
+    h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
+    if h.nil?
+      warn("Score submitted: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
       return
     end
 
@@ -683,11 +691,10 @@ class MappackScore < ActiveRecord::Base
     name = !player.name.nil? ? player.name : "ID:#{player.metanet_id}"
     
     # Parse demos
-    type = TYPES.find{ |t| submission.key?("#{t[:name].downcase}_id") } || TYPES[0]
     demos = Demo.parse(submission['replay_data'], type[:name])
 
     # Fetch old scores and compute new scores
-    scores = MappackScore.where(highscoreable: level, player: player)
+    scores = MappackScore.where(highscoreable: h, player: player)
     score_hs_max = scores.maximum(:score_hs)
     score_sr_min = scores.minimum(:score_sr)
     score_hs = (60.0 * submission['score'].to_i / 1000.0).round
@@ -719,10 +726,10 @@ class MappackScore < ActiveRecord::Base
         score_hs:      score_hs,
         score_sr:      score_sr,
         mappack_id:    mappack.id,
-        tab:           level.tab,
+        tab:           h.tab,
         player:        player,
         metanet_id:    player.metanet_id,
-        highscoreable: level,
+        highscoreable: h,
         date:          Time.now.strftime(DATE_FORMAT_MYSQL)
       )
       id = score.id
@@ -730,15 +737,15 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Update ranks if necessary
-    level.update_ranks('hs') if hs
-    level.update_ranks('sr') if sr
+    h.update_ranks('hs') if hs
+    h.update_ranks('sr') if sr
 
     # Fetch player's best scores, to fill remaining response fields
-    best_hs = MappackScore.where(highscoreable: level, player: player)
+    best_hs = MappackScore.where(highscoreable: h, player: player)
                           .where.not(rank_hs: nil)
                           .order(rank_hs: :asc)
                           .first
-    best_sr = MappackScore.where(highscoreable: level, player: player)
+    best_sr = MappackScore.where(highscoreable: h, player: player)
                           .where.not(rank_sr: nil)
                           .order(rank_sr: :asc)
                           .first
@@ -750,11 +757,11 @@ class MappackScore < ActiveRecord::Base
     res['replay_id'] = replay_id_hs || replay_id_sr || -1
 
     # Finish
-    dbg("Received score by #{name} for mappack '#{code}'")
+    dbg("Received score by #{name} for #{h.name}")
     dbg(res.to_json)
     return res.to_json
   rescue => e
-    err("Failed to add score by #{name} to mappack '#{code}': #{e}")
+    err("Failed to add score submitted by #{name} to mappack '#{code}': #{e}")
     return nil
   end
 

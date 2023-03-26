@@ -262,12 +262,11 @@ MODES = {
 #   name       - Name of the type AND of the Rails model class
 #   slots      - IDs reserved by N++ to this mode in the db
 #   min_scores - Max-min amount of scores to be taken into consideration for average rankings
-# TODO: Perhaps change this to a hash with the names as keys, seems to appear more often
-TYPES = [
-  { name: 'Level',   slots: 20000, min_scores: 100, qt: 0 },
-  { name: 'Episode', slots:  4000, min_scores:  50, qt: 1 },
-  { name: 'Story',   slots:   800, min_scores:  10, qt: 4 }
-]
+TYPES = {
+  'Level' =>   { id: 0, name: 'Level',   slots: 20000, min_scores: 100, qt: 0 },
+  'Episode' => { id: 1, name: 'Episode', slots:  4000, min_scores:  50, qt: 1 },
+  'Story' =>   { id: 2, name: 'Story',   slots:   800, min_scores:  10, qt: 4 }
+}
 
 # @par1: ID ranges for levels and episodes
 # @par2: Score limits to filter new hacked scores

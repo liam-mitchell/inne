@@ -1630,8 +1630,9 @@ class Demo < ActiveRecord::Base
   end
 
   def qt
-    type = TYPES.find{ |t| t[:name] == archive.highscoreable_type }
-    !type.nil? ? type[:qt] : -1
+    TYPES[archive.highscoreable_type][:qt]
+  rescue
+    -1
   end
 
   def uri(steam_id)

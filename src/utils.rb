@@ -383,10 +383,6 @@ def find_max(rank, types, tabs, empty = false)
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
 end
 
-def find_type(type)
-  TYPES.find{ |t| t[:name].downcase == type.to_s.downcase } || TYPES.first
-end
-
 # Finds the minimum number of scores required to appear in a certain
 # average rank/point rankings
 # If 'empty' we allow no types, otherwise default to Level and Episode
@@ -401,7 +397,7 @@ def min_scores(type, tabs, empty = false, a = 0, b = 20, star = false)
     else
       type_min = tabs.map{ |tab| TABS[t.to_s][tab][2] if TABS[t.to_s].key?(tab) }.compact.sum
     end
-    [type_min, find_type(t)[:min_scores]].min
+    [type_min, TYPES[t.to_s][:min_scores]].min
   }.sum
   c = star ? 1 : b - a
   ([mins, MAXMIN_SCORES].min * c / 20.0).to_i
