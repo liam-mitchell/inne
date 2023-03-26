@@ -1,3 +1,5 @@
+require 'zlib'
+
 # TODO: This module should contain the functionality common to all maps:
 #       Include it in Userlevels
 module Map
@@ -391,9 +393,9 @@ module Map
 end
 
 class Mappack < ActiveRecord::Base
-  alias_attribute :levels, :mappack_levels
+  alias_attribute :levels,   :mappack_levels
   alias_attribute :episodes, :mappack_episodes
-  alias_attribute :stories, :mappack_stories
+  alias_attribute :stories,  :mappack_stories
   has_many :mappack_levels
   has_many :mappack_episodes
   has_many :mappack_stories
@@ -422,6 +424,9 @@ class Mappack < ActiveRecord::Base
   rescue
     err("Error seeding mappacks to database")
   end
+
+  # TODO: Parse challenge files, in a separate function with its own command,
+  # which is also called from the general seed and read functions.
 
   # Parses map files corresponding to this mappack, and updates the database
   def read
@@ -544,69 +549,102 @@ class Mappack < ActiveRecord::Base
 end
 
 class MappackData < ActiveRecord::Base
+  alias_attribute :level, :mappack_level
+  belongs_to :mappack_level, foreign_key: :id
+end
 
+module MappackHighscoreable
+
+  # Return leaderboards, filtering obsolete scores and sorting appropiately
+  # depending on the mode (hs / sr).
+  # Optionally sort by score and date instead of rank.
+  def leaderboard(m = 'hs', score = false)
+    m = 'hs' if !['hs', 'sr'].include?(m)
+    board = scores.where("rank_#{m} IS NOT NULL")
+    if score
+      board.order("score_#{m} #{m == 'hs' ? 'DESC' : 'ASC'}, date ASC")
+    else
+      board.order("rank_#{m} ASC")
+    end
+  end
+
+  # Updates the rank and tied_rank fields of a specific mode, necessary when
+  # there's a new score (or when one is deleted later).
+  # Returns the rank of a specific player, if the player_id is passed
+  def update_ranks(mode = 'hs', player_id = nil)
+    return -1 if !['hs', 'sr'].include?(mode)
+    rank = -1
+    board = leaderboard(mode, true)
+    tied_score = mode == 'hs' ? board[0].score_hs : board[0].score_sr
+    tied_rank = 0
+    board.each_with_index{ |s, i|
+      rank = i if !player_id.nil? && s.player_id == player_id
+      score = mode == 'hs' ? s.score_hs : s.score_sr
+      if mode == 'hs' ? score < tied_score : score > tied_score
+        tied_rank += 1
+        tied_score = score
+      end
+      s.update("rank_#{mode}".to_sym => i, "tied_rank_#{mode}".to_sym => tied_rank)
+    }
+    rank
+  end
 end
 
 class MappackLevel < ActiveRecord::Base
   include Map
+  include MappackHighscoreable
+  alias_attribute :data, :mappack_data
   alias_attribute :scores, :mappack_scores
-  alias_attribute :archives, :mappack_archives
   alias_attribute :episode, :mappack_episode
-  has_many :mappack_scores, ->{ order(:rank) }, as: :highscoreable
-  has_many :mappack_archives, as: :highscoreable
+  has_one :mappack_data, foreign_key: :id
+  has_many :mappack_scores, as: :highscoreable
   belongs_to :mappack
   belongs_to :mappack_episode, foreign_key: :episode_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
-
-  def data
-    MappackData.find(self.id)
-  end
 end
 
 class MappackEpisode < ActiveRecord::Base
+  include MappackHighscoreable
   alias_attribute :levels, :mappack_levels
   alias_attribute :scores, :mappack_scores
-  alias_attribute :archives, :mappack_archives
   alias_attribute :story, :mappack_story
   has_many :mappack_levels, foreign_key: :episode_id
-  has_many :mappack_scores, ->{ order(:rank) }, as: :highscoreable
-  has_many :mappack_archives, as: :highscoreable
+  has_many :mappack_scores, as: :highscoreable
   belongs_to :mappack
   belongs_to :mappack_story, foreign_key: :story_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 
 class MappackStory < ActiveRecord::Base
+  include MappackHighscoreable
   alias_attribute :episodes, :mappack_episodes
   alias_attribute :scores, :mappack_scores
-  alias_attribute :archives, :mappack_archives
   has_many :mappack_episodes, foreign_key: :story_id
-  has_many :mappack_scores, ->{ order(:rank) }, as: :highscoreable
-  has_many :mappack_archives, as: :highscoreable
+  has_many :mappack_scores, as: :highscoreable
   belongs_to :mappack
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 
 class MappackScore < ActiveRecord::Base
-  alias_attribute :scores, :mappack_scores
-  alias_attribute :level, :mappack_level
+  alias_attribute :demo,    :mappack_demo
+  alias_attribute :scores,  :mappack_scores
+  alias_attribute :level,   :mappack_level
   alias_attribute :episode, :mappack_episode
-  alias_attribute :story, :mappack_story
-  alias_attribute :archive, :mappack_archive
+  alias_attribute :story,   :mappack_story
+  has_one :mappack_demo, foreign_key: :id
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
-  belongs_to :mappack_archive, foreign_key: :archive_id
   #belongs_to :mappack_level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # TODO: Implement ignore list, don't even add them to the db
-  # TODO: Implement speedrun mode in "Scores around mine" or in "Friends"
   # TODO: Implement for Episodes and Stories
   # TODO: Add integrity checks
+  # TODO: Figure out Coop's (and Race's?) demo format
   def self.add(code, submission)
-    # Craft response
+    # Craft response fields
     res = {
       'better'    => 0,
       'score'     => submission['score'].to_i,
@@ -620,82 +658,92 @@ class MappackScore < ActiveRecord::Base
     # Find mappack
     mappack = Mappack.find_by(code: code)
     if mappack.nil?
-      warn("Mappack '#{code}' not found")
-      return res.to_json
+      warn("Adding score: Mappack '#{code}' not found")
+      return
     end
 
     # Find highscoreable
     sid = submission['level_id'].to_i
     level = MappackLevel.find_by(mappack: mappack, inner_id: sid)
     if level.nil?
-      warn("Level ID:#{sid} for mappack '#{code}' not found")
-      return res.to_json
+      warn("Adding score: Level ID:#{sid} for mappack '#{code}' not found")
+      return
     end
 
     # Find player
     uid = submission['user_id'].to_i
     player = Player.find_or_create_by(metanet_id: uid)
 
-    # TODO: Fill rank and tied_rank
-    # TODO: Create archive if score is higher, set previous one to expired
-    # TODO: Create demo is score is higher
+    # Parse demos
+    type = TYPES.find{ |t| submission.key?("#{t[:name].downcase}_id") } || TYPES[0]
+    demos = Demo.parse(submission['replay_data'], type[:name])
 
-    # Update or create score
-    s = (60.0 * submission['score'].to_i / 1000.0).round
-    score = MappackScore.find_or_create_by(highscoreable: level, player: player)
-    if score.score.nil? || score.score < s
-      MappackArchive.where(highscoreable: level, player: player).update_all(expired: true)
-      archive = MappackArchive.create(
+    # Fetch old scores and compute new scores
+    scores = MappackScore.where(highscoreable: level, player: player)
+    score_hs_max = scores.maximum(:score_hs)
+    score_sr_min = scores.minimum(:score_sr)
+    score_hs = (60.0 * submission['score'].to_i / 1000.0).round
+    score_sr = demos.map(&:size).sum
+
+    # Determine if new score is better and has to be saved
+    res['better'] = 0
+    hs = false
+    sr = false
+    if score_hs_max.nil? || score_hs > score_hs_max
+      scores.update_all(rank_hs: nil, tied_rank_hs: nil)
+      res['better'] = 1
+      hs = true
+    end
+    if score_sr_min.nil? || score_sr < score_sr_min
+      scores.update_all(rank_sr: nil, tied_rank_sr: nil)
+      res['better'] = 1
+      sr = true
+    end
+
+    # Create new score (with placeholder ranks, see later)
+    id = -1
+    if hs || sr
+      score = MappackScore.create(
+        rank_hs:       hs ? -1 : nil,
+        tied_rank_hs:  hs ? -1 : nil,
+        rank_sr:       sr ? -1 : nil,
+        tied_rank_sr:  sr ? -1 : nil,
+        score_hs:      score_hs,
+        score_sr:      score_sr,
+        mappack_id:    mappack.id,
+        tab:           level.tab,
         player:        player,
         metanet_id:    player.metanet_id,
         highscoreable: level,
-        date:          Time.now.strftime(DATE_FORMAT_MYSQL),
-        expired:       false,
-        score:         s
+        date:          Time.now.strftime(DATE_FORMAT_MYSQL)
       )
-      MappackDemo.create(
-        id: archive.id
-        # TODO: Finish this
-      )
-      score.update(
-        tab:        level.tab,
-        mappack_id: mappack.id,
-        archive:    archive,
-        score:      s
-      )
-      res['better'] = 1 # Did improve
-    else
-      res['better'] = 0 # Did not improve
+      id = score.id
+      MappackDemo.create(id: id, demo: Demo.encode(demos))
     end
-    res['replay_id'] = score.id # Perhaps choose the archive ID, which will always change if improved
 
+    # Update ranks if necessary
+    rank = -1
+    rank_hs = hs ? level.update_ranks('hs', player.id) : MappackScore.where(highscoreable: level, player: player).minimum(:rank_hs)
+    rank_sr = sr ? level.update_ranks('sr', player.id) : MappackScore.where(highscoreable: level, player: player).minimum(:rank_sr)
+    res['rank'] = rank_hs || rank_sr || -1
+
+    # Finish
+    res['replay_id'] = id
+    dbg("Received score by ID:#{res['user_id']} for mappack '#{code}'")
+    dbg(res.to_json)
     return res.to_json
-
-    # TODO: Optionally, cut boards to 20 scores?
   rescue => e
-    err("Failed to add score by ID:#{res['user_id']} in mappack '#{code}': #{e}")
-    res.to_json
+    err("Failed to add score by ID:#{res['user_id']} to mappack '#{code}': #{e}")
+    return nil
   end
 
-end
-
-class MappackArchive < ActiveRecord::Base
-  belongs_to :player
-  belongs_to :highscoreable, polymorphic: true
-  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
-
-  def demo
-    MappackDemo.find(self.id)
-  end
 end
 
 class MappackDemo < ActiveRecord::Base
-  def archive
-    MappackArchive.find(self.id)
-  end
+  alias_attribute :score, :mappack_score
+  belongs_to :mappack_score, foreign_key: :id
 end
 
 def respond_mappacks(event)
   msg = remove_mentions(event.content)
-
-end
+end 

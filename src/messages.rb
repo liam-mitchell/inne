@@ -1040,7 +1040,7 @@ end
 def do_analysis(scores, rank)
   run      = scores.scores[rank]
   return nil if run.nil?
-  analysis = run.demo.decode_demo
+  analysis = run.demo.decode
   {
     'player'   => run.player.name,
     'scores'   => scores.format_name,

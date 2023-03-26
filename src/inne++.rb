@@ -55,6 +55,8 @@ require_relative 'userlevels.rb'
 require_relative 'mappacks.rb'
 require_relative 'threads.rb'
 
+# TODO: All the errors here should be logged with the fatal mode, since they exit
+
 def monkey_patch
   MonkeyPatches.apply
   log("Applied monkey patches")

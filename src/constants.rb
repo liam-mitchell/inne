@@ -208,7 +208,7 @@ USERLEVEL_DOWNLOAD_CHUNK    =                100
 
 TWITCH_ROLE      = "Voyeur"    # Discord role to ping when a new stream happens
 TWITCH_COOLDOWN  = 2 * 60 * 60 # Cooldown to ping stream by the same user
-TWITCH_BLACKLIST = [
+TWITCH_BLACKLIST = [           # Should probably use IDs instead of usernames here
   "eblan4ikof"
 ]
 
@@ -256,6 +256,7 @@ MODES = {
 #   name       - Name of the type AND of the Rails model class
 #   slots      - IDs reserved by N++ to this mode in the db
 #   min_scores - Max-min amount of scores to be taken into consideration for average rankings
+# TODO: Perhaps change this to a hash with the names as keys, seems to appear more often
 TYPES = [
   { name: 'Level',   slots: 20000, min_scores: 100, qt: 0 },
   { name: 'Episode', slots:  4000, min_scores:  50, qt: 1 },

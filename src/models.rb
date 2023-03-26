@@ -1563,51 +1563,6 @@ class Archive < ActiveRecord::Base
   end
 end
 
-# Included in Demo and MappackDemo
-module BasicDemo
-  def qt
-    type = TYPES.find{ |t| t[:name] == archive.highscoreable_type }
-    !type.nil? ? type[:qt] : -1
-  end
-
-  def parse_demo(replay)
-    htype = archive.highscoreable_type
-    data   = Zlib::Inflate.inflate(replay[16..-1])
-    header = {'Level' => 0, 'Episode' =>  4, 'Story' =>   8}[htype]
-    offset = {'Level' => 0, 'Episode' => 24, 'Story' => 108}[htype]
-    count  = {'Level' => 1, 'Episode' =>  5, 'Story' =>  25}[htype]
-
-    lengths = (0...count).map{ |d| _unpack(data[header + 4 * d...header + 4 * (d + 1)]) }
-    lengths = [_unpack(data[1..4])] if htype == 'Level'
-    lengths.map{ |l|
-      raw_replay = data[offset...offset + l]
-      offset += l
-      raw_replay[30..-1]
-    }
-  end
-
-  def encode_demo(replay)
-    replay = [replay] if replay.class == String
-    Zlib::Deflate.deflate(replay.join('&'), 9)
-  end
-
-  def decode_demo
-    return nil if demo.nil?
-    demos = Zlib::Inflate.inflate(demo).split('&')
-    return (demos.size == 1 ? demos.first.scan(/./m).map(&:ord) : demos.map{ |d| d.scan(/./m).map(&:ord) })
-  end
-
-  # This is only used in the migration file, to compute the framecount of
-  # preexisting demos. New ones get computed on the fly right after download.
-  def framecount
-    return -1 if demo.nil?
-    demos = decode_demo
-    return (!demo[0].is_a?(Array) ? demos.size : demos.map(&:size).sum)
-  rescue
-    -1
-  end
-end
-
 #----------------------------------------------------------------------------#
 #                    METANET REPLAY FORMAT DOCUMENTATION                     |
 #----------------------------------------------------------------------------#
@@ -1646,11 +1601,49 @@ end
 #   * 1st bit for jump, 2nd for right, 3rd for left, 4th for suicide         |
 #----------------------------------------------------------------------------#
 class Demo < ActiveRecord::Base
-  include BasicDemo
   belongs_to :archive, foreign_key: :id
+
+  def self.encode(replay)
+    replay = [replay] if replay.class == String
+    Zlib::Deflate.deflate(replay.join('&'), 9)
+  end
+
+  def self.decode(demo)
+    return nil if demo.nil?
+    demos = Zlib::Inflate.inflate(demo).split('&')
+    return (demos.size == 1 ? demos.first.scan(/./m).map(&:ord) : demos.map{ |d| d.scan(/./m).map(&:ord) })
+  end
+
+  def self.parse(replay, htype)
+    data   = Zlib::Inflate.inflate(replay)
+    header = {'Level' => 0, 'Episode' =>  4, 'Story' =>   8}[htype]
+    offset = {'Level' => 0, 'Episode' => 24, 'Story' => 108}[htype]
+    count  = {'Level' => 1, 'Episode' =>  5, 'Story' =>  25}[htype]
+
+    lengths = (0...count).map{ |d| _unpack(data[header + 4 * d...header + 4 * (d + 1)]) }
+    lengths = [_unpack(data[1..4])] if htype == 'Level'
+    lengths.map{ |l|
+      raw_replay = data[offset...offset + l]
+      offset += l
+      raw_replay[30..-1]
+    }
+  end
+
+  def qt
+    type = TYPES.find{ |t| t[:name] == archive.highscoreable_type }
+    !type.nil? ? type[:qt] : -1
+  end
 
   def uri(steam_id)
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=#{steam_id}&steam_auth=&replay_id=#{archive.replay_id}&qt=#{qt}")
+  end
+
+  def parse(replay)
+    Demo.parse(replay, archive.highscoreable_type)
+  end
+
+  def decode
+    Demo.decode(demo)
   end
 
   def get_demo
@@ -1660,6 +1653,16 @@ class Demo < ActiveRecord::Base
            "for #{archive.highscoreable_type.downcase} "\
            "with id #{archive.highscoreable_id}"
     get_data(uri, data, err)
+  end
+
+  # This is only used in the migration file, to compute the framecount of
+  # preexisting demos. New ones get computed on the fly right after download.
+  def framecount
+    return -1 if demo.nil?
+    demos = decode
+    return (!demo[0].is_a?(Array) ? demos.size : demos.map(&:size).sum)
+  rescue
+    -1
   end
 
   def update_archive(framecounts, lost)
@@ -1680,9 +1683,10 @@ class Demo < ActiveRecord::Base
       archive.update(lost: true)
       return nil
     end
-    demos = parse_demo(replay)
+    demos = parse(replay[16..-1])
     update_archive(demos.map(&:size), false)
-    self.update(demo: encode_demo(demos))
+    self.update(demo: Demo.encode(demos))
+    succ("Updated demo by #{archive.player.name}")
   rescue => e
     if SHOW_ERRORS
       err("error parsing demo with id #{archive.replay_id}: #{e}")
@@ -2032,8 +2036,14 @@ module Cle extend self
     when 'POST'
       case query
       when 'submit_score'
-        res.status = 200
-        res.body = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+        response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+        if response.nil?
+          res.status = 400
+          res.body = ''
+        else
+          res.status = 200
+          res.body = response
+        end
       else
         res.status = 400
       end
