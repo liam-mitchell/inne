@@ -1729,6 +1729,26 @@ def send_mappack_screenshot(event)
   send_file(event, MappackLevel.find(flags[:id]).screenshot, flags[:id].to_s + ".png", true)
 end
 
+def send_log_config(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  event << "Enabled logging modes: #{Log.modes.join(', ')}." if flags.empty?
+  flags.each{ |f, v|
+    str = ''
+    case f
+    when :l
+      str = Log.level(v.to_sym) if !v.nil?
+    when :f
+      str = Log.fancy
+    when :m
+      str = Log.change_modes(v.split.map(&:to_sym)) if !v.nil?
+    when :M
+      str = Log.set_modes(v.split.map(&:to_sym)) if !v.nil?
+    end
+    event << str if !str.empty?
+  }
+end
+
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
@@ -1738,6 +1758,7 @@ def respond_special(event)
   send_unreaction(event)         if cmd == 'unreact'
   send_mappack_seed(event)       if cmd == 'mappack_seed'
   send_mappack_screenshot(event) if cmd == 'mappack_screenshot'
+  send_log_config(event)         if cmd == 'log'
 rescue RuntimeError => e
   event << e
 end

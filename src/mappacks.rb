@@ -643,6 +643,7 @@ class MappackScore < ActiveRecord::Base
   # TODO: Implement for Episodes and Stories
   # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
+  # TODO: Add integrity checks and warnings in Demo.parse
   def self.add(code, submission)
     # Craft response fields
     res = {

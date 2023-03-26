@@ -744,9 +744,13 @@ end
 
 # Parse arguments and flags CLI-style:
 # Arg names must start with a dash and be alphanumeric (underscores allowed)
-# Arg values can be anything but whitespace, they cannot start with a dash
+# Arg values can be anything but dashes
 def parse_flags(msg)
-  msg.scan(/-(\w+) ([^\s-]\S*)?/).uniq{ |e| e[0] }.to_h.symbolize_keys
+  msg.scan(/-(\w+)\s*([^-]+)?/)
+     .uniq{ |e| e[0] }
+     .map{ |k, v| [k, v.nil? ? nil : v.squish] }
+     .to_h
+     .symbolize_keys
 end
 
 def format_rank(rank)

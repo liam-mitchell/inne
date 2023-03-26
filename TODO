@@ -63,7 +63,6 @@ Eddy's TODO list for inne:
 - In order to sort ties, rather than alphabetical, use chronological. For simplicity, use date of most recent 0th, rather than the whole history.
 - Fix random userlevel function, the new send_userlevel_individual approach broke it.
 - Send message if the command was not understood, i.e., if no function was executed, but not in DM's. We can do this by having a flag that each function sets to true when it's executed, and then check it at the end. We can also use this flag to prevent executing 2 functions on the same command, which means we could also control the flow by changing the order of the function calls at the bottom.
-- Implement a more serious logging class, with different levels (minimal, standard, debug, trace, etc), and use it throughout the program. Obviously, when exporting to a file, only export a low level by default, like the standard one.
 - Migrate the scores table to using integer scores (in frames), like the others.
 
 \\ ------------------------ Art ------------------------

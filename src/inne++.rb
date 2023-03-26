@@ -55,13 +55,11 @@ require_relative 'userlevels.rb'
 require_relative 'mappacks.rb'
 require_relative 'threads.rb'
 
-# TODO: All the errors here should be logged with the fatal mode, since they exit
-
 def monkey_patch
   MonkeyPatches.apply
   log("Applied monkey patches")
 rescue => e
-  err("Failed to apply monkey patches: #{e}")
+  fatal("Failed to apply monkey patches: #{e}")
   exit
 end
 
@@ -80,7 +78,7 @@ def initialize_vars
   $boot_time       = Time.now.to_i
   log("Initialized global variables")
 rescue => e
-  err("Failed to initialize global variables: #{e}")
+  fatal("Failed to initialize global variables: #{e}")
   exit
 end
 
@@ -92,7 +90,7 @@ def load_config
   $config['twitch_secret']  = ENV['TWITCH_SECRET']
   log("Loaded config")
 rescue => e
-  err("Failed to load config: #{e}")
+  fatal("Failed to load config: #{e}")
   exit
 end
 
@@ -100,7 +98,7 @@ def connect_db
   ActiveRecord::Base.establish_connection($config)
   log("Connected to database")
 rescue => e
-  err("Failed to connect to the database: #{e}")
+  fatal("Failed to connect to the database: #{e}")
   exit
 end
 
@@ -110,7 +108,7 @@ def disconnect_db
   ActiveRecord::Base.connection.close
   log("Disconnected from database")
 rescue => e
-  err("Failed to disconnect from the database: #{e}")
+  fatal("Failed to disconnect from the database: #{e}")
   exit
 end
 
@@ -139,7 +137,7 @@ def create_bot
   )
   log("Created bot")
 rescue => e
-  err("Failed to create bot: #{e}")
+  fatal("Failed to create bot: #{e}")
   exit
 end
 
@@ -184,7 +182,7 @@ def setup_bot
   end
   log("Configured bot")
 rescue => e
-  err("Failed to configure bot: #{e}")
+  fatal("Failed to configure bot: #{e}")
   exit
 end
 
@@ -194,7 +192,7 @@ def run_bot
   leave_unknown_servers
   log("Bot connected to servers: #{$bot.servers.map{ |id, s| s.name }.join(', ')}.")
 rescue => e
-  err("Failed to execute bot: #{e}")
+  fatal("Failed to execute bot: #{e}")
   exit
 end
 
@@ -202,7 +200,7 @@ def stop_bot
   $bot.stop
   log("Stopped bot")
 rescue => e
-  err("Failed to stop the bot: #{e}\n#{e.backtrace.join("\n")}")
+  fatal("Failed to stop the bot: #{e}\n#{e.backtrace.join("\n")}")
   exit
 end
 
@@ -219,7 +217,7 @@ def shutdown
     exit
   }
 rescue => e
-  err("Failed to shut down bot: #{e}")
+  fatal("Failed to shut down bot: #{e}")
   exit
 end
 

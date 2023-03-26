@@ -10,45 +10,115 @@ ActiveRecord::Base.logger = Logger.new(
   LOG_TO_FILE ? "log" : STDOUT
 ) if LOG_SQL
 
-# TODO: Implement logging levels, and add special command to change it on the fly
-#       :in and :out should probably be on par with debug (spammy!)
-# TODO: Export to file only high-level stuff
+# Custom logging class for the terminal, that supports:
+#   - Multiple levels of verbosity (from quiet to debug)
+#   - Different modes for different purposes
+#   - Both raw and rich output (colored, unicode, etc)
+#   - Methods to config it on the fly from Discord
 module Log
 
   MODES = {
-    debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[3m\x1B[30m" }, # italic gray
-    good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" }, # green
-    info:  { long: 'INFO',  short: 'i', fmt: "" },
-    warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" }, # yellow
-    error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" }, # red
-    out:   { long: 'OUT',   short: '→', fmt: "\x1B[36m" }, # cyan
-    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" }, # magenta
-    fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" }, # red background
-    msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" }  # blue
+    fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" },       # Red background
+    error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" },       # Red
+    warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" },       # Yellow
+    good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" },       # Green
+    info:  { long: 'INFO',  short: 'i', fmt: "" },               # Normal
+    msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" },       # Blue
+    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" },       # Magenta
+    out:   { long: 'OUT',   short: '→', fmt: "\x1B[36m" },       # Cyan
+    debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[3m\x1B[30m" } # Italic gray
+  }
+
+  LEVELS = {
+    silent:  [],
+    quiet:   [:fatal, :error, :warn],
+    normal:  [:fatal, :error, :warn, :good, :info, :msg],
+    verbose: [:fatal, :error, :warn, :good, :info, :msg, :in, :out],
+    debug:   [:fatal, :error, :warn, :good, :info, :msg, :in, :out, :debug]
   }
 
   BOLD  = "\x1B[1m"
   RESET = "\x1B[0m"
 
-  def self.write(msg, mode, app = 'OUTTE', newline: true, pad: false, fancy: true)
-    return if !LOG
+  @modes = LEVELS[LOG_LEVEL] || LEVELS[:normal]
+  @fancy = LOG_FANCY
+
+  def self.level(l)
+   return dbg("Logging level #{l} does not exist") if !LEVELS.key?(l)
+    @modes = LEVELS[l]
+    dbg("Changed logging level to #{l.to_s}")
+  rescue
+    dbg("Failed to change logging level")
+  end
+
+  def self.fancy
+    @fancy = !@fancy
+    @fancy ? dbg("Enabled fancy logs") : dbg("Disabled fancy logs")
+  rescue
+    dbg("Failed to change logging fanciness")
+  end
+
+  def self.set_modes(modes)
+    @modes = modes.select{ |m| MODES.key?(m) }
+    dbg("Set logging modes to #{@modes.join(', ')}.")
+  rescue
+    dbg("Failed to set logging modes")
+  end
+
+  def self.change_modes(modes)
+    added = []
+    removed = []
+    modes.each{ |m|
+      next if !MODES.key?(m)
+      if !@modes.include?(m)
+        @modes << m
+        added << m
+      else
+        @modes.delete(m)
+        removed << m
+      end
+    }
+    ret = []
+    ret << "added logging modes #{added.join(', ')}" if !added.empty?
+    ret << "removed logging modes #{removed.join(', ')}" if !removed.empty?
+    dbg(ret.join(", ").capitalize)
+  rescue
+    dbg("Failed to change logging modes")
+  end
+
+  def self.modes
+    @modes
+  end
+
+  def self.write(text, mode, app = 'OUTTE', newline: true, pad: false, fancy: nil)
+    # Determine parameters
+    return text if !LOG || !@modes.include?(mode)
+    fancy = @fancy if ![true, false].include?(fancy)
     fancy = false if !LOG_FANCY
     stream = STDOUT
     stream = STDERR if [:warn, :error, :fatal].include?(mode)
     m = MODES[mode] || MODES[:info]
+
+    # Message prefixes (timestamp, symbol, source app)
     date = Time.now.strftime(DATE_FORMAT_LOG)
-    type = fancy ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]"
+    type = fancy ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]".ljust(7, ' ')
     app = " (#{app.ljust(5, ' ')[0...5]})"
     app = fancy ? "#{BOLD}#{app}#{RESET}" : app
     app = LOG_APPS ? app : ''
-    text = fancy ? "#{m[:fmt]}#{msg}#{RESET}" : msg
-    msg = "\r[#{date}] #{type}#{app} #{text}"
+
+    # Format text
+    msg = (fancy ? "#{m[:fmt]}#{text}#{RESET}" : text).strip
+    msg = "\r[#{date}] #{type}#{app} #{msg}"
     msg = msg.ljust(120, ' ') if pad
+
+    # Output to stream and optionally file, returns raw msg
     newline ? stream.puts(msg) : stream.print(msg)
     stream.flush
     File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
+    text
   end
 
+  # Shortcuts for each mode
   def self.log(msg, **kwargs)
     write(msg, :info, kwargs) if LOG_INFO
   end
@@ -81,20 +151,33 @@ module Log
     write(msg, :out, kwargs) if LOG_OUT
   end
 
+  def self.fatal(msg, **kwargs)
+    write(msg, :fatal, kwargs) if LOG_FATAL
+  end
+
   def self.clear
     write('', :info, newline: false, pad: true)
   end
 end
 
-def log(msg,  **kwargs) Log.log(msg,  kwargs) end
-def warn(msg, **kwargs) Log.warn(msg, kwargs) end
-def err(msg,  **kwargs) Log.err(msg,  kwargs) end
-def msg(msg,  **kwargs) Log.msg(msg,  kwargs) end
-def succ(msg, **kwargs) Log.succ(msg, kwargs) end
-def dbg(msg,  **kwargs) Log.dbg(msg,  kwargs) end
-def lin(msg,  **kwargs) Log.lin(msg,  kwargs) end
-def lout(msg, **kwargs) Log.lout(msg, kwargs) end
+# Shortcuts for each of the Log methods
+def log(msg,   **kwargs) Log.log(msg,   kwargs) end
+def warn(msg,  **kwargs) Log.warn(msg,  kwargs) end
+def err(msg,   **kwargs) Log.err(msg,   kwargs) end
+def msg(msg,   **kwargs) Log.msg(msg,   kwargs) end
+def succ(msg,  **kwargs) Log.succ(msg,  kwargs) end
+def dbg(msg,   **kwargs) Log.dbg(msg,   kwargs) end
+def lin(msg,   **kwargs) Log.lin(msg,   kwargs) end
+def lout(msg,  **kwargs) Log.lout(msg,  kwargs) end
+def fatal(msg, **kwargs) Log.fatal(msg, kwargs) end
 
+# Make a request to N++'s server.
+# Since we need to use an open Steam ID, the function goes through all
+# IDs until either an open is found (and stored), or the list ends and we fail.
+#   - uri_proc:  A Proc returning the exact URI, takes Steam ID as parameter
+#   - data_proc: A Proc that handles response data before returning it
+#   - err:       Error string to log if the request fails
+#   - vargs:     Extra variable arguments to pass to the uri_proc
 def get_data(uri_proc, data_proc, err, *vargs)
   attempts ||= 0
   initial_id = GlobalProperty.get_last_steam_id

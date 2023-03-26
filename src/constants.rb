@@ -20,26 +20,6 @@ BENCH_MSGS     = false # Benchmark functions _in messages_
 DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
 CONFIG         = 'db/config.yml'
 
-
-# <--------------------------------------------------------------------------->
-# <------                     LOGGING VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
-
-LOG            = true  # Log stuff to the terminal (superseeds the next 6 ones)
-LOG_INFO       = true  # Log info to the terminal
-LOG_WARNINGS   = true  # Log warnings to the terminal
-LOG_ERRORS     = true  # Log errors to the terminal
-LOG_MSGS       = true  # Log mentions and DMs to outte
-LOG_SUCCESS    = true  # Log successes
-LOG_DEBUG      = true  # Log debug messages
-LOG_IN         = true  # Log incoming HTTP connections (CUSE, CLE...)
-LOG_OUT        = true  # Log outgoing HTTP connections (CUSE, CLE...)
-LOG_FANCY      = true  # Format logs (bold, colors...)
-LOG_APPS       = false # Append source app to log msgs
-LOG_TO_FILE    = false # Export logs and errors into external file
-LOG_SQL        = false # Log _all_ SQL queries to the terminal (for debugging)
-LOG_REPORT     = false # Export new weekly scores to a file
-
 # <--------------------------------------------------------------------------->
 # <------                     NETWORK VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
@@ -71,6 +51,32 @@ SERVER_WHITELIST = [
   SERVER_ID,          # N++
   535635802386857995  # Test server
 ]
+
+# <--------------------------------------------------------------------------->
+# <------                     LOGGING VARIABLES                         ------>
+# <--------------------------------------------------------------------------->
+
+# Control what things to log (these can be set on the fly as well)
+LOG          = true    # Log stuff to the terminal (if false, next 9 ones useless)
+LOG_FATAL    = true    # Log fatal error messages
+LOG_ERRORS   = true    # Log errors to the terminal
+LOG_WARNINGS = true    # Log warnings to the terminal
+LOG_SUCCESS  = true    # Log successes
+LOG_INFO     = true    # Log info to the terminal
+LOG_MSGS     = true    # Log mentions and DMs to outte
+LOG_IN       = true    # Log incoming HTTP connections (CUSE, CLE...)
+LOG_OUT      = true    # Log outgoing HTTP connections (CUSE, CLE...)
+LOG_DEBUG    = true    # Log debug messages
+
+# Control log format
+LOG_FANCY    = true    # Whether rich logs are enabled (bold, colors...)
+LOG_LEVEL    = :normal # Default logging level
+LOG_APPS     = false   # Append source app to log msgs
+
+# Others
+LOG_TO_FILE  = false   # Export logs and errors into external file
+LOG_SQL      = false   # Log _all_ SQL queries to the terminal (for debugging)
+LOG_REPORT   = false   # Export new weekly scores to a file
 
 # <--------------------------------------------------------------------------->
 # <------                     DIRECTORY VARIABLES                       ------>
