@@ -1,3 +1,4 @@
+require 'digest'
 require 'zlib'
 
 # TODO: This module should contain the functionality common to all maps:
@@ -226,23 +227,27 @@ module Map
   # Generate a file with the usual userlevel format
   # If query is true, then the format for userlevel query files is used (slightly
   # different header, shorter)
-  def convert(query = false)
+  def dump_userlevel(query = false)
     objs = self.objects
     # HEADER
     data = ""
     if !query
-      data << ("\x00" * 4).force_encoding("ascii-8bit") # magic number ?
-      data << _pack(1230 + 5 * objs.size, 4)            # Filesize
+      data << _pack(0, 4)                    # Magic number
+      data << _pack(1230 + 5 * objs.size, 4) # Filesize
     end
-    data << ("\xFF" * 4).force_encoding("ascii-8bit")   # Level ID (unset)
-    data << _pack(Userlevel.modes[self.mode], 4)        # Game mode
-    data << _pack(37, 4)                                # QT (unset, max is 36)
-    data << (query ? _pack(self.author_id, 4) : ("\xFF" * 4).force_encoding("ascii-8bit"))
-    data << ("\x00" * 4).force_encoding("ascii-8bit")   # Fav count (unset)
-    data << ("\x00" * 10).force_encoding("ascii-8bit")  # Date SystemTime (unset)
-    data << self.title[0..126].ljust(128,"\x00").force_encoding("ascii-8bit") # map title
-    data << ("\x00" * 16).force_encoding("ascii-8bit")  # Author name (unset)
-    data << ("\x00" * 2).force_encoding("ascii-8bit")   # Padding
+    mode = self.is_a?(MappackLevel) ? self.mode : Userlevel.modes[self.mode]
+    author_id = query ? self.author_id : -1
+    title = self.is_a?(MappackLevel) ? self.longname : self.title
+    title = title[0..126].ljust(128, "\x00").force_encoding("ascii-8bit")
+    data << _pack(-1, 'l<')        # Level ID (unset)
+    data << _pack(mode, 4)         # Game mode
+    data << _pack(37, 4)           # QT (unset, max is 36)
+    data << _pack(author_id, 'l<') # Author ID
+    data << _pack(0, 4)            # Fav count (unset)
+    data << _pack(0, 10)           # Date SystemTime (unset)
+    data << title                  # Title
+    data << _pack(0, 16)           # Author name (unset)
+    data << _pack(0, 2)            # Padding
 
     # MAP DATA
     tile_data = self.tiles.flatten.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join
@@ -588,6 +593,15 @@ module MappackHighscoreable
     }
     rank
   end
+
+  # Verifies the integrity of a replay by generating the security hash and
+  # comparing it with the submitted one.
+  # This hash depends on both the score and the map data, so a score cannot
+  # be submitted if the map is changed.
+  def verify_replay(ninja_check, score)
+    score = (1000.0 * score / 60.0).round.to_s
+    Digest::SHA1.digest(hash + score) == ninja_check
+  end
 end
 
 class MappackLevel < ActiveRecord::Base
@@ -601,6 +615,11 @@ class MappackLevel < ActiveRecord::Base
   belongs_to :mappack
   belongs_to :mappack_episode, foreign_key: :episode_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  # Computes the level's hash, which the game uses for integrity verifications
+  def hash
+    Digest::SHA1.digest(PWD + dump_userlevel[0xB8..-1])
+  end
 end
 
 class MappackEpisode < ActiveRecord::Base
@@ -639,7 +658,6 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
-  # TODO: Implement for Episodes and Stories
   # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
   # TODO: Add integrity checks and warnings in Demo.parse, correct stories
@@ -671,10 +689,14 @@ class MappackScore < ActiveRecord::Base
       id_field    => submission[id_field].to_i
     }
 
+    # Find player
+    player = Player.find_or_create_by(metanet_id: uid)
+    name = !player.name.nil? ? player.name : "ID:#{player.metanet_id}"
+
     # Find mappack
     mappack = Mappack.find_by(code: code)
     if mappack.nil?
-      warn("Score submitted: Mappack '#{code}' not found")
+      warn("Score submitted by #{name}: Mappack '#{code}' not found")
       return
     end
 
@@ -682,23 +704,26 @@ class MappackScore < ActiveRecord::Base
     sid = submission[id_field].to_i
     h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
     if h.nil?
-      warn("Score submitted: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
+      warn("Score submitted by #{name}: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
       return
     end
 
-    # Find player
-    player = Player.find_or_create_by(metanet_id: uid)
-    name = !player.name.nil? ? player.name : "ID:#{player.metanet_id}"
-    
-    # Parse demos
+    # Parse demos and compute new scores
     demos = Demo.parse(submission['replay_data'], type[:name])
+    score_hs = (60.0 * submission['score'].to_i / 1000.0).round
+    score_sr = demos.map(&:size).sum
+    
+    # Verify replay integrity
+    legit = h.verify_replay(submission['ninja_check'], score_hs)
+    if !legit
+      warn("Score submitted by #{name} to #{h.name} has invalid security hash")
+      return
+    end
 
-    # Fetch old scores and compute new scores
+    # Fetch old PB's
     scores = MappackScore.where(highscoreable: h, player: player)
     score_hs_max = scores.maximum(:score_hs)
     score_sr_min = scores.minimum(:score_sr)
-    score_hs = (60.0 * submission['score'].to_i / 1000.0).round
-    score_sr = demos.map(&:size).sum
 
     # Determine if new score is better and has to be saved
     res['better'] = 0
@@ -761,7 +786,7 @@ class MappackScore < ActiveRecord::Base
     dbg(res.to_json)
     return res.to_json
   rescue => e
-    err("Failed to add score submitted by #{name} to mappack '#{code}': #{e}")
+    Log.log_exception(e, "Failed to add score submitted by #{name} to mappack '#{code}'")
     return nil
   end
 

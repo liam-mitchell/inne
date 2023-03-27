@@ -55,6 +55,8 @@ require_relative 'userlevels.rb'
 require_relative 'mappacks.rb'
 require_relative 'threads.rb'
 
+# TODO: Use log_exception for all exceptions in all files
+
 def monkey_patch
   MonkeyPatches.apply
   log("Applied monkey patches")
@@ -200,7 +202,7 @@ def stop_bot
   $bot.stop
   log("Stopped bot")
 rescue => e
-  fatal("Failed to stop the bot: #{e}\n#{e.backtrace.join("\n")}")
+  fatal("Failed to stop the bot: #{e}")
   exit
 end
 

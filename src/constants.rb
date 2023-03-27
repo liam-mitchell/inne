@@ -57,26 +57,27 @@ SERVER_WHITELIST = [
 # <--------------------------------------------------------------------------->
 
 # Control what things to log (these can be set on the fly as well)
-LOG          = true    # Log stuff to the terminal (if false, next 9 ones useless)
-LOG_FATAL    = true    # Log fatal error messages
-LOG_ERRORS   = true    # Log errors to the terminal
-LOG_WARNINGS = true    # Log warnings to the terminal
-LOG_SUCCESS  = true    # Log successes
-LOG_INFO     = true    # Log info to the terminal
-LOG_MSGS     = true    # Log mentions and DMs to outte
-LOG_IN       = true    # Log incoming HTTP connections (CUSE, CLE...)
-LOG_OUT      = true    # Log outgoing HTTP connections (CUSE, CLE...)
-LOG_DEBUG    = true    # Log debug messages
+LOG          = true # Log stuff to the terminal (if false, next 9 ones useless)
+LOG_FATAL    = true # Log fatal error messages
+LOG_ERRORS   = true # Log errors to the terminal
+LOG_WARNINGS = true # Log warnings to the terminal
+LOG_SUCCESS  = true # Log successes
+LOG_INFO     = true # Log info to the terminal
+LOG_MSGS     = true # Log mentions and DMs to outte
+LOG_IN       = true # Log incoming HTTP connections (CUSE, CLE...)
+LOG_OUT      = true # Log outgoing HTTP connections (CUSE, CLE...)
+LOG_DEBUG    = true # Log debug messages
 
 # Control log format
-LOG_FANCY    = true    # Whether rich logs are enabled (bold, colors...)
-LOG_LEVEL    = :debug  # Default logging level
-LOG_APPS     = false   # Append source app to log msgs
+LOG_FANCY      = true   # Whether rich logs are enabled (bold, colors...)
+LOG_LEVEL      = :debug # Default logging level
+LOG_APPS       = false  # Append source app to log msgs
+LOG_BACKTRACES = true   # Log exception backtraces
 
 # Others
-LOG_TO_FILE  = false   # Export logs and errors into external file
-LOG_SQL      = false   # Log _all_ SQL queries to the terminal (for debugging)
-LOG_REPORT   = false   # Export new weekly scores to a file
+LOG_TO_FILE = false # Export logs and errors into external file
+LOG_SQL     = false # Log _all_ SQL queries to the terminal (for debugging)
+LOG_REPORT  = false # Export new weekly scores to a file
 
 # <--------------------------------------------------------------------------->
 # <------                     DIRECTORY VARIABLES                       ------>
@@ -234,17 +235,18 @@ TWITCH_BLACKLIST = [           # Should probably use IDs instead of usernames he
 #    with the corresponding tool can connect to, so they can highscore custom
 #    mappacks.
 
-SOCKET           = true # Whether to open sockets or not
-CUSE_SOCKET      = true # Open CUSE socket
-CLE_SOCKET       = true # Open CLE socket
-CUSE_PORT        = 8125 # Port for CUSE's TCP server
-CLE_PORT         = 8126 # Port for CLE's TCP server
+SOCKET      = true # Whether to open sockets or not
+CUSE_SOCKET = true # Open CUSE socket
+CLE_SOCKET  = true # Open CLE socket
+CUSE_PORT   = 8125 # Port for CUSE's TCP server
+CLE_PORT    = 8126 # Port for CLE's TCP server
 
 # CUSE-specific variables
 QUERY_LIMIT_SOFT = 25   # Number of queried userlevels per page
 QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 
 # CLE-specific variables
+PWD = ENV['NPP_HASH']
 
 # <--------------------------------------------------------------------------->
 # <------                       GAME VARIABLES                          ------>
@@ -257,15 +259,16 @@ MODES = {
    2 => "race"
 }
 
-# Properties of the different playing TYPES
-# NOTE: Do NOT change order, as their index is important
+# Properties of the different playing types
+#   id         - Internal game index for the type
 #   name       - Name of the type AND of the Rails model class
 #   slots      - IDs reserved by N++ to this mode in the db
 #   min_scores - Max-min amount of scores to be taken into consideration for average rankings
+#   qt         - Query type, index used by the game for server communications
 TYPES = {
-  'Level' =>   { id: 0, name: 'Level',   slots: 20000, min_scores: 100, qt: 0 },
+  'Level'   => { id: 0, name: 'Level',   slots: 20000, min_scores: 100, qt: 0 },
   'Episode' => { id: 1, name: 'Episode', slots:  4000, min_scores:  50, qt: 1 },
-  'Story' =>   { id: 2, name: 'Story',   slots:   800, min_scores:  10, qt: 4 }
+  'Story'   => { id: 2, name: 'Story',   slots:   800, min_scores:  10, qt: 4 }
 }
 
 # @par1: ID ranges for levels and episodes
@@ -460,7 +463,6 @@ RTYPES = [
   'point',
   'average_point'
 ]
-
 
 # TODO: Move Dan and crit to PATCH_IND_DEL, they're not cheaters
 

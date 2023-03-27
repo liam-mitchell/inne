@@ -107,8 +107,10 @@ module Log
     app = LOG_APPS ? app : ''
 
     # Format text
-    msg = (fancy ? "#{m[:fmt]}#{text}#{RESET}" : text).strip
-    msg = "\r[#{date}] #{type}#{app} #{msg}"
+    header = "\r[#{date}] #{type}#{app} "
+    msg = text.split("\n").map{ |l|
+      header + (fancy ? "#{m[:fmt]}#{l}#{RESET}" : l).strip
+    }.join("\n")
     msg = msg.ljust(120, ' ') if pad
 
     # Output to stream and optionally file, returns raw msg
@@ -116,6 +118,12 @@ module Log
     stream.flush
     File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
     text
+  end
+
+  # Handle exceptions
+  def self.log_exception(e, msg)
+    err("#{msg}: #{e}")
+    dbg(e.backtrace.join("\n")) if LOG_BACKTRACES
   end
 
   # Shortcuts for each mode
@@ -232,10 +240,20 @@ def sanitize_filename(s)
 end
 
 # Convert an integer into a little endian binary string of 'size' bytes and back
-def _pack(n, size)
+def _pack_raw(n, size)
   n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
     [b].pack('H*')[0]
   }.join.force_encoding("ascii-8bit")
+end
+
+def _pack(n, arg)
+  if arg.is_a?(String)
+    [n].pack(arg)
+  else
+    _pack_raw(n, arg.to_i)
+  end
+rescue
+  _pack_raw(n, arg.to_i)
 end
 
 def _unpack(bytes, fmt = nil)

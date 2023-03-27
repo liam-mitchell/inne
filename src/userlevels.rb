@@ -633,7 +633,7 @@ class Userlevel < ActiveRecord::Base
 
   # Generate compressed map dump in the format the game uses when browsing
   def dump_data
-    block  = self.convert(true)
+    block  = self.dump_userlevel(true)
     dblock = Zlib::Deflate.deflate(block, 9)
     ocount = (block.size - 0xB0 - 966 - 80) / 5
     data  = _pack(dblock.size + 6, 4) # Length of full data block (4B)
@@ -857,7 +857,7 @@ def send_userlevel_download(event)
     output = "Downloading userlevel `" + map[:query].title + "` with ID `" + map[:query].id.to_s
     output += "` by `" + (map[:query].author.name.empty? ? " " : map[:query].author.name) + "` on " + Time.now.to_s + ".\n"
     event << output
-    send_file(event, map[:query].convert, map[:query].id.to_s, true)
+    send_file(event, map[:query].dump_userlevel, map[:query].id.to_s, true)
   }
 end
 
