@@ -210,7 +210,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     pad2 = rank.map{ |r| r[0].length }.max
     fmt  = rank[0][1].is_a?(Integer) ? "%#{pad1}d" : "%#{pad1 + 4}.3f"
     rank = rank.each_with_index.map{ |r, i|
-      "#{HighScore.format_rank(pag[:offset] + i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
+      "#{Highscoreable.format_rank(pag[:offset] + i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
     }.join("\n")
     rank = format_block(rank)
   end
@@ -301,7 +301,7 @@ def send_spreads(event)
   raise "I can't show you the spread between 0th and 0th..." if n == 0
 
   # Retrieve and format spreads
-  spreads  = HighScore.spreads(n, type, tabs, small, player.nil? ? nil : player.id)
+  spreads  = Highscoreable.spreads(n, type, tabs, small, player.nil? ? nil : player.id)
   namepad  = spreads.map{ |s| s[0].length }.max
   scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
   spreads  = spreads.each_with_index
@@ -525,7 +525,7 @@ def send_stats(event)
   ).draw
 
   # Format response
-  totals  = full_counts.each_with_index.map{ |c, r| "#{HighScore.format_rank(r)}: #{"   %4d  %4d    %4d   %4d" % c}" }.join("\n\t")
+  totals  = full_counts.each_with_index.map{ |c, r| "#{Highscoreable.format_rank(r)}: #{"   %4d  %4d    %4d   %4d" % c}" }.join("\n\t")
   overall = "Totals:    %4d  %4d    %4d   %4d" % full_counts.reduce([0, 0, 0, 0]) { |sums, curr| sums.zip(curr).map { |a| a[0] + a[1] } }
   maxes   = [Level, Episode, Story].map{ |t| find_max(:rank, t, tabs) }
   maxes   = "Max:       %4d  %4d    %4d   %4d" % maxes.unshift(maxes[0] + maxes[1])
@@ -585,7 +585,7 @@ def send_maxable(event, maxed = false)
   tabs   = parse_tabs(msg)
 
   # Retrieve maxed/maxable scores
-  ties   = HighScore.ties(type, tabs, player.nil? ? nil : player.id, maxed)
+  ties   = Highscoreable.ties(type, tabs, player.nil? ? nil : player.id, maxed)
   ties   = ties.take(NUM_ENTRIES) if !maxed
   pad1   = ties.map{ |s| s[0].length }.max
   pad2   = ties.map{ |s| s[1].to_s.length }.max

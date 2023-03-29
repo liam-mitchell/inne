@@ -111,95 +111,9 @@ module MonkeyPatches
   end
 end
 
-# Common functionality for all highscoreables (level, episode, story, userlevel)
-# For example, downloading leaderboards, formatting scores, navigating, etc.
-module HighScore
-
-  def self.format_rank(rank)
-    "#{rank < 10 ? '0' : ''}#{rank}"
-  end
-
-  def self.spreads(n, type, tabs, small = false, player_id = nil)
-    n = n.clamp(0,19)
-    type = ensure_type(type)
-    bench(:start) if BENCHMARK
-    # retrieve player's 0ths if necessary
-    if !player_id.nil?
-      ids = Score.where(highscoreable_type: type.to_s, rank: 0, player_id: player_id)
-      ids = ids.where(tab: tabs) if !tabs.empty?
-      ids = ids.pluck('highscoreable_id')
-    end
-    # retrieve required scores and compute spreads
-    ret1 = Score.where(highscoreable_type: type.to_s, rank: 0)
-    ret1 = ret1.where(tab: tabs) if !tabs.empty?
-    ret1 = ret1.where(highscoreable_id: ids) if !player_id.nil?
-    ret1 = ret1.pluck(:highscoreable_id, :score).to_h
-    ret2 = Score.where(highscoreable_type: type.to_s, rank: n)
-    ret2 = ret2.where(tab: tabs) if !tabs.empty?
-    ret2 = ret2.where(highscoreable_id: ids) if !player_id.nil?
-    ret2 = ret2.pluck(:highscoreable_id, :score).to_h
-    ret = ret2.map{ |id, s| [id, ret1[id] - s] }
-              .sort_by{ |id, s| small ? s : -s }
-              .take(NUM_ENTRIES)
-              .to_h
-    # retrieve level names
-    lnames = type.where(id: ret.keys)
-                 .pluck(:id, :name)
-                 .to_h
-    # retrieve player names
-    pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
-                  .joins("INNER JOIN players ON players.id = scores.player_id")
-                  .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
-                  .map{ |a, b, c| [a, [b, c]] }
-                  .to_h
-    ret = ret.map{ |id, s| [lnames[id], s, pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
-    bench(:step) if BENCHMARK
-    ret
-  end
-
-  # @par player_id: Exclude levels where the player already has a score
-  # @par maxed:     Sort differently depending on whether we're interested in maxed or maxable
-  # @par rank:      Return rankings of people with most scores in maxed / maxable levels
-  def self.ties(type, tabs, player_id = nil, maxed = nil, rank = false)
-    type = ensure_type(type)
-    bench(:start) if BENCHMARK
-    # retrieve most tied for 0th levels
-    ret = Score.where(highscoreable_type: type.to_s, tied_rank: 0)
-    ret = ret.where(tab: tabs) if !tabs.empty?
-    ret = ret.group(:highscoreable_id)
-             .order(!maxed ? 'count(id) desc' : '', :highscoreable_id)
-             .having("count(id) >= #{MIN_TIES}")
-             .having(!player_id.nil? ? 'amount = 0' : '')
-             .pluck('highscoreable_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
-             .map{ |s| s[0..1] }
-             .to_h
-    # retrieve total score counts for each level (to compare against the tie count and determine maxes)
-    counts = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys)
-                  .group(:highscoreable_id)
-                  .order('count(id) desc')
-                  .count(:id)
-    # filter
-    maxed ? ret.select!{ |id, c| c == counts[id] } : ret.select!{ |id, c| c < counts[id] } if !maxed.nil?
-
-    if rank
-      ret = ret.keys
-    else
-      # retrieve player names owning the 0ths on said level
-      pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
-                    .joins("INNER JOIN players ON players.id = scores.player_id")
-                    .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
-                    .map{ |a, b, c| [a, [b, c]] }
-                    .to_h
-      # retrieve level names
-      lnames = type.where(id: ret.keys)
-                   .pluck(:id, :name)
-                   .to_h
-      ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
-    end
-    bench(:step) if BENCHMARK
-    ret
-  end
-
+# Common functionality for all highscoreables whose leaderboards we download from
+# N++'s server (level, episode, story, userlevel).
+module Downloadable
   def scores_uri(steam_id)
     klass = self.class == Userlevel ? "level" : self.class.to_s.downcase
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}")
@@ -334,6 +248,96 @@ module HighScore
   def correct_ties(score_hash)
     score_hash.sort_by{ |s| [-s['score'], s['replay_id']] }
   end
+end
+
+# Common functionality for all models that have leaderboards, whether we download
+# from N++'s server (Metanet campaign, userlevels) or receive them directly from
+# CLE (mappacks).
+module Highscoreable
+  def self.format_rank(rank)
+    "#{rank < 10 ? '0' : ''}#{rank}"
+  end
+
+  def self.spreads(n, type, tabs, small = false, player_id = nil)
+    n = n.clamp(0,19)
+    type = ensure_type(type)
+    bench(:start) if BENCHMARK
+    # retrieve player's 0ths if necessary
+    if !player_id.nil?
+      ids = Score.where(highscoreable_type: type.to_s, rank: 0, player_id: player_id)
+      ids = ids.where(tab: tabs) if !tabs.empty?
+      ids = ids.pluck('highscoreable_id')
+    end
+    # retrieve required scores and compute spreads
+    ret1 = Score.where(highscoreable_type: type.to_s, rank: 0)
+    ret1 = ret1.where(tab: tabs) if !tabs.empty?
+    ret1 = ret1.where(highscoreable_id: ids) if !player_id.nil?
+    ret1 = ret1.pluck(:highscoreable_id, :score).to_h
+    ret2 = Score.where(highscoreable_type: type.to_s, rank: n)
+    ret2 = ret2.where(tab: tabs) if !tabs.empty?
+    ret2 = ret2.where(highscoreable_id: ids) if !player_id.nil?
+    ret2 = ret2.pluck(:highscoreable_id, :score).to_h
+    ret = ret2.map{ |id, s| [id, ret1[id] - s] }
+              .sort_by{ |id, s| small ? s : -s }
+              .take(NUM_ENTRIES)
+              .to_h
+    # retrieve level names
+    lnames = type.where(id: ret.keys)
+                 .pluck(:id, :name)
+                 .to_h
+    # retrieve player names
+    pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
+                  .joins("INNER JOIN players ON players.id = scores.player_id")
+                  .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
+                  .map{ |a, b, c| [a, [b, c]] }
+                  .to_h
+    ret = ret.map{ |id, s| [lnames[id], s, pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+    bench(:step) if BENCHMARK
+    ret
+  end
+
+  # @par player_id: Exclude levels where the player already has a score
+  # @par maxed:     Sort differently depending on whether we're interested in maxed or maxable
+  # @par rank:      Return rankings of people with most scores in maxed / maxable levels
+  def self.ties(type, tabs, player_id = nil, maxed = nil, rank = false)
+    type = ensure_type(type)
+    bench(:start) if BENCHMARK
+    # retrieve most tied for 0th levels
+    ret = Score.where(highscoreable_type: type.to_s, tied_rank: 0)
+    ret = ret.where(tab: tabs) if !tabs.empty?
+    ret = ret.group(:highscoreable_id)
+             .order(!maxed ? 'count(id) desc' : '', :highscoreable_id)
+             .having("count(id) >= #{MIN_TIES}")
+             .having(!player_id.nil? ? 'amount = 0' : '')
+             .pluck('highscoreable_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
+             .map{ |s| s[0..1] }
+             .to_h
+    # retrieve total score counts for each level (to compare against the tie count and determine maxes)
+    counts = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys)
+                  .group(:highscoreable_id)
+                  .order('count(id) desc')
+                  .count(:id)
+    # filter
+    maxed ? ret.select!{ |id, c| c == counts[id] } : ret.select!{ |id, c| c < counts[id] } if !maxed.nil?
+
+    if rank
+      ret = ret.keys
+    else
+      # retrieve player names owning the 0ths on said level
+      pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
+                    .joins("INNER JOIN players ON players.id = scores.player_id")
+                    .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
+                    .map{ |a, b, c| [a, [b, c]] }
+                    .to_h
+      # retrieve level names
+      lnames = type.where(id: ret.keys)
+                   .pluck(:id, :name)
+                   .to_h
+      ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+    end
+    bench(:step) if BENCHMARK
+    ret
+  end
 
   def max_name_length
     scores.map{ |s| s.player.name.length }.max
@@ -389,59 +393,81 @@ module HighScore
 
   # The next function navigates through highscoreables.
   # @par1: Offset (1 = next, -1 = prev, 2 = next tab, -2 = prev tab).
+  # @par2: Enable tab change with +-1, otherwise clamp to current tab
   #
   # Note:
   #   We deal with edge cases separately because we change the natural order
   #   of tabs, so the ID is not always what we want (the internal order of
   #   tabs is SI, S, SL, ?, SU, !, but we want SI, S, SU, SL, ?, !, as it
   #   appears in the game).
-  def nav(c)
-    tabs    = self.class.to_s == "Level" ? 6 : 4
-    ids     = [:SI, :S, :SU, :SL, :SS, :SS2][0...tabs].map{ |t| [ TABS[self.class.to_s][t][0][0], TABS[self.class.to_s][t][0][-1] ] }
-    new_id  = nil
-    new_id2 = nil
+  def nav(c, tab: true)
+    klass = self.class.to_s.remove("Mappack")
+    tabs = [:SI, :S, :SU, :SL, :SS, :SS2].take(klass == "Level" ? 6 : 4)
+    i = tabs.index(self.tab.to_sym)
+    tabs.map!{ |t| TABS_NEW[t] }
+    old_id = self.is_a?(MappackHighscoreable) ? inner_id : id
 
-    ids.each_with_index{ |t, i|
-      case c
-      when 1
-        new_id  = ids[(i + 1) % tabs][0] if self.id == t[1]
-        new_id2 = self.class.where("id > #{self.id}").pluck("MIN(id)").first.to_i
-      when -1
-        new_id  = ids[(i - 1) % tabs][1] if self.id == t[0]
-        new_id2 = self.class.where("id < #{self.id}").pluck("MAX(id)").first.to_i
-      when 2
-        new_id = ids[(i + 1) % tabs][0] if self.id >= t[0] && self.id <= t[1]
-      when -2
-        new_id = ids[(i - 1) % tabs][0] if self.id >= t[0] && self.id <= t[1]
+    # Scale factor to translate Level IDs to Episode / Story IDs
+    type = TYPES[klass][:id]
+    fo = 5 ** type
+    offset = old_id - tabs[i][:start] / fo
+
+    case c
+    when 1
+      new_tab = tabs[(i + 1) % tabs.size]
+      fs = type == 2 && tabs[i][:x] ? 30 : fo
+      if old_id < tabs[i][:start] / fo + tabs[i][:size] / fs - 1
+        new_id = old_id + 1
       else
-        new_id = self.id
+        new_id = tab ? new_tab[:start] / fo : old_id
       end
-    }
-    self.class.find(new_id || new_id2)
-  rescue
+    when -1
+      new_tab = tabs[(i - 1) % tabs.size]
+      fs = type == 2 && new_tab[:x] ? 30 : fo
+      if old_id > tabs[i][:start] / fo
+        new_id = old_id - 1
+      else
+        new_id = tab ? new_tab[:start] / fo + new_tab[:size] / fs - 1 : old_id
+      end
+    when 2
+      new_tab = tabs[(i + 1) % tabs.size]
+      fs = type == 2 && new_tab[:x] ? 30 : fo
+      new_id = new_tab[:start] / fo + offset.clamp(0, new_tab[:size] / fs - 1)
+    when -2
+      new_tab = tabs[(i - 1) % tabs.size]
+      fs = type == 2 && new_tab[:x] ? 30 : fo
+      new_id = new_tab[:start] / fo + offset.clamp(0, new_tab[:size] / fs - 1)
+    else
+      new_id = old_id
+    end
+
+    self.class.find(new_id).name
+  rescue => e
+    Log.log_exception(e)
     self
   end
 
   # Shorcuts for the above
-  def next_h
-    nav(1)
+  def next_h(**args)
+    nav(1, **args)
   end
 
-  def prev_h
-    nav(-1)
+  def prev_h(**args)
+    nav(-1, **args)
   end
 
-  def next_t
-    nav(2)
+  def next_t(**args)
+    nav(2, **args)
   end
 
-  def prev_t
-    nav(-2)
+  def prev_t(**args)
+    nav(-2, **args)
   end
 end
 
 class Level < ActiveRecord::Base
-  include HighScore
+  include Downloadable
+  include Highscoreable
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :challenges
@@ -464,7 +490,8 @@ class Level < ActiveRecord::Base
 end
 
 class Episode < ActiveRecord::Base
-  include HighScore
+  include Downloadable
+  include Highscoreable
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :levels
@@ -554,7 +581,8 @@ class Episode < ActiveRecord::Base
 end
 
 class Story < ActiveRecord::Base
-  include HighScore
+  include Downloadable
+  include Highscoreable
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
@@ -681,13 +709,13 @@ class Score < ActiveRecord::Base
                      .sum(:score)
                      .map{ |id, c| [id, round_score(c)] }
     when :maxed
-      scores = scores.where(highscoreable_id: HighScore.ties(type, tabs, nil, true, true))
+      scores = scores.where(highscoreable_id: Highscoreable.ties(type, tabs, nil, true, true))
                      .where("tied_rank = 0")
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
     when :maxable
-      scores = scores.where(highscoreable_id: HighScore.ties(type, tabs, nil, false, true))
+      scores = scores.where(highscoreable_id: Highscoreable.ties(type, tabs, nil, false, true))
                      .where("tied_rank = 0")
                      .group(:player_id)
                      .order("count(id) desc")
@@ -820,7 +848,7 @@ class Score < ActiveRecord::Base
   end
 
   def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true)
-    "#{star ? "*" : ' '}#{HighScore.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{show_cools && cool ? " 😎" : ""}"
+    "#{star ? "*" : ' '}#{Highscoreable.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{show_cools && cool ? " 😎" : ""}"
   end
 end
 
@@ -1157,13 +1185,13 @@ class Player < ActiveRecord::Base
       when :avg_rank
         query.average(ttype).to_h
       when :maxed
-        HighScore.ties(type, [], nil, true, false)
+        Highscoreable.ties(type, [], nil, true, false)
                  .select{ |t| t[1] == t[2] }
                  .group_by{ |t| t[0].split("-")[0] }
                  .map{ |tab, scores| [formalize_tab(tab), scores.size] }
                  .to_h
       when :maxable
-        HighScore.ties(type, [], nil, false, false)
+        Highscoreable.ties(type, [], nil, false, false)
                  .select{ |t| t[1] < t[2] }
                  .group_by{ |t| t[0].split("-")[0] }
                  .map{ |tab, scores| [formalize_tab(tab), scores.size] }
@@ -1687,7 +1715,7 @@ class Demo < ActiveRecord::Base
     demos = parse(replay[16..-1])
     update_archive(demos.map(&:size), false)
     self.update(demo: Demo.encode(demos))
-    succ("Updated demo by #{archive.player.name}")
+    #succ("Updated demo by #{archive.player.name}")
   rescue => e
     if SHOW_ERRORS
       err("error parsing demo with id #{archive.replay_id}: #{e}")

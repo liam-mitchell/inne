@@ -8,7 +8,7 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
-BYEBUG         = false # Breakpoint right after loading the bot
+BYEBUG         = true # Breakpoint right after loading the bot
 
 # <--------------------------------------------------------------------------->
 # <------                     INTERNAL VARIABLES                        ------>
@@ -298,7 +298,7 @@ TABS = {
 }
 
 # TODO: Use this wherever TABS is being used, and also in parse_tabs, then delete TABS
-# All tab information. DO NOT change order (it's mapped to the database)
+# All tab information.
 TABS_NEW = {
   SI: {
     code:   'SI',

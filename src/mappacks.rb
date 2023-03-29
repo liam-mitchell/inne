@@ -234,7 +234,7 @@ module Map
       board = scores.map{ |s| { score: s.score / 60.0, player: s.player.name } }
       pad = board.map{ |s| s[:score] }.max.to_i.to_s.length + 4
       board.each_with_index.map{ |s, i|
-        "#{HighScore.format_rank(i)}: #{format_string(s[:player])} - #{"%#{pad}.3f" % [s[:score]]}"
+        "#{Highscoreable.format_rank(i)}: #{format_string(s[:player])} - #{"%#{pad}.3f" % [s[:score]]}"
       }.join("\n")
     end
   end
@@ -574,6 +574,7 @@ class MappackData < ActiveRecord::Base
 end
 
 module MappackHighscoreable
+  include Highscoreable
 
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).

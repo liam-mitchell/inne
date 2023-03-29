@@ -121,7 +121,7 @@ module Log
   end
 
   # Handle exceptions
-  def self.log_exception(e, msg)
+  def self.log_exception(e, msg = '')
     err("#{msg}: #{e}")
     dbg(e.backtrace.join("\n")) if LOG_BACKTRACES
   end
@@ -377,9 +377,9 @@ def find_max_type(rank, type, tabs)
   when :avg_rank
     0
   when :maxable
-    HighScore.ties(type, tabs, nil, false, true).size
+    Highscoreable.ties(type, tabs, nil, false, true).size
   when :maxed
-    HighScore.ties(type, tabs, nil, true, true).size
+    Highscoreable.ties(type, tabs, nil, true, true).size
   when :clean
     0.0
   when :score
