@@ -82,21 +82,25 @@ module Map
   WIDTH   = DIM * (COLUMNS + 2)
   HEIGHT  = DIM * (ROWS + 2)
 
+  # TODO: Perhaps store object data without transposing, hence being able to skip
+  #       the decoding when dumping
+  # TODO: Or better yet, store the entire map data in a single field, Zlibbed, for
+  #       instantaneous dumps
   def self.encode_tiles(tiles)
-    Zlib::Deflate.deflate(tiles.flatten.map{ |t| _pack(t, 1) }.join, 9)
+    Zlib::Deflate.deflate(tiles.map{ |a| a.pack('C*') }.join, 9)
   end
 
   def self.encode_objects(objects)
-    Zlib::Deflate.deflate(objects.transpose.flatten.map{ |t| _pack(t, 1) }.join, 9)
+    Zlib::Deflate.deflate(objects.transpose.map{ |a| a.pack('C*') }.join, 9)
   end
 
   def self.decode_tiles(tile_data)
-    Zlib::Inflate.inflate(tile_data).scan(/./m).map{ |b| _unpack(b) }.each_slice(42).to_a
+    Zlib::Inflate.inflate(tile_data).bytes.each_slice(42).to_a
   end
 
   def self.decode_objects(object_data)
     dec = Zlib::Inflate.inflate(object_data)
-    dec.scan(/./m).map{ |b| _unpack(b) }.each_slice((dec.size / 5).round).to_a.transpose
+    dec.bytes.each_slice((dec.size / 5).round).to_a.transpose
   end
 
   # Parse a level in Metanet format
@@ -109,6 +113,7 @@ module Map
     name += " for '#{pack}'"  if !pack.nil?
     error = "Failed to parse Metanet formatted map#{name}"
     warning = "Abnormality found parsing Metanet formatted map#{name}"
+
     # Ensure format is "$map_name#map_data#", with map data being hex chars
     if data !~ /^\$(.*)\#(\h+)\#$/
       err("#{error}: Incorrect overall format.")
@@ -211,6 +216,16 @@ module Map
     Map.decode_objects(data.object_data)
   end
 
+  # The following 2 methods only decompress map data, but don't parse it into a neat array
+  # This is useful for dumping, in which case we want to have it serialized anyway
+  def tiles_raw
+    Zlib::Inflate.inflate(data.tile_data)
+  end
+
+  def objects_raw
+    Zlib::Inflate.inflate(data.object_data)
+  end
+
   def format_scores
     update_scores if !OFFLINE_STRICT
     if scores.count == 0
@@ -230,35 +245,36 @@ module Map
   def dump_userlevel(query = false)
     objs = self.objects
     # HEADER
-    data = ""
+    header = ""
     if !query
-      data << _pack(0, 4)                    # Magic number
-      data << _pack(1230 + 5 * objs.size, 4) # Filesize
+      header << _pack(0, 4)                    # Magic number
+      header << _pack(1230 + 5 * objs.size, 4) # Filesize
     end
     mode = self.is_a?(MappackLevel) ? self.mode : Userlevel.modes[self.mode]
     author_id = query ? self.author_id : -1
     title = self.is_a?(MappackLevel) ? self.longname : self.title
-    title = title[0..126].ljust(128, "\x00").force_encoding("ascii-8bit")
-    data << _pack(-1, 'l<')        # Level ID (unset)
-    data << _pack(mode, 4)         # Game mode
-    data << _pack(37, 4)           # QT (unset, max is 36)
-    data << _pack(author_id, 'l<') # Author ID
-    data << _pack(0, 4)            # Fav count (unset)
-    data << _pack(0, 10)           # Date SystemTime (unset)
-    data << title                  # Title
-    data << _pack(0, 16)           # Author name (unset)
-    data << _pack(0, 2)            # Padding
+    title = title[0..126].ljust(128, "\x00")
+    header << _pack(-1, 'l<')        # Level ID (unset)
+    header << _pack(mode, 4)         # Game mode
+    header << _pack(37, 4)           # QT (unset, max is 36)
+    header << _pack(author_id, 'l<') # Author ID
+    header << _pack(0, 4)            # Fav count (unset)
+    header << _pack(0, 10)           # Date SystemTime (unset)
+    header << title                  # Title
+    header << _pack(0, 16)           # Author name (unset)
+    header << _pack(0, 2)            # Padding
 
     # MAP DATA
-    tile_data = self.tiles.flatten.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join
+    tile_data = tiles_raw
     object_counts = [0] * 40
-    object_data = ""
     objs.each{ |o| object_counts[o[0]] += 1 }
-    objs.group_by{ |o| o[0] }
-    object_counts[7] = 0
-    object_counts[9] = 0
-    object_counts = object_counts.map{ |c| _pack(c, 2) }.join
-    object_data = objs.map{ |o| o.map{ |b| [b.to_s(16).rjust(2,"0")].pack('H*')[0] }.join }.join
+    object_counts[7] = 0 unless self.is_a?(MappackLevel)
+    object_counts[9] = 0 unless self.is_a?(MappackLevel)
+    object_counts = object_counts.pack('S<*')
+    object_data = objs.map{ |o| o.pack('C5') }.join
+
+    # TODO: Perhaps optimize the commented code below, in case it's useful in the future
+    
 =begin # Don't remove, as this is the code that works if objects aren't already sorted in the database
     OBJECTS.sort_by{ |id, entity| id }.each{ |id, entity|
       if ![7,9].include?(id) # ignore door switches for counting
@@ -275,8 +291,7 @@ module Map
       end
     }
 =end
-    data << (tile_data + object_counts.ljust(80, "\x00") + object_data).force_encoding("ascii-8bit")
-    data
+    (header + tile_data + object_counts + object_data).force_encoding("ascii-8bit")
   end
 
   # <-------------------------------------------------------------------------->
@@ -602,6 +617,9 @@ module MappackHighscoreable
     score = (1000.0 * score / 60.0).round.to_s
     Digest::SHA1.digest(hash + score) == ninja_check
   end
+
+  # TODO: Create navigation functions, use them in the partial object dump for
+  # the stupid hash computation
 end
 
 class MappackLevel < ActiveRecord::Base
@@ -657,6 +675,10 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: :highscoreable_id
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  # TODO: Thoroughly test dump_userlevel, ensure it generates the right data
+  # by comparing with the game (memory), and by coding dump_metanet and seeing
+  # that there's a bijection (can convert in either direction obtaining the same)
 
   # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
