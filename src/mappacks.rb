@@ -216,16 +216,6 @@ module Map
     Map.decode_objects(data.object_data)
   end
 
-  # The following 2 methods only decompress map data, but don't parse it into a neat array
-  # This is useful for dumping, in which case we want to have it serialized anyway
-  def tiles_raw
-    Zlib::Inflate.inflate(data.tile_data)
-  end
-
-  def objects_raw
-    Zlib::Inflate.inflate(data.object_data)
-  end
-
   def format_scores
     update_scores if !OFFLINE_STRICT
     if scores.count == 0
@@ -239,10 +229,33 @@ module Map
     end
   end
 
+  def dump_tiles
+    Zlib::Inflate.inflate(data.tile_data)
+  end
+
+  def dump_objects
+    dec = Zlib::Inflate.inflate(data.object_data)
+  end
+
+  # This is used for computing the hash of a level. It's required due to a
+  # misimplementation in N++, which instead of just hashing the map data,
+  # overflows and copies object data from the next level before doing so.
+  def complete_object_data(data, n)
+    successor = next_h(tab: false)
+    if successor == self
+      data << "\x00" * n
+    else
+      objs = successor.objects.take(n).map{ |o| o.pack('C5') }
+      count = objs.count
+      data << objs.join
+      successor.complete_object_data(data, n - count) if count < n
+    end
+  end
+
   # Generate a file with the usual userlevel format
-  # If query is true, then the format for userlevel query files is used (slightly
-  # different header, shorter)
-  def dump_userlevel(query = false)
+  #   - query: The format for userlevel query files is used (shorter header)
+  #   - hash:  Recursively fetches object data from next level to compute hash later
+  def dump_level(query: false, hash: false)
     objs = self.objects
     # HEADER
     header = ""
@@ -265,13 +278,14 @@ module Map
     header << _pack(0, 2)            # Padding
 
     # MAP DATA
-    tile_data = tiles_raw
+    tile_data = dump_tiles
     object_counts = [0] * 40
     objs.each{ |o| object_counts[o[0]] += 1 }
-    object_counts[7] = 0 unless self.is_a?(MappackLevel)
-    object_counts[9] = 0 unless self.is_a?(MappackLevel)
+    object_counts[7] = 0 unless hash
+    object_counts[9] = 0 unless hash
     object_counts = object_counts.pack('S<*')
     object_data = objs.map{ |o| o.pack('C5') }.join
+    complete_object_data(object_data, object_counts[6] + object_counts[8]) if hash
 
     # TODO: Perhaps optimize the commented code below, in case it's useful in the future
     
@@ -618,9 +632,6 @@ module MappackHighscoreable
     score = (1000.0 * score / 60.0).round.to_s
     Digest::SHA1.digest(hash + score) == ninja_check
   end
-
-  # TODO: Create navigation functions, use them in the partial object dump for
-  # the stupid hash computation
 end
 
 class MappackLevel < ActiveRecord::Base
@@ -637,7 +648,7 @@ class MappackLevel < ActiveRecord::Base
 
   # Computes the level's hash, which the game uses for integrity verifications
   def hash
-    Digest::SHA1.digest(PWD + dump_userlevel[0xB8..-1])
+    Digest::SHA1.digest(PWD + dump_level(hash: true)[0xB8..-1])
   end
 end
 
@@ -677,7 +688,7 @@ class MappackScore < ActiveRecord::Base
   #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
-  # TODO: Thoroughly test dump_userlevel, ensure it generates the right data
+  # TODO: Thoroughly test dump_level, ensure it generates the right data
   # by comparing with the game (memory), and by coding dump_metanet and seeing
   # that there's a bijection (can convert in either direction obtaining the same)
 

@@ -441,7 +441,7 @@ module Highscoreable
       new_id = old_id
     end
 
-    self.class.find(new_id).name
+    self.class.find(new_id)
   rescue => e
     Log.log_exception(e)
     self
