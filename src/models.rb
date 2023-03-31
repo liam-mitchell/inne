@@ -408,14 +408,14 @@ module Highscoreable
     old_id = self.is_a?(MappackHighscoreable) ? inner_id : id
 
     # Scale factor to translate Level IDs to Episode / Story IDs
-    type = TYPES[klass][:id]
-    fo = 5 ** type
+    type = TYPES[klass]
+    fo = 5 ** type[:id]
     offset = old_id - tabs[i][:start] / fo
 
     case c
     when 1
       new_tab = tabs[(i + 1) % tabs.size]
-      fs = type == 2 && tabs[i][:x] ? 30 : fo
+      fs = type[:id] == 2 && tabs[i][:x] ? 30 : fo
       if old_id < tabs[i][:start] / fo + tabs[i][:size] / fs - 1
         new_id = old_id + 1
       else
@@ -423,7 +423,7 @@ module Highscoreable
       end
     when -1
       new_tab = tabs[(i - 1) % tabs.size]
-      fs = type == 2 && new_tab[:x] ? 30 : fo
+      fs = type[:id] == 2 && new_tab[:x] ? 30 : fo
       if old_id > tabs[i][:start] / fo
         new_id = old_id - 1
       else
@@ -431,16 +431,17 @@ module Highscoreable
       end
     when 2
       new_tab = tabs[(i + 1) % tabs.size]
-      fs = type == 2 && new_tab[:x] ? 30 : fo
+      fs = type[:id] == 2 && new_tab[:x] ? 30 : fo
       new_id = new_tab[:start] / fo + offset.clamp(0, new_tab[:size] / fs - 1)
     when -2
       new_tab = tabs[(i - 1) % tabs.size]
-      fs = type == 2 && new_tab[:x] ? 30 : fo
+      fs = type[:id] == 2 && new_tab[:x] ? 30 : fo
       new_id = new_tab[:start] / fo + offset.clamp(0, new_tab[:size] / fs - 1)
     else
       new_id = old_id
     end
 
+    new_id += type[:slots] * mappack.id if self.is_a?(MappackHighscoreable)
     self.class.find(new_id)
   rescue => e
     Log.log_exception(e)

@@ -240,15 +240,21 @@ module Map
   # This is used for computing the hash of a level. It's required due to a
   # misimplementation in N++, which instead of just hashing the map data,
   # overflows and copies object data from the next level before doing so.
+  #
+  # Returns false if we ran out of objects
   def complete_object_data(data, n)
     successor = next_h(tab: false)
     if successor == self
-      data << "\x00" * n
+      return false
     else
       objs = successor.objects.take(n).map{ |o| o.pack('C5') }
       count = objs.count
       data << objs.join
-      successor.complete_object_data(data, n - count) if count < n
+      if count < n
+        return successor.complete_object_data(data, n - count)
+      else
+        return true
+      end
     end
   end
 
@@ -283,9 +289,9 @@ module Map
     objs.each{ |o| object_counts[o[0]] += 1 }
     object_counts[7] = 0 unless hash
     object_counts[9] = 0 unless hash
-    object_counts = object_counts.pack('S<*')
     object_data = objs.map{ |o| o.pack('C5') }.join
-    complete_object_data(object_data, object_counts[6] + object_counts[8]) if hash
+    return nil if hash && !complete_object_data(object_data, object_counts[6] + object_counts[8])
+    object_counts = object_counts.pack('S<*')
 
     # TODO: Perhaps optimize the commented code below, in case it's useful in the future
     
@@ -630,7 +636,8 @@ module MappackHighscoreable
   # be submitted if the map is changed.
   def verify_replay(ninja_check, score)
     score = (1000.0 * score / 60.0).round.to_s
-    Digest::SHA1.digest(hash + score) == ninja_check
+    _hash = hash
+    _hash.nil? ? true : Digest::SHA1.digest(_hash + score) == ninja_check
   end
 end
 
@@ -648,7 +655,8 @@ class MappackLevel < ActiveRecord::Base
 
   # Computes the level's hash, which the game uses for integrity verifications
   def hash
-    Digest::SHA1.digest(PWD + dump_level(hash: true)[0xB8..-1])
+    map_data = dump_level(hash: true)
+    map_data.nil? ? nil : Digest::SHA1.digest(PWD + map_data[0xB8..-1])
   end
 end
 

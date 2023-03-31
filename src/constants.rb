@@ -8,7 +8,7 @@ SHOW_ERRORS    = true  # Log common error messages to the console
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
-BYEBUG         = true # Breakpoint right after loading the bot
+BYEBUG         = false # Breakpoint right after loading the bot
 
 # <--------------------------------------------------------------------------->
 # <------                     INTERNAL VARIABLES                        ------>
