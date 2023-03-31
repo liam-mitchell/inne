@@ -2058,27 +2058,37 @@ module Cle extend self
   end
 
   def handle(req, res)
+    # Parse request parameters
     mappack = req.path.split('/')[1]
     query = req.path.split('/')[-1]
+
+    # Build response
     case req.request_method
     when 'GET'
-      res.status = 400
+      case query
+      when 'get_scores'
+        response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+      else
+        res.status = 400
+      end
     when 'POST'
       case query
       when 'submit_score'
         response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
-        if response.nil?
-          res.status = 400
-          res.body = ''
-        else
-          res.status = 200
-          res.body = response
-        end
       else
         res.status = 400
       end
     else
       res.status = 400
+    end
+
+    # Set up response parameters
+    if response.nil?
+      res.status = 400
+      res.body = ''
+    else
+      res.status = 200
+      res.body = response
     end
   rescue => e
     err("CLE socket failed: #{e}")

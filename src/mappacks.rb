@@ -609,6 +609,47 @@ module MappackHighscoreable
     end
   end
 
+  # Return scores in JSON format expected by N++
+  def get_scores(qt = 0, metanet_id = nil)
+    # Parse parameters
+    qt = 0 if qt > 2
+    m = qt == 0 ? 'hs' : 'sr'
+
+    # Fetch scores
+    board = leaderboard(m)
+    list = board.limit(20)
+                .joins("INNER JOIN players ON players.id = mappack_scores.player_id")
+                .pluck(
+                  "score_#{m}",
+                  "rank_#{m}",
+                  "players.metanet_id",
+                  "players.name",
+                  "mappack_scores.id"
+                )
+    score = board.find_by(metanet_id: metanet_id) if !metanet_id.nil?
+
+    # Build response
+    res = {}
+    res["userInfo"] = {
+      "my_score"        => (1000 * score["score_#{mode}"].to_i / 60.0).round,
+      "my_rank"         => score["rank_#{m}"].to_i,
+      "my_replay_id"    => score.id.to_i,
+      "my_display_name" => score.player.name.to_s
+    } if !score.nil?
+    res["scores"] = list.map{ |s|
+      {
+        "score"     => (1000 * s[0].to_i / 60.0).round,
+        "rank"      => s[1].to_i,
+        "user_id"   => s[2].to_i,
+        "user_name" => s[3].to_s,
+        "replay_id" => s[4].to_i
+      }
+    }
+    res["query_type"] = qt
+    res["#{self.class.to_s.remove("Mappack").downcase}_id"] = self.inner_id
+    res.to_json
+  end
+
   # Updates the rank and tied_rank fields of a specific mode, necessary when
   # there's a new score (or when one is deleted later).
   # Returns the rank of a specific player, if the player_id is passed
@@ -703,6 +744,8 @@ class MappackScore < ActiveRecord::Base
   # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
   # TODO: Add integrity checks and warnings in Demo.parse, correct stories
+
+  # Verify and parse a submitted run, respond suitably
   def self.add(code, submission)
     # Apply blacklist
     uid = submission['user_id'].to_i
@@ -829,7 +872,42 @@ class MappackScore < ActiveRecord::Base
     return res.to_json
   rescue => e
     Log.log_exception(e, "Failed to add score submitted by #{name} to mappack '#{code}'")
-    return nil
+    return
+  end
+
+  # Respond to a request for leaderboards
+  def self.get_scores(code, submission)
+    name = "?"
+
+    # Parse type
+    type = TYPES.find{ |t, h| submission.key?("#{h[:name].downcase}_id") }[1] rescue nil
+    if type.nil?
+      warn("Getting scores: Type not found")
+      return
+    end
+    sid = submission["#{type[:name].downcase}_id"].to_i
+    name = "ID:#{sid}"
+
+    # Find mappack
+    mappack = Mappack.find_by(code: code)
+    if mappack.nil?
+      warn("Getting scores: Mappack '#{code}' not found")
+      return
+    end
+
+    # Find highscoreable
+    h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
+    if h.nil?
+      warn("Getting scores: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
+      return
+    end
+    name = h.name
+
+    # Get scores
+    return h.get_scores(submission['qt'].to_i, submission['user_id'].to_i)
+  rescue => e
+    Log.log_exception(e, "Failed to get scores for #{name} in mappack '#{code}'")
+    return
   end
 
 end
