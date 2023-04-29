@@ -441,7 +441,6 @@ class Mappack < ActiveRecord::Base
   has_many :mappack_stories
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
-  # TODO: Add botmaster command to execute this function
   # TODO: Add botmaster command to add remaining details to a mappack (title,
   #       authors, etc)
   # Parse all mappacks in the mappack directory into the database
@@ -598,7 +597,7 @@ module MappackHighscoreable
 
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
-  # Optionally sort by score and date instead of rank.
+  # Optionally sort by score and date instead of rank (used for computing the rank)
   def leaderboard(m = 'hs', score = false)
     m = 'hs' if !['hs', 'sr'].include?(m)
     board = scores.where("rank_#{m} IS NOT NULL")
@@ -631,14 +630,14 @@ module MappackHighscoreable
     # Build response
     res = {}
     res["userInfo"] = {
-      "my_score"        => (1000 * score["score_#{mode}"].to_i / 60.0).round,
+      "my_score"        => m == 'hs' ? (1000 * score["score_#{m}"].to_i / 60.0).round : 1000 * score["score_#{m}"].to_i,
       "my_rank"         => score["rank_#{m}"].to_i,
       "my_replay_id"    => score.id.to_i,
       "my_display_name" => score.player.name.to_s
     } if !score.nil?
     res["scores"] = list.map{ |s|
       {
-        "score"     => (1000 * s[0].to_i / 60.0).round,
+        "score"     => m == 'hs' ? (1000 * s[0].to_i / 60.0).round : 1000 * s[0].to_i,
         "rank"      => s[1].to_i,
         "user_id"   => s[2].to_i,
         "user_name" => s[3].to_s,
@@ -647,6 +646,9 @@ module MappackHighscoreable
     }
     res["query_type"] = qt
     res["#{self.class.to_s.remove("Mappack").downcase}_id"] = self.inner_id
+
+    # Return leaderboards
+    dbg(res.to_json)
     res.to_json
   end
 

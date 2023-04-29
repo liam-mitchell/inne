@@ -118,12 +118,16 @@ Others:
 - For tile borders, rather than placing them in the center, move them inside the tile so that they don't protrude.
 - Show glitch tiles with some soft shade, e.g. red or the inverse of the background, perhaps with a pattern too, e.g. lines or dotted.
 - If palette name is incorrect, use string distance to try to find a good match. If not, don't bother showing list of closest matches, just default to vasquez.
+- Draw lasers, even if in basic fashion (straight lines till tile)
+- Optionally show editor info in the screenshot (door-switch lines, etc)
 
 Default palettes:
 - 2 votes for classic, 5 for vasquez, 5 for random
 - Add an option to set default palette for each user
 - Add a note when screenshots are published, that indicates the commands to specify the palette, so that new users know about it. Also, the command to set default palette.
-- Add custom palettes, but not in the randomized
+
+- Implement custom palettes, and commands for users to submit their palettes, instead of editing the spreadsheet. Commands to list palettes, showcase examples, etc.
+- Go through palette channel and add custom palettes that haven't been added (list zip files or something).
 - Generate a gif with one palette per frame
 
 \\ ------------------------ Total Scores ------------------------
