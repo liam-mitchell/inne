@@ -211,8 +211,7 @@ def shutdown
   # We need to perform the shutdown in a new thread, because this method
   # gets called from within a trap context
   Thread.new {
-    Cuse.off
-    Cle.off
+    Sock.off
     stop_bot
     disconnect_db
     unblock_threads

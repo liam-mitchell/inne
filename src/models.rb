@@ -596,9 +596,6 @@ end
 class Score < ActiveRecord::Base
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
-  belongs_to :level,   -> { where(scores: {highscoreable_type: 'Level'}) },   foreign_key: 'highscoreable_id'
-  belongs_to :episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: 'highscoreable_id'
-  belongs_to :story,   -> { where(scores: {highscoreable_type: 'Story'}) },   foreign_key: 'highscoreable_id'
 #  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
   enum tab:  TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
@@ -977,6 +974,10 @@ class Player < ActiveRecord::Base
       }
     }
     ret
+  end
+
+  def login(req)
+
   end
 
   def add_alias(a)
@@ -1637,10 +1638,16 @@ class Demo < ActiveRecord::Base
     Zlib::Deflate.deflate(replay.join('&'), 9)
   end
 
-  def self.decode(demo)
+  # Read demo from database (decompress and turn to array)
+  # Convert to integers, unless we're decoding for dumping later
+  def self.decode(demo, dump = false)
     return nil if demo.nil?
     demos = Zlib::Inflate.inflate(demo).split('&')
-    return (demos.size == 1 ? demos.first.scan(/./m).map(&:ord) : demos.map{ |d| d.scan(/./m).map(&:ord) })
+    if !dump
+      demos = demos.map{ |d| d.bytes }
+      demos = demos.first if demos.size == 1
+    end
+    demos
   end
 
   def self.parse(replay, htype)
@@ -1709,7 +1716,7 @@ class Demo < ActiveRecord::Base
     return nil if !demo.nil?
     replay = get_demo
     return nil if replay.nil? # replay was not fetched successfully
-    if replay == 1 # replay does not exist
+    if replay.empty? # replay does not exist
       archive.update(lost: true)
       return nil
     end
@@ -1906,43 +1913,13 @@ end
 
 # See "Socket Variables" in constants.rb for docs
 module Sock extend self
-  DEFAULT_RESPONSES = {
-    good: "HTTP/1.1 200 OK",
-    bad: "HTTP/1.1 400 Bad Request"
-  }
   @@servers = {}
 
-  # Reads from an open socket
-  def read(client)
-    req = ""
-    begin
-      req << client.read_nonblock(1024)
-    rescue Errno::EAGAIN
-      retry if IO.select([client], nil, nil, 1)
-    rescue
-    end
-    req
+  # Stops all servers
+  def self.off
+    @@servers.keys.each{ |s| Sock.stop(s) }
   end
   
-  # TODO: Investigate what happens when we kill the program when a connection
-  # is happening, can the socket remain open?
-
-  # Start a TCP server at the specified port
-=begin
-  def start(port)
-    server = TCPServer.new(port)
-    loop do
-      Thread.start(server.accept) do |client|
-        req = parse(read(client))
-        client.write(handle(req))
-        client.close
-        report(req)
-      end
-    end
-  rescue => e
-    error(e)
-  end
-=end
   # Start a basic HTTP server at the specified port
   def start(port, name)
     # Create WEBrick HTTP server
@@ -1971,77 +1948,33 @@ module Sock extend self
   rescue => e
     err("Failed to stop #{name} server: #{e}")
   end
-
-  # Methods to parse elements of an HTTP request
-  def parse_start_line(req)
-    req.split("\n")[0].split
-  rescue
-    ['GET', '/', 'HTTP/1.1']
-  end
-
-  def parse_query(req)
-    _, path, _ = parse_start_line(req)
-    path.split('?')[0].split('/')[-1]
-  rescue
-    ''
-  end
-
-  def parse_attributes(req)
-    _, path, _ = parse_start_line(req)
-    path[/\?(.*?)(#|$)/i, 1].split('&').map{ |pair|
-      pair =~ /(.+?)=(.*)/i
-      !$1.nil? && !$2.nil? ? [$1, $2] : nil
-    }.compact.to_h
-  rescue
-    {}
-  end
-
-  def parse_headers(req)
-    req.split("\r\n\r\n")[0].split("\r\n")[1..-1].map{ |h|
-      pair =~ /(.+?):(.*)/i
-      !$1.nil? && !$2.nil? ? [$1.downcase, $2.squish] : nil
-    }.compact.to_h
-  rescue
-    {}
-  end
-
-  def parse_body(req)
-    req.split("\r\n\r\n")[1..-1].join("\r\n\r\n")
-  rescue
-    ''
-  end
 end
 
 module Cuse extend self
   extend Sock
 
   def on
-    log("Start CUSE server")
-    start(CUSE_PORT)
-  rescue => e
-    err("Failed to start CUSE server")
+    start(CUSE_PORT, 'CUSE')
   end
 
   def off
-    log("Stopped CUSE server")
+    stop('CUSE')
+  end
+
+  def handle(req, res)
+    # Build response
+    ret = send_userlevel_browse(nil, socket: req.body)
+    response = Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
+
+    # Set up response parameters
+    if response.nil?
+      res.status = 400
+      res.body = ''
+    else
+      res.status = 200
+      res.body = response
+    end
   rescue => e
-    err("Failed to stop CUSE server")
-  end
-
-  def parse(req)
-    req
-  end
-
-  def handle(req)
-    ret = send_userlevel_browse(nil, socket: req.dup)
-    Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
-  end
-
-  def report(req)
-    log("Proxied CUSE request: #{req}")
-  end
-
-  def error(e)
     err("CUSE socket failed: #{e}")
   end
 end
@@ -2068,6 +2001,8 @@ module Cle extend self
       case query
       when 'get_scores'
         response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+      when 'get_replay'
+        response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
       else
         res.status = 400
       end
@@ -2075,6 +2010,8 @@ module Cle extend self
       case query
       when 'submit_score'
         response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+      when 'login'
+        response = Player.login(req)
       else
         res.status = 400
       end

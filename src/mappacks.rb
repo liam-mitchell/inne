@@ -612,7 +612,7 @@ module MappackHighscoreable
   def get_scores(qt = 0, metanet_id = nil)
     # Parse parameters
     qt = 0 if qt > 2
-    m = qt == 0 ? 'hs' : 'sr'
+    m = qt < 2 ? 'hs' : 'sr'
 
     # Fetch scores
     board = leaderboard(m)
@@ -665,7 +665,7 @@ module MappackHighscoreable
       rank = i if !player_id.nil? && s.player_id == player_id
       score = mode == 'hs' ? s.score_hs : s.score_sr
       if mode == 'hs' ? score < tied_score : score > tied_score
-        tied_rank += 1
+        tied_rank = i
         tied_score = score
       end
       s.update("rank_#{mode}".to_sym => i, "tied_rank_#{mode}".to_sym => tied_rank)
@@ -701,6 +701,28 @@ class MappackLevel < ActiveRecord::Base
     map_data = dump_level(hash: true)
     map_data.nil? ? nil : Digest::SHA1.digest(PWD + map_data[0xB8..-1])
   end
+
+  # Dump demo header for communications with N++
+  def demo_header(framecount)
+    # Precompute some values
+    f = mode == 1 ? 1 : 0
+    framecount /= (f + 1)
+    size = framecount * (f + 1) + 26 + 4 * (f + 1)
+
+    # Build header
+    header = [0].pack('C')                # Replay type (0 lvl/sty, 1 ep)
+    header << [size].pack('L<')           # Data length
+    header << [1].pack('L<')              # ?
+    header << [framecount].pack('L<')     # Data size in bytes
+    header << [inner_id].pack('L<')       # Level ID
+    header << [mode].pack('L<')           # Mode (0-2)
+    header << [0].pack('L<')              # ?
+    header << mode == 1 ? "\x03" : "\x01" # Ninja mask (1,3)
+    header << [-1, -1].pack("l<#{f + 1}") # ?
+
+    # Return
+    header
+  end
 end
 
 class MappackEpisode < ActiveRecord::Base
@@ -713,6 +735,12 @@ class MappackEpisode < ActiveRecord::Base
   belongs_to :mappack
   belongs_to :mappack_story, foreign_key: :story_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  # Computes the episode's hash, which the game uses for integrity verifications
+  def hash
+    hashes = levels.order(:id).map(&:hash).compact
+    hashes.size < 5 ? nil : hashes.join
+  end
 end
 
 class MappackStory < ActiveRecord::Base
@@ -734,23 +762,22 @@ class MappackScore < ActiveRecord::Base
   has_one :mappack_demo, foreign_key: :id
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
-  #belongs_to :mappack_level, -> { where(scores: {highscoreable_type: 'Level'}) }, foreign_key: :highscoreable_id
-  #belongs_to :mappack_episode, -> { where(scores: {highscoreable_type: 'Episode'}) }, foreign_key: :highscoreable_id
-  #belongs_to :mappack_story, -> { where(scores: {highscoreable_type: 'Story'}) }, foreign_key: :highscoreable_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
-
-  # TODO: Thoroughly test dump_level, ensure it generates the right data
-  # by comparing with the game (memory), and by coding dump_metanet and seeing
-  # that there's a bijection (can convert in either direction obtaining the same)
 
   # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
   # TODO: Add integrity checks and warnings in Demo.parse, correct stories
 
-  # Verify and parse a submitted run, respond suitably
-  def self.add(code, submission)
+  # Verify, parse and save a submitted run, respond suitably
+  def self.add(code, query)
+    # Parse player ID
+    uid = query['user_id'].to_i
+    if uid == 0 || uid == -1
+      warn("Invalid player (ID #{uid}) submitted a score")
+      return
+    end
+
     # Apply blacklist
-    uid = submission['user_id'].to_i
     name = "ID:#{uid}"
     if BLACKLIST.key?(uid)
       warn("Blacklisted player #{BLACKLIST[uid][0]} submitted a score")
@@ -758,7 +785,7 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Parse type
-    type = TYPES.find{ |t, h| submission.key?("#{h[:name].downcase}_id") }[1] rescue nil
+    type = TYPES.find{ |_, h| query.key?("#{h[:name].downcase}_id") }[1] rescue nil
     if type.nil?
       warn("Score submitted: Type not found")
       return
@@ -768,12 +795,12 @@ class MappackScore < ActiveRecord::Base
     # Craft response fields
     res = {
       'better'    => 0,
-      'score'     => submission['score'].to_i,
+      'score'     => query['score'].to_i,
       'rank'      => -1,
       'replay_id' => -1,
       'user_id'   => uid,
-      'qt'        => submission['qt'].to_i,
-      id_field    => submission[id_field].to_i
+      'qt'        => query['qt'].to_i,
+      id_field    => query[id_field].to_i
     }
 
     # Find player
@@ -788,7 +815,7 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Find highscoreable
-    sid = submission[id_field].to_i
+    sid = query[id_field].to_i
     h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
     if h.nil?
       warn("Score submitted by #{name}: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
@@ -796,12 +823,12 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Parse demos and compute new scores
-    demos = Demo.parse(submission['replay_data'], type[:name])
-    score_hs = (60.0 * submission['score'].to_i / 1000.0).round
+    demos = Demo.parse(query['replay_data'], type[:name])
+    score_hs = (60.0 * query['score'].to_i / 1000.0).round
     score_sr = demos.map(&:size).sum
     
     # Verify replay integrity
-    legit = h.verify_replay(submission['ninja_check'], score_hs)
+    legit = h.verify_replay(query['ninja_check'], score_hs)
     if !legit
       warn("Score submitted by #{name} to #{h.name} has invalid security hash")
       return
@@ -878,16 +905,16 @@ class MappackScore < ActiveRecord::Base
   end
 
   # Respond to a request for leaderboards
-  def self.get_scores(code, submission)
+  def self.get_scores(code, query)
     name = "?"
 
     # Parse type
-    type = TYPES.find{ |t, h| submission.key?("#{h[:name].downcase}_id") }[1] rescue nil
+    type = TYPES.find{ |_, h| query.key?("#{h[:name].downcase}_id") }[1] rescue nil
     if type.nil?
       warn("Getting scores: Type not found")
       return
     end
-    sid = submission["#{type[:name].downcase}_id"].to_i
+    sid = query["#{type[:name].downcase}_id"].to_i
     name = "ID:#{sid}"
 
     # Find mappack
@@ -906,9 +933,97 @@ class MappackScore < ActiveRecord::Base
     name = h.name
 
     # Get scores
-    return h.get_scores(submission['qt'].to_i, submission['user_id'].to_i)
+    return h.get_scores(query['qt'].to_i, query['user_id'].to_i)
   rescue => e
     Log.log_exception(e, "Failed to get scores for #{name} in mappack '#{code}'")
+    return
+  end
+
+  # Respond to a request for a replay
+  def self.get_replay(code, query)
+    # Integrity checks
+    if !query.key?('replay_id')
+      warn("Getting replay: Replay ID not provided")
+      return
+    end
+
+    # Parse type (no type = level)
+    type = TYPES.find{ |_, h| query['qt'].to_i == h[:qt] }[1] rescue nil
+    if type.nil?
+      warn("Getting replay: Type #{query['qt'].to_i} is incorrect")
+      return
+    end
+
+    # Find mappack
+    mappack = Mappack.find_by(code: code)
+    if mappack.nil?
+      warn("Getting replay: Mappack '#{code}' not found")
+      return
+    end
+
+    # Find score
+    score = MappackScore.find_by(id: query['replay_id'].to_i)
+    if score.nil?
+      warn("Getting replay: Score with ID #{query['replay_id']} not found")
+      return
+    end
+    if score.highscoreable.mappack.code != code
+      warn("Getting replay: Score with ID #{query['replay_id']} is not from mappack '#{code}'")
+      return
+    end
+
+    # Find replay
+    demo = score.demo
+    if demo.nil? || demo.demo.nil?
+      warn("Getting replay: Replay with ID #{query['replay_id']} not found")
+      return
+    end
+
+    # Return replay
+    score.dump_replay
+  rescue => e
+    Log.log_exception(e, "Failed to get replay with ID #{query['replay_id']} from mappack '#{code}'")
+    return
+  end
+
+  # Dumps demo data in the format N++ users for server communications
+  def dump_demo
+    h = highscoreable
+    type = TYPES[h.class.to_s.remove('Mappack')]
+    demos = Demo.decode(demo.demo, true)
+
+    case type[:name]
+    when 'Level'
+      replay = highscoreable.demo_header(demos[0].size) + demos[0]
+    when 'Episode'
+      raise
+    when 'Story'
+      raise
+    else
+      raise
+    end
+    
+    replay
+  rescue => e
+    Log.log_exception(e, "Failed to dump demo with ID #{id}")
+    return
+  end
+
+  # Dumps replay data (header + compressed demo data) in format used by N++
+  def dump_replay
+    type = TYPES[highscoreable.class.to_s.remove('Mappack')]
+
+    # Build header
+    replay = [type[:rt]].pack('L<')          # Replay type (0 lvl/sty, 1 ep)
+    replay << [id].pack('L<')                # Replay ID
+    replay << [highscoreable.id]             # Level ID
+    replay << [player.metanet_id].pack('L<') # User ID
+
+    # Append replay and return
+    ret << Zlib::Deflate.deflate(dump_demo, 9)
+    ret
+  rescue => e
+    Log.log_exception(e, "Failed to dump replay with ID #{id}")
     return
   end
 

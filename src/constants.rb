@@ -265,10 +265,32 @@ MODES = {
 #   slots      - IDs reserved by N++ to this mode in the db
 #   min_scores - Max-min amount of scores to be taken into consideration for average rankings
 #   qt         - Query type, index used by the game for server communications
+#   rt         - Replay type, used for replay headers
 TYPES = {
-  'Level'   => { id: 0, name: 'Level',   slots: 20000, min_scores: 100, qt: 0 },
-  'Episode' => { id: 1, name: 'Episode', slots:  4000, min_scores:  50, qt: 1 },
-  'Story'   => { id: 2, name: 'Story',   slots:   800, min_scores:  10, qt: 4 }
+  'Level' => {
+    id: 0,
+    name: 'Level',
+    slots: 20000,
+    min_scores: 100,
+    qt: 0,
+    rt: 0
+  },
+  'Episode' => {
+    id: 1,
+    name: 'Episode',
+    slots:  4000,
+    min_scores:  50,
+    qt: 1,
+    rt: 1
+  },
+  'Story' => {
+    id: 2,
+    name: 'Story',
+    slots:   800,
+    min_scores:  10,
+    qt: 4,
+    rt: 0
+  }
 }
 
 # @par1: ID ranges for levels and episodes
@@ -297,7 +319,9 @@ TABS = {
   }
 }
 
-# TODO: Use this wherever TABS is being used, and also in parse_tabs, then delete TABS
+# TODO: Add the stuff in TABS to TABS_NEW, then use TABS_NEW wherever TABS is
+# is being used and also in parse_tabs, then delete TABS and rename TABS_NEW to TABS
+
 # All tab information.
 TABS_NEW = {
   SI: {
