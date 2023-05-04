@@ -976,7 +976,7 @@ class Player < ActiveRecord::Base
     ret
   end
 
-  def login(req)
+  def self.login(req)
 
   end
 
@@ -1593,43 +1593,43 @@ class Archive < ActiveRecord::Base
   end
 end
 
-#----------------------------------------------------------------------------#
-#                    METANET REPLAY FORMAT DOCUMENTATION                     |
-#----------------------------------------------------------------------------#
-# REPLAY DATA:                                                               |
-#    4B  - Query type                                                        |
-#    4B  - Replay ID                                                         |
-#    4B  - Level ID                                                          |
-#    4B  - User ID                                                           |
-#   Rest - Demo data compressed with zlib                                    |
-#----------------------------------------------------------------------------#
-# LEVEL DEMO DATA FORMAT:                                                    |
-#     1B - Unknown     (0)                                                   |
-#     4B - Data length                                                       |
-#     4B - Unknown     (1)                                                   |
-#     4B - Frame count                                                       |
-#     4B - Level ID                                                          |
-#     4B - Game mode   (0, 1, 2, 4)                                          |
-#     4B - Unknown     (0)                                                   |
-#     1B - Ninja mask  (1, 3)                                                |
-#     4B - Static data (0xFFFFFFFF)                                          |
-#   Rest - Demo                                                              |
-#----------------------------------------------------------------------------#
-# EPISODE DEMO DATA FORMAT:                                                  |
-#     4B - Unknown                                                           |
-#    20B - Block length for each level demo (5 * 4B)                         |
-#   Rest - Demo data (5 consecutive blocks, see above)                       |
-#----------------------------------------------------------------------------#
-# STORY DEMO DATA FORMAT:                                                    |
-#     4B - Unknown                                                           |
-#     4B - Demo data block size                                              |
-#   100B - Block length for each level demo (25 * 4B)                        |
-#   Rest - Demo data (25 consecutive blocks, see above)                      |
-#----------------------------------------------------------------------------#
-# DEMO FORMAT:                                                               |
-#   * One byte per frame.                                                    |
-#   * 1st bit for jump, 2nd for right, 3rd for left, 4th for suicide         |
-#----------------------------------------------------------------------------#
+#------------------------------------------------------------------------------#
+#                    METANET REPLAY FORMAT DOCUMENTATION                       |
+#------------------------------------------------------------------------------#
+# REPLAY DATA:                                                                 |
+#    4B  - Replay type (0 level / story, 1 episode)                            |
+#    4B  - Replay ID                                                           |
+#    4B  - Level ID                                                            |
+#    4B  - User ID                                                             |
+#   Rest - Demo data compressed with zlib                                      |
+#------------------------------------------------------------------------------#
+# LEVEL DEMO DATA FORMAT:                                                      |
+#     1B - Type           (0)                                                  |
+#     4B - Data length                                                         |
+#     4B - Replay version (1)                                                  |
+#     4B - Frame count                                                         |
+#     4B - Level ID                                                            |
+#     4B - Game mode      (0, 1, 2, 4)                                         |
+#     4B - Unknown        (0)                                                  |
+#     1B - Ninja mask     (1, 3)                                               |
+#     4B - Static data    (0xFFFFFFFF)                                         |
+#   Rest - Demo                                                                |
+#------------------------------------------------------------------------------#
+# EPISODE DEMO DATA FORMAT:                                                    |
+#     4B - Magic number (0xffc0038e)                                           |
+#    20B - Block length for each level demo (5 * 4B)                           |
+#   Rest - Demo data (5 consecutive blocks, see above)                         |
+#------------------------------------------------------------------------------#
+# STORY DEMO DATA FORMAT:                                                      |
+#     4B - Magic number (0xff3800ce)                                           |
+#     4B - Demo data block size                                                |
+#   100B - Block length for each level demo (25 * 4B)                          |
+#   Rest - Demo data (25 consecutive blocks, see above)                        |
+#------------------------------------------------------------------------------#
+# DEMO FORMAT:                                                                 |
+#   * One byte per frame.                                                      |
+#   * 1st bit for jump, 2nd for right, 3rd for left, 4th for suicide           |
+#------------------------------------------------------------------------------#
 class Demo < ActiveRecord::Base
   belongs_to :archive, foreign_key: :id
 

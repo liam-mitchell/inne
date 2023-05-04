@@ -1700,6 +1700,7 @@ end
 
 def testa(event)
   assert_permissions(event)
+
 #  maps = send_userlevel_browse(nil, socket: event.content)
 #  Userlevel::dump_query(maps, 10, 0)
 #  p = UserlevelAuthor.parse(parse_userlevel_author(event.content))
@@ -1757,7 +1758,7 @@ def respond_special(event)
   send_reaction(event)           if cmd == 'react'
   send_unreaction(event)         if cmd == 'unreact'
   send_mappack_seed(event)       if cmd == 'mappack_seed'
-  send_mappack_screenshot(event) if cmd == 'mappack_screenshot'
+  send_mappack_screenshot(event) if cmd == 'mappack_ss'
   send_log_config(event)         if cmd == 'log'
 rescue RuntimeError => e
   event << e

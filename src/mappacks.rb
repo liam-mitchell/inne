@@ -710,9 +710,9 @@ class MappackLevel < ActiveRecord::Base
     size = framecount * (f + 1) + 26 + 4 * (f + 1)
 
     # Build header
-    header = [0].pack('C')                # Replay type (0 lvl/sty, 1 ep)
+    header = [0].pack('C')                # Type
     header << [size].pack('L<')           # Data length
-    header << [1].pack('L<')              # ?
+    header << [1].pack('L<')              # Replay version
     header << [framecount].pack('L<')     # Data size in bytes
     header << [inner_id].pack('L<')       # Level ID
     header << [mode].pack('L<')           # Mode (0-2)
@@ -1014,14 +1014,14 @@ class MappackScore < ActiveRecord::Base
     type = TYPES[highscoreable.class.to_s.remove('Mappack')]
 
     # Build header
-    replay = [type[:rt]].pack('L<')          # Replay type (0 lvl/sty, 1 ep)
-    replay << [id].pack('L<')                # Replay ID
-    replay << [highscoreable.id]             # Level ID
-    replay << [player.metanet_id].pack('L<') # User ID
+    replay = [type[:rt]].pack('L<')               # Replay type (0 lvl/sty, 1 ep)
+    replay << [id].pack('L<')                     # Replay ID
+    replay << [highscoreable.inner_id].pack('L<') # Level ID
+    replay << [player.metanet_id].pack('L<')      # User ID
 
     # Append replay and return
-    ret << Zlib::Deflate.deflate(dump_demo, 9)
-    ret
+    replay << Zlib::Deflate.deflate(dump_demo, 9)
+    replay
   rescue => e
     Log.log_exception(e, "Failed to dump replay with ID #{id}")
     return
