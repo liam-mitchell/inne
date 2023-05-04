@@ -977,7 +977,7 @@ class Player < ActiveRecord::Base
   end
 
   def self.login(req)
-
+    byebug
   end
 
   def add_alias(a)

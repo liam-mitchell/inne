@@ -252,7 +252,9 @@ PWD = ENV['NPP_HASH']
 # <------                       GAME VARIABLES                          ------>
 # <--------------------------------------------------------------------------->
 
-MIN_REPLAY_ID = 131072
+MIN_REPLAY_ID       = 131072     # Minimum replay ID for the game to perform the HTTP request
+MAGIC_EPISODE_VALUE = 0xffc0038e # First 4 bytes of a decompressed episode replay
+MAGIC_STORY_VALUE   = 0xff3800ce # First 4 bytes of a decompressed story replay
 
 MODES = {
   -1 => "all",

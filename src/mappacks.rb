@@ -595,6 +595,10 @@ end
 module MappackHighscoreable
   include Highscoreable
 
+  def type
+    self.class.to_s.remove("Mappack")
+  end
+
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
   # Optionally sort by score and date instead of rank (used for computing the rank)
@@ -710,15 +714,15 @@ class MappackLevel < ActiveRecord::Base
     size = framecount * (f + 1) + 26 + 4 * (f + 1)
 
     # Build header
-    header = [0].pack('C')                # Type
-    header << [size].pack('L<')           # Data length
-    header << [1].pack('L<')              # Replay version
-    header << [framecount].pack('L<')     # Data size in bytes
-    header << [inner_id].pack('L<')       # Level ID
-    header << [mode].pack('L<')           # Mode (0-2)
-    header << [0].pack('L<')              # ?
-    header << mode == 1 ? "\x03" : "\x01" # Ninja mask (1,3)
-    header << [-1, -1].pack("l<#{f + 1}") # ?
+    header = [0].pack('C')                  # Type
+    header << [size].pack('L<')             # Data length
+    header << [1].pack('L<')                # Replay version
+    header << [framecount].pack('L<')       # Data size in bytes
+    header << [inner_id].pack('L<')         # Level ID
+    header << [mode].pack('L<')             # Mode (0-2)
+    header << [0].pack('L<')                # ?
+    header << (mode == 1 ? "\x03" : "\x01") # Ninja mask (1,3)
+    header << [-1, -1].pack("l<#{f + 1}")   # ?
 
     # Return
     header
@@ -740,6 +744,12 @@ class MappackEpisode < ActiveRecord::Base
   def hash
     hashes = levels.order(:id).map(&:hash).compact
     hashes.size < 5 ? nil : hashes.join
+  end
+
+  def demo_header(framecounts)
+    header_size = 26 + 4 * (mode == 1 ? 2 : 1)
+    replay = [MAGIC_EPISODE_VALUE].pack('L<')
+    replay << framecounts.map{ |f| f + header_size }.pack('L<5')
   end
 end
 
@@ -961,14 +971,20 @@ class MappackScore < ActiveRecord::Base
       return
     end
 
-    # Find score
+    # Find score and perform integrity checks
     score = MappackScore.find_by(id: query['replay_id'].to_i)
     if score.nil?
       warn("Getting replay: Score with ID #{query['replay_id']} not found")
       return
     end
+
     if score.highscoreable.mappack.code != code
       warn("Getting replay: Score with ID #{query['replay_id']} is not from mappack '#{code}'")
+      return
+    end
+
+    if score.highscoreable.type != type[:name]
+      warn("Getting replay: Score with ID #{query['replay_id']} is not from a #{type[:name].downcase}")
       return
     end
 
@@ -996,7 +1012,10 @@ class MappackScore < ActiveRecord::Base
     when 'Level'
       replay = highscoreable.demo_header(demos[0].size) + demos[0]
     when 'Episode'
-      raise
+      replay = highscoreable.demo_header(demos.map(&:size))
+      replay << highscoreable.levels.each_with_index.map{ |l, i|
+        l.demo_header(demos[i].size) + demos[i]
+      }.join
     when 'Story'
       raise
     else
@@ -1020,7 +1039,9 @@ class MappackScore < ActiveRecord::Base
     replay << [player.metanet_id].pack('L<')      # User ID
 
     # Append replay and return
-    replay << Zlib::Deflate.deflate(dump_demo, 9)
+    inputs = dump_demo
+    return if inputs.nil?
+    replay << Zlib::Deflate.deflate(inputs, 9)
     replay
   rescue => e
     Log.log_exception(e, "Failed to dump replay with ID #{id}")
