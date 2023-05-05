@@ -976,8 +976,39 @@ class Player < ActiveRecord::Base
     ret
   end
 
+  # Proxy a login request and send to Metanet's server
   def self.login(req)
-    byebug
+    # Parse request elements
+    body = req.body
+
+    # Create POST request
+    uri = URI.parse("https://dojo.nplusplus.ninja/prod/steam/login?#{req.query_string}")
+    post = Net::HTTP::Post.new(uri)
+
+    # Add headers and body (clean default ones first)
+    post.to_hash.keys.each{ |h| post.delete(h) }
+    req.header.each{ |k, v| post[k] = v[0] }
+    post['host'] = 'dojo.nplusplus.ninja'
+    post.body = body
+
+    # Execute request
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 5){ |http| http.request(post) }
+    raise 'Invalid response' if res.code.to_i != 200 || res.body == INVALID_RESP
+
+    # Parse response and register player in database
+    json = JSON.parse(res.body)
+    Player.find_or_create_by(metanet_id: json['user_id'].to_i).update(name: json['name'].to_s)
+    User.find_or_create_by(steam_id: json['steam_id'].to_s).update(
+      playername: json['name'].to_s,
+      last_active: Time.now
+    )
+
+    # Return the same response
+    dbg(res.body)
+    res.body
+  rescue => e
+    Log.log_exception(e, 'Failed to proxy login request')
+    return nil
   end
 
   def add_alias(a)
