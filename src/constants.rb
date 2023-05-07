@@ -45,6 +45,10 @@ NV2_ID         = 197774025844457472 # ... (#nv2)
 CONTENT_ID     = 197793786389200896 # ... (#content-creation)
 DISCORD_LIMIT  = 2000               # Message character limit
 
+# Non-standard character widths in the monospaced font (for padding adjustments)
+WIDTH_EMOJI = 2
+WIDTH_KANJI = 1.67
+
 # Despite the bot being public, so that the botmaster does not need to be a mod
 # of the server, we only allow select servers. Otherwise randos could add outte.
 SERVER_WHITELIST = [

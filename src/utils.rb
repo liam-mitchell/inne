@@ -327,9 +327,17 @@ def format_string(str, padding = DEFAULT_PADDING, max_pad = MAX_PADDING, leaderb
   pad = max_pad if max_pad > 0 && max_pad < padding
   pad = SCORE_PADDING if SCORE_PADDING > 0
 
-  # Adjust padding if there are emojis or kanjis
-  pad -= str.scan(Unicode::Emoji::REGEX).size
-  pad -= (0.67 * str.scan(/\p{Han}|\p{Hiragana}|\p{Katakana}/i).size).round
+  # Adjust padding if there are emojis or kanjis (characters with different widths)
+  # We basically estimate their widths and cut the string at the closest integer
+  # match to the desired padding
+  widths = str.chars.map{ |s|
+    s =~ Unicode::Emoji::REGEX ? WIDTH_EMOJI : (s =~ /\p{Han}|\p{Hiragana}|\p{Katakana}/i ? WIDTH_KANJI : 1)
+  }
+  total = 0
+  totals = widths.map{ |w| total += w }
+  width = totals.min_by{ |t| (t - pad).abs }
+  chars = totals.index(width) + 1
+  pad = pad > width ? chars + (pad - width).round : chars
 
   # Truncate and pad string
   "%-#{"%d" % [pad]}s" % [TRUNCATE_NAME ? str.slice(0, pad) : str]
