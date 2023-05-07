@@ -327,8 +327,9 @@ def format_string(str, padding = DEFAULT_PADDING, max_pad = MAX_PADDING, leaderb
   pad = max_pad if max_pad > 0 && max_pad < padding
   pad = SCORE_PADDING if SCORE_PADDING > 0
 
-  # Adjust padding if there are emojis
+  # Adjust padding if there are emojis or kanjis
   pad -= str.scan(Unicode::Emoji::REGEX).size
+  pad -= (0.67 * str.scan(/\p{Han}|\p{Hiragana}|\p{Katakana}/i).size).round
 
   # Truncate and pad string
   "%-#{"%d" % [pad]}s" % [TRUNCATE_NAME ? str.slice(0, pad) : str]
