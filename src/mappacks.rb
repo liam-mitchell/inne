@@ -630,6 +630,7 @@ module MappackHighscoreable
                   "mappack_scores.id"
                 )
     score = board.find_by(metanet_id: metanet_id) if !metanet_id.nil?
+    header = !score.nil? ? "#{score.player.name.to_s} requested " : ""
 
     # Build response
     res = {}
@@ -653,6 +654,7 @@ module MappackHighscoreable
 
     # Return leaderboards
     dbg(res.to_json)
+    dbg("#{header}#{self.name} leaderboards")
     res.to_json
   end
 
@@ -906,8 +908,8 @@ class MappackScore < ActiveRecord::Base
     res['replay_id'] = replay_id_hs || replay_id_sr || -1
 
     # Finish
-    dbg("Received score by #{name} for #{h.name}")
     dbg(res.to_json)
+    dbg("#{name} submitted a score to #{h.name}")
     return res.to_json
   rescue => e
     Log.log_exception(e, "Failed to add score submitted by #{name} to mappack '#{code}'")
@@ -971,6 +973,10 @@ class MappackScore < ActiveRecord::Base
       return
     end
 
+    # Find player (for logging purposes only)
+    player = Player.find_by(metanet_id: query['user_id'].to_i)
+    name = !player.nil? ? player.name : "ID:#{query['user_id']}"
+
     # Find score and perform integrity checks
     score = MappackScore.find_by(id: query['replay_id'].to_i)
     if score.nil?
@@ -996,6 +1002,7 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Return replay
+    dbg("#{name} requested replay #{query['replay_id']}")
     score.dump_replay
   rescue => e
     Log.log_exception(e, "Failed to get replay with ID #{query['replay_id']} from mappack '#{code}'")

@@ -64,6 +64,7 @@ Eddy's TODO list for inne:
 - Fix random userlevel function, the new send_userlevel_individual approach broke it.
 - Send message if the command was not understood, i.e., if no function was executed, but not in DM's. We can do this by having a flag that each function sets to true when it's executed, and then check it at the end. We can also use this flag to prevent executing 2 functions on the same command, which means we could also control the flow by changing the order of the function calls at the bottom.
 - Migrate the scores table to using integer scores (in frames), like the others.
+- Correct spacing in text blocks for unicode characters, by estimating the width of the most relevant characters and adjusting the padding spaces accordingly, e.g. emojis probably take up as much as 2 regular chars, also chinese symbols...
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.

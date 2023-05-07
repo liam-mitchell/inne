@@ -1004,7 +1004,7 @@ class Player < ActiveRecord::Base
     )
 
     # Return the same response
-    dbg(res.body)
+    dbg("#{json['name'].to_s} (#{json['user_id']}) logged in")
     res.body
   rescue => e
     Log.log_exception(e, 'Failed to proxy login request')
@@ -2025,6 +2025,7 @@ module Cle extend self
     # Parse request parameters
     mappack = req.path.split('/')[1]
     query = req.path.split('/')[-1]
+    response = nil
 
     # Build response
     case req.request_method
@@ -2035,19 +2036,22 @@ module Cle extend self
       when 'get_replay'
         response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
       else
-        res.status = 400
+        response = nil
       end
     when 'POST'
       case query
       when 'submit_score'
+        #key = req.query['level_id'] || req.query['episode_id']
+        #filename = "#{req.query['user_id']}-#{req.query['qt']}-#{key}"
+        #File.binwrite(filename, req.body)
         response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
       when 'login'
         response = Player.login(req)
       else
-        res.status = 400
+        response = nil
       end
     else
-      res.status = 400
+      response = nil
     end
 
     # Set up response parameters

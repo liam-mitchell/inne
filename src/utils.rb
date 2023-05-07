@@ -2,6 +2,7 @@
 
 require 'active_record'
 require 'damerau-levenshtein'
+require 'unicode/emoji'
 
 require_relative 'constants.rb'
 require_relative 'models.rb'
@@ -317,28 +318,20 @@ end
 # player names for leaderboards in particular, in which case, the maximum
 # padding length is different.
 def format_string(str, padding = DEFAULT_PADDING, max_pad = MAX_PADDING, leaderboards = true)
+  # Compute maximum padding length
   max_pad = !max_pad.nil? ? max_pad : (leaderboards ? MAX_PADDING : MAX_PAD_GEN)
-  if SCORE_PADDING > 0 # FIXED padding mode
-    "%-#{"%d" % [SCORE_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, SCORE_PADDING) : str]
-  else                 # VARIABLE padding mode
-    if max_pad > 0   # maximum padding supplied
-      if padding > 0       # valid padding
-        if padding <= max_pad 
-          "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding) : str]
-        else
-          "%-#{"%d" % [max_pad]}s" % [TRUNCATE_NAME ? str.slice(0, max_pad) : str]
-        end
-      else                 # invalid padding
-        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING) : str]
-      end
-    else                 # maximum padding not supplied
-      if padding > 0       # valid padding
-        "%-#{"%d" % [padding]}s" % [TRUNCATE_NAME ? str.slice(0, padding) : str]
-      else                 # invalid padding
-        "%-#{"%d" % [DEFAULT_PADDING]}s" % [TRUNCATE_NAME ? str.slice(0, DEFAULT_PADDING) : str]
-      end
-    end
-  end
+
+  # Compute actual padding length, based on the different constraints
+  pad = DEFAULT_PADDING
+  pad = padding if padding > 0
+  pad = max_pad if max_pad > 0 && max_pad < padding
+  pad = SCORE_PADDING if SCORE_PADDING > 0
+
+  # Adjust padding if there are emojis
+  pad -= str.scan(Unicode::Emoji::REGEX).size
+
+  # Truncate and pad string
+  "%-#{"%d" % [pad]}s" % [TRUNCATE_NAME ? str.slice(0, pad) : str]
 end
 
 def truncate_ellipsis(str, pad = DEFAULT_PADDING)

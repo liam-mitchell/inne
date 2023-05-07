@@ -9,6 +9,8 @@ source 'https://rubygems.org' do
   gem 'chunky_png'
   gem 'damerau-levenshtein'
   gem 'rubyzip'
+  gem 'unicode-emoji'
+
 
   group :debug, :test do
     gem 'byebug'
