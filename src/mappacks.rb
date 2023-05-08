@@ -736,8 +736,10 @@ class MappackEpisode < ActiveRecord::Base
   alias_attribute :levels, :mappack_levels
   alias_attribute :scores, :mappack_scores
   alias_attribute :story, :mappack_story
+  alias_attribute :tweaks, :mappack_scores_tweaks
   has_many :mappack_levels, foreign_key: :episode_id
   has_many :mappack_scores, as: :highscoreable
+  has_many :mappack_scores_tweaks, foreign_key: :episode_id
   belongs_to :mappack
   belongs_to :mappack_story, foreign_key: :story_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
@@ -776,7 +778,6 @@ class MappackScore < ActiveRecord::Base
   belongs_to :highscoreable, polymorphic: true
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
-  # TODO: Add integrity checks
   # TODO: Figure out Coop's (and Race's?) demo format
   # TODO: Add integrity checks and warnings in Demo.parse, correct stories
 
@@ -839,8 +840,18 @@ class MappackScore < ActiveRecord::Base
     score_hs = (60.0 * query['score'].to_i / 1000.0).round
     score_sr = demos.map(&:size).sum
     
+    # Tweak level scores submitted within episode runs
+    score_hs_orig = score_hs
+    if type[:name] == 'Level'
+      score_hs = MappackScoresTweak.tweak(score_hs, player, h, Demo.parse_header(query['replay_data']))
+      if score_hs.nil?
+        warn("Score submitted by #{name} to #{h.name}: Tweaking failed")
+        return
+      end
+    end
+
     # Verify replay integrity
-    legit = h.verify_replay(query['ninja_check'], score_hs)
+    legit = h.verify_replay(query['ninja_check'], score_hs_orig)
     if !legit
       warn("Score submitted by #{name} to #{h.name} has invalid security hash")
       return
@@ -1060,6 +1071,56 @@ end
 class MappackDemo < ActiveRecord::Base
   alias_attribute :score, :mappack_score
   belongs_to :mappack_score, foreign_key: :id
+end
+
+# N++ sometimes submits individual level scores incorrectly when submitting
+# episode runs. The fix required is to add the sum of the lengths of the
+# runs for the previous levels in the episode, until we reach a level whose
+# score was correct.
+
+# Since all 5 level scores are not submitted in parallel, but in sequence, this
+# table temporarily holds the adjustment, which will be updated and applied with
+# each level, until all 5 are done, and then we delete it.
+class MappackScoresTweak < ActiveRecord::Base
+  alias_attribute :episode, :mappack_episode
+  belongs_to :player
+  belongs_to :mappack_episode, foreign_key: :episode_id
+
+  # Returns the score if success, nil otherwise
+  def self.tweak(score, player, level, header)
+    # Not in episode, not tweaking
+    return score if header[:type] != 1
+
+    # Create or fetch tweak
+    index = level.inner_id % 5
+    if index == 0
+      tw = self.find_or_create_by(player: player, episode: level.episode)
+      tw.update(tweak: 0, index: 0) # Initialize tweak
+    else
+      tw = self.find_by(player: player, episode: level.episode)
+      return nil if tw.nil? # Tweak should exist
+    end
+
+    # Ensure tweak corresponds to the right level
+    return nil if tw.index != index
+
+    # Tweak if necessary
+    if header[:id] == level.inner_id # Tweak
+      score += tw.tweak
+      tw.tweak += header[:framecount] - 1
+      tw.save
+    else # Don't tweak, reset tweak for later
+      tw.update(tweak: header[:framecount] - 1)
+    end
+
+    # Prepare tweak for next level
+    index < 4 ? tw.update(index: index + 1) : tw.destroy
+
+    # Tweaked succesfully
+    return score
+  rescue
+    nil
+  end
 end
 
 def respond_mappacks(event)

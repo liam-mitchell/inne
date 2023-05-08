@@ -853,12 +853,14 @@ end
 # Note: Players used to be referenced by Users, not anymore. Everything has been
 # structured to better deal with multiple players and/or users with the same name.
 class Player < ActiveRecord::Base
+  alias_attribute :tweaks, :mappack_scores_tweaks
   has_many :scores
   has_many :rank_histories
   has_many :points_histories
   has_many :total_score_histories
   has_many :player_aliases
   has_many :mappack_scores
+  has_many :mappack_scores_tweaks
 
   # Deprecated since it's slower, see Score::rank
   def self.rankings(&block)
@@ -1635,7 +1637,7 @@ end
 #   Rest - Demo data compressed with zlib                                      |
 #------------------------------------------------------------------------------#
 # LEVEL DEMO DATA FORMAT:                                                      |
-#     1B - Type           (0)                                                  |
+#     1B - Type           (0 lvl, 1 lvl in ep)                                 |
 #     4B - Data length                                                         |
 #     4B - Replay version (1)                                                  |
 #     4B - Frame count                                                         |
@@ -1681,6 +1683,23 @@ class Demo < ActiveRecord::Base
     demos
   end
 
+  # Parse 30 byte header of a level demo
+  def self.parse_header(replay)
+    replay = Zlib::Inflate.inflate(replay)[0...30]
+    ret = {}
+    ret[:type]       = replay[0].unpack('C')[0]
+    ret[:size]       = replay[1..4].unpack('l<')[0]
+    ret[:version]    = replay[5..8].unpack('l<')[0]
+    ret[:framecount] = replay[9..12].unpack('l<')[0]
+    ret[:id]         = replay[13..16].unpack('l<')[0]
+    ret[:mode]       = replay[17..20].unpack('l<')[0]
+    ret[:unknown]    = replay[21..24].unpack('l<')[0]
+    ret[:mask]       = replay[25].unpack('C')[0]
+    ret[:static]     = replay[26..29].unpack('l<')[0]
+    ret
+  end
+
+  # Parse a demo, return array with inputs for each level
   def self.parse(replay, htype)
     data   = Zlib::Inflate.inflate(replay)
     header = {'Level' => 0, 'Episode' =>  4, 'Story' =>   8}[htype]
@@ -2041,9 +2060,6 @@ module Cle extend self
     when 'POST'
       case query
       when 'submit_score'
-        #key = req.query['level_id'] || req.query['episode_id']
-        #filename = "#{req.query['user_id']}-#{req.query['qt']}-#{key}"
-        #File.binwrite(filename, req.body)
         response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
       when 'login'
         response = Player.login(req)
