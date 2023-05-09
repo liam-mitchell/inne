@@ -26,14 +26,15 @@ def update_status
     $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)  
     sleep(STATUS_UPDATE_FREQUENCY)
   end
-rescue
+rescue => e
+  lex(e, "Updating status")
   retry
 end
 
 # Check for new Twitch streams, and send notices.
 def update_twitch
   if $content_channel.nil?
-    err("not connected to a channel, not sending twitch report")
+    err("Not connected to a channel, not sending twitch report")
     raise
   end
   if $twitch_token.nil?
@@ -51,14 +52,14 @@ def update_twitch
     sleep(TWITCH_UPDATE_FREQUENCY)
   end
 rescue => e
-  err(e)
+  lex(e, "Updating twitch")
   sleep(WAIT)
   retry
 end
 
 # Update missing demos (e.g., if they failed to download originally)
 def download_demos
-  log("updating demos...")
+  log("Downloading missing demos...")
   archives = Archive.where(lost: false)
                     .joins("LEFT JOIN demos ON demos.id = archives.id")
                     .where("demos.demo IS NULL")
@@ -67,13 +68,13 @@ def download_demos
     attempts ||= 0
     Demo.find_or_create_by(id: ar[0]).update_demo
   rescue => e
-    err("error updating demo with ID #{ar[0].to_s}: #{e}")
+    lex(e, "Updating demo with ID #{ar[0].to_s}")
     ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
   end
-  log("updated demos")
+  succ("Downloaded missing demos")
   return true
 rescue => e
-  err("error updating demos: #{e}")
+  lex(e, "Downloading missing demos")
   return false
 end
 
@@ -88,15 +89,15 @@ def start_demos
     next if !download_demos
   end
 rescue => e
-  err("error updating demos: #{e}")
+  lex(e, "Updating missing demos")
   retry
 end
 
 # Compute and send the weekly highscoring report and the daily summary
 def send_report
-  log("sending highscoring report...")
+  log("Sending highscoring report...")
   if $channel.nil?
-    err("not connected to a channel, not sending highscoring report")
+    err("Not connected to a channel, not sending highscoring report")
     return false
   end
 
@@ -196,7 +197,7 @@ def send_report
   }.join("\n")
   $channel.send_message("**Daily highscoring summary**:\n" + total)
 
-  log("highscoring report sent")  
+  succ("Highscoring report sent")  
   return true
 end
 
@@ -216,7 +217,7 @@ def start_report
       end
     end
   rescue => e
-    err("error sending highscoring report: #{e}")
+    lex(e, "Sending highscoring report")
     sleep(WAIT)
     retry
   end
@@ -225,9 +226,9 @@ end
 # Compute and send the daily userlevel highscoring report for the newest
 # 500 userlevels.
 def send_userlevel_report
-  log("sending userlevel highscoring report...")
+  log("Sending userlevel highscoring report...")
   if $channel.nil?
-    err("not connected to a channel, not sending highscoring report")
+    err("Not connected to a channel, not sending highscoring report")
     return false
   end
 
@@ -243,7 +244,7 @@ def send_userlevel_report
   $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
   $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n```#{zeroes}```")
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
-  log("userlevel highscoring report sent")
+  succ("Userlevel highscoring report sent")
   return true
 end
 
@@ -259,14 +260,14 @@ def start_userlevel_report
       next if !send_userlevel_report
     end
   rescue => e
-    err("error sending userlevel highscoring report: #{e}")
+    lex(e, "Sending userlevel highscoring report")
     retry
   end
 end
 
 # Update database scores for Metanet Solo levels, episodes and stories
 def download_high_scores
-  log("downloading high scores...")
+  log("Downloading highscores...")
   # We handle exceptions within each instance so that they don't force
   # a retry of the whole function.
   # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
@@ -275,14 +276,14 @@ def download_high_scores
       attempts ||= 0
       o.update_scores
     rescue => e
-      err("error updating high scores for #{o.class.to_s.downcase} #{o.id.to_s}: #{e}")
+      lex(e, "Downloading high scores for #{o.class.to_s.downcase} #{o.id.to_s}")
       ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
     end
   end
-  log("downloaded high scores")
+  succ("Downloaded highscores")
   return true
-rescue
-  err("error download high scores")
+rescue => e
+  lex(e, "Downloading highscores")
   return false
 end
 
@@ -298,7 +299,7 @@ def start_high_scores
       next if !download_high_scores
     end
   rescue => e
-    err("error updating high scores: #{e}")
+    lex(e, "Updating highscores")
     retry
   end
 end
@@ -311,7 +312,7 @@ end
 # So we can rebuild the boards at any given point in time with precision.
 # Therefore, this function is not being used anymore.
 def update_histories
-  log("updating histories...")
+  log("Updating histories...")
   now = Time.now
   [:SI, :S, :SL, :SS, :SU, :SS2].each do |tab|
     [Level, Episode, Story].each do |type|
@@ -340,10 +341,10 @@ def update_histories
       end
     end
   end
-  log("updated highscore histories")
+  succ("Updated highscore histories")
   return true
 rescue => e
-  err("error updating histories: #{e}")
+  lex(e, "Updating histories")
   return false  
 end
 
@@ -358,7 +359,7 @@ def start_histories
     next if !update_histories
   end
 rescue => e
-  err("error updating highscore histories: #{e}")
+  lex(e, "Updating histories")
   retry
 end
 
@@ -366,7 +367,7 @@ end
 # can check the history later. Since we don't have a differential table here,
 # like for Metanet levels, this function is NOT deprecated.
 def update_userlevel_histories
-  log("updating userlevel histories...")
+  log("Updating userlevel histories...")
   now = Time.now
 
   [-1, 1, 5, 10, 20].each{ |rank|
@@ -377,10 +378,10 @@ def update_userlevel_histories
     end
   }
 
-  log("updated userlevel histories")
+  succ("Updated userlevel histories")
   return true   
 rescue => e
-  err("error updating userlevel histories: #{e}")
+  lex(e, "Updating userlevel histories")
   return false
 end
 
@@ -395,25 +396,25 @@ def start_userlevel_histories
     next if !update_userlevel_histories
   end
 rescue => e
-  err("error updating userlevel highscore histories: #{e}")
+  lex(e, "Updating userlevel histories")
   retry
 end
 
 # Download the scores for the scores for the latest 500 userlevels, for use in
 # the daily userlevel highscoring rankings.
 def download_userlevel_scores
-  log("updating newest userlevel scores...")
+  log("Downloading newest userlevel scores...")
   Userlevel.where(mode: :solo).order(id: :desc).take(USERLEVEL_REPORT_SIZE).each do |u|
     attempts ||= 0
     u.update_scores
   rescue => e
-    err("error updating highscores for userlevel #{u.id}: #{e}")
+    lex(e, "Downloading scores for userlevel #{u.id}")
     ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
   end
-  log("updated userlevel scores")
+  succ("Downloaded newest userlevel scores")
   return true
 rescue => e
-  err("error updating userlevel highscores: #{e}")
+  lex(e, "Downloading newest userlevel scores")
   return false
 end
 
@@ -428,7 +429,7 @@ def start_userlevel_scores
     next if !download_userlevel_scores
   end
 rescue => e
-  err("error downloading userlevel highscores: #{e}")
+  lex(e, "Updating newest userlevel scores")
   retry
 end
 
@@ -437,38 +438,38 @@ end
 # We select the userlevels to update in reverse order of last update, i.e., we
 # always update the ones which haven't been updated the longest.
 def update_all_userlevels_chunk
-  log("updating next userlevel chunk scores...")
+  dbg("Downloading next userlevel chunk scores...")
   Userlevel.where(mode: :solo).order('score_update IS NOT NULL, score_update').take(USERLEVEL_DOWNLOAD_CHUNK).each do |u|
     sleep(USERLEVEL_UPDATE_RATE)
     attempts ||= 0
     u.update_scores
   rescue => e
-    err("error updating highscores for userlevel #{u.id}: #{e}")
+    lex(e, "Downloading scores for userlevel #{u.id}")
     ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
   end
-  log("updated userlevel chunk scores")
+  dbg("Downloaded userlevel chunk scores")
   return true
 rescue => e
-  err("error updating userlevel chunk scores: #{e}")
+  lex(e, "Downloading userlevel chunk scores")
   return false
 end
 
 # Driver for the function above
 def update_all_userlevels
-  log("updating all userlevel scores...")
+  log("Updating all userlevel scores...")
   while true
     sleep(WAIT)
     update_all_userlevels_chunk
   end
 rescue => e
-  err("error updating all userlevel scores: #{e}")
+  lex(e, "Updating all userlevel scores")
   retry
 end
 
 # Download some userlevel tabs (best, top weekly, featured, hardest), for all
 # 3 modes, to keep those lists up to date in the database
 def update_userlevel_tabs
-  log("updating userlevel tabs")
+  log("Downloading userlevel tabs")
   ["solo", "coop", "race"].each_with_index{ |mode, m|
     [7, 8, 9, 11].each { |qt|
       tab = USERLEVEL_TABS[qt][:name]
@@ -484,11 +485,10 @@ def update_userlevel_tabs
       end
     }
   }
-  print(" " * 80 + "\r")
-  log("updated userlevel tabs")
+  succ("Downloaded userlevel tabs")
   return true   
 rescue => e
-  err("error updating userlevel tabs: #{e}")
+  lex(e, "Downloading userlevel tabs")
   return false
 end
 
@@ -503,7 +503,7 @@ def start_userlevel_tabs
     next if !update_userlevel_tabs
   end
 rescue => e
-  err("error updating userlevel tabs: #{e}")
+  lex(e, "Updating userlevel tabs")
   retry
 end
 
@@ -541,9 +541,9 @@ end
 # Publish the lotd/eotw/cotm
 # This function also updates the scores of said board, and of the new one
 def send_channel_next(type)
-  log("sending next #{type.to_s.downcase}")
+  log("Sending next #{type.to_s.downcase}...")
   if $channel.nil?
-    err("not connected to a channel, not sending level of the day")
+    err("Not connected to a channel, not sending level of the day")
     return false
   end
 
@@ -552,7 +552,7 @@ def send_channel_next(type)
   GlobalProperty.set_current(type, current)
 
   if current.nil?
-    err("no more #{type.to_s.downcase}")
+    err("No more #{type.to_s.downcase.pluralize}")
     return false
   end
 
@@ -597,16 +597,16 @@ def start_level_of_the_day
       sleep(delay) unless delay < 0
 
      if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
-        log("starting level of the day...")
+        log("Starting level of the day...")
         next if !send_channel_next(Level)
-        log("sent next level, next update at #{GlobalProperty.get_next_update(Level).to_s}")
+        succ("Sent next level, next update at #{GlobalProperty.get_next_update(Level).to_s}")
       end
 
       if (UPDATE_EPISODE || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
         sleep(30) # let discord catch up
         send_channel_next(Episode)
         episode_day = true
-        log("sent next episode, next update at #{GlobalProperty.get_next_update(Episode).to_s}")
+        succ("Sent next episode, next update at #{GlobalProperty.get_next_update(Episode).to_s}")
       end
 
       if (UPDATE_STORY || DO_EVERYTHING) && !DO_NOTHING && GlobalProperty.get_next_update(Story) < Time.now
@@ -618,7 +618,7 @@ def start_level_of_the_day
         sleep(30) # let discord catch up
         send_channel_next(Story)
         story_day = true
-        log("sent next story, next update at #{GlobalProperty.get_next_update(Story).to_s}")
+        succ("Sent next story, next update at #{GlobalProperty.get_next_update(Story).to_s}")
       end
 
       if !episode_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_reminder end
@@ -627,7 +627,7 @@ def start_level_of_the_day
       story_day = false
     end
   rescue => e
-    err("error updating level of the day: #{e}")
+    lex(e, "Updating level of the day")
     retry
   end
 end
