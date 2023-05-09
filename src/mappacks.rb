@@ -141,6 +141,7 @@ module Map
     if invalid_count > 0
       warn("#{warning}: #{invalid_count} invalid tiles.")
     end
+    tiles = tiles.each_slice(42).to_a
 
     # Parse objects
     offset = 1940
@@ -582,8 +583,8 @@ class Mappack < ActiveRecord::Base
     else
       warn("Parsed mappack '#{code}' with #{file_errors} file errors and #{map_errors} map errors")
     end
-  rescue
-    err("Error reading mappack '#{code}'")
+  rescue => e
+    lex(e, "Error reading mappack '#{code}'")
   end
 end
 
@@ -630,7 +631,6 @@ module MappackHighscoreable
                   "mappack_scores.id"
                 )
     score = board.find_by(metanet_id: metanet_id) if !metanet_id.nil?
-    header = !score.nil? ? "#{score.player.name.to_s} requested " : ""
 
     # Build response
     res = {}
@@ -652,9 +652,17 @@ module MappackHighscoreable
     res["query_type"] = qt
     res["#{self.class.to_s.remove("Mappack").downcase}_id"] = self.inner_id
 
+    # Log
+    player = Player.find_by(metanet_id: metanet_id)
+    if !player.nil? && !player.name.nil?
+      text = "#{player.name.to_s} requested #{self.name} leaderboards"
+    else
+      text = "#{self.name} leaderboards requested"
+    end
+    dbg(res.to_json) if SOCKET_LOG
+    dbg(text)
+
     # Return leaderboards
-    dbg(res.to_json)
-    dbg("#{header}#{self.name} leaderboards")
     res.to_json
   end
 
@@ -919,7 +927,7 @@ class MappackScore < ActiveRecord::Base
     res['replay_id'] = replay_id_hs || replay_id_sr || -1
 
     # Finish
-    dbg(res.to_json)
+    dbg(res.to_json) if SOCKET_LOG
     dbg("#{name} submitted a score to #{h.name}")
     return res.to_json
   rescue => e

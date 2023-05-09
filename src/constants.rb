@@ -240,11 +240,12 @@ TWITCH_BLACKLIST = [           # Should probably use IDs instead of usernames he
 #    with the corresponding tool can connect to, so they can highscore custom
 #    mappacks.
 
-SOCKET      = true # Whether to open sockets or not
-CUSE_SOCKET = true # Open CUSE socket
-CLE_SOCKET  = true # Open CLE socket
-CUSE_PORT   = 8125 # Port for CUSE's TCP server
-CLE_PORT    = 8126 # Port for CLE's TCP server
+SOCKET      = true  # Whether to open sockets or not
+CUSE_SOCKET = false # Open CUSE socket
+CLE_SOCKET  = true  # Open CLE socket
+CUSE_PORT   = 8125  # Port for CUSE's TCP server
+CLE_PORT    = 8126  # Port for CLE's TCP server
+SOCKET_LOG  = false # Log request and response details
 
 # CUSE-specific variables
 QUERY_LIMIT_SOFT = 25   # Number of queried userlevels per page

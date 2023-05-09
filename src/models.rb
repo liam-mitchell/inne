@@ -190,7 +190,7 @@ module Downloadable
         scores.find_by(rank: i).update(tab: self.tab, cool: false, star: false)
 
         # Create archive and demo if they don't already exist
-        next if !Archive.find_by(replay_id: score['replay_id'], highscoreable_type: self.class.to_s).nil?
+        next if !Archive.find_by(highscoreable: self, replay_id: score['replay_id']).nil?
 
         # Update old archives
         Archive.where(highscoreable: self, player: player).update_all(expired: true)

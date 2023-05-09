@@ -19,15 +19,15 @@ ActiveRecord::Base.logger = Logger.new(
 module Log
 
   MODES = {
-    fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" },       # Red background
-    error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" },       # Red
-    warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" },       # Yellow
-    good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" },       # Green
-    info:  { long: 'INFO',  short: 'i', fmt: "" },               # Normal
-    msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" },       # Blue
-    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" },       # Magenta
-    out:   { long: 'OUT',   short: '→', fmt: "\x1B[36m" },       # Cyan
-    debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[3m\x1B[30m" } # Italic gray
+    fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" }, # Red background
+    error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" }, # Red
+    warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" }, # Yellow
+    good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" }, # Green
+    info:  { long: 'INFO',  short: 'i', fmt: ""         }, # Normal
+    msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" }, # Blue
+    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" }, # Magenta
+    out:   { long: 'OUT',   short: '→', fmt: "\x1B[36m" }, # Cyan
+    debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[90m" }  # Gray
   }
 
   LEVELS = {
