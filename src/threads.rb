@@ -589,6 +589,13 @@ def start_level_of_the_day
     episode_day = false
     story_day = false
     while true
+      sleep(WAIT)
+      if TEST && TEST_LOTD
+        next if !send_channel_next(Level)
+        next if !send_channel_next(Episode)
+        next if !send_channel_next(Story)
+        return
+      end
       next_level_update = correct_time(GlobalProperty.get_next_update(Level), LEVEL_UPDATE_FREQUENCY)
       next_episode_update = correct_time(GlobalProperty.get_next_update(Episode), EPISODE_UPDATE_FREQUENCY)
       GlobalProperty.set_next_update(Level, next_level_update)
