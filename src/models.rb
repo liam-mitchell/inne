@@ -2058,6 +2058,7 @@ module Cle extend self
         response = nil
       end
     when 'POST'
+      req.continue # Respond to "Expect: 100-continue"
       case query
       when 'submit_score'
         response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
