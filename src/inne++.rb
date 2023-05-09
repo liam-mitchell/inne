@@ -88,7 +88,7 @@ def load_config
   $config = YAML.load_file(CONFIG)[DATABASE_ENV]
   $config['discord_client'] = (TEST ? ENV['DISCORD_CLIENT_TEST'] : ENV['DISCORD_CLIENT']).to_i
   $config['discord_secret'] =  TEST ? ENV['DISCORD_TOKEN_TEST']  : ENV['DISCORD_TOKEN']
-  $config['twitch_client']  = ENV['TWITCH_CLIENT'].to_i
+  $config['twitch_client']  = ENV['TWITCH_CLIENT']
   $config['twitch_secret']  = ENV['TWITCH_SECRET']
   log("Loaded config")
 rescue => e
@@ -149,14 +149,14 @@ def setup_bot
     special = event.user.id == BOTMASTER_ID && event.content[0] == '!'
     special ? respond_special(event) : respond(event)
     str = special ? 'Special ' : ''
-    str = "#{str}DM by #{event.user.name}: #{event.content}"
+    str = "#{str}DM by #{event.user.name}: #{remove_mentions(event.content)}"
     special ? succ(str) : msg(str)
   end
 
   $bot.mention do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond(event)
-    msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
+    msg("Mention by #{event.user.name} in #{event.channel.name}: #{remove_mentions(event.content)}")
   end
 
   $bot.message do |event|

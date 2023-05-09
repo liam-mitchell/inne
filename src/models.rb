@@ -1820,21 +1820,21 @@ module Twitch extend self
     res = Net::HTTP.post_form(
       URI.parse("https://id.twitch.tv/oauth2/token"),
       {
-        client_id: $config['twitch_client'],
-        client_secret: $config['twitch_secret'],
+        client_id: $config['twitch_client'].to_s,
+        client_secret: $config['twitch_secret'].to_s,
         grant_type: 'client_credentials'
       }
     )
     if res.code.to_i == 401
       err("TWITCH: Unauthorized to perform requests, please verify you have this correctly configured.")
     elsif res.code.to_i != 200
-      err("TWITCH: App access token request failed.")
+      err("TWITCH: App access token request failed (code #{res.body}).")
     else
       $twitch_token = JSON.parse(res.body)['access_token']
       set_twitch_token($twitch_token)
     end
-  rescue
-    err("TWITCH: App access token request method failed.")
+  rescue => e
+    lex(e, "TWITCH: App access token request method failed")
     sleep(5)
     retry
   end
@@ -1850,7 +1850,7 @@ module Twitch extend self
         uri.request_uri,
         {
           'Authorization' => "Bearer #{$twitch_token}",
-          'Client-Id' => $config['twitch_client']
+          'Client-Id' => $config['twitch_client'].to_s
         }
       )
       if res.code.to_i == 401
@@ -1889,22 +1889,22 @@ module Twitch extend self
         uri.request_uri,
         {
           'Authorization' => "Bearer #{$twitch_token}",
-          'Client-Id' => $config['twitch_client']
+          'Client-Id' => $config['twitch_client'].to_s
         }
       )
       if res.code.to_i == 401
         update_twitch_token
         sleep(5)
       elsif res.code.to_i != 200
-        err("TWITCH: Stream list request for #{name} failed.")
+        err("TWITCH: Stream list request for #{name} failed (code #{res.code.to_i}).")
         sleep(5)
       else
         break
       end
     end
     JSON.parse(res.body)['data']
-  rescue
-    err("TWITCH: Stream list request method for #{name} failed.")
+  rescue => e
+    lex(e, "TWITCH: Stream list request method for #{name} failed.")
     sleep(5)
     retry
   end
