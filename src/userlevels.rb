@@ -412,7 +412,7 @@ class Userlevel < ActiveRecord::Base
     fields = {
       :id     => ["id", "map id", "map_id", "level id", "level_id"],
       :title  => ["title", "name"],
-      :author => ["author", "player", "user", "person", "mapper"],
+      #:author => ["author", "player", "user", "person", "mapper"],
       :date   => ["date", "time", "datetime", "moment", "day", "period"],
       :favs   => ["favs", "fav", "++", "++'", "favourite", "favorite"]
     }
@@ -748,10 +748,10 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   if query.nil?
     search, author, msg = parse_title_and_author(msg, false)
     search = unescape(search) if search.is_a?(String)
-    author = unescape(author) if author.is_a?(String)
+    author = UserlevelAuthor.parse(unescape(author)) if author.is_a?(String)
   else
     search = query[:title]
-    author = query[:author]
+    author = UserlevelAuthor.parse(query[:author])
   end
   page   = parse_page(msg, page, reset_page, !event.nil? ? event.message.components : nil)
   mode   = MODES.select{ |k, v| v == (mode || parse_mode(msg, !socket.nil?)) }.keys.first
@@ -767,7 +767,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # Filter userlevels
   if query.nil?
     query   = Userlevel::tab(cat, mode)
-    query   = query.where(Userlevel.sanitize("author LIKE ?", "%" + author[0...16] + "%")) if !author.empty?
+    query   = query.where(author: author) if !author.nil?
     query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0...128] + "%")) if !search.empty?
   else
     query   = query[:query]
@@ -793,8 +793,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # message, so it needs to have a format compatible with the regex we use to
   # parse commands. I know, genius implementation.
   output = "Browsing #{USERLEVEL_TABS[cat][:name]}#{mode == -1 ? '' : ' ' + MODES[mode]} maps"
-  output += " by `#{author[0..63]}`" if !author.empty?
-  output += " for `#{search[0..63]}`" if !search.empty?
+  output += " by `#{author.name[0...64]}`" if !author.nil?
+  output += " for `#{search[0...64]}`" if !search.empty?
   output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}."
   output += format_userlevels(maps, pag[:page])
   output += count == 0 ? "\nNo results :shrug:" : "Total results: **#{count}**."
@@ -813,9 +813,10 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     edit:  !initial,
     int:   !(initial && count == 0)
   )
+rescue RuntimeError
+  raise
 rescue => e
-  err(e)
-  puts(e.backtrace)
+  Log.log_exception(e, "Browsing userlevels")
   err_str = "An error happened, try again, if it keeps failing, contact the botmeister."
   if !socket.nil?
     err("Socketing of userlevel query failed.")

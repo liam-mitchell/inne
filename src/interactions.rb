@@ -36,7 +36,7 @@ def interaction_add_select_menu_order(view, order = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
-      ["default", "title", "author", "date", "favs"].each{ |b|
+      ["default", "title", "date", "favs"].each{ |b|
         m.option(label: "Sort by: #{b.capitalize}", value: "menu:order:#{b}", default: b == order)
       }
     }
