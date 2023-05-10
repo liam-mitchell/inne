@@ -504,10 +504,12 @@ RTYPES = [
 # Keys are the user IDs, values are their known usernames
 BLACKLIST = {
    63944 => ["Kronogenics"],
+   72791 => ["Jett Altair"],
    75839 => ["vorcazm", "Treagus"],
    76223 => ["TylerDC"],
   115572 => ["Mishu"],
   128613 => ["cock unsucker"],
+  135161 => ["Apjue"],
   146275 => ["Puce"],
   173617 => ["You have been banned."],
   201322 => ["dimitry008"],
