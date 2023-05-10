@@ -978,36 +978,25 @@ class Player < ActiveRecord::Base
     ret
   end
 
-  # Proxy a login request and send to Metanet's server
+  # Proxy a login request and register player
   def self.login(req)
-    # Parse request elements
-    body = req.body
-
-    # Create POST request
-    uri = URI.parse("https://dojo.nplusplus.ninja/prod/steam/login?#{req.query_string}")
-    post = Net::HTTP::Post.new(uri)
-
-    # Add headers and body (clean default ones first)
-    post.to_hash.keys.each{ |h| post.delete(h) }
-    req.header.each{ |k, v| post[k] = v[0] }
-    post['host'] = 'dojo.nplusplus.ninja'
-    post.body = body
-
-    # Execute request
-    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 5){ |http| http.request(post) }
-    raise 'Invalid response' if res.code.to_i != 200 || res.body == INVALID_RESP
+    # Forward request to Metanet
+    res = forward(req)
+    raise 'Invalid response' if res.nil? || res == INVALID_RESP
 
     # Parse response and register player in database
-    json = JSON.parse(res.body)
+    json = JSON.parse(res)
     Player.find_or_create_by(metanet_id: json['user_id'].to_i).update(name: json['name'].to_s)
-    User.find_or_create_by(steam_id: json['steam_id'].to_s).update(
+    user = User.find_or_create_by(steam_id: json['steam_id'].to_s)
+    user.update(
       playername: json['name'].to_s,
       last_active: Time.now
     )
+    user.update(username: json['name'].to_s) if user.username.nil?
 
     # Return the same response
     dbg("#{json['name'].to_s} (#{json['user_id']}) logged in")
-    res.body
+    res
   rescue => e
     Log.log_exception(e, 'Failed to proxy login request')
     return nil
@@ -2051,21 +2040,21 @@ module Cle extend self
     when 'GET'
       case query
       when 'get_scores'
-        response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+        response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
       when 'get_replay'
-        response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+        response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
       else
-        response = nil
+        response = CLE_FORWARD ? forward(req) : nil
       end
     when 'POST'
       req.continue # Respond to "Expect: 100-continue"
       case query
       when 'submit_score'
-        response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h)
+        response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
       when 'login'
         response = Player.login(req)
       else
-        response = nil
+        response = CLE_FORWARD ? forward(req) : nil
       end
     else
       response = nil

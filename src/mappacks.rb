@@ -790,7 +790,7 @@ class MappackScore < ActiveRecord::Base
   # TODO: Add integrity checks and warnings in Demo.parse, correct stories
 
   # Verify, parse and save a submitted run, respond suitably
-  def self.add(code, query)
+  def self.add(code, query, req = nil)
     # Parse player ID
     uid = query['user_id'].to_i
     if uid == 0 || uid == -1
@@ -839,6 +839,7 @@ class MappackScore < ActiveRecord::Base
     sid = query[id_field].to_i
     h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
     if h.nil?
+      return forward(req) if CLE_FORWARD
       warn("Score submitted by #{name}: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
       return
     end
@@ -936,7 +937,7 @@ class MappackScore < ActiveRecord::Base
   end
 
   # Respond to a request for leaderboards
-  def self.get_scores(code, query)
+  def self.get_scores(code, query, req = nil)
     name = "?"
 
     # Parse type
@@ -958,6 +959,7 @@ class MappackScore < ActiveRecord::Base
     # Find highscoreable
     h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
     if h.nil?
+      return forward(req) if CLE_FORWARD
       warn("Getting scores: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
       return
     end
@@ -971,7 +973,7 @@ class MappackScore < ActiveRecord::Base
   end
 
   # Respond to a request for a replay
-  def self.get_replay(code, query)
+  def self.get_replay(code, query, req = nil)
     # Integrity checks
     if !query.key?('replay_id')
       warn("Getting replay: Replay ID not provided")
@@ -999,6 +1001,7 @@ class MappackScore < ActiveRecord::Base
     # Find score and perform integrity checks
     score = MappackScore.find_by(id: query['replay_id'].to_i)
     if score.nil?
+      return forward(req) if CLE_FORWARD
       warn("Getting replay: Score with ID #{query['replay_id']} not found")
       return
     end

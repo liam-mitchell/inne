@@ -252,7 +252,8 @@ QUERY_LIMIT_SOFT = 25   # Number of queried userlevels per page
 QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 
 # CLE-specific variables
-PWD = ENV['NPP_HASH']
+PWD     = ENV['NPP_HASH']
+CLE_FORWARD = true        # Forward unrelated requests to Metanet
 
 # <--------------------------------------------------------------------------->
 # <------                       GAME VARIABLES                          ------>

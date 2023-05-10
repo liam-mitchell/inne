@@ -214,6 +214,42 @@ rescue => e
   end
 end
 
+# Forward an arbitrary request to Metanet
+def forward(req)
+  return nil if req.nil?
+
+  # Parse request elements
+  host = 'dojo.nplusplus.ninja'
+  path = req.request_uri.path
+  path.sub!(/\/[^\/]+/, '') if path[/\/(.+?)\//, 1] != 'prod'
+  body = req.body
+
+  # Create request
+  uri = URI.parse("https://#{host}#{path}?#{req.query_string}")
+  case req.request_method.upcase
+  when 'GET'
+    new_req = Net::HTTP::Get.new(uri)
+  when 'POST'
+    new_req = Net::HTTP::Post.new(uri)
+  else
+    return nil
+  end
+
+  # Add headers and body (clean default ones first)
+  new_req.to_hash.keys.each{ |h| new_req.delete(h) }
+  req.header.each{ |k, v| new_req[k] = v[0] }
+  new_req['host'] = host
+  new_req.body = body
+
+  # Execute request
+  res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 5){ |http|
+    http.request(new_req)
+  }
+  res.code.to_i != 200 ? nil : res.body
+rescue
+  nil
+end
+
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute
 def parse_int(bytes)
