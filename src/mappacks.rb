@@ -638,14 +638,14 @@ module MappackHighscoreable
       "my_score"        => m == 'hs' ? (1000 * score["score_#{m}"].to_i / 60.0).round : 1000 * score["score_#{m}"].to_i,
       "my_rank"         => score["rank_#{m}"].to_i,
       "my_replay_id"    => score.id.to_i,
-      "my_display_name" => score.player.name.to_s
+      "my_display_name" => score.player.name.to_s.remove("\\")
     } if !score.nil?
     res["scores"] = list.map{ |s|
       {
         "score"     => m == 'hs' ? (1000 * s[0].to_i / 60.0).round : 1000 * s[0].to_i,
         "rank"      => s[1].to_i,
         "user_id"   => s[2].to_i,
-        "user_name" => s[3].to_s,
+        "user_name" => s[3].to_s.remove("\\"),
         "replay_id" => s[4].to_i
       }
     }
@@ -1007,11 +1007,13 @@ class MappackScore < ActiveRecord::Base
     end
 
     if score.highscoreable.mappack.code != code
+      return forward(req) if CLE_FORWARD
       warn("Getting replay: Score with ID #{query['replay_id']} is not from mappack '#{code}'")
       return
     end
 
     if score.highscoreable.type != type[:name]
+      return forward(req) if CLE_FORWARD
       warn("Getting replay: Score with ID #{query['replay_id']} is not from a #{type[:name].downcase}")
       return
     end
