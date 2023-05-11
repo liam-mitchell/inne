@@ -2,6 +2,7 @@
 
 require 'active_record'
 require 'damerau-levenshtein'
+require 'net/http'
 require 'unicode/emoji'
 
 require_relative 'constants.rb'
@@ -214,7 +215,7 @@ rescue => e
   end
 end
 
-# Forward an arbitrary request to Metanet
+# Forward an arbitrary request to Metanet, return response's body if 200, nil else
 def forward(req)
   return nil if req.nil?
 

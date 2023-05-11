@@ -1720,8 +1720,8 @@ def send_unreaction(event)
 end
 
 def send_mappack_seed(event)
-  Mappack.seed(true)
-  event << "Seeded mappacks"
+  Mappack.seed
+  event << "Seeded new mappacks"
 end
 
 def send_mappack_screenshot(event)
