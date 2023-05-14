@@ -2,12 +2,12 @@
 # <------                   DEVELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
-TEST           = true  # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
 TEST_LOTD      = false # Posts lotd immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = false # Execute all threads
+DO_EVERYTHING  = true  # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
 
@@ -74,10 +74,10 @@ LOG_OUT      = true # Log outgoing HTTP connections (CUSE, CLE...)
 LOG_DEBUG    = true # Log debug messages
 
 # Control log format
-LOG_FANCY      = true   # Whether rich logs are enabled (bold, colors...)
-LOG_LEVEL      = :debug # Default logging level
-LOG_APPS       = false  # Append source app to log msgs
-LOG_BACKTRACES = true   # Log exception backtraces
+LOG_FANCY      = true    # Whether rich logs are enabled (bold, colors...)
+LOG_LEVEL      = :normal # Default logging level
+LOG_APPS       = false   # Append source app to log msgs
+LOG_BACKTRACES = true    # Log exception backtraces
 
 # Others
 LOG_TO_FILE = false # Export logs and errors into external file
@@ -258,7 +258,8 @@ QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 
 # CLE-specific variables
 PWD = ENV['NPP_HASH']
-CLE_FORWARD = true        # Forward unrelated requests to Metanet
+CLE_FORWARD = true       # Forward unrelated requests to Metanet
+INTEGRITY_CHECKS = false
 
 # <--------------------------------------------------------------------------->
 # <------                       GAME VARIABLES                          ------>

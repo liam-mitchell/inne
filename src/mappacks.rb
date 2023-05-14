@@ -860,7 +860,7 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Verify replay integrity
-    legit = h.verify_replay(query['ninja_check'], score_hs_orig)
+    legit = INTEGRITY_CHECKS ? h.verify_replay(query['ninja_check'], score_hs_orig) : true
     if !legit
       warn("Score submitted by #{name} to #{h.name} has invalid security hash")
       return

@@ -838,7 +838,7 @@ end
 # We pass in the msg (instead of extracting it from the event)
 # because it might've been modified by the caller function already.
 def send_userlevel_individual(event, msg, &block)
-  map = parse_userlevel(msg)
+  map = parse_userlevel(remove_mentions(msg))
   case map[:count]
   when 0
     event << map[:msg]
