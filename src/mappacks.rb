@@ -882,7 +882,7 @@ class MappackScore < ActiveRecord::Base
     end
     if score_sr_min.nil? || score_sr < score_sr_min
       scores.update_all(rank_sr: nil, tied_rank_sr: nil)
-      res['better'] = 1
+      #res['better'] = 1
       sr = true
     end
 
@@ -1031,6 +1031,30 @@ class MappackScore < ActiveRecord::Base
   rescue => e
     Log.log_exception(e, "Failed to get replay with ID #{query['replay_id']} from mappack '#{code}'")
     return
+  end
+
+  def self.patch_score(highscoreable, player, score)
+    # Integrity checks
+    raise "#{highscoreable.name} does not belong to a mappack" if !highscoreable.is_a?(MappackHighscoreable)
+    scores = self.where(highscoreable: highscoreable, player: player)
+    raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
+    s = scores.where.not(rank_hs: nil).first
+    raise "#{player.name}'s leaderboard score in #{highscoreable.name} not found" if s.nil?
+
+    # Change score
+    s.update(score_hs: (score * 60).round)
+
+    # Update player's ranks
+    scores.update_all(rank_hs: nil, tied_rank_hs: nil)
+    max = scores.find_by(score_hs: scores.pluck(:score_hs).max)
+    max.update(rank_hs: -1, tied_rank_hs: -1)
+
+    # Update global ranks
+    highscoreable.update_ranks('hs')
+    succ("Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}")
+  rescue => e
+    lex(e, 'Failed to patch score')
+    nil
   end
 
   # Dumps demo data in the format N++ users for server communications

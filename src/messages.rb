@@ -1730,6 +1730,16 @@ def send_mappack_screenshot(event)
   send_file(event, MappackLevel.find(flags[:id]).screenshot, flags[:id].to_s + ".png", true)
 end
 
+def send_mappack_patch(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  highscoreable = parse_level_or_episode(msg, mappack: true)
+  player = parse_player('for ' + flags[:p], nil, false, true, true)
+  score = parse_score(flags[:s])
+  MappackScore.patch_score(highscoreable, player, score)
+  event << "Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}"
+end
+
 def send_log_config(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
@@ -1759,6 +1769,7 @@ def respond_special(event)
   send_unreaction(event)         if cmd == 'unreact'
   send_mappack_seed(event)       if cmd == 'mappack_seed'
   send_mappack_screenshot(event) if cmd == 'mappack_ss'
+  send_mappack_patch(event)      if cmd == 'mappack_patch'
   send_log_config(event)         if cmd == 'log'
 rescue RuntimeError => e
   event << e

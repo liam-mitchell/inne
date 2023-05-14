@@ -1,5 +1,6 @@
 require 'active_support/core_ext/integer/inflections' # ordinalize
 require_relative 'constants.rb'
+require_relative 'utils.rb'
 
 # Fetch message from an event. Depending on the event that was triggered, this is
 # accessed in a different way. We use the "initial" boolean to determine whether
@@ -53,6 +54,15 @@ def parse_mode(msg, explicit = false, null = false)
   !!msg[/\brace\b/i] ? 'race' : (!!msg[/\bcoop\b/i] ? 'coop' : (explicit ? 'solo' : (!!msg[/\bsolo\b/i] ? 'solo' : (null ? nil : 'all'))))
 end
 
+# Parses a string looking for a score in the usual N++ 3-decimal floating point format
+def parse_score(str)
+  # Find score in string
+  score = str[/(\s|^)([1-9]\d*|0)(\.\d{1,3})?(\s|$)/]
+  raise "Couldn't find / understand the score" if score.nil?
+  raise "The score is incorrect" if !verify_score(score.to_f)
+  score.to_f
+end
+
 # Optionally allow to parse multiple types, for retrocompat
 def parse_type(msg, type = nil, multiple = false, initial = false)
   type = type.capitalize.constantize unless type.nil?
@@ -86,14 +96,6 @@ end
 
 def parse_alias_type(msg, type = nil)
   ['level', 'player'].include?(type) ? type : (!!msg[/player/i] ? 'player' : 'level')
-end
-
-def normalize_name(name)
-  name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
-end
-
-def redash_name(matches)
-  !!matches ? matches.captures.compact.join('-') : nil
 end
 
 # Transform tab into [SI, S, SU, SL, ?, !] format
@@ -247,15 +249,22 @@ end
 # would break all the many prior uses of this function.
 # If 'array' is true, then even if there's a single result, it will be returned
 # as an array.
-def parse_level_or_episode(msg, partial: false, array: false)
-  level     = msg[LEVEL_PATTERN]
-  level_d   = msg.match(LEVEL_PATTERN_D) # dashless
-  episode   = msg[EPISODE_PATTERN]
-  episode_d = msg.match(EPISODE_PATTERN_D)
-  story     = msg.match(STORY_PATTERN) # no need for dashed (no ambiguity)
-  name      = msg.split("\n")[0][NAME_PATTERN, 2]
-  ret       = nil
-  str       = ""
+# If 'mappack' is true, then we allow to search in mappack highscoreables.
+def parse_level_or_episode(msg, partial: false, array: false, mappack: false)
+  level       = msg[LEVEL_PATTERN]
+  level_d     = msg.match(LEVEL_PATTERN_D)
+  level_m     = msg[LEVEL_PATTERN_M]
+  level_m_d   = msg.match(LEVEL_PATTERN_M_D)
+  episode     = msg[EPISODE_PATTERN]
+  episode_d   = msg.match(EPISODE_PATTERN_D)
+  episode_m   = msg[EPISODE_PATTERN_M]
+  episode_m_d = msg.match(EPISODE_PATTERN_M_D)
+  story       = msg.match(STORY_PATTERN) # no need for dashless (no ambiguity)
+  story_m     = msg.match(STORY_PATTERN_M)
+  name        = msg.split("\n")[0][NAME_PATTERN, 2]
+  mappack     = mappack && (level_m || level_m_d || episode_m || episode_m_d || story_m)
+  ret         = nil
+  str         = ""
 
   # 1) First we check dashed versions for levels and episodes
   # 2) Then dashless for levels and episodes (together)
@@ -269,55 +278,87 @@ def parse_level_or_episode(msg, partial: false, array: false)
   # It will be returned in the format:
   # [String, Array<Level>]
   # Where the string is a message, because the origin of the list might differ
-  if level
-    str = normalize_name(level)
-    ret = Level.find_by(name: str)
-  elsif episode
-    str = normalize_name(episode)
-    ret = Episode.find_by(name: str)
-  elsif level_d || episode_d
-    if level_d
-      str = normalize_name(redash_name(level_d))
+
+  # Parse mappack IDs first, if we allow it
+  if mappack
+    if level_m
+      str = normalize_name(level_m)
+      ret = MappackLevel.find_by(name: str)
+    elsif episode_m
+      str = normalize_name(episode_m)
+      ret = MappackEpisode.find_by(name: str)
+    elsif level_m_d || episode_m_d
+      if level_m_d
+        str = normalize_name(redash_name(level_m_d))
+        ret = MappackLevel.find_by(name: str)
+      end
+      if episode_m_d && !ret
+        str = normalize_name(redash_name(episode_m_d))
+        ret = MappackEpisode.find_by(name: str)
+      end
+    elsif story_m
+      str = normalize_name(redash_name(story_m))
+      ret = MappackStory.find_by(name: str)
+    end
+  end
+
+  # Parse normal IDs and names, if we found no mappack results
+  if !mappack
+    if level
+      str = normalize_name(level)
       ret = Level.find_by(name: str)
-    end
-    if episode_d && !ret
-      str = normalize_name(redash_name(episode_d))
+    elsif episode
+      str = normalize_name(episode)
       ret = Episode.find_by(name: str)
-    end
-  elsif story
-    str = normalize_name(redash_name(story))
-    ret = Story.find_by(name: str)
-  elsif !msg[/(level of the day|lotd)/i].nil?
-    ret = GlobalProperty.get_current(Level)
-  elsif !msg[/(episode of the week|eotw)/i].nil?
-    ret = GlobalProperty.get_current(Episode)
-  elsif !msg[/(column of the month|cotm)/i].nil?
-    ret = GlobalProperty.get_current(Story)
-  elsif name
-    str = name
-    # Parse exact name
-    ret = [
-      "Multiple matches found for #{name}",
-      Level.where_like('longname', name, partial: false).to_a
-    ]
-    ret = ret[1][0] if !partial || ret[1].size == 1
-    # Parse level alias
-    if ret.nil? || ret.is_a?(Array) && ret[1].empty?
-      ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
-                 .find_by("UPPER(level_aliases.alias) = ?", name.upcase) 
-    end
-    # If specified, perform extra searches
-    if ret.nil? || ret.is_a?(Array) && ret[1].empty?
-      ret = search_level(msg) 
+    elsif level_d || episode_d
+      if level_d
+        str = normalize_name(redash_name(level_d))
+        ret = Level.find_by(name: str)
+      end
+      if episode_d && !ret
+        str = normalize_name(redash_name(episode_d))
+        ret = Episode.find_by(name: str)
+      end
+    elsif story
+      str = normalize_name(redash_name(story))
+      ret = Story.find_by(name: str)
+    elsif !msg[/(level of the day|lotd)/i].nil?
+      ret = GlobalProperty.get_current(Level)
+    elsif !msg[/(episode of the week|eotw)/i].nil?
+      ret = GlobalProperty.get_current(Episode)
+    elsif !msg[/(column of the month|cotm)/i].nil?
+      ret = GlobalProperty.get_current(Story)
+    elsif name
+      str = name
+      # Parse exact name
+      ret = [
+        "Multiple matches found for #{name}",
+        Level.where_like('longname', name, partial: false).to_a
+      ]
       ret = ret[1][0] if !partial || ret[1].size == 1
+      # Parse level alias
+      if ret.nil? || ret.is_a?(Array) && ret[1].empty?
+        ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
+                  .find_by("UPPER(level_aliases.alias) = ?", name.upcase) 
+      end
+      # If specified, perform extra searches
+      if ret.nil? || ret.is_a?(Array) && ret[1].empty?
+        ret = search_level(msg) 
+        ret = ret[1][0] if !partial || ret[1].size == 1
+      end
+    else
+      raise "Couldn't find the level, episode or story you were looking for :("
     end
-  else
-    raise "Couldn't find the level, episode or story you were looking for :("
   end
 
   raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil? || ret.is_a?(Array) && ret[1].empty?
   ret = ["Single match found for #{name}", [ret]] if !ret.is_a?(Array) && array
   ret
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Failed to parse highscoreable')
+  nil
 end
 
 # Completes previous function by adding extra level searching functionality

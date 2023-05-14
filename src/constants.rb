@@ -4,7 +4,7 @@
 
 TEST           = true  # Switch to the local test bot
 TEST_REPORT    = false # Produces the report immediately once
-TEST_LOTD      = false  # Posts lotd immediately once
+TEST_LOTD      = false # Posts lotd immediately once
 SHOW_ERRORS    = true  # Log common error messages to the console
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
@@ -108,13 +108,18 @@ MONKEY_PATCH_WEBRICK       = true # Enable WEBrick monkey patches (optional)
 # <--------------------------------------------------------------------------->
 
 # Input
-LEVEL_PATTERN     = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
-LEVEL_PATTERN_D   = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
-EPISODE_PATTERN   = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
-EPISODE_PATTERN_D = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
-STORY_PATTERN     = /(S[ILU]?)-?([0-9][0-9]?)/i
-NAME_PATTERN      = /(for|of) (.*)[\.\?]?/i
-MAX_ENTRIES       = 20 # maximum number of entries on methods with user input, to avoid spam
+LEVEL_PATTERN       = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
+LEVEL_PATTERN_D     = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
+LEVEL_PATTERN_M     = /[A-Z]{3}-S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[A-Z]{3}-[?!]-[ABCDEX]-[0-9][0-9]?/i
+LEVEL_PATTERN_M_D   = /([A-Z]{3})-?(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([A-Z]{3})-?([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
+EPISODE_PATTERN     = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
+EPISODE_PATTERN_D   = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
+EPISODE_PATTERN_M   = /[A-Z]{3}-S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
+EPISODE_PATTERN_M_D = /([A-Z]{3})-?(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
+STORY_PATTERN       = /(S[ILU]?)-?([0-9][0-9]?)/i
+STORY_PATTERN_M     = /([A-Z]{3})-?(S[ILU]?)-?([0-9][0-9]?)/i
+NAME_PATTERN        = /(for|of) (.*)[\.\?]?/i
+MAX_ENTRIES         = 20 # maximum number of entries on methods with user input, to avoid spam
 
 # Output
 NUM_ENTRIES     = 20   # number of entries to show on most methods

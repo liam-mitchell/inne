@@ -8,9 +8,7 @@ require 'unicode/emoji'
 require_relative 'constants.rb'
 require_relative 'models.rb'
 
-ActiveRecord::Base.logger = Logger.new(
-  LOG_TO_FILE ? "log" : STDOUT
-) if LOG_SQL
+ActiveRecord::Base.logger = Logger.new(LOG_TO_FILE ? "log_outte_sql" : STDOUT) if LOG_SQL
 
 # Custom logging class for the terminal, that supports:
 #   - Multiple levels of verbosity (from quiet to debug)
@@ -83,7 +81,7 @@ module Log
     ret = []
     ret << "added logging modes #{added.join(', ')}" if !added.empty?
     ret << "removed logging modes #{removed.join(', ')}" if !removed.empty?
-    dbg(ret.join(", ").capitalize)
+    dbg(ret.join("; ").capitalize)
   rescue
     dbg("Failed to change logging modes")
   end
@@ -118,7 +116,7 @@ module Log
     # Output to stream and optionally file, returns raw msg
     newline ? stream.puts(msg) : stream.print(msg)
     stream.flush
-    File.write('../LOG', msg, mode: 'a') if LOG_TO_FILE
+    File.write('log_outte', msg, mode: 'a') if LOG_TO_FILE
     text
   end
 
@@ -276,6 +274,20 @@ end
 def sanitize_filename(s)
   return '' if s.nil?
   s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
+end
+
+def normalize_name(name)
+  name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
+end
+
+def redash_name(matches)
+  !!matches ? matches.captures.compact.join('-') : nil
+end
+
+# Verifies if an arbitrary floating point can be a valid score
+def verify_score(score)
+  decimal = (score * 60) % 1
+  [decimal, 1 - decimal].min < 0.03
 end
 
 # Convert an integer into a little endian binary string of 'size' bytes and back
