@@ -423,9 +423,11 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
+  hash    = parse_palette(msg)
+  msg     = hash[:msg]
   h       = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   nav     = parse_nav(msg) || !initial
-
+  
   # Multiple matches, send match list
   if h.is_a?(Array)
     format_level_matches(event, msg, page, initial, h, 'search')
@@ -436,8 +438,9 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   #scores = scores.nav(offset.to_i)
   if h.is_a?(MappackHighscoreable)
     return event.send_message("Sorry, mappack episodes and stories don't have screenshots yet.") if !h.is_a?(MappackLevel)
-    screenshot = h.screenshot(file: true)
+    screenshot = h.screenshot(hash[:palette], file: true)
   else
+    hash[:error] = "Sorry, Metanet levels are only available in the Classic palette.\n" if hash[:palette] != Map::DEFAULT_PALETTE
     name = h.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
     filename = "screenshots/#{name}.jpg"
 
@@ -451,7 +454,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   end
     
   # Send response
-  str  = "Screenshot for #{h.format_name}"
+  str  = "#{hash[:error]}Screenshot for #{h.format_name}"
   file = screenshot
   return [file, str] if ret
   if nav

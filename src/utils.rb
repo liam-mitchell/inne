@@ -30,11 +30,11 @@ module Log
   }
 
   LEVELS = {
-    silent:  [],
-    quiet:   [:fatal, :error, :warn],
-    normal:  [:fatal, :error, :warn, :good, :info, :msg],
-    verbose: [:fatal, :error, :warn, :good, :info, :msg, :in, :out],
-    debug:   [:fatal, :error, :warn, :good, :info, :msg, :in, :out, :debug]
+    silent: [],
+    quiet:  [:fatal, :error, :warn],
+    normal: [:fatal, :error, :warn, :good, :info, :msg],
+    debug:  [:fatal, :error, :warn, :good, :info, :msg, :debug],
+    all:    [:fatal, :error, :warn, :good, :info, :msg, :debug, :in, :out]
   }
 
   BOLD  = "\x1B[1m"
