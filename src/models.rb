@@ -361,7 +361,7 @@ module Highscoreable
     cools
   end
 
-  def format_scores(mode: 'hs')
+  def format_scores_mode(mode = 'hs')
     mappack = self.is_a?(MappackHighscoreable)
     hs = mode == 'hs'
 
@@ -380,7 +380,21 @@ module Highscoreable
     # Print scores
     boards.each_with_index.map{ |s, i|
       s.format(name_padding, score_padding, true, mode)
-    }.join("\n")
+    }
+  end
+
+  def format_scores(mode: nil)
+    return format_scores_mode(mode).join("\n") if !self.is_a?(MappackHighscoreable) || !mode.nil?
+    board_hs = format_scores_mode('hs')
+    board_sr = format_scores_mode('sr')
+    length_hs = board_hs.first.length
+    length_sr = board_sr.first.length
+    size = [board_hs.size, board_sr.size].max
+    board_hs = board_hs.ljust(size, ' ' * length_hs)
+    board_sr = board_sr.ljust(size, ' ' * length_sr)
+    header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4) + "\n"
+    #header += '_' * (header.length - 1) + "\n"
+    header + board_hs.zip(board_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }.join("\n")
   end
 
   def difference(old)

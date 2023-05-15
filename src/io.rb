@@ -757,8 +757,8 @@ def parse_star(msg, strict = false, name = false)
   !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i] || name && !!msg[/\bstar\b/i]
 end
 
-def parse_mode(msg)
-  !!msg[/\bsr\b/i] || !!msg[/\bspeed\s*run\b/i] ? 'sr' : 'hs'
+def parse_board(msg)
+  !!msg[/\bsr\b/i] || !!msg[/\bspeed\s*run\b/i] ? 'sr' : (!!msg[/\bdual\b/i] ? nil : 'hs')
 end
 
 # Pings a role by name (returns ping string)

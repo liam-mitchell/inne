@@ -331,7 +331,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   h       = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
-  mode    = parse_mode(msg)
+  mode    = parse_board(msg)
   res     = ""
 
   # Navigating scores goes into a different method (see below this one)
@@ -423,28 +423,33 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  scores  = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
+  h       = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   nav     = parse_nav(msg) || !initial
 
   # Multiple matches, send match list
-  if scores.is_a?(Array)
-    format_level_matches(event, msg, page, initial, scores, 'search')
+  if h.is_a?(Array)
+    format_level_matches(event, msg, page, initial, h, 'search')
     return
   end
 
   # Single match, retrieve screenshot
   #scores = scores.nav(offset.to_i)
-  name = scores.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
-  screenshot = "screenshots/#{name}.jpg"
+  if h.is_a?(MappackHighscoreable)
+    return event.send_message("Sorry, mappack episodes and stories don't yet have screenshots") if !h.is_a?(MappackLevel)
+    screenshot = h.screenshot
+  else
+    name = h.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
+    screenshot = "screenshots/#{name}.jpg"
 
-  if !File.exist?(screenshot)
-    str = "I don't have a screenshot for #{scores.format_name}... :("
-    return [nil, str] if ret
-    return event.send_message(str)
+    if !File.exist?(screenshot)
+      str = "I don't have a screenshot for #{h.format_name}... :("
+      return [nil, str] if ret
+      return event.send_message(str)
+    end
   end
-  
+    
   # Send response
-  str  = "Screenshot for #{scores.format_name}"
+  str  = "Screenshot for #{h.format_name}"
   file = File::open(screenshot)
   return [file, str] if ret
   if nav
