@@ -435,22 +435,24 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   # Single match, retrieve screenshot
   #scores = scores.nav(offset.to_i)
   if h.is_a?(MappackHighscoreable)
-    return event.send_message("Sorry, mappack episodes and stories don't yet have screenshots") if !h.is_a?(MappackLevel)
-    screenshot = h.screenshot
+    return event.send_message("Sorry, mappack episodes and stories don't have screenshots yet.") if !h.is_a?(MappackLevel)
+    screenshot = h.screenshot(file: true)
   else
     name = h.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
-    screenshot = "screenshots/#{name}.jpg"
+    filename = "screenshots/#{name}.jpg"
 
-    if !File.exist?(screenshot)
+    if !File.exist?(filename)
       str = "I don't have a screenshot for #{h.format_name}... :("
       return [nil, str] if ret
       return event.send_message(str)
     end
+
+    screenshot = File::open(filename)
   end
     
   # Send response
   str  = "Screenshot for #{h.format_name}"
-  file = File::open(screenshot)
+  file = screenshot
   return [file, str] if ret
   if nav
     # Attachments can't be modified so we're stuck for now
@@ -466,7 +468,7 @@ end
 def send_screenscores(event)
   # Parse message parameters
   msg = event.content
-  map = parse_level_or_episode(msg)
+  map = parse_level_or_episode(msg, mappack: true)
 
   # Return both screenshot and scores, without sending them
   ss  = send_screenshot(event, map, true)
@@ -488,7 +490,7 @@ end
 def send_scoreshot(event)
   # Parse message parameters
   msg = event.content
-  map = parse_level_or_episode(msg)
+  map = parse_level_or_episode(msg, mappack: true)
 
   # Retrieve both screenshot and scores, without sending them
   s   = send_scores(event, map, true)

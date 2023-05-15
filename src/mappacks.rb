@@ -359,7 +359,7 @@ module Map
     output
   end
 
-  def screenshot(theme = DEFAULT_PALETTE)
+  def screenshot(theme = DEFAULT_PALETTE, file: false)
     bench(:start) if BENCHMARK
     themes = THEMES.map(&:downcase)
     theme = theme.downcase
@@ -429,7 +429,7 @@ module Map
       end
     end
     bench(:step) if BENCHMARK
-    image.to_blob
+    file ? tmp_file(image.to_blob, self.name + '.png', true) : image.to_blob
   end
 end
 
