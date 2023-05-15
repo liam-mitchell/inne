@@ -328,9 +328,10 @@ def send_scores(event, map = nil, ret = false, page: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
+  h       = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
+  mode    = parse_mode(msg)
   res     = ""
 
   # Navigating scores goes into a different method (see below this one)
@@ -340,22 +341,22 @@ def send_scores(event, map = nil, ret = false, page: nil)
   end
 
   # Multiple matches, send match list
-  if scores.is_a?(Array)
-    format_level_matches(event, msg, page, initial, scores, 'search')
+  if h.is_a?(Array)
+    format_level_matches(event, msg, page, initial, h, 'search')
     return
   end
 
   # Update scores, unless we're in offline mode or the connection fails
   if OFFLINE_STRICT
     res << "Strict offline mode is ON, sending local cached scores.\n"
-  elsif !offline && scores.update_scores == -1
+  elsif !offline && h.is_a?(Downloadable) && h.update_scores == -1
     res << "Connection to the server failed, sending local cached scores.\n"
   end
 
   # Format response, add cleanliness if it's an episode
-  res << "Highscores for #{scores.format_name}:\n#{format_block(scores.format_scores(scores.max_name_length)) rescue ""}"
-  if scores.is_a?(Episode)
-    clean = round_score(scores.cleanliness[1])
+  res << "Highscores for #{h.format_name}:\n#{format_block(h.format_scores(mode: mode))}"
+  if h.is_a?(Episode)
+    clean = round_score(h.cleanliness[1])
     res << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
   end
 
@@ -370,7 +371,9 @@ def send_scores(event, map = nil, ret = false, page: nil)
   #   (note we used "event.send_message" rather than "event <<",
   #   which means it got sent immediately so we don't have to wait
   #   for these 5 level updates)
-  scores.levels.each(&:update_scores) if scores.is_a?(Episode) && !offline && !OFFLINE_STRICT
+  h.levels.each(&:update_scores) if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
+rescue => e
+  lex(e, 'Failed to send scores')
 end
 
 # Navigating scores: Main differences:
@@ -420,7 +423,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  scores  = map.nil? ? parse_level_or_episode(msg, partial: true) : map
+  scores  = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   nav     = parse_nav(msg) || !initial
 
   # Multiple matches, send match list
@@ -1737,7 +1740,7 @@ def send_mappack_patch(event)
   player = parse_player('for ' + flags[:p], nil, false, true, true)
   score = parse_score(flags[:s])
   MappackScore.patch_score(highscoreable, player, score)
-  event << "Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}"
+  event << "Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}."
 end
 
 def send_log_config(event)

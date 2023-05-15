@@ -884,7 +884,7 @@ def send_userlevel_scores(event)
   send_userlevel_individual(event, msg){ |map|
     output = "Scores of userlevel `" + map[:query].title + "` with ID `" + map[:query].id.to_s
     output += "` by `" + (map[:query].author.name.empty? ? " " : map[:query].author.name) + "` on " + Time.now.to_s + ".\n"
-    event << output + "```" + map[:query].format_scores + "```"
+    event << output + "```" + map[:query].print_scores + "```"
   }
 end
 

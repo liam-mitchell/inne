@@ -255,7 +255,7 @@ end
 # CLE (mappacks).
 module Highscoreable
   def self.format_rank(rank)
-    "#{rank < 10 ? '0' : ''}#{rank}"
+    rank.nil? ? '--' : "#{rank < 10 ? '0' : ''}#{rank}"
   end
 
   def self.spreads(n, type, tabs, small = false, player_id = nil)
@@ -339,15 +339,19 @@ module Highscoreable
     ret
   end
 
-  def max_name_length
-    scores.map{ |s| s.player.name.length }.max
+  def leaderboard(mode = 'hs')
+    scores
+  end
+
+  def max_name_length(mode = 'hs')
+    leaderboard(mode).map{ |s| s.player.print_name.length }.max
   end
 
   def find_coolness
-    max   = scores.map(&:score).max.to_i.to_s.length + 4
-    s1    = scores.first.score.to_s
-    s2    = scores.last.score.to_s
-    d     = (0...max).find{ |i| s1[i] != s2[i] }
+    max = scores.map(&:score).max.to_i.to_s.length + 4
+    s1  = scores.first.score.to_s
+    s2  = scores.last.score.to_s
+    d   = (0...max).find{ |i| s1[i] != s2[i] }
     if !d.nil?
       d     = -(max - d - 5) - (max - d < 4 ? 1 : 0)
       cools = scores.size.times.find{ |i| scores[i].score < s1.to_f.truncate(d) }
@@ -357,10 +361,26 @@ module Highscoreable
     cools
   end
 
-  def format_scores(padding = max_name_length)
-    scores.reload # Otherwise sometimes recent changes aren't in memory
-    max = scores.map(&:score).max.to_i.to_s.length + 4
-    scores.each_with_index.map{ |s, i| s.format(padding, max) }.join("\n")
+  def format_scores(mode: 'hs')
+    mappack = self.is_a?(MappackHighscoreable)
+    hs = mode == 'hs'
+
+    # Reload scores, otherwise sometimes recent changes aren't in memory
+    scores.reload
+    boards = leaderboard(mode)
+
+    # Calculate padding
+    name_padding = max_name_length(mode)
+    
+    field = !mappack ? :score : (hs ? :score_hs : :score_sr)
+    score_padding = boards.map{ |s|
+      mappack && hs ? s[field] / 60.0 : s[field]
+    }.max.to_i.to_s.length + (!mappack || hs ? 4 : 0)
+
+    # Print scores
+    boards.each_with_index.map{ |s, i|
+      s.format(name_padding, score_padding, true, mode)
+    }.join("\n")
   end
 
   def difference(old)
@@ -466,20 +486,8 @@ module Highscoreable
   end
 end
 
-class Level < ActiveRecord::Base
-  include Downloadable
-  include Highscoreable
-  has_many :scores, ->{ order(:rank) }, as: :highscoreable
-  has_many :videos, as: :highscoreable
-  has_many :challenges
-  has_many :level_aliases
-  belongs_to :episode
-  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
-
-  def add_alias(a)
-    LevelAlias.find_or_create_by(level: self, alias: a)
-  end
-
+# Implemented by Level and MappackLevel
+module Levelish
   def format_name
     "#{longname} (#{name})"
   end
@@ -490,9 +498,52 @@ class Level < ActiveRecord::Base
   end
 end
 
+class Level < ActiveRecord::Base
+  include Downloadable
+  include Highscoreable
+  include Levelish
+  has_many :scores, ->{ order(:rank) }, as: :highscoreable
+  has_many :videos, as: :highscoreable
+  has_many :challenges
+  has_many :level_aliases
+  belongs_to :episode
+  enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  def add_alias(a)
+    LevelAlias.find_or_create_by(level: self, alias: a)
+  end
+end
+
+# Implemented by Episode and MappackEpisode
+module Episodish
+  def format_name
+    "#{name}"
+  end
+
+  def cleanliness(rank = 0)
+    [
+      name,
+      Score.where(highscoreable: levels, rank: 0).sum(:score) - scores[rank].score - 360,
+      scores[rank].player.name
+    ]
+  end
+
+  def ownage
+    owner = scores[0].player
+    lvls = Score.where(highscoreable: levels, rank: 0).count("if(player_id = #{owner.id}, 1, NULL)")
+    [name, lvls == 5, owner.name]
+  end
+
+  def splits(rank = 0)
+    acc = 90
+    self.levels.map{ |l| acc += l.scores[rank].score - 90 }
+  end
+end
+
 class Episode < ActiveRecord::Base
   include Downloadable
   include Highscoreable
+  include Episodish
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :levels
@@ -550,50 +601,47 @@ class Episode < ActiveRecord::Base
     bench(:step) if BENCHMARK
     ret
   end
+end
 
+# Implemented by Story and MappackStory
+module Storyish
   def format_name
     "#{name}"
-  end
-
-  def cleanliness(rank = 0)
-    bench(:start) if BENCHMARK
-    ret = [name, Score.where(highscoreable: levels, rank: 0).sum(:score) - scores[rank].score - 360, scores[rank].player.name]
-    bench(:step) if BENCHMARK
-    ret
-  end
-
-  def ownage
-    bench(:start) if BENCHMARK
-    owner = scores[0].player
-    lvls = Score.where(highscoreable: levels, rank: 0)
-                .joins('INNER JOIN players ON players.id = scores.player_id')
-                .count("if(players.id = #{owner.id}, 1, NULL)")
-    ret = [name, lvls == 5, owner.name]
-    bench(:step) if BENCHMARK
-    ret
-  end
-
-  def splits(rank = 0)
-    acc = 90
-    self.levels.map{ |l| acc += l.scores[rank].score - 90 }
-  rescue
-    nil
   end
 end
 
 class Story < ActiveRecord::Base
   include Downloadable
   include Highscoreable
+  include Storyish
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+end
 
-  def format_name
-    "#{name}"
+# Implemented by Score and MappackScore
+module Scorish
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs')
+    mappack = self.is_a?(MappackScore)
+    hs = mode == 'hs'
+
+    # Compose each element
+    t_star   = mappack ? '' : (star ? '*' : ' ')
+    t_rank   = !mappack ? rank : (hs ? rank_hs : rank_sr)
+    t_rank   = Highscoreable.format_rank(t_rank)
+    t_player = player.format_name(name_padding)
+    t_score  = !mappack ? score : (hs ? score_hs / 60.0 : score_sr)
+    t_fmt    = !mappack || hs ? "%#{score_padding}.3f" : "%#{score_padding}d"
+    t_score  = t_fmt % [t_score]
+    t_cool   = !mappack && show_cools && cool ? " 😎" : ""
+
+    # Put everything together
+    "#{t_star}#{t_rank}: #{t_player} - #{t_score}#{t_cool}"
   end
 end
 
 class Score < ActiveRecord::Base
+  include Scorish
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
 #  default_scope -> { select("scores.*, score * 1.000 as score")} # Ensure 3 correct decimal places
@@ -843,10 +891,6 @@ class Score < ActiveRecord::Base
 
   def demo
     archive.demo
-  end
-
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true)
-    "#{star ? "*" : ' '}#{Highscoreable.format_rank(rank)}: #{player.format_name(name_padding)} - #{"%#{score_padding}.3f" % [score]}#{show_cools && cool ? " 😎" : ""}"
   end
 end
 

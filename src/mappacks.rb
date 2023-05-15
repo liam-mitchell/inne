@@ -217,7 +217,7 @@ module Map
     Map.decode_objects(data.object_data)
   end
 
-  def format_scores
+  def print_scores
     update_scores if !OFFLINE_STRICT
     if scores.count == 0
       board = "This userlevel has no highscores!"
@@ -701,6 +701,7 @@ end
 class MappackLevel < ActiveRecord::Base
   include Map
   include MappackHighscoreable
+  include Levelish
   alias_attribute :data, :mappack_data
   alias_attribute :scores, :mappack_scores
   alias_attribute :episode, :mappack_episode
@@ -741,6 +742,7 @@ end
 
 class MappackEpisode < ActiveRecord::Base
   include MappackHighscoreable
+  include Episodish
   alias_attribute :levels, :mappack_levels
   alias_attribute :scores, :mappack_scores
   alias_attribute :story, :mappack_story
@@ -767,6 +769,7 @@ end
 
 class MappackStory < ActiveRecord::Base
   include MappackHighscoreable
+  include Storyish
   alias_attribute :episodes, :mappack_episodes
   alias_attribute :scores, :mappack_scores
   has_many :mappack_episodes, foreign_key: :story_id
@@ -776,6 +779,7 @@ class MappackStory < ActiveRecord::Base
 end
 
 class MappackScore < ActiveRecord::Base
+  include Scorish
   alias_attribute :demo,    :mappack_demo
   alias_attribute :scores,  :mappack_scores
   alias_attribute :level,   :mappack_level

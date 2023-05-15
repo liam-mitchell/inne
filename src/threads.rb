@@ -571,7 +571,7 @@ def send_channel_next(type)
 
   caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
   send_channel_screenshot(current.name, caption)
-  $channel.send_message("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores(current.max_name_length)}```")
+  $channel.send_message("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores}```")
 
   if !OFFLINE_STRICT
     send_channel_diff(last, GlobalProperty.get_saved_scores(type), since)

@@ -279,8 +279,7 @@ def parse_level_or_episode(msg, partial: false, array: false, mappack: false)
   # [String, Array<Level>]
   # Where the string is a message, because the origin of the list might differ
 
-  # Parse mappack IDs first, if we allow it
-  if mappack
+  if mappack # Parse mappack IDs first, if we allow it
     if level_m
       str = normalize_name(level_m)
       ret = MappackLevel.find_by(name: str)
@@ -300,10 +299,7 @@ def parse_level_or_episode(msg, partial: false, array: false, mappack: false)
       str = normalize_name(redash_name(story_m))
       ret = MappackStory.find_by(name: str)
     end
-  end
-
-  # Parse normal IDs and names, if we found no mappack results
-  if !mappack
+  else # Parse normal IDs and names, if we found no mappack results
     if level
       str = normalize_name(level)
       ret = Level.find_by(name: str)
@@ -759,6 +755,10 @@ end
 # if 'name' then we accept 'star' for parsing stars as well
 def parse_star(msg, strict = false, name = false)
   !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i] || name && !!msg[/\bstar\b/i]
+end
+
+def parse_mode(msg)
+  !!msg[/\bsr\b/i] || !!msg[/\bspeed\s*run\b/i] ? 'sr' : 'hs'
 end
 
 # Pings a role by name (returns ping string)
