@@ -1166,6 +1166,15 @@ def send_analysis(event)
   send_file(event, table_result, "analysis-#{scores.name}.txt")
 end
 
+def send_demo_download(event)
+  msg    = event.content
+  h      = parse_level_or_episode(msg)
+  rank   = [parse_range(msg).first, h.scores.size - 1].min
+  score  = h.scores[rank]
+  event << "Downloading #{score.player.name}'s #{rank.ordinalize} score in #{h.name} (#{"%.3f" % [score.score]}):"
+  send_file(event, score.demo.demo, "#{h.name}_#{rank.ordinalize}_replay", true)
+end
+
 # Sends a PNG graph plotting the evolution of player's scores (e.g. top20 count,
 # 0th count, points...) over time.
 # Currently unavailable because the db structure changed between CCS and Eddy
@@ -1878,6 +1887,7 @@ def respond(event)
   sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
   send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   send_tally(event)          if msg =~ /\btally\b/i
+  send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
   faceswap(event)            if msg =~ /faceswap/i
   testa(event) if msg =~ /testa/i
 
