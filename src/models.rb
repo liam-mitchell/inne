@@ -1753,12 +1753,15 @@ class Demo < ActiveRecord::Base
     offset = {'Level' => 0, 'Episode' => 24, 'Story' => 108}[htype]
     count  = {'Level' => 1, 'Episode' =>  5, 'Story' =>  25}[htype]
 
+    mode  = _unpack(data[offset + 17..offset + 20])
+    start = mode == 1 ? 34 : 30
+
     lengths = (0...count).map{ |d| _unpack(data[header + 4 * d...header + 4 * (d + 1)]) }
     lengths = [_unpack(data[1..4])] if htype == 'Level'
     lengths.map{ |l|
       raw_replay = data[offset...offset + l]
       offset += l
-      raw_replay[30..-1]
+      raw_replay[start..-1]
     }
   end
 

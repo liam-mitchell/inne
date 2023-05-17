@@ -126,6 +126,12 @@ module Log
     dbg(e.backtrace.join("\n")) if LOG_BACKTRACES
   end
 
+  def self.log_discord(msg)
+    botmaster.pm.send_message(msg)
+  rescue => e
+    lex(e, "Couldn't DM botmaster")
+  end
+
   # Shortcuts for each mode
   def self.log(msg, **kwargs)
     write(msg, :info, kwargs) if LOG_INFO
@@ -179,6 +185,7 @@ def lin(msg,   **kwargs) Log.lin(msg,   kwargs) end
 def lout(msg,  **kwargs) Log.lout(msg,  kwargs) end
 def fatal(msg, **kwargs) Log.fatal(msg, kwargs) end
 def lex(e, msg = '')  Log.log_exception(e, msg) end
+def ld(msg)           Log.log_discord(msg)      end
 
 # Make a request to N++'s server.
 # Since we need to use an open Steam ID, the function goes through all
@@ -246,6 +253,14 @@ def forward(req)
   }
   res.code.to_i != 200 ? nil : res.body
 rescue
+  nil
+end
+
+def botmaster
+  $bot.servers.each{ |id, server|
+    member = server.member(BOTMASTER_ID)
+    return member if !member.nil?
+  }
   nil
 end
 

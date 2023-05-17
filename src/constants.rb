@@ -108,16 +108,16 @@ MONKEY_PATCH_WEBRICK       = true # Enable WEBrick monkey patches (optional)
 # <--------------------------------------------------------------------------->
 
 # Input
-LEVEL_PATTERN       = /S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
-LEVEL_PATTERN_D     = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
-LEVEL_PATTERN_M     = /[A-Z]{3}-S[ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[A-Z]{3}-[?!]-[ABCDEX]-[0-9][0-9]?/i
-LEVEL_PATTERN_M_D   = /([A-Z]{3})-?(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([A-Z]{3})-?([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
-EPISODE_PATTERN     = /S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
-EPISODE_PATTERN_D   = /(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
-EPISODE_PATTERN_M   = /[A-Z]{3}-S[ILU]?-[ABCDEX]-[0-9][0-9]?/i
-EPISODE_PATTERN_M_D = /([A-Z]{3})-?(S[ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
-STORY_PATTERN       = /(S[ILU]?)-?([0-9][0-9]?)/i
-STORY_PATTERN_M     = /([A-Z]{3})-?(S[ILU]?)-?([0-9][0-9]?)/i
+LEVEL_PATTERN       = /[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
+LEVEL_PATTERN_D     = /([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
+LEVEL_PATTERN_M     = /[A-Z]{3}-[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[A-Z]{3}-[?!]-[ABCDEX]-[0-9][0-9]?/i
+LEVEL_PATTERN_M_D   = /([A-Z]{3})-?([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([A-Z]{3})-?([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
+EPISODE_PATTERN     = /[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?/i
+EPISODE_PATTERN_D   = /([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
+EPISODE_PATTERN_M   = /[A-Z]{3}-[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?/i
+EPISODE_PATTERN_M_D = /([A-Z]{3})-?([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
+STORY_PATTERN       = /([SCR][ILU]?)-?([0-9][0-9]?)/i
+STORY_PATTERN_M     = /([A-Z]{3})-?([SCR][ILU]?)-?([0-9][0-9]?)/i
 NAME_PATTERN        = /(for|of) (.*)[\.\?]?/i
 MAX_ENTRIES         = 20 # maximum number of entries on methods with user input, to avoid spam
 

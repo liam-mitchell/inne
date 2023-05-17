@@ -1722,7 +1722,7 @@ end
 
 def testa(event)
   assert_permissions(event)
-
+  ld("Hey")
 #  maps = send_userlevel_browse(nil, socket: event.content)
 #  Userlevel::dump_query(maps, 10, 0)
 #  p = UserlevelAuthor.parse(parse_userlevel_author(event.content))
@@ -1755,11 +1755,17 @@ end
 def send_mappack_patch(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
-  highscoreable = parse_level_or_episode(msg, mappack: true)
-  player = parse_player('for ' + flags[:p], nil, false, true, true)
+  id = flags[:id]
+  highscoreable = parse_level_or_episode(msg, mappack: true) if !id
+  player = parse_player('for ' + flags[:p], nil, false, true, true) if !id
   score = parse_score(flags[:s])
-  MappackScore.patch_score(highscoreable, player, score)
-  event << "Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}."
+  MappackScore.patch_score(id, highscoreable, player, score)
+  if id.nil?
+    event << "Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}."
+  else
+    s = MappackScore.find(id)
+    event << "Patched #{s.player.name}'s score (#{s.id}) in #{s.highscoreable.name} to #{"%.3f" % score}."
+  end
 end
 
 def send_log_config(event)

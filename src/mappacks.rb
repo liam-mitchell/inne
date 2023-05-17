@@ -586,6 +586,35 @@ class Mappack < ActiveRecord::Base
   rescue => e
     lex(e, "Error reading mappack '#{code}'")
   end
+
+  # Check additional requirements for scores submitted to this mappack
+  # For instance, w's Duality coop pack requires that the replays for both
+  # players be identical
+  def check_requirements(demos)
+    case self.code
+    when 'dua'
+      demos.each{ |d|
+        # Demo must have even length (coop)
+        sz = d.size
+        if sz % 2 == 1
+          warn("Demo does not satisfy Duality's requirements (odd length)")
+          return false
+        end
+
+        # Both halves of the demo must be identical
+        if d[0...sz / 2] != d[sz / 2..-1]
+          warn("Demo does not satisfy Duality's requirements (different inputs)")
+          return false
+        end
+      }
+      true
+    else
+      true
+    end
+  rescue => e
+    lex(e, "Failed to check requirements for demo in '#{code}' mappack")
+    false
+  end
 end
 
 class MappackData < ActiveRecord::Base
@@ -848,10 +877,12 @@ class MappackScore < ActiveRecord::Base
       return
     end
 
-    # Parse demos and compute new scores
+    # Parse demos and compute new scores and gold count
     demos = Demo.parse(query['replay_data'], type[:name])
     score_hs = (60.0 * query['score'].to_i / 1000.0).round
     score_sr = demos.map(&:size).sum
+    score_sr /= 2 if h.mode == 1 # Coop demos contain 2 sets of inputs
+    gold = MappackScore.gold_count(type[:name], score_hs, score_sr)
     
     # Tweak level scores submitted within episode runs
     score_hs_orig = score_hs
@@ -863,12 +894,15 @@ class MappackScore < ActiveRecord::Base
       end
     end
 
-    # Verify replay integrity
+    # Verify replay integrity by checking security hash
     legit = INTEGRITY_CHECKS ? h.verify_replay(query['ninja_check'], score_hs_orig) : true
     if !legit
       warn("Score submitted by #{name} to #{h.name} has invalid security hash")
       return
     end
+
+    # Verify additional mappack-wise requirements
+    return if !mappack.check_requirements(demos)
 
     # Fetch old PB's
     scores = MappackScore.where(highscoreable: h, player: player)
@@ -909,6 +943,13 @@ class MappackScore < ActiveRecord::Base
       )
       id = score.id
       MappackDemo.create(id: id, demo: Demo.encode(demos))
+    end
+
+    # Verify hs score integrity by checking calculated gold count
+    if (hs || sr) && !MappackScore.verify_gold(gold)
+      str = "Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})"
+      warn(str)
+      ld(str)
     end
 
     # Update ranks if necessary
@@ -1037,13 +1078,22 @@ class MappackScore < ActiveRecord::Base
     return
   end
 
-  def self.patch_score(highscoreable, player, score)
-    # Integrity checks
-    raise "#{highscoreable.name} does not belong to a mappack" if !highscoreable.is_a?(MappackHighscoreable)
-    scores = self.where(highscoreable: highscoreable, player: player)
-    raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
-    s = scores.where.not(rank_hs: nil).first
-    raise "#{player.name}'s leaderboard score in #{highscoreable.name} not found" if s.nil?
+  def self.patch_score(id, highscoreable, player, score)
+    # Find score
+    if !id.nil? # If ID has been provided
+      s = MappackScore.find_by(id: id)
+      raise "Mappack score of ID #{id} not found" if score.nil?
+      scores = MappackScore.where(highscoreable: s.highscoreable, player: s.player)
+      raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
+      highscoreable = s.highscoreable
+      player = s.player
+    else # If highscoreable and player have been provided
+      raise "#{highscoreable.name} does not belong to a mappack" if !highscoreable.is_a?(MappackHighscoreable)
+      scores = self.where(highscoreable: highscoreable, player: player)
+      raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
+      s = scores.where.not(rank_hs: nil).first
+      raise "#{player.name}'s leaderboard score in #{highscoreable.name} not found" if s.nil?
+    end
 
     # Change score
     s.update(score_hs: (score * 60).round)
@@ -1059,6 +1109,32 @@ class MappackScore < ActiveRecord::Base
   rescue => e
     lex(e, 'Failed to patch score')
     nil
+  end
+
+  # Calculate gold count from hs and sr scores
+  # We return a FLOAT, not an integer. See the next function for details.
+  def self.gold_count(type, score_hs, score_sr)
+    type.remove!('Mappack')
+    case type
+    when 'Level'
+      tweak = 1
+    when 'Episode'
+      tweak = 5
+    when 'Story'
+      tweak = 25
+    else
+      warn("Incorrect type when calculating gold count")
+      tweak = 0
+    end
+    (score_hs + score_sr - 5400 - tweak).to_f / 120
+  end
+
+  # Verify if floating point gold count is close enough to an integer.
+  # Context: Sometimes the hs score is incorrectly calculated by the game,
+  # and we can use this as a test to find incorrect scores, if the calculated
+  # gold count is not exactly an integer.
+  def self.verify_gold(gold)
+    (gold - gold.round).abs < 0.001
   end
 
   # Dumps demo data in the format N++ users for server communications
