@@ -195,9 +195,10 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   star    = format_star(star)
   rtypeB  = format_rtype(rtype, ties: ties, range: false, basic: true)
   max     = format_max(max, rtype == 'average_rank' || board == 'sr' && rtype == 'score')
+  mappack = format_mappack(mappack)
   board   = !mappack.nil? ? format_board(board) : ''
   play    = !play.empty? ? ' without ' + play.map{ |p| "`#{p.print_name}`" }.to_sentence  : ''
-  header  = "#{full} #{cool} #{maxed} #{maxable} #{board} #{tabs} #{typeB} #{range}#{star} #{rtypeB} #{max} #{play} #{format_time}:".squish
+  header  = "#{full} #{cool} #{maxed} #{maxable} #{board} #{tabs} #{typeB} #{range}#{star} #{rtypeB} #{mappack} #{max} #{play} #{format_time}:".squish
   header[0] = header[0].upcase
   header  = "Rankings - #{header}".squish
   # --- Rankings

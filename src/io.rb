@@ -66,7 +66,7 @@ end
 def parse_type(msg, type = nil, multiple = false, initial = false, default = nil)
   # Sanitize default type
   default = nil if !['level', 'episode', 'story'].include?(default.to_s.downcase)
-  
+
   # First, parse the parameter we sent
   type = type.to_s.capitalize.constantize unless type.nil?
   return type if !multiple && ['level', 'episode', 'story'].include?(type.to_s.downcase)
@@ -928,6 +928,10 @@ def format_type(type, empty = false)
   when 3
     'Overall (w/ HC)'
   end
+end
+
+def format_mappack(mappack)
+  !mappack.nil? ? "for `#{mappack.name}` mappack" : ''
 end
 
 def format_ties(ties)
