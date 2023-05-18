@@ -14,17 +14,19 @@ require_relative 'userlevels.rb'
 #   Arg 'third':   Allows to parse player name using 'is'
 def send_list(event, file = true, missing = false, third = false)
   # Parse message parameters
-  msg    = event.content
-  player = parse_player(msg, event.user.name, false, false, false, false, third)
-  msg    = msg.remove!(player.name)
-  type   = parse_type(msg)
-  tabs   = parse_tabs(msg)
-  cool   = parse_cool(msg)
-  star   = parse_star(msg)
-  range  = parse_range(msg, cool || star || missing)
-  ties   = parse_ties(msg)
-  tied   = parse_tied(msg)
-  sing   = (missing ? -1 : 1) * parse_singular(msg)
+  msg     = event.content
+  player  = parse_player(msg, event.user.name, false, false, false, false, third)
+  msg     = msg.remove!(player.name)
+  mappack = parse_mappack(msg)
+  board   = parse_board(msg)
+  type    = parse_type(msg)
+  tabs    = parse_tabs(msg)
+  cool    = mappack.nil? ? parse_cool(msg) : false
+  star    = mappack.nil? ? parse_star(msg) : false
+  range   = parse_range(msg, cool || star || missing)
+  ties    = parse_ties(msg)
+  tied    = parse_tied(msg)
+  sing    = (missing ? -1 : 1) * parse_singular(msg)
 
   # The range must make sense
   if !range[2]
@@ -36,35 +38,41 @@ def send_list(event, file = true, missing = false, third = false)
   if sing != 0
     list = player.singular(type, tabs, sing == 1 ? false : true)
   else
-    list = player.range_ns(range[0], range[1], type, tabs, ties, tied, cool, star, missing)
+    list = player.range_ns(range[0], range[1], type, tabs, ties, tied, cool, star, missing, mappack, board)
   end
 
   # Format response
-  max1  = find_max(:rank, type, tabs)
-  max2  = player.range_ns(range[0], range[1], type, tabs, ties, tied).count
-  full  = !missing || !(cool || star) # max is all scores, not all player's scores
-  high  = missing && !(sing != 0 || cool || star) # list of highscoreables, not scores
-  max   = full ? max1 : max2
-  type  = format_type(type).downcase
-  tabs  = format_tabs(tabs)
-  range = format_range(range[0], range[1], sing != 0)
-  sing  = format_singular((missing ? -1 : 1) * sing)
-  cool  = format_cool(cool)
-  star  = format_star(star)
-  ties  = format_ties(ties)
-  tied  = format_tied(tied)
-  count = list.count
+  max1     = find_max(:rank, type, tabs, false, mappack, board)
+  max2     = player.range_ns(range[0], range[1], type, tabs, ties, tied).count
+  full     = !missing || !(cool || star) # max is all scores, not all player's scores
+  high     = missing && !(sing != 0 || cool || star) # list of highscoreables, not scores
+  max      = full ? max1 : max2
+  type     = format_type(type).downcase
+  tabs     = format_tabs(tabs)
+  range    = format_range(range[0], range[1], sing != 0)
+  sing     = format_singular((missing ? -1 : 1) * sing)
+  cool     = format_cool(cool)
+  star     = format_star(star)
+  ties     = format_ties(ties)
+  tied     = format_tied(tied)
+  mappackB = format_mappack(mappack)
+  boardB   = format_board(board)
+  count    = list.count
 
   # Print count and possibly export list in file
-  event << "#{player.print_name} #{missing ? 'is missing' : 'has'} #{count} out of #{max} #{cool} #{tied} #{tabs} #{type} #{range}#{star} #{sing} scores #{ties}".squish + '.'
+  event << "#{player.print_name} #{missing ? 'is missing' : 'has'} #{count} out of #{max} #{cool} #{tied} #{boardB} #{tabs} #{type} #{range}#{star} #{sing} scores #{ties} #{mappackB}".squish + '.'
   if file
-    list = list.map{ |s| high ? s : format_list_score(s) }.join("\n")
+    list = list.map{ |s| high ? s : format_list_score(s, !mappack.nil? ? board : nil) }.join("\n")
     if count <= 20
       event << format_block(list)
     else
       send_file(event, list, "scores-#{player.sanitize_name}.txt", false)
     end
   end
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Failed to send list of scores')
 end
 
 # Return list of players sorted by a number of different ranking types
@@ -233,6 +241,8 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     event << header
     length < DISCORD_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
   end
+rescue RuntimeError
+  raise
 rescue => e
   lex(e, 'Failed to perform the rankings')
   nil

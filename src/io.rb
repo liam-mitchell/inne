@@ -449,7 +449,7 @@ def parse_mappack(msg, rais = false)
   mappack = Mappack.find_by(name: parse_term(msg, quoted: [], final: ['for']))
   return mappack if !mappack.nil?
 
-  mappack = Mappack.find_by(code: msg[/\b[A-Z]{3}\b/i])
+  mappack = Mappack.where(code: msg.scan(/\b[A-Z]{3}\b/i)).first
   return mappack if !mappack.nil?
 
   rais ? raise("Mappack not found") : nil
@@ -982,8 +982,13 @@ def format_sentence(e)
   e[0..-2].map(&:to_s).join(", ")
 end
 
-def format_list_score(s)
-  "#{Highscoreable.format_rank(s.rank)}: #{s.highscoreable.name.ljust(10, " ")} - #{"%7.3f" % [s.score]}"
+def format_list_score(s, board = nil)
+  rankf  = board.nil? ? 'rank' : "rank_#{board}"
+  scoref = board.nil? ? 'score' : "score_#{board}"
+  scale  = board == 'hs' ? 60.0 : 1
+  fmt    = board == 'sr' ? "%4d" : "%7.3f"
+  pad    = board.nil? ? 10 : 14
+  "#{Highscoreable.format_rank(s[rankf])}: #{s.highscoreable.name.ljust(pad, " ")} - #{fmt % [s[scoref] / scale]}"
 end
 
 def format_level_list(levels)

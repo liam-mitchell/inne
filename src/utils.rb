@@ -434,6 +434,15 @@ def ensure_type(type)
   type.nil? ? Level : (type.is_a?(Array) ? (type.include?(Level) ? Level : type.flatten.first) : type)
 end
 
+# Converts any type input to an array of type classes
+# Also converts types to mappack ones if necessary
+def normalize_type(type, empty: false, mappack: false)
+  type = DEFAULT_TYPES.map(&:constantize) if type.nil?
+  type = [type] if !type.is_a?(Array)
+  type = DEFAULT_TYPES.map(&:constantize) if !empty && type.empty?
+  type.map{ |t| mappack && t.to_s[0..6] != 'Mappack' ? "Mappack#{t.to_s}".constantize : t }
+end
+
 # find the optimal score / amount of whatever rankings or stat
 def find_max_type(rank, type, tabs, mappack = nil, board = 'hs')
   # Filter scores by type and tabs
@@ -473,21 +482,12 @@ def find_max_type(rank, type, tabs, mappack = nil, board = 'hs')
   end
 end
 
-# Converts any type input to an array of type classes
-# Also converts types to mappack ones if necessary
-def normalize_type(type, empty: false, mappack: false)
-  types = DEFAULT_TYPES.map(&:constantize) if types.nil?
-  types = [types] if !types.is_a?(Array)
-  types = DEFAULT_TYPES.map(&:constantize) if !empty && types.empty?
-  types.map{ |t| mappack && t.to_s[0..6] != 'Mappack' ? "Mappack#{t.to_s}".constantize : t }
-end
-
 # Finds the maximum value a player can reach in a certain ranking
 # If 'empty' we allow no types, otherwise default to Level and Episode
 def find_max(rank, types, tabs, empty = false, mappack = nil, board = 'hs')
   # Normalize params
-  type = normalize_type(type, empty: empty, mappack: !mappack.nil?)
-
+  types = normalize_type(types, empty: empty, mappack: !mappack.nil?)
+  
   # Compute type-wise maxes, and add
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs, mappack, board) }
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum

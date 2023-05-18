@@ -1118,9 +1118,20 @@ class Player < ActiveRecord::Base
     sanitize_filename(print_name)
   end
 
-  def scores_by_type_and_tabs(type, tabs, include = nil)
-    ret = scores.where(highscoreable_type: type.nil? ? DEFAULT_TYPES : type.to_s)
+  def scores_by_type_and_tabs(type, tabs, include = nil, mappack = nil, board = 'hs')
+    # Fetch complete list of scores
+    if mappack.nil?
+      list = scores
+    else
+      list = mappack_scores.where(mappack: mappack).where("rank_#{board} IS NOT NULL")
+    end
+
+    # Filter scores by type and tabs
+    type = normalize_type(type, mappack: !mappack.nil?)
+    ret = list.where(highscoreable_type: type)
     ret = ret.where(tab: tabs) if !tabs.empty?
+
+    # Optionally, include other tables in the result for performance reasons
     case include
     when :scores
       ret.includes(highscoreable: [:scores])
@@ -1138,19 +1149,32 @@ class Player < ActiveRecord::Base
   # If we're asking for missing 'cool' or 'star' scores, we actually take the
   # scores the player HAS which are missing the cool/star badge.
   # Otherwise, missing includes all the scores the player DOESN'T have.
-  def range_ns(a, b, type, tabs, ties, tied = false, cool = false, star = false, missing = false)
-    return missing(type, tabs, a, b, ties, tied) if missing && !cool && !star
+  def range_ns(a, b, type, tabs, ties, tied = false, cool = false, star = false, missing = false, mappack = nil, board = 'hs')
+    return missing(type, tabs, a, b, ties, tied, mappack, board) if missing && !cool && !star
+
+    # Filter scores by type and tabs
+    ret = scores_by_type_and_tabs(type, tabs, nil, mappack, board)
+
+    # Filter scores by rank
+    rankf = mappack.nil? ? 'rank' : "rank_#{board}"
+    trankf = "tied_#{rankf}"
     if tied
-      q = "tied_rank >= #{a} AND tied_rank < #{b} AND NOT (rank >= #{a} AND rank < #{b})"
+      q = "#{trankf} >= #{a} AND #{trankf} < #{b} AND NOT (#{rankf} >= #{a} AND #{rankf} < #{b})"
     else
-      rank_type = ties ? "tied_rank" : "rank"
+      rank_type = ties ? trankf : rankf
       q = "#{rank_type} >= #{a} AND #{rank_type} < #{b}"
     end
-    ret = scores_by_type_and_tabs(type, tabs).where(q)
-    ret = ret.where("#{missing ? 'NOT ' : ''}(cool = 1 AND star = 1)") if cool && star
-    ret = ret.where(cool: !missing) if cool && !star
-    ret = ret.where(star: !missing) if star && !cool
-    ret.order('rank, highscoreable_type DESC, highscoreable_id')
+    ret = ret.where(q)
+
+    # Filter scores by cool and star, if not in a mappack
+    if mappack.nil?
+      ret = ret.where("#{missing ? 'NOT ' : ''}(cool = 1 AND star = 1)") if cool && star
+      ret = ret.where(cool: !missing) if cool && !star
+      ret = ret.where(star: !missing) if star && !cool
+    end
+
+    # Order results and return
+    ret.order("#{rankf}, highscoreable_type DESC, highscoreable_id")
   end
 
   def cools(type, tabs, r1 = 0, r2 = 20, ties = false, missing = false)
@@ -1180,12 +1204,14 @@ class Player < ActiveRecord::Base
     counts
   end
 
-  def missing(type, tabs, a, b, ties, tied = false)
-    type = DEFAULT_TYPES.map(&:constantize) if type.nil?
+  def missing(type, tabs, a, b, ties, tied = false, mappack = nil, board = 'hs')
+    type = normalize_type(type, mappack: !mappack.nil?)
     bench(:start) if BENCHMARK
-    scores = [type].flatten.map{ |t|
-      ids = range_ns(a, b, t, tabs, ties, tied, false, false, false).pluck(:highscoreable_id)
-      (tabs.empty? ? t : t.where(tab: tabs)).where.not(id: ids).order(:id).pluck(:name)
+    scores = type.map{ |t|
+      ids = range_ns(a, b, t, tabs, ties, tied, false, false, false, mappack, board).pluck(:highscoreable_id)
+      t = t.where(mappack: mappack) if !mappack.nil?
+      t = t.where(tab: tabs) if !tabs.empty?
+      t.where.not(id: ids).order(:id).pluck(:name)
     }.flatten
     bench(:step) if BENCHMARK
     scores
