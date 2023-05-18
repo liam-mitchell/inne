@@ -893,12 +893,11 @@ class MappackScore < ActiveRecord::Base
       return
     end
 
-    # Parse demos and compute new scores and gold count
+    # Parse demos and compute new scores
     demos = Demo.parse(query['replay_data'], type[:name])
     score_hs = (60.0 * query['score'].to_i / 1000.0).round
     score_sr = demos.map(&:size).sum
     score_sr /= 2 if h.mode == 1 # Coop demos contain 2 sets of inputs
-    gold = MappackScore.gold_count(type[:name], score_hs, score_sr)
     
     # Tweak level scores submitted within episode runs
     score_hs_orig = score_hs
@@ -909,6 +908,7 @@ class MappackScore < ActiveRecord::Base
         return
       end
     end
+    gold = MappackScore.gold_count(type[:name], score_hs, score_sr)
 
     # Verify replay integrity by checking security hash
     legit = INTEGRITY_CHECKS ? h.verify_replay(query['ninja_check'], score_hs_orig) : true
@@ -955,7 +955,8 @@ class MappackScore < ActiveRecord::Base
         player:        player,
         metanet_id:    player.metanet_id,
         highscoreable: h,
-        date:          Time.now.strftime(DATE_FORMAT_MYSQL)
+        date:          Time.now.strftime(DATE_FORMAT_MYSQL),
+        gold:          gold
       )
       id = score.id
       MappackDemo.create(id: id, demo: Demo.encode(demos))

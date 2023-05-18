@@ -55,8 +55,8 @@ def send_list(event, file = true, missing = false, third = false)
   star     = format_star(star)
   ties     = format_ties(ties)
   tied     = format_tied(tied)
+  boardB   = !mappack.nil? ? format_board(board) : ''
   mappackB = format_mappack(mappack)
-  boardB   = format_board(board)
   count    = list.count
 
   # Print count and possibly export list in file
@@ -1831,7 +1831,8 @@ rescue RuntimeError => e
 end
 
 def respond(event)
-  msg = remove_mentions(event.content)
+  remove_mentions(event.content)
+  msg = event.content
 
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
   if msg =~ /\A\s*lotd\s*\Z/i

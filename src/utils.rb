@@ -487,7 +487,7 @@ end
 def find_max(rank, types, tabs, empty = false, mappack = nil, board = 'hs')
   # Normalize params
   types = normalize_type(types, empty: empty, mappack: !mappack.nil?)
-  
+
   # Compute type-wise maxes, and add
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs, mappack, board) }
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
@@ -557,7 +557,7 @@ end
 # Strip off the @outte++ mention, if present
 # IDs might have an exclamation mark
 def remove_mentions(msg)
-  msg.gsub(/<@!?[0-9]*>\s*/, '')
+  msg.gsub!(/<@!?[0-9]*>\s*/, '')
 end
 
 def remove_command(msg)
