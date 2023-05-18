@@ -663,13 +663,24 @@ class Score < ActiveRecord::Base
 
   # Filter all scores by type, tabs, rank, etc.
   # Param 'level' indicates how many filters to apply
-  def self.filter(level = 2, player = nil, type = [], tabs = [], a = 0, b = 20, ties = false, cool = false, star = false)
+  def self.filter(level = 2, player = nil, type = [], tabs = [], a = 0, b = 20, ties = false, cool = false, star = false, mappack = nil, mode = 'hs')
+    # Adapt params for mappacks, if necessary
+    type = fix_type(type)
+    mode = 'hs' if !['hs', 'sr'].include?(mode)
     ttype = ties ? 'tied_rank' : 'rank'
+    ttype += "_#{mode}" if !mappack.nil?
+    if !mappack.nil?
+      klass = MappackScore.where(mappack: mappack).where.not(ttype.to_sym => nil)
+    else
+      klass = Score
+    end
+
+    # Build the 3 levels of successive filters
     queries = []
     queries.push(
-      self.where(!player.nil? ? { player: player } : nil)
-          .where(highscoreable_type: fix_type(type))
-          .where(!tabs.empty? ? { tab: tabs } : nil)
+      klass.where(!player.nil? ? { player: player } : nil)
+           .where(highscoreable_type: type)
+           .where(!tabs.empty? ? { tab: tabs } : nil)
     )
     queries.push(
       queries.last.where(!a.blank?  ? "#{ttype} >= #{a}" : nil)
@@ -679,21 +690,28 @@ class Score < ActiveRecord::Base
       queries.last.where(cool ? { cool: true } : nil)
                   .where(star ? { star: true } : nil)
     )
+
+    # Return the appropriate filter
     queries[level.clamp(0, queries.size - 1)]
   end
 
   # RANK players based on a variety of different filters and characteristic
   def self.rank(
-      ranking: :rank, # Ranking type.          Def: Regular scores.
-      type:    nil,   # Highscoreable type.    Def: Levels and episodes.
-      tabs:    [],    # Highscoreable tabs.    Def: All tabs (SI, S, SU, SL, ?, !).
-      players: [],    # Players to ignore.     Def: None.
-      a:       0,     # Bottom rank of scores. Def: 0th.
-      b:       20,    # Top rank of scores.    Def: 19th.
-      ties:    false, # Whether to include ties or not.
-      cool:    false, # Only include cool scores.
-      star:    false  # Only include * scores.
+      ranking: :rank, # Ranking type.             Def: Regular scores.
+      type:    nil,   # Highscoreable type.       Def: Levels and episodes.
+      tabs:    [],    # Highscoreable tabs.       Def: All tabs (SI, S, SU, SL, ?, !).
+      players: [],    # Players to ignore.        Def: None.
+      a:       0,     # Bottom rank of scores.    Def: 0th.
+      b:       20,    # Top rank of scores.       Def: 19th.
+      ties:    false, # Include ties or not.      Def: No.
+      cool:    false, # Only include cool scores. Def: No.
+      star:    false, # Only include * scores.    Def: No.
+      mappack: nil,   # Mappack.                  Def: None.
+      board:   'hs'   # Highscore or speedrun.    Def: Highscore.
     )
+    # Mappack rankings do not support excluding players yet
+    players = [] if !mappack.nil?
+
     # Most rankings which exclude players need to be computed completely
     # differently, so we use another function.
     if !players.empty? && [:rank, :tied_rank, :points, :avg_points, :avg_rank, :avg_lead].include?(ranking)
@@ -702,12 +720,18 @@ class Score < ActiveRecord::Base
 
     # Normalize parameters and filter scores accordingly
     type   = fix_type(type, [:avg_lead, :maxed, :maxable].include?(ranking))
-    ttype  = ties ? 'tied_rank' : 'rank'
+    type   = [type].flatten.map{ |t| "Mappack#{t.to_s}".constantize } if !mappack.nil?
     level  = 2
-    level  = 1 if [:maxed, :maxable].include?(ranking)
+    level  = 1 if !mappack.nil? || [:maxed, :maxable].include?(ranking)
     level  = 0 if [:tied_rank, :avg_lead, :singular].include?(ranking)
-    scores = filter(level, nil, type, tabs, a, b, ties, cool, star)
-               .where(!players.empty? ? "player_id NOT IN (#{players.map(&:id).join(', ')})" : '')
+    scores = filter(level, nil, type, tabs, a, b, ties, cool, star, mappack, board)
+    scores = scores.where.not(player: players) if !mappack.nil? && !players.empty?
+
+    # Named fields
+    rankf  = mappack.nil? ? 'rank' : "rank_#{board}"
+    trankf = "tied_#{rankf}"
+    scoref = mappack.nil? ? 'score' : "score_#{board}"
+    scale  = !mappack.nil? && board == 'hs' ? 60.0 : 1.0
 
     # Perform specific rankings to filtered scores
     bench(:start) if BENCHMARK
@@ -717,11 +741,11 @@ class Score < ActiveRecord::Base
                      .order('count_id desc')
                      .count(:id)
     when :tied_rank
-      scores_w  = scores.where("tied_rank >= #{a} AND tied_rank < #{b}")
+      scores_w  = scores.where("#{trankf} >= #{a} AND #{trankf} < #{b}")
                         .group(:player_id)
                         .order('count_id desc')
                         .count(:id)
-      scores_wo = scores.where("rank >= #{a} AND rank < #{b}")
+      scores_wo = scores.where("#{rankf} >= #{a} AND #{rankf} < #{b}")
                         .group(:player_id)
                         .order('count_id desc')
                         .count(:id)
@@ -729,9 +753,9 @@ class Score < ActiveRecord::Base
                        .sort_by{ |id, c| -c }
     when :singular
       types = type.map{ |t|
-        ids = scores.where(rank: 1, tied_rank: b, highscoreable_type: t)
+        ids = scores.where(rankf => 1, trankf => b, highscoreable_type: t)
                     .pluck(:highscoreable_id)
-        scores.where(rank: 0, highscoreable_type: t, highscoreable_id: ids)
+        scores.where(rankf => 0, highscoreable_type: t, highscoreable_id: ids)
               .group(:player_id)
               .count(:id)
       }
@@ -740,54 +764,67 @@ class Score < ActiveRecord::Base
       }.sort_by{ |id, c| -c }
     when :points
       scores = scores.group(:player_id)
-                     .order("sum(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
-                     .sum(ties ? "20 - tied_rank" : "20 - rank")
+                     .order("sum(#{ties ? "20 - #{trankf}" : "20 - #{rankf}"}) desc")
+                     .sum(ties ? "20 - #{trankf}" : "20 - #{rankf}")
     when :avg_points
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star)}")
-                     .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
-                     .average(ties ? "20 - tied_rank" : "20 - rank")
+                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star, mappack)}")
+                     .order("avg(#{ties ? "20 - #{trankf}" : "20 - #{rankf}"}) desc")
+                     .average(ties ? "20 - #{trankf}" : "20 - #{rankf}")
     when :avg_rank
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star)}")
-                     .order("avg(#{ties ? "tied_rank" : "rank"})")
-                     .average(ties ? "tied_rank" : "rank")
+                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star, mappack)}")
+                     .order("avg(#{ties ? trankf : rankf})")
+                     .average(ties ? trankf : rankf)
     when :avg_lead
-      scores = scores.where(rank: [0, 1])
-                     .pluck(:player_id, :highscoreable_id, :score)
+      scores = scores.where(rankf => [0, 1])
+                     .pluck(:player_id, :highscoreable_id, scoref)
                      .group_by{ |s| s[1] }
                      .reject{ |h, s| s.size < 2 }
-                     .map{ |h, s| [s[0][0], s[0][2] - s[1][2]] }
+                     .map{ |h, s| [s[0][0], (s[0][2] - s[1][2]).abs] }
                      .group_by{ |s| s[0] }
-                     .map{ |p, s| [p, s.map(&:last).sum / s.map(&:last).count] }
+                     .map{ |p, s| [p, s.map(&:last).sum.to_f / s.map(&:last).count / scale] }
                      .sort_by{ |p, s| -s }
     when :score
+      asc = !mappack.nil? && board == 'sr'
       scores = scores.group(:player_id)
-                     .order("sum(score) desc")
-                     .sum(:score)
-                     .map{ |id, c| [id, round_score(c)] }
+                     .order(asc ? 'count(id) desc' : '', "sum(#{scoref}) #{asc ? 'asc' : 'desc'}")
+                     .pluck("player_id, count(id), sum(#{scoref})")
+                     .map{ |id, count, score|
+                        score = round_score(score.to_f / scale)
+                        [
+                          id,
+                          asc ? score.to_i : score.to_f,
+                          asc ? count : nil
+                        ]
+                      }
     when :maxed
       scores = scores.where(highscoreable_id: Highscoreable.ties(type, tabs, nil, true, true))
-                     .where("tied_rank = 0")
+                     .where("#{trankf} = 0")
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
     when :maxable
       scores = scores.where(highscoreable_id: Highscoreable.ties(type, tabs, nil, false, true))
-                     .where("tied_rank = 0")
+                     .where("#{trankf} = 0")
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
     end
 
-    # Find players in advance, remove empty entries, and return
+    # Find players and save their display name, if it exists, or their name otherwise
     players = Player.where(id: scores.map(&:first))
-                    .map{ |p| [p.id, p] }
+                    .pluck(:id, "IF(display_name IS NULL, name, display_name)")
                     .to_h
-    ret = scores.map{ |p, c| [players[p], c] }
-    ret.reject!{ |p, c| c <= 0  } unless [:avg_rank, :avg_lead].include?(ranking)
+    ret = scores.map{ |s| [players[s[0]], s[1], s[2]] }
+
+    # Zeroes are only permitted in a few rankings, and negatives nowhere
+    ret.reject!{ |s| s[1] <= 0  } unless [:avg_rank, :avg_lead].include?(ranking)
+
+    # Sort ONLY ties alphabetically by player
+    ret.sort!{ |a, b| (a[1] <=> b[1]) != 0 ? 0 : a[0].downcase <=> b[0].downcase }
 
     bench(:step) if BENCHMARK
     ret

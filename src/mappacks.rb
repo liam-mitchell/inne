@@ -170,6 +170,7 @@ module Map
       }
       offset += 4 + 2 * count * type[:att]
     }
+    
     # Sort objects by ID, but:
     #   1) In a stable way, i.e., maintaining the order of tied elements
     #   2) The pairs 6/7 and 8/9 are not sorted, but maintained staggered
@@ -434,9 +435,11 @@ module Map
 end
 
 class Mappack < ActiveRecord::Base
+  alias_attribute :scores,   :mappack_scores
   alias_attribute :levels,   :mappack_levels
   alias_attribute :episodes, :mappack_episodes
   alias_attribute :stories,  :mappack_stories
+  has_many :mappack_scores
   has_many :mappack_levels
   has_many :mappack_episodes
   has_many :mappack_stories
@@ -614,6 +617,18 @@ class Mappack < ActiveRecord::Base
   rescue => e
     lex(e, "Failed to check requirements for demo in '#{code}' mappack")
     false
+  end
+
+  # Set the mappack's name and author on command, since that's not parsed from the files
+  def set_info(name, author, date)
+    self.update(
+      name:    name,
+      authors: author,
+      date:    Time.strptime(date, '%Y/%m/%d').strftime(DATE_FORMAT_MYSQL)
+    )
+  rescue => e
+    lex(e, "Failed to set mappack '#{code}' info")
+    nil
   end
 end
 
@@ -817,6 +832,7 @@ class MappackScore < ActiveRecord::Base
   has_one :mappack_demo, foreign_key: :id
   belongs_to :player
   belongs_to :highscoreable, polymorphic: true
+  belongs_to :mappack
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # TODO: Figure out Coop's (and Race's?) demo format

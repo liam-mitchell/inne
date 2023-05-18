@@ -56,27 +56,47 @@ end
 
 # Parses a string looking for a score in the usual N++ 3-decimal floating point format
 def parse_score(str)
-  # Find score in string
   score = str[/(\s|^)([1-9]\d*|0)(\.\d{1,3})?(\s|$)/]
   raise "Couldn't find / understand the score" if score.nil?
   raise "The score is incorrect" if !verify_score(score.to_f)
   score.to_f
 end
 
-# Optionally allow to parse multiple types, for retrocompat
-def parse_type(msg, type = nil, multiple = false, initial = false)
-  type = type.capitalize.constantize unless type.nil?
+# Optionally allow to parse multiple types
+def parse_type(msg, type = nil, multiple = false, initial = false, default = nil)
+  # Sanitize default type
+  default = nil if !['level', 'episode', 'story'].include?(default.to_s.downcase)
+  
+  # First, parse the parameter we sent
+  type = type.to_s.capitalize.constantize unless type.nil?
   return type if !multiple && ['level', 'episode', 'story'].include?(type.to_s.downcase)
+
+  # If it's not correct, then parse message
   ret = []
-  multiple ? ret << Level :   (return Level)   if !!msg[/level/i] || !!msg[/lotd/i]
+  multiple ? ret << Level   : (return Level)   if !!msg[/level/i] || !!msg[/lotd/i]
   multiple ? ret << Episode : (return Episode) if !!msg[/episode/i] || !!msg[/eotw/i]
-  multiple ? ret << Story :   (return Story)   if !!msg[/\bstory\b/i] || !!msg[/\bcolumn/i] || !!msg[/hard\s*core/i] || !!msg[/\bhc\b/i] || !!msg[/cotm/i]
+  multiple ? ret << Story   : (return Story)   if !!msg[/\bstory\b/i] || !!msg[/\bcolumn/i] || !!msg[/hard\s*core/i] || !!msg[/\bhc\b/i] || !!msg[/cotm/i]
+
   if multiple
-    ret.push(*DEFAULT_TYPES.map(&:constantize)) if !!msg[/\boverall\b/i] || initial && ret.empty?
+    # If still empty (and initial), push default types
+    if initial && ret.empty?
+      default.nil? ? ret.push(*DEFAULT_TYPES.map(&:constantize)) : ret.push(default.to_s.capitalize.constantize)
+    end
+
+    # If "overall" is matched, push default types too
+    if !!msg[/\boverall\b/i]
+      ret.push(*DEFAULT_TYPES.map(&:constantize))
+    end
+
+    # Also, toggle the type we sent (add or remove) (see rankings navigation)
     ret.include?(type) ? ret.delete(type) : ret.push(type) if !type.nil?
     ret.uniq!
+  else
+    # If not multiple, we return either the default we sent, or nil (type not found)
+    ret = !default.nil? ? default.to_s.capitalize.constantize : nil
   end
-  return multiple ? ret : nil
+
+  ret
 end
 
 # Normalize how highscoreable types are handled.
@@ -414,6 +434,25 @@ end
 
 def parse_maxable(msg)
   !!msg[/\bmaxable\b/i]
+end
+
+# Parse a mappack from a message, we try 4 methods:
+# 1) The first word of the message, by mappack name
+# 2) A quoted term, by name
+# 3) At the using, using "for ...", by name
+# 4) Anywhere, using the 3 letter mappack code
+# The second parameter specifies the behaviour when the mappack is not found
+def parse_mappack(msg, rais = false)
+  mappack = Mappack.find_by(name: msg.strip[/\w+/i])
+  return mappack if !mappack.nil?
+
+  mappack = Mappack.find_by(name: parse_term(msg, quoted: [], final: ['for']))
+  return mappack if !mappack.nil?
+
+  mappack = Mappack.find_by(code: msg[/\b[A-Z]{3}\b/i])
+  return mappack if !mappack.nil?
+
+  rais ? raise("Mappack not found") : nil
 end
 
 # We parse a complex variety of ranges here, from individual ranks, to tops,
@@ -821,6 +860,10 @@ def format_bottom_rank(rank)
   "bottom #{20 - rank}"
 end
 
+def format_board(board)
+  board == 'sr' ? 'speedrun' : 'highscore'
+end
+
 # 'empty' means we print nothing
 # This is used for when the calling function actually has other parameters
 # that make is unnecessary to actually print the range 
@@ -869,14 +912,15 @@ end
 # which defaults to levels and episodes
 def format_type(type, empty = false)
   return 'Overall' if type.nil?
-  return type.to_s if !type.is_a?(Array) 
+  return type.to_s.remove('Mappack') if !type.is_a?(Array)
+  type.map!{ |t| t.to_s.remove('Mappack') }
   case type.size
   when 0
     empty ? '' : 'Overall'
   when 1
-    type.first.to_s
+    type.first
   when 2
-    if type.include?(Level) && type.include?(Episode)
+    if type.include?('Level') && type.include?('Episode')
       'Overall'
     else
       type.map{ |t| t.to_s.downcase }.join(" and ").capitalize
@@ -914,8 +958,8 @@ def format_full(full)
   full ? 'full' : ''
 end
 
-def format_max(max)
-  !max.nil? ? " [MAX. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ''
+def format_max(max, min = false)
+  !max.nil? ? " [#{min ? 'MIN' : 'MAX'}. #{(max.is_a?(Integer) ? "%d" : "%.3f") % max}]" : ''
 end
 
 def format_author(author)

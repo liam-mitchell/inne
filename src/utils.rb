@@ -435,10 +435,20 @@ def ensure_type(type)
 end
 
 # find the optimal score / amount of whatever rankings or stat
-def find_max_type(rank, type, tabs)
+def find_max_type(rank, type, tabs, mappack = nil, board = 'hs')
+  # Filter scores by type and tabs
+  if !mappack.nil?
+    type = "Mappack#{type.to_s}".constantize unless type.to_s[0..6] == 'Mappack'
+    query = type.where(mappack: mappack)
+  else
+    query = type
+  end
+  query = query.where(tab: tabs) if !tabs.empty?
+
+  # Distinguish ranking type
   case rank
   when :points
-    (tabs.empty? ? type : type.where(tab: tabs)).count * 20
+    query.count * 20
   when :avg_points
     20
   when :avg_rank
@@ -450,21 +460,36 @@ def find_max_type(rank, type, tabs)
   when :clean
     0.0
   when :score
-    query = Score.where(highscoreable_type: type.to_s, rank: 0)
+    klass = mappack.nil? ? Score : MappackScore.where(mappack: mappack)
+    rfield = mappack.nil? ? :rank : "rank_#{board}".to_sym
+    sfield = mappack.nil? ? :score : "score_#{board}".to_sym
+    scale  = !mappack.nil? && board == 'hs' ? 60.0 : 1.0
+    query = klass.where(highscoreable_type: type.to_s, rfield => 0)
     query = query.where(tab: tabs) if !tabs.empty?
-    query = query.sum(:score)
-    query = query
-    query
+    query = query.sum(sfield) / scale
+    !mappack.nil? && board == 'sr' ? query.to_i : query.to_f
   else
-    (tabs.empty? ? type : type.where(tab: tabs)).count
+    query.count
   end
+end
+
+# Converts any type input to an array of type classes
+# Also converts types to mappack ones if necessary
+def normalize_type(type, empty: false, mappack: false)
+  types = DEFAULT_TYPES.map(&:constantize) if types.nil?
+  types = [types] if !types.is_a?(Array)
+  types = DEFAULT_TYPES.map(&:constantize) if !empty && types.empty?
+  types.map{ |t| mappack && t.to_s[0..6] != 'Mappack' ? "Mappack#{t.to_s}".constantize : t }
 end
 
 # Finds the maximum value a player can reach in a certain ranking
 # If 'empty' we allow no types, otherwise default to Level and Episode
-def find_max(rank, types, tabs, empty = false)
-  types = DEFAULT_TYPES.map(&:constantize) if types.nil? || !empty && types.is_a?(Array) && types.empty?
-  maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs) }
+def find_max(rank, types, tabs, empty = false, mappack = nil, board = 'hs')
+  # Normalize params
+  type = normalize_type(type, empty: empty, mappack: !mappack.nil?)
+
+  # Compute type-wise maxes, and add
+  maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs, mappack, board) }
   [:avg_points, :avg_rank].include?(rank) ? maxes.first : maxes.sum
 end
 
@@ -474,9 +499,15 @@ end
 # If 'a' and 'b', we weight the min scores by the range size
 # If 'star' then we're dealing with only * scores, and we should again be
 # more gentle
-def min_scores(type, tabs, empty = false, a = 0, b = 20, star = false)
-  type = DEFAULT_TYPES.map(&:constantize) if type.nil? || !empty && type.empty?
-  mins = [type].flatten.map{ |t|
+def min_scores(type, tabs, empty = false, a = 0, b = 20, star = false, mappack = nil)
+  # We ignore mappack mins for now
+  return 0 if !mappack.nil?
+
+  # Normalize types
+  types = normalize_type(type, empty: empty, mappack: !mappack.nil?)
+
+  # Compute mins per type, and add
+  mins = types.map{ |t|
     if tabs.empty?
       type_min = TABS[t.to_s].sum{ |k, v| v[2] }
     else
@@ -484,6 +515,8 @@ def min_scores(type, tabs, empty = false, a = 0, b = 20, star = false)
     end
     [type_min, TYPES[t.to_s][:min_scores]].min
   }.sum
+
+  # Compute final count
   c = star ? 1 : b - a
   ([mins, MAXMIN_SCORES].min * c / 20.0).to_i
 end

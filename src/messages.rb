@@ -82,7 +82,6 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   initial    = page.nil? && type.nil? && tab.nil? && rtype.nil? && ties.nil?
   reset_page = !type.nil? || !tab.nil? || !rtype.nil? || !ties.nil?
   msg   = fetch_message(event, initial)
-  type  = parse_type(msg, type, true, initial)
   tabs  = parse_tabs(msg, tab)
   tab   = tabs.empty? ? 'all' : (tabs.size == 1 ? tabs[0].to_s.downcase : 'tab')
   ties  = !ties.nil? ? ties : parse_ties(msg, rtype)
@@ -107,6 +106,9 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   ].include?(rtype) # default rank is top20, not top1 (0th)
   range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(rtype2.nil? ? msg : '', whole)
   rtype = fix_rtype(rtype, range[1])
+  type  = parse_type(msg, type, true, initial, rtype == 'score' ? 'Level' : nil)
+  mappack = parse_mappack(msg)
+  board = parse_board(msg)
 
   # The range must make sense
   if !range[2]
@@ -118,53 +120,55 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   rtag = :rank
   case rtype
   when 'average_point'
-    rtag = :avg_points
-    max  = find_max(:avg_points, type, tabs, !initial)
+    rtag  = :avg_points
+    max   = find_max(:avg_points, type, tabs, !initial, mappack, board)
   when 'average_top1_lead'
-    rtag = :avg_lead
-    max  = nil
+    rtag  = :avg_lead
+    max   = nil
   when 'average_rank'
-    rtag = :avg_rank
-    max  = find_max(:avg_rank, type, tabs, !initial)
+    rtag  = :avg_rank
+    max   = find_max(:avg_rank, type, tabs, !initial, mappack, board)
   when 'point'
-    rtag = :points
-    max  = find_max(:points, type, tabs, !initial)
+    rtag  = :points
+    max   = find_max(:points, type, tabs, !initial, mappack, board)
   when 'score'
-    rtag = :score
-    max  = find_max(:score, type, tabs, !initial)
+    rtag  = :score
+    max   = find_max(:score, type, tabs, !initial, mappack, board)
   when 'singular_top1'
-    rtag = :singular
-    max  = find_max(:rank, type, tabs, !initial)
+    rtag  = :singular
+    max   = find_max(:rank, type, tabs, !initial, mappack, board)
     range[1] = 1
   when 'plural_top1'
-    rtag = :singular
-    max  = find_max(:rank, type, tabs, !initial)
+    rtag  = :singular
+    max   = find_max(:rank, type, tabs, !initial, mappack, board)
     range[1] = 0
   when 'tied_top1'
-    rtag = :tied_rank
-    max  = find_max(:rank, type, tabs, !initial)
+    rtag  = :tied_rank
+    max   = find_max(:rank, type, tabs, !initial, mappack, board)
   when 'maxed'
-    rtag = :maxed
-    max  = find_max(:maxed, type, tabs, !initial)
+    rtag  = :maxed
+    max   = find_max(:maxed, type, tabs, !initial, mappack, board)
   when 'maxable'
-    rtag = :maxable
-    max  = find_max(:maxable, type, tabs, !initial)
+    rtag  = :maxable
+    max   = find_max(:maxable, type, tabs, !initial, mappack, board)
   else
-    rtag = :rank
-    max  = find_max(:rank, type, tabs, !initial)
+    rtag  = :rank
+    max   = find_max(:rank, type, tabs, !initial, mappack, board)
   end
 
   # EXECUTE specific rankings
   rank = Score.rank(
-    ranking: rtag,      # Ranking type.          Def: Regular scores.
-    type:    type,      # Highscoreable type.    Def: Levels and episodes.
-    tabs:    tabs,      # Highscoreable tabs.    Def: All tabs (SI, S, SU, SL, ?, !).
-    players: play,      # Players to ignore.     Def: None.
-    a:       range[0],  # Bottom rank of scores. Def: 0th.
-    b:       range[1],  # Top rank of scores.    Def: 19th.
-    ties:    ties,      # Whether to include ties or not.
-    cool:    cool,      # Only include cool scores.
-    star:    star       # Only include * scores.
+    ranking: rtag,      # Ranking type.             Def: Regular scores.
+    type:    type,      # Highscoreable type.       Def: Levels and episodes.
+    tabs:    tabs,      # Highscoreable tabs.       Def: All tabs (SI, S, SU, SL, ?, !).
+    players: play,      # Players to ignore.        Def: None.
+    a:       range[0],  # Bottom rank of scores.    Def: 0th.
+    b:       range[1],  # Top rank of scores.       Def: 19th.
+    ties:    ties,      # Include ties or not.      Def: No.
+    cool:    cool,      # Only include cool scores. Def: No.
+    star:    star,      # Only include * scores.    Def: No.
+    mappack: mappack,   # Mappack to do rankings.   Def: None.
+    board:   board      # Highscore or speedrun.    Def: Highscore.
   )
 
   # PAGINATION
@@ -173,8 +177,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   pag  = compute_pages(rank.size, page, pagesize)
 
   # FORMAT message
-  min   = "Minimum number of scores required: #{min_scores(type, tabs, !initial, range[0], range[1], star)}" if ['average_rank', 'average_point'].include?(rtype)
-  order = rtype == 'average_rank' ? 1 : -1
+  min   = "Minimum number of scores required: #{min_scores(type, tabs, !initial, range[0], range[1], star, mappack)}" if ['average_rank', 'average_point'].include?(rtype)
   # --- Header
   prange = ![ # Don't print range for these rankings
     'tied_top1',
@@ -191,26 +194,25 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   range   = format_range(range[0], range[1], !prange)
   star    = format_star(star)
   rtypeB  = format_rtype(rtype, ties: ties, range: false, basic: true)
-  max     = format_max(max)
+  max     = format_max(max, rtype == 'average_rank' || board == 'sr' && rtype == 'score')
+  board   = !mappack.nil? ? format_board(board) : ''
   play    = !play.empty? ? ' without ' + play.map{ |p| "`#{p.print_name}`" }.to_sentence  : ''
-  header  = "#{full} #{cool} #{maxed} #{maxable} #{tabs} #{typeB} #{range}#{star} #{rtypeB} #{max} #{play} #{format_time}:".squish
+  header  = "#{full} #{cool} #{maxed} #{maxable} #{board} #{tabs} #{typeB} #{range}#{star} #{rtypeB} #{max} #{play} #{format_time}:".squish
   header[0] = header[0].upcase
   header  = "Rankings - #{header}".squish
   # --- Rankings
   if rank.empty?
     rank = '```These boards are empty!```'
   else
-    # We sort again to add the alphabetical tie-breaker
-    # Since it's already sorted, the primary order hardly takes time,
-    # and only the secondary order becomes relevant
-    rank.map!{ |r| [r[0].print_name, r[1]] }
-    rank.sort_by!{ |r| [order * r[1], r[0].downcase] }
     rank = rank[pag[:offset]...pag[:offset] + pagesize] if full.empty? || nav
     pad1 = rank.map{ |r| r[1].to_i.to_s.length }.max
     pad2 = rank.map{ |r| r[0].length }.max
+    pad3 = rank.map{ |r| r[2].to_i.to_s.length }.max
     fmt  = rank[0][1].is_a?(Integer) ? "%#{pad1}d" : "%#{pad1 + 4}.3f"
     rank = rank.each_with_index.map{ |r, i|
-      "#{Highscoreable.format_rank(pag[:offset] + i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
+      line = "#{Highscoreable.format_rank(pag[:offset] + i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
+      line += " (%#{pad3}d)" % [r[2]] if !r[2].nil?
+      line
     }.join("\n")
     rank = format_block(rank)
   end
@@ -230,6 +232,9 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     event << header
     length < DISCORD_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
   end
+rescue => e
+  lex(e, 'Failed to perform the rankings')
+  nil
 end
 
 # Sort highscoreables by amount of scores (0-20) with certain characteristics
@@ -335,7 +340,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   res     = ""
 
   # Navigating scores goes into a different method (see below this one)
-  if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i]
+  if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i] && !h.is_a?(MappackHighscoreable)
     send_nav_scores(event)
     return
   end
@@ -1768,6 +1773,16 @@ def send_mappack_patch(event)
   end
 end
 
+def send_mappack_info(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  mappack = parse_mappack(flags[:mappack], true)
+  mappack.set_info(flags[:name], flags[:author], flags[:date])
+  flags.delete(:mappack)
+  flags = flags.map{ |k, v| "#{k} to `#{v}`" unless v.nil? }.compact.to_sentence
+  event << "Set mappack `#{mappack.code}` #{flags}."
+end
+
 def send_log_config(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
@@ -1798,6 +1813,7 @@ def respond_special(event)
   send_mappack_seed(event)       if cmd == 'mappack_seed'
   send_mappack_screenshot(event) if cmd == 'mappack_ss'
   send_mappack_patch(event)      if cmd == 'mappack_patch'
+  send_mappack_info(event)       if cmd == 'mappack_info'
   send_log_config(event)         if cmd == 'log'
 rescue RuntimeError => e
   event << e
