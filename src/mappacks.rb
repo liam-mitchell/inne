@@ -850,7 +850,9 @@ class MappackScore < ActiveRecord::Base
     # Apply blacklist
     name = "ID:#{uid}"
     if BLACKLIST.key?(uid)
-      warn("Blacklisted player #{BLACKLIST[uid][0]} submitted a score")
+      str = "Blacklisted player #{BLACKLIST[uid][0]} submitted a score"
+      warn(str)
+      ld(str)
       return
     end
 
@@ -911,10 +913,12 @@ class MappackScore < ActiveRecord::Base
     gold = MappackScore.gold_count(type[:name], score_hs, score_sr)
 
     # Verify replay integrity by checking security hash
-    legit = INTEGRITY_CHECKS ? h.verify_replay(query['ninja_check'], score_hs_orig) : true
+    legit = h.verify_replay(query['ninja_check'], score_hs_orig)
     if !legit
-      warn("Score submitted by #{name} to #{h.name} has invalid security hash")
-      return
+      str = "Score submitted by #{name} to #{h.name} has invalid security hash"
+      warn(str)
+      ld(str)
+      return if INTEGRITY_CHECKS
     end
 
     # Verify additional mappack-wise requirements
@@ -956,7 +960,7 @@ class MappackScore < ActiveRecord::Base
         metanet_id:    player.metanet_id,
         highscoreable: h,
         date:          Time.now.strftime(DATE_FORMAT_MYSQL),
-        gold:          gold
+        gold:          gold.round
       )
       id = score.id
       MappackDemo.create(id: id, demo: Demo.encode(demos))
