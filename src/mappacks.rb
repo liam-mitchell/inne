@@ -850,8 +850,7 @@ class MappackScore < ActiveRecord::Base
     # Apply blacklist
     name = "ID:#{uid}"
     if BLACKLIST.key?(uid)
-      str = "Blacklisted player #{BLACKLIST[uid][0]} submitted a score"
-      warn(str, discord: true)
+      warn("Blacklisted player #{BLACKLIST[uid][0]} submitted a score", discord: true)
       return
     end
 
@@ -905,10 +904,12 @@ class MappackScore < ActiveRecord::Base
     if type[:name] == 'Level'
       score_hs = MappackScoresTweak.tweak(score_hs, player, h, Demo.parse_header(query['replay_data']))
       if score_hs.nil?
-        warn("Score submitted by #{name} to #{h.name}: Tweaking failed")
-        return
+        warn("Tweaking of score submitted by #{name} to #{h.name} failed", discord: true)
+        score_hs = score_hs_orig
       end
     end
+
+    # Compute gold count from hs and sr scores
     gold = MappackScore.gold_count(type[:name], score_hs, score_sr)
 
     # Verify replay integrity by checking security hash
@@ -967,7 +968,7 @@ class MappackScore < ActiveRecord::Base
       end
 
       # Warn if the score submitted failed the map data integrity checks
-      warn("Score submitted by #{name} to #{h.name} has invalid security hash", discord: true)
+      warn("Score submitted by #{name} to #{h.name} has invalid security hash", discord: true) if !legit
     end
 
     # Update ranks if necessary

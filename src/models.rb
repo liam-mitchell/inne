@@ -91,10 +91,10 @@ module MonkeyPatches
     ::WEBrick::HTTPServer.class_eval do
       def access_log(config, req, res)
         param = ::WEBrick::AccessLog::setup_params(config, req, res)
-        param['U'] = param['U'].split('?')[0].split('/')[-1]
+        param['U'] = param['U'].split('?')[0].split('/')[-1] rescue ''
         @config[:AccessLog].each{ |logger, fmt|
           str = ::WEBrick::AccessLog::format(fmt.gsub('%T', ''), param)
-          str += " #{"%.3fms" % (1000 * param['T'])}" if fmt.include?('%T')
+          str += " #{"%.3fms" % (1000 * param['T'])}" if fmt.include?('%T') rescue ''
           str.squish!
           fmt.include?('%s') ? lout(str) : lin(str)
         }
