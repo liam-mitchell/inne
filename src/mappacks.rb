@@ -998,7 +998,7 @@ class MappackScore < ActiveRecord::Base
     dbg("#{name} submitted a score to #{h.name}")
     return res.to_json
   rescue => e
-    Log.log_exception(e, "Failed to add score submitted by #{name} to mappack '#{code}'")
+    lex(e, "Failed to add score submitted by #{name} to mappack '#{code}'")
     return
   end
 
@@ -1034,7 +1034,7 @@ class MappackScore < ActiveRecord::Base
     # Get scores
     return h.get_scores(query['qt'].to_i, query['user_id'].to_i)
   rescue => e
-    Log.log_exception(e, "Failed to get scores for #{name} in mappack '#{code}'")
+    lex(e, "Failed to get scores for #{name} in mappack '#{code}'")
     return
   end
 
@@ -1095,7 +1095,7 @@ class MappackScore < ActiveRecord::Base
     dbg("#{name} requested replay #{query['replay_id']}")
     score.dump_replay
   rescue => e
-    Log.log_exception(e, "Failed to get replay with ID #{query['replay_id']} from mappack '#{code}'")
+    lex(e, "Failed to get replay with ID #{query['replay_id']} from mappack '#{code}'")
     return
   end
 
@@ -1180,7 +1180,7 @@ class MappackScore < ActiveRecord::Base
     
     replay
   rescue => e
-    Log.log_exception(e, "Failed to dump demo with ID #{id}")
+    lex(e, "Failed to dump demo with ID #{id}")
     return
   end
 
@@ -1200,7 +1200,7 @@ class MappackScore < ActiveRecord::Base
     replay << Zlib::Deflate.deflate(inputs, 9)
     replay
   rescue => e
-    Log.log_exception(e, "Failed to dump replay with ID #{id}")
+    lex(e, "Failed to dump replay with ID #{id}")
     return
   end
 
@@ -1262,5 +1262,5 @@ class MappackScoresTweak < ActiveRecord::Base
 end
 
 def respond_mappacks(event)
-  msg = remove_mentions(event.content)
+  msg = event.content
 end 

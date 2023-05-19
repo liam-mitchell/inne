@@ -816,7 +816,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
 rescue RuntimeError
   raise
 rescue => e
-  Log.log_exception(e, "Browsing userlevels")
+  lex(e, "Browsing userlevels")
   err_str = "An error happened, try again, if it keeps failing, contact the botmeister."
   if !socket.nil?
     err("Socketing of userlevel query failed.")
@@ -838,7 +838,7 @@ end
 # We pass in the msg (instead of extracting it from the event)
 # because it might've been modified by the caller function already.
 def send_userlevel_individual(event, msg, &block)
-  map = parse_userlevel(remove_mentions(msg))
+  map = parse_userlevel(msg)
   case map[:count]
   when 0
     event << map[:msg]
@@ -1360,7 +1360,7 @@ def csv(event)
 end
 
 def respond_userlevels(event)
-  msg = remove_mentions(event.content)
+  msg = event.content
 
   # exclusively global methods
   if !msg[NAME_PATTERN, 2]

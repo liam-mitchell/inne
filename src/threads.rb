@@ -660,6 +660,7 @@ def start_threads
 end
 
 def block_threads
+  log("Loaded outte")
   $threads.last.join
 end
 

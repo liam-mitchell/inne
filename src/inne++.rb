@@ -10,7 +10,7 @@
 #                           bot. If you don't care about this, never enable the
 #                           variable TEST in constants.rb.
 # 3) Configure the "outte" environment of the config file in ./db/config.yml,
-#    or create a new one and rename the DATABASE_ENV variable in constants.rb.
+#    or create a new one and rename the DATABASE variable in constants.rb.
 # 4) Configure the "outte_test" environment of the config file (optional).
 # 5) Create, migrate and seed a database named "inne". Make sure to use MySQL 5.7
 #    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
@@ -24,7 +24,7 @@
 #    also look into TEST, DO_NOTHING, and DO_EVERYTHING.
 # 9) Make sure the working directory is the bot's root directory when you run it.
 #
-# Contact: https://discord.gg/nplusplus
+# Contact: Eddy @ https://discord.gg/nplusplus
 
 # We use some gems directly from Github repositories (in particular, Discordrb,
 # so that we can use the latest features, not present in the outdated RubyGems
@@ -78,6 +78,7 @@ def initialize_vars
   $twitch_token    = nil
   $twitch_streams  = {}
   $boot_time       = Time.now.to_i
+  $log_warned      = false
   log("Initialized global variables")
 rescue => e
   fatal("Failed to initialize global variables: #{e}")
@@ -85,7 +86,7 @@ rescue => e
 end
 
 def load_config
-  $config = YAML.load_file(CONFIG)[DATABASE_ENV]
+  $config = YAML.load_file(CONFIG)[DATABASE]
   $config['discord_client'] = (TEST ? ENV['DISCORD_CLIENT_TEST'] : ENV['DISCORD_CLIENT']).to_i
   $config['discord_secret'] =  TEST ? ENV['DISCORD_TOKEN_TEST']  : ENV['DISCORD_TOKEN']
   $config['twitch_client']  = ENV['TWITCH_CLIENT']
@@ -146,21 +147,24 @@ end
 def setup_bot
   $bot.private_message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
+    remove_mentions!(event.content)
     special = event.user.id == BOTMASTER_ID && event.content[0] == '!'
     special ? respond_special(event) : respond(event)
     str = special ? 'Special ' : ''
-    str = "#{str}DM by #{event.user.name}: #{remove_mentions(event.content)}"
+    str = "#{str}DM by #{event.user.name}: #{event.content}"
     special ? succ(str) : msg(str)
   end
 
   $bot.mention do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
+    remove_mentions!(event.content)
     respond(event)
-    msg("Mention by #{event.user.name} in #{event.channel.name}: #{remove_mentions(event.content)}")
+    msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
   end
 
   $bot.message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
+    remove_mentions!(event.content)
     if event.channel == $nv2_channel
       $last_potato = Time.now.to_i
       $potato = 0
@@ -223,6 +227,7 @@ rescue => e
 end
 
 # Bot initialization sequence
+log("Loading outte...")
 monkey_patch
 initialize_vars
 load_config

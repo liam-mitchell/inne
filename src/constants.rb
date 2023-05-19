@@ -2,24 +2,21 @@
 # <------                   DEVELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->
 
+# General
 TEST           = true  # Switch to the local test bot
-TEST_REPORT    = false # Produces the report immediately once
-TEST_LOTD      = false # Posts lotd immediately once
-SHOW_ERRORS    = true  # Log common error messages to the console
+BENCHMARK      = false # Benchmark and log functions (for optimization)
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
 
-# <--------------------------------------------------------------------------->
-# <------                     INTERNAL VARIABLES                        ------>
-# <--------------------------------------------------------------------------->
+# Test specific features
+TEST_REPORT    = false # Produces the report immediately once
+TEST_LOTD      = false # Posts lotd immediately once
 
-WAIT           = 1     # Seconds to wait between each iteration of the infinite while loops to prevent craziness
-BENCHMARK      = false # Benchmark and log functions (for optimization)
-BENCH_MSGS     = false # Benchmark functions _in messages_
-DATABASE_ENV   = ENV['DATABASE_ENV'] || (TEST ? 'outte_test' : 'outte')
-CONFIG         = 'db/config.yml'
+# Internal
+WAIT           = 1     # Seconds between iterations of infinite loops
+DATABASE       = TEST ? 'outte_test' : 'outte' # Database environment
 
 # <--------------------------------------------------------------------------->
 # <------                     NETWORK VARIABLES                         ------>
@@ -30,7 +27,6 @@ OFFLINE_STRICT = false   # Disables all online functionalities of outte
 RETRIES        = 50      # Redownload attempts for boards / demos
 ATTEMPT_LIMIT  = 5       # Redownload attempts in general (bigger files)
 INVALID_RESP   = '-1337' # N++'s server response when Steam ID is inactive
-DEFAULT_TYPES  = ['Level', 'Episode'] # Default highscoreable types
 
 UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 
@@ -61,37 +57,33 @@ SERVER_WHITELIST = [
 # <------                     LOGGING VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-# Control what things to log (these can be set on the fly as well)
-LOG          = true # Log stuff to the terminal (if false, next 9 ones useless)
-LOG_FATAL    = true # Log fatal error messages
-LOG_ERRORS   = true # Log errors to the terminal
-LOG_WARNINGS = true # Log warnings to the terminal
-LOG_SUCCESS  = true # Log successes
-LOG_INFO     = true # Log info to the terminal
-LOG_MSGS     = true # Log mentions and DMs to outte
-LOG_IN       = true # Log incoming HTTP connections (CUSE, CLE...)
-LOG_OUT      = true # Log outgoing HTTP connections (CUSE, CLE...)
-LOG_DEBUG    = true # Log debug messages
+# General
+LOG_TO_CONSOLE = true  # Log stuff to the terminal
+LOG_TO_FILE    = true  # Export logs to a file
+LOG_TO_DISCORD = true  # Log select stuff to the botmaster's Discord DMs
+LOG_SQL        = false # Log _all_ SQL queries
+LOG_REPORT     = false # Export new weekly scores to a file
+LOG_FILE_MAX   = 10 * 1024 ** 2 # Max log file size (10 MB)
 
-# Control log format
-LOG_FANCY      = true    # Whether rich logs are enabled (bold, colors...)
-LOG_LEVEL      = :debug  # Default logging level
+# Log format (can be set on the fly as well)
+LOG_FANCY      = true    # Use rich terminal logs (bold, colors...)
+LOG_LEVEL      = :debug  # Default terminal logging level (see Log class)
+LOG_LEVEL_FILE = :quiet  # Default file logging level (see Log class)
 LOG_APPS       = false   # Append source app to log msgs
+LOG_PAD        = 120     # Pad each log line to this many chars
 LOG_BACKTRACES = true    # Log exception backtraces
 
-# Others
-LOG_TO_FILE = false # Export logs and errors into external file
-LOG_SQL     = false # Log _all_ SQL queries to the terminal (for debugging)
-LOG_REPORT  = false # Export new weekly scores to a file
-
 # <--------------------------------------------------------------------------->
-# <------                     DIRECTORY VARIABLES                       ------>
+# <------                        PATH VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
 # TODO: Create constants for all other relevant directories (e.g., screenies,
 # migrations, userlevels, etc), and substitute all hardcoded references in the
 # source code.
-DIR_MAPPACKS = './db/mappacks'
+CONFIG        = './db/config.yml'
+DIR_MAPPACKS  = './db/mappacks'
+PATH_LOG_FILE = './log_outte'
+PATH_LOG_SQL  = './log_outte_sql'
 
 # <--------------------------------------------------------------------------->
 # <------                  MONKEY PATCHING VARIABLES                    ------>
@@ -478,6 +470,8 @@ TABS_NEW = {
 # <--------------------------------------------------------------------------->
 # <------                    HIGHSCORING VARIABLES                      ------>
 # <--------------------------------------------------------------------------->
+
+DEFAULT_TYPES  = ['Level', 'Episode'] # Default highscoreable types
 
 MIN_TIES = 3 # Minimum number of ties for 0th to be considered maxable
 MAX_SECS = 5 # Difference in seconds to consider two dates equal (for navigation)

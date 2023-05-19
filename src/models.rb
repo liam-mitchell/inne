@@ -58,7 +58,7 @@ module MonkeyPatches
   def self.patch_discordrb
     ::Discordrb::Logger.class_eval do
       def simple_write(stream, message, mode, thread_name, timestamp)
-        Log.write(message, mode[:long].downcase.to_sym, 'DISRB')
+        Log.write(message, mode[:long].downcase.to_sym, 'DRB')
       end
       def log_exception(e)
         error("Exception: #{e.inspect}")
@@ -78,7 +78,7 @@ module MonkeyPatches
         return if level > @level
         data.gsub!(/^(?:FATAL|ERROR|WARN |INFO |DEBUG) /, '')
         mode = [:fatal, :error, :warn, :info, :debug][level - 1] || :info
-        Log.write(data, mode, 'WEBRK')
+        Log.write(data, mode, 'WBR')
       end
     end
 
@@ -159,7 +159,8 @@ module Downloadable
     }
 
     boards
-  rescue
+  rescue => e
+    lex(e, "Failed to clean leaderboards for #{name}")
     boards
   end
 
@@ -231,17 +232,13 @@ module Downloadable
     updated = get_scores
 
     if updated.nil?
-      if SHOW_ERRORS
-        err("Failed to retrieve scores from #{scores_uri(GlobalProperty.get_last_steam_id)}")
-      end
+      err("Failed to retrieve scores from #{scores_uri(GlobalProperty.get_last_steam_id)}")
       return -1
     end
 
     save_scores(updated)
   rescue => e
-    if SHOW_ERRORS
-      err("Error updating database with level #{self.id.to_s}: #{e}")
-    end
+    lex(e, "Error updating database with level #{self.id.to_s}: #{e}")
     return -1
   end
 
@@ -478,7 +475,7 @@ module Highscoreable
     new_id += type[:slots] * mappack.id if self.is_a?(MappackHighscoreable)
     self.class.find(new_id)
   rescue => e
-    Log.log_exception(e)
+    lex(e, 'Failed to navigate highscoreable')
     self
   end
 
@@ -1093,7 +1090,7 @@ class Player < ActiveRecord::Base
     dbg("#{json['name'].to_s} (#{json['user_id']}) logged in")
     res
   rescue => e
-    Log.log_exception(e, 'Failed to proxy login request')
+    lex(e, 'Failed to proxy login request')
     return nil
   end
 
@@ -1886,12 +1883,9 @@ class Demo < ActiveRecord::Base
     demos = parse(replay[16..-1])
     update_archive(demos.map(&:size), false)
     self.update(demo: Demo.encode(demos))
-    #succ("Updated demo by #{archive.player.name}")
   rescue => e
-    if SHOW_ERRORS
-      err("error parsing demo with id #{archive.replay_id}: #{e}")
-    end
-    return nil
+    lex(e, "Error updating demo with id #{archive.replay_id}: #{e}")
+    nil
   end
 end
 

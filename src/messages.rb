@@ -1738,7 +1738,7 @@ end
 
 def testa(event)
   assert_permissions(event)
-  ld("Hey")
+
 #  maps = send_userlevel_browse(nil, socket: event.content)
 #  Userlevel::dump_query(maps, 10, 0)
 #  p = UserlevelAuthor.parse(parse_userlevel_author(event.content))
@@ -1831,7 +1831,6 @@ rescue RuntimeError => e
 end
 
 def respond(event)
-  remove_mentions(event.content)
   msg = event.content
 
   # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace

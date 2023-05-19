@@ -8,7 +8,10 @@ require 'unicode/emoji'
 require_relative 'constants.rb'
 require_relative 'models.rb'
 
-ActiveRecord::Base.logger = Logger.new(LOG_TO_FILE ? "log_outte_sql" : STDOUT) if LOG_SQL
+if LOG_SQL
+  ActiveRecord::Base.logger = Logger.new(STDOUT)
+  ActiveRecord::Base.logger = Logger.new(PATH_LOG_SQL) if LOG_TO_FILE
+end
 
 # Custom logging class for the terminal, that supports:
 #   - Multiple levels of verbosity (from quiet to debug)
@@ -20,12 +23,12 @@ module Log
   MODES = {
     fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" }, # Red background
     error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" }, # Red
-    warn:  { long: 'WARN',  short: '!', fmt: "\x1B[33m" }, # Yellow
-    good:  { long: 'GOOD',  short: '✓', fmt: "\x1B[32m" }, # Green
-    info:  { long: 'INFO',  short: 'i', fmt: ""         }, # Normal
-    msg:   { long: 'MSG',   short: 'm', fmt: "\x1B[34m" }, # Blue
-    in:    { long: 'IN',    short: '←', fmt: "\x1B[35m" }, # Magenta
-    out:   { long: 'OUT',   short: '→', fmt: "\x1B[36m" }, # Cyan
+    warn:  { long: 'WARN ', short: '!', fmt: "\x1B[33m" }, # Yellow
+    good:  { long: 'GOOD ', short: '✓', fmt: "\x1B[32m" }, # Green
+    info:  { long: 'INFO ', short: 'i', fmt: ""         }, # Normal
+    msg:   { long: 'MSG  ', short: 'm', fmt: "\x1B[34m" }, # Blue
+    in:    { long: 'IN   ', short: '←', fmt: "\x1B[35m" }, # Magenta
+    out:   { long: 'OUT  ', short: '→', fmt: "\x1B[36m" }, # Cyan
     debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[90m" }  # Gray
   }
 
@@ -40,8 +43,9 @@ module Log
   BOLD  = "\x1B[1m"
   RESET = "\x1B[0m"
 
-  @modes = LEVELS[LOG_LEVEL] || LEVELS[:normal]
   @fancy = LOG_FANCY
+  @modes = LEVELS[LOG_LEVEL] || LEVELS[:normal]
+  @modes_file = LEVELS[LOG_LEVEL_FILE] || LEVELS[:quiet]
 
   def self.level(l)
    return dbg("Logging level #{l} does not exist") if !LEVELS.key?(l)
@@ -90,9 +94,26 @@ module Log
     @modes
   end
 
-  def self.write(text, mode, app = 'OUTTE', newline: true, pad: false, fancy: nil)
+  # Main function to log text
+  def self.write(
+    text,           # The text to log
+    mode,           # The type of log (info, error, debug, etc)
+    app = 'BOT',    # The origin of the log (outte, discordrb, webrick, etc)
+    newline: true,  # Add a newline at the end or not
+    pad:     false, # Pad each line of the text to a fixed width
+    fancy:   nil,   # Use rich logs (color, bold, etc)
+    console: true,  # Log to the console
+    file:    true,  # Log to the log file
+    discord: false  # Log to the botmaster's DMs in Discord
+  )
+    # Return if we don't need to log anything
+    mode = :info if !MODES.key?(mode)
+    log_to_console = LOG_TO_CONSOLE && console && @modes.include?(mode)
+    log_to_file    = LOG_TO_FILE    && file    && @modes_file.include?(mode)
+    log_to_discord = LOG_TO_DISCORD && discord
+    return text if !log_to_console && !log_to_file && !log_to_discord
+
     # Determine parameters
-    return text if !LOG || !@modes.include?(mode)
     fancy = @fancy if ![true, false].include?(fancy)
     fancy = false if !LOG_FANCY
     stream = STDOUT
@@ -101,91 +122,89 @@ module Log
 
     # Message prefixes (timestamp, symbol, source app)
     date = Time.now.strftime(DATE_FORMAT_LOG)
-    type = fancy ? "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}" : "[#{m[:long]}]".ljust(7, ' ')
-    app = " (#{app.ljust(5, ' ')[0...5]})"
-    app = fancy ? "#{BOLD}#{app}#{RESET}" : app
-    app = LOG_APPS ? app : ''
+    type = {
+      fancy: "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}",
+      plain: "[#{m[:long]}]".ljust(7, ' ')
+    }
+    app = " (#{app.ljust(3, ' ')[0...3]})"
+    app = {
+      fancy: LOG_APPS ? "#{BOLD}#{app}#{RESET}" : '',
+      plain: LOG_APPS ? app : ''
+    }
 
     # Format text
-    header = "\r[#{date}] #{type}#{app} "
-    msg = text.split("\n").map{ |l|
-      header + (fancy ? "#{m[:fmt]}#{l}#{RESET}" : l).strip
-    }.join("\n")
-    msg = msg.ljust(120, ' ') if pad
+    header = {
+      fancy: "\r[#{date}] #{type[:fancy]}#{app[:fancy]} ",
+      plain: "\r[#{date}] #{type[:plain]}#{app[:plain]} ",
+    }
+    lines = {
+      fancy: text.split("\n").map{ |l| (header[:fancy] + "#{m[:fmt]}#{l}#{RESET}").strip },
+      plain: text.split("\n").map{ |l| (header[:plain] + l).strip }
+    }
+    lines = {
+      fancy: lines[:fancy].map{ |l| l.ljust(LOG_PAD, ' ') },
+      plain: lines[:plain].map{ |l| l.ljust(LOG_PAD, ' ') }
+    } if pad
+    msg = {
+      fancy: lines[:fancy].join("\n"),
+      plain: lines[:plain].join("\n")
+    }
 
-    # Output to stream and optionally file, returns raw msg
-    newline ? stream.puts(msg) : stream.print(msg)
-    stream.flush
-    File.write('log_outte', msg, mode: 'a') if LOG_TO_FILE
+    # Log to the terminal, if specified
+    if log_to_console
+      t_msg = fancy ? msg[:fancy] : msg[:plain]
+      newline ? stream.puts(t_msg) : stream.print(t_msg) 
+      stream.flush
+    end
+
+    # Log to a file, if specified and possible
+    if log_to_file
+      if File.size?(PATH_LOG_FILE).to_i < LOG_FILE_MAX
+        File.write(PATH_LOG_FILE, msg[:plain] + "\n", mode: 'a')
+      elsif !$log_warned
+        $log_warned = true
+        str = "Log file is full!"
+        warn(str, file: false)
+        discord(str)
+      end
+    end
+
+    # Log to Discord DMs, if specified
+    discord(text) if LOG_TO_DISCORD && discord
+
+    # Return original text
     text
   end
 
   # Handle exceptions
-  def self.log_exception(e, msg = '')
+  def self.exception(e, msg = '')
     err("#{msg}: #{e}")
     dbg(e.backtrace.join("\n")) if LOG_BACKTRACES
   end
 
-  def self.log_discord(msg)
-    botmaster.pm.send_message(msg)
-  rescue => e
-    lex(e, "Couldn't DM botmaster")
+  # Send DM to botmaster
+  def self.discord(msg)
+    botmaster.pm.send_message(msg) if LOG_TO_DISCORD rescue nil
   end
 
-  # Shortcuts for each mode
-  def self.log(msg, **kwargs)
-    write(msg, :info, kwargs) if LOG_INFO
-  end
-  
-  def self.warn(msg, **kwargs)
-    write(msg, :warn, kwargs) if LOG_WARNINGS
-  end
-  
-  def self.err(msg, **kwargs)
-    write(msg, :error, kwargs) if LOG_ERRORS
-  end
-
-  def self.msg(msg, **kwargs)
-    write(msg, :msg, kwargs) if LOG_MSGS
-  end
-
-  def self.succ(msg, **kwargs)
-    write(msg, :good, kwargs) if LOG_SUCCESS
-  end
-
-  def self.dbg(msg, **kwargs)
-    write(msg, :debug, kwargs) if LOG_DEBUG
-  end
-
-  def self.lin(msg, **kwargs)
-    write(msg, :in, kwargs) if LOG_IN
-  end
-
-  def self.lout(msg, **kwargs)
-    write(msg, :out, kwargs) if LOG_OUT
-  end
-
-  def self.fatal(msg, **kwargs)
-    write(msg, :fatal, kwargs) if LOG_FATAL
-  end
-
+  # Clear 
   def self.clear
     write('', :info, newline: false, pad: true)
   end
 end
 
-# Shortcuts for each of the Log methods
-def log(msg,   **kwargs) Log.log(msg,   kwargs) end
-def warn(msg,  **kwargs) Log.warn(msg,  kwargs) end
-def err(msg,   **kwargs) Log.err(msg,   kwargs) end
-def msg(msg,   **kwargs) Log.msg(msg,   kwargs) end
-def succ(msg,  **kwargs) Log.succ(msg,  kwargs) end
-def dbg(msg,   **kwargs) Log.dbg(msg,   kwargs) end
-def lin(msg,   **kwargs) Log.lin(msg,   kwargs) end
-def lout(msg,  **kwargs) Log.lout(msg,  kwargs) end
-def fatal(msg, **kwargs) Log.fatal(msg, kwargs) end
-def lex(e, msg = '')  Log.log_exception(e, msg) end
-def ld(msg)           Log.log_discord(msg)      end
+# Shortcuts for different logging methods
+def log   (msg, **kwargs) Log.write(msg, :info,  kwargs) end
+def warn  (msg, **kwargs) Log.write(msg, :warn,  kwargs) end
+def err   (msg, **kwargs) Log.write(msg, :error, kwargs) end
+def msg   (msg, **kwargs) Log.write(msg, :msg,   kwargs) end
+def succ  (msg, **kwargs) Log.write(msg, :good,  kwargs) end
+def dbg   (msg, **kwargs) Log.write(msg, :debug, kwargs) end
+def lin   (msg, **kwargs) Log.write(msg, :in,    kwargs) end
+def lout  (msg, **kwargs) Log.write(msg, :out,   kwargs) end
+def fatal (msg, **kwargs) Log.write(msg, :fatal, kwargs) end
+def lex (e, msg = '') Log.exception(e, msg) end
+def ld  (msg)         Log.discord(msg)      end
 
 # Make a request to N++'s server.
 # Since we need to use an open Steam ID, the function goes through all
@@ -210,9 +229,7 @@ def get_data(uri_proc, data_proc, err, *vargs)
   data_proc.call(response.body)
 rescue => e
   if (attempts += 1) < RETRIES
-    if SHOW_ERRORS
-      err("#{err}: #{e}")
-    end
+    err("#{err}: #{e}")
     sleep(0.25)
     retry
   else
@@ -556,7 +573,7 @@ end
 
 # Strip off the @outte++ mention, if present
 # IDs might have an exclamation mark
-def remove_mentions(msg)
+def remove_mentions!(msg)
   msg.gsub!(/<@!?[0-9]*>\s*/, '')
 end
 
