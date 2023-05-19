@@ -851,8 +851,7 @@ class MappackScore < ActiveRecord::Base
     name = "ID:#{uid}"
     if BLACKLIST.key?(uid)
       str = "Blacklisted player #{BLACKLIST[uid][0]} submitted a score"
-      warn(str)
-      ld(str)
+      warn(str, discord: true)
       return
     end
 
@@ -914,12 +913,7 @@ class MappackScore < ActiveRecord::Base
 
     # Verify replay integrity by checking security hash
     legit = h.verify_replay(query['ninja_check'], score_hs_orig)
-    if !legit
-      str = "Score submitted by #{name} to #{h.name} has invalid security hash"
-      warn(str)
-      ld(str)
-      return if INTEGRITY_CHECKS
-    end
+    return if INTEGRITY_CHECKS && !legit
 
     # Verify additional mappack-wise requirements
     return if !mappack.check_requirements(demos)
@@ -944,9 +938,10 @@ class MappackScore < ActiveRecord::Base
       sr = true
     end
 
-    # Create new score (with placeholder ranks, see later)
+    # If score improved in either mode
     id = -1
     if hs || sr
+      # Create new score and demo
       score = MappackScore.create(
         rank_hs:       hs ? -1 : nil,
         tied_rank_hs:  hs ? -1 : nil,
@@ -964,13 +959,15 @@ class MappackScore < ActiveRecord::Base
       )
       id = score.id
       MappackDemo.create(id: id, demo: Demo.encode(demos))
-    end
 
-    # Verify hs score integrity by checking calculated gold count
-    if (hs || sr) && !MappackScore.verify_gold(gold)
-      str = "Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})"
-      warn(str)
-      ld(str)
+      # Verify hs score integrity by checking calculated gold count
+      if !MappackScore.verify_gold(gold)
+        str = "Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})"
+        warn(str, discord: true)
+      end
+
+      # Warn if the score submitted failed the map data integrity checks
+      warn("Score submitted by #{name} to #{h.name} has invalid security hash", discord: true)
     end
 
     # Update ranks if necessary

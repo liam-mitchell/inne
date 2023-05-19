@@ -163,7 +163,7 @@ def send_report
         name[0..14].ljust(15, " ") + " " + (s[1] == 20 ? " x  " : s[1].ordinalize).rjust(4, "0") + "->" + s[2].ordinalize.rjust(4, "0") + " " + s[3].name.ljust(10, " ") + " " + ("%.3f" % (s[4].to_f / 60.0))
       }.join("\n")
     }.join("\n")
-    File.write("../report_log", log_text)
+    File.write(PATH_LOG_REPORT, log_text)
   end
 
   sleep(1)

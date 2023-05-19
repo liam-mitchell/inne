@@ -62,7 +62,7 @@ LOG_TO_CONSOLE = true  # Log stuff to the terminal
 LOG_TO_FILE    = true  # Export logs to a file
 LOG_TO_DISCORD = true  # Log select stuff to the botmaster's Discord DMs
 LOG_SQL        = false # Log _all_ SQL queries
-LOG_REPORT     = false # Export new weekly scores to a file
+LOG_REPORT     = true  # Export new weekly scores to a file
 LOG_FILE_MAX   = 10 * 1024 ** 2 # Max log file size (10 MB)
 
 # Log format (can be set on the fly as well)
@@ -80,10 +80,12 @@ LOG_BACKTRACES = true    # Log exception backtraces
 # TODO: Create constants for all other relevant directories (e.g., screenies,
 # migrations, userlevels, etc), and substitute all hardcoded references in the
 # source code.
-CONFIG        = './db/config.yml'
-DIR_MAPPACKS  = './db/mappacks'
-PATH_LOG_FILE = './log_outte'
-PATH_LOG_SQL  = './log_outte_sql'
+CONFIG          = './db/config.yml'
+DIR_MAPPACKS    = './db/mappacks'
+PATH_LOG_FILE   = './logs/log_outte'
+PATH_LOG_SQL    = './logs/log_outte_sql'
+PATH_LOG_OLD    = './logs/log_outte_old'
+PATH_LOG_REPORT = './logs/log_report'
 
 # <--------------------------------------------------------------------------->
 # <------                  MONKEY PATCHING VARIABLES                    ------>

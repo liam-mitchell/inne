@@ -2,14 +2,12 @@
 *.json
 *.pem
 *.log
-\.byebug_history
 *.db
 *.swp
+.byebug_history
+\*
 \#*
 \.\#*
+\logs
 missing*
 scores*
-missing*.txt
-scores*.txt
-LOG
-report_log

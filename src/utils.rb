@@ -159,14 +159,14 @@ module Log
 
     # Log to a file, if specified and possible
     if log_to_file
-      if File.size?(PATH_LOG_FILE).to_i < LOG_FILE_MAX
-        File.write(PATH_LOG_FILE, msg[:plain] + "\n", mode: 'a')
-      elsif !$log_warned
-        $log_warned = true
-        str = "Log file is full!"
-        warn(str, file: false)
-        discord(str)
+      if File.size?(PATH_LOG_FILE).to_i >= LOG_FILE_MAX
+        File.rename(PATH_LOG_FILE, PATH_LOG_OLD)
+        if !$log_warned
+          $log_warned = true
+          warn("Log file is full!", file: false, discord: true)
+        end
       end
+      File.write(PATH_LOG_FILE, msg[:plain] + "\n", mode: 'a')
     end
 
     # Log to Discord DMs, if specified
