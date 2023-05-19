@@ -1131,7 +1131,7 @@ class MappackScore < ActiveRecord::Base
   # Calculate gold count from hs and sr scores
   # We return a FLOAT, not an integer. See the next function for details.
   def self.gold_count(type, score_hs, score_sr)
-    type.remove!('Mappack')
+    type = type.remove('Mappack')
     case type
     when 'Level'
       tweak = 1
