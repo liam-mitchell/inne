@@ -659,10 +659,9 @@ module MappackHighscoreable
         ) AS opt
         ON mappack_scores.metanet_id = opt.metanet_id AND gold = score_gm
       }.gsub(/\s+/, ' ').strip
-      board = scores.select(:id, :score_gm, :player_id, :metanet_id)
+      return scores.select(:id, :score_gm, :player_id, :metanet_id)
                    .joins(join)
                    .order('score_gm', :id)
-      return board.select(:id)
     end
 
     board = scores.where("rank_#{m} IS NOT NULL")

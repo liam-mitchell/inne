@@ -349,6 +349,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   nav     = parse_nav(msg)
   mode    = parse_board(msg)
   res     = ""
+  #byebug
 
   # Navigating scores goes into a different method (see below this one)
   if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i] && !h.is_a?(MappackHighscoreable)

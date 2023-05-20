@@ -361,6 +361,7 @@ module Highscoreable
   def format_scores_mode(mode = 'hs')
     mappack = self.is_a?(MappackHighscoreable)
     hs = mode == 'hs'
+    gm = mode == 'gm'
 
     # Reload scores, otherwise sometimes recent changes aren't in memory
     scores.reload
@@ -369,14 +370,14 @@ module Highscoreable
     # Calculate padding
     name_padding = max_name_length(mode)
     
-    field = !mappack ? :score : (hs ? :score_hs : :score_sr)
+    field = !mappack ? :score : "score_#{mode}"
     score_padding = boards.map{ |s|
       mappack && hs ? s[field] / 60.0 : s[field]
     }.max.to_i.to_s.length + (!mappack || hs ? 4 : 0)
 
     # Print scores
     boards.each_with_index.map{ |s, i|
-      s.format(name_padding, score_padding, true, mode)
+      s.format(name_padding, score_padding, true, mode, i)
     }
   end
 
@@ -632,16 +633,17 @@ end
 
 # Implemented by Score and MappackScore
 module Scorish
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs')
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil)
     mappack = self.is_a?(MappackScore)
     hs = mode == 'hs'
+    gm = mode == 'gm'
 
     # Compose each element
     t_star   = mappack ? '' : (star ? '*' : ' ')
-    t_rank   = !mappack ? rank : (hs ? rank_hs : rank_sr)
+    t_rank   = !mappack ? rank : (gm ? (t_rank || 0) : self["rank_#{mode}"])
     t_rank   = Highscoreable.format_rank(t_rank)
     t_player = player.format_name(name_padding)
-    t_score  = !mappack ? score : (hs ? score_hs / 60.0 : score_sr)
+    t_score  = !mappack ? score : (hs ? self["score_#{mode}"] / 60.0 : self["score_#{mode}"])
     t_fmt    = !mappack || hs ? "%#{score_padding}.3f" : "%#{score_padding}d"
     t_score  = t_fmt % [t_score]
     t_cool   = !mappack && show_cools && cool ? " 😎" : ""
