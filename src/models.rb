@@ -232,13 +232,13 @@ module Downloadable
     updated = get_scores
 
     if updated.nil?
-      err("Failed to retrieve scores from #{scores_uri(GlobalProperty.get_last_steam_id)}")
+      err("Failed to download scores for #{self.class.to_s.downcase} #{self.id}")
       return -1
     end
 
     save_scores(updated)
   rescue => e
-    lex(e, "Error updating database with level #{self.id.to_s}: #{e}")
+    lex(e, "Error updating database with #{self.class.to_s.downcase} #{self.id}: #{e}")
     return -1
   end
 

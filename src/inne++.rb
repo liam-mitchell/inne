@@ -79,6 +79,7 @@ def initialize_vars
   $twitch_streams  = {}
   $boot_time       = Time.now.to_i
   $log_warned      = false
+  Dir.mkdir(DIR_LOGS) unless Dir.exist?(DIR_LOGS)
   log("Initialized global variables")
 rescue => e
   fatal("Failed to initialize global variables: #{e}")

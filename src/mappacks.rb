@@ -648,7 +648,23 @@ module MappackHighscoreable
   # depending on the mode (hs / sr).
   # Optionally sort by score and date instead of rank (used for computing the rank)
   def leaderboard(m = 'hs', score = false)
-    m = 'hs' if !['hs', 'sr'].include?(m)
+    m = 'hs' if !['hs', 'sr', 'gm'].include?(m)
+    if m == 'gm'
+      join = %{
+        INNER JOIN (
+          SELECT metanet_id, MIN(gold) AS score_gm
+          FROM mappack_scores
+          WHERE highscoreable_id = #{id}
+          GROUP BY metanet_id
+        ) AS opt
+        ON mappack_scores.metanet_id = opt.metanet_id AND gold = score_gm
+      }.gsub(/\s+/, ' ').strip
+      board = scores.select(:id, :score_gm, :player_id, :metanet_id)
+                   .joins(join)
+                   .order('score_gm', :id)
+      return board.select(:id)
+    end
+
     board = scores.where("rank_#{m} IS NOT NULL")
     if score
       board.order("score_#{m} #{m == 'hs' ? 'DESC' : 'ASC'}, date ASC")
@@ -659,9 +675,8 @@ module MappackHighscoreable
 
   # Return scores in JSON format expected by N++
   def get_scores(qt = 0, metanet_id = nil)
-    # Parse parameters
-    qt = 0 if qt > 2
-    m = qt < 2 ? 'hs' : 'sr'
+    # Determine leaderboard type
+    m = qt == 2 ? 'sr' : 'hs'
 
     # Fetch scores
     board = leaderboard(m)
@@ -669,28 +684,27 @@ module MappackHighscoreable
                 .joins("INNER JOIN players ON players.id = mappack_scores.player_id")
                 .pluck(
                   "score_#{m}",
-                  "rank_#{m}",
                   "players.metanet_id",
                   "players.name",
                   "mappack_scores.id"
-                )
-    score = board.find_by(metanet_id: metanet_id) if !metanet_id.nil?
+                ).uniq{ |s| s[1] }
 
     # Build response
     res = {}
-    res["userInfo"] = {
-      "my_score"        => m == 'hs' ? (1000 * score["score_#{m}"].to_i / 60.0).round : 1000 * score["score_#{m}"].to_i,
-      "my_rank"         => score["rank_#{m}"].to_i,
-      "my_replay_id"    => score.id.to_i,
-      "my_display_name" => score.player.name.to_s.remove("\\")
-    } if !score.nil?
-    res["scores"] = list.map{ |s|
+    #score = board.find_by(metanet_id: metanet_id) if !metanet_id.nil?
+    #res["userInfo"] = {
+    #  "my_score"        => m == 'hs' ? (1000 * score["score_#{m}"].to_i / 60.0).round : 1000 * score["score_#{m}"].to_i,
+    #  "my_rank"         => (score["rank_#{m}"].to_i rescue -1),
+    #  "my_replay_id"    => score.id.to_i,
+    #  "my_display_name" => score.player.name.to_s.remove("\\")
+    #} if !score.nil?
+    res["scores"] = list.each_with_index.map{ |s, i|
       {
         "score"     => m == 'hs' ? (1000 * s[0].to_i / 60.0).round : 1000 * s[0].to_i,
-        "rank"      => s[1].to_i,
-        "user_id"   => s[2].to_i,
-        "user_name" => s[3].to_s.remove("\\"),
-        "replay_id" => s[4].to_i
+        "rank"      => i,
+        "user_id"   => s[1].to_i,
+        "user_name" => s[2].to_s.remove("\\"),
+        "replay_id" => s[3].to_i
       }
     }
     res["query_type"] = qt
@@ -835,8 +849,8 @@ class MappackScore < ActiveRecord::Base
   belongs_to :mappack
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
-  # TODO: Figure out Coop's (and Race's?) demo format
-  # TODO: Add integrity checks and warnings in Demo.parse, correct stories
+  # TODO: Add integrity checks and warnings in Demo.parse
+  # TODO: Implement HC stories
 
   # Verify, parse and save a submitted run, respond suitably
   def self.add(code, query, req = nil)
@@ -910,7 +924,8 @@ class MappackScore < ActiveRecord::Base
     end
 
     # Compute gold count from hs and sr scores
-    gold = MappackScore.gold_count(type[:name], score_hs, score_sr)
+    goldf = MappackScore.gold_count(type[:name], score_hs, score_sr)
+    gold = goldf.round # Save floating value for later
 
     # Verify replay integrity by checking security hash
     legit = h.verify_replay(query['ninja_check'], score_hs_orig)
@@ -923,11 +938,15 @@ class MappackScore < ActiveRecord::Base
     scores = MappackScore.where(highscoreable: h, player: player)
     score_hs_max = scores.maximum(:score_hs)
     score_sr_min = scores.minimum(:score_sr)
+    gold_max = scores.maximum(:gold)
+    gold_min = scores.minimum(:gold)
 
     # Determine if new score is better and has to be saved
     res['better'] = 0
     hs = false
     sr = false
+    gp = false
+    gm = false
     if score_hs_max.nil? || score_hs > score_hs_max
       scores.update_all(rank_hs: nil, tied_rank_hs: nil)
       res['better'] = 1
@@ -938,10 +957,18 @@ class MappackScore < ActiveRecord::Base
       #res['better'] = 1
       sr = true
     end
+    if gold_max.nil? || gold > gold_max
+      gp = true
+      gold_max = gold
+    end
+    if gold_min.nil? || gold < gold_min
+      gm = true
+      gold_min = gold
+    end
 
     # If score improved in either mode
     id = -1
-    if hs || sr
+    if hs || sr || gp || gm
       # Create new score and demo
       score = MappackScore.create(
         rank_hs:       hs ? -1 : nil,
@@ -956,13 +983,13 @@ class MappackScore < ActiveRecord::Base
         metanet_id:    player.metanet_id,
         highscoreable: h,
         date:          Time.now.strftime(DATE_FORMAT_MYSQL),
-        gold:          gold.round
+        gold:          gold
       )
       id = score.id
       MappackDemo.create(id: id, demo: Demo.encode(demos))
 
       # Verify hs score integrity by checking calculated gold count
-      if !MappackScore.verify_gold(gold)
+      if !MappackScore.verify_gold(goldf)
         str = "Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})"
         warn(str, discord: true)
       end
@@ -974,6 +1001,29 @@ class MappackScore < ActiveRecord::Base
     # Update ranks if necessary
     h.update_ranks('hs') if hs
     h.update_ranks('sr') if sr
+
+    # Delete redundant scores of the player in the highscoreable
+    # We delete all the scores that aren't keepies (were never a hs/sr PB),
+    # and which no longer have the max/min amount of gold collected.
+    pb_hs = nil # Highscore PB
+    pb_sr = nil # Speedrun PB
+    keepies = []
+    scores.order(:id).each{ |s|
+      keepie = false
+      if pb_hs.nil? || s.score_hs > pb_hs
+        pb_hs = s.score_hs
+        keepie = true
+      end
+      if pb_sr.nil? || s.score_sr < pb_sr
+        pb_sr = s.score_sr
+        keepie = true
+      end
+      keepies << s.id if keepie
+    }
+    scores.where(rank_hs: nil, rank_sr: nil)
+          .where("gold < #{gold_max} AND gold > #{gold_min}")
+          .where.not(id: keepies)
+          .each(&:wipe)
 
     # Fetch player's best scores, to fill remaining response fields
     best_hs = MappackScore.where(highscoreable: h, player: player)
@@ -1200,6 +1250,11 @@ class MappackScore < ActiveRecord::Base
   rescue => e
     lex(e, "Failed to dump replay with ID #{id}")
     return
+  end
+
+  def wipe
+    demo.destroy
+    self.destroy
   end
 
 end

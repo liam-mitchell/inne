@@ -3,10 +3,10 @@
 # <--------------------------------------------------------------------------->
 
 # General
-TEST           = false # Switch to the local test bot
+TEST           = true  # Switch to the local test bot
 BENCHMARK      = false # Benchmark and log functions (for optimization)
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = true  # Execute all threads
+DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
 
@@ -82,10 +82,11 @@ LOG_BACKTRACES = true    # Log exception backtraces
 # source code.
 CONFIG          = './db/config.yml'
 DIR_MAPPACKS    = './db/mappacks'
-PATH_LOG_FILE   = './logs/log_outte'
-PATH_LOG_SQL    = './logs/log_outte_sql'
-PATH_LOG_OLD    = './logs/log_outte_old'
-PATH_LOG_REPORT = './logs/log_report'
+DIR_LOGS        = './logs'
+PATH_LOG_FILE   = "#{DIR_LOGS}/log_outte"
+PATH_LOG_SQL    = "#{DIR_LOGS}/log_outte_sql"
+PATH_LOG_OLD    = "#{DIR_LOGS}/log_outte_old"
+PATH_LOG_REPORT = "#{DIR_LOGS}/log_report"
 
 # <--------------------------------------------------------------------------->
 # <------                  MONKEY PATCHING VARIABLES                    ------>
