@@ -347,7 +347,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   h       = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
-  mode    = parse_board(msg)
+  board   = parse_board(msg)
   res     = ""
   #byebug
 
@@ -371,7 +371,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   end
 
   # Format response, add cleanliness if it's an episode
-  res << "Highscores for #{h.format_name}:\n#{format_block(h.format_scores(mode: mode))}"
+  res << "#{format_board(board).pluralize.capitalize} for #{h.format_name}:\n#{format_block(h.format_scores(mode: board))}"
   if h.is_a?(Episode)
     clean = round_score(h.cleanliness[1])
     res << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
@@ -1862,7 +1862,7 @@ def respond(event)
   if !msg[NAME_PATTERN, 2]
     send_rankings(event)    if msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i
     send_history(event)     if msg =~ /history/i && msg !~ /rank/i
-    send_diff(event)        if msg =~ /diff/i
+    send_diff(event)        if msg =~ /\bdiff\b/i
     send_community(event)   if msg =~ /community/i
     send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
     send_ownages(event)     if msg =~ /ownage/i

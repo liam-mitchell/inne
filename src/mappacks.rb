@@ -641,52 +641,62 @@ module MappackHighscoreable
   include Highscoreable
 
   def type
-    self.class.to_s.remove("Mappack")
+    self.class.to_s
   end
 
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
   # Optionally sort by score and date instead of rank (used for computing the rank)
-  def leaderboard(m = 'hs', score = false)
+  def leaderboard(m = 'hs', score = false, truncate: 20, update: false)
     m = 'hs' if !['hs', 'sr', 'gm'].include?(m)
+    attr_names = %W[id score_#{m} name metanet_id]
+
+    # Handle standard boards
+    if ['hs', 'sr'].include?(m)
+      attrs = %W[mappack_scores.id score_#{m} name metanet_id]
+      board = scores.where("rank_#{m} IS NOT NULL")
+      if score
+        board = board.order("score_#{m} #{m == 'hs' ? 'DESC' : 'ASC'}, date ASC")
+      else
+        board = board.order("rank_#{m} ASC")
+      end
+    end
+
+    # Handle gold boards
     if m == 'gm'
+      attrs = [
+        'MIN(subquery.id) AS id',
+        'MIN(score_gm) AS score_gm',
+        "MIN(IF(display_name IS NOT NULL, display_name, name)) AS name",
+        'subquery.metanet_id'
+      ]
       join = %{
         INNER JOIN (
           SELECT metanet_id, MIN(gold) AS score_gm
           FROM mappack_scores
-          WHERE highscoreable_id = #{id}
+          WHERE highscoreable_id = #{id} AND highscoreable_type = '#{type}'
           GROUP BY metanet_id
         ) AS opt
         ON mappack_scores.metanet_id = opt.metanet_id AND gold = score_gm
       }.gsub(/\s+/, ' ').strip
-      return scores.select(:id, :score_gm, :player_id, :metanet_id)
-                   .joins(join)
-                   .order('score_gm', :id)
+      subquery = scores.select(:id, :score_gm, :player_id, :metanet_id).joins(join)
+      board = MappackScore.from(subquery).group(:metanet_id).order('score_gm', 'id')
     end
 
-    board = scores.where("rank_#{m} IS NOT NULL")
-    if score
-      board.order("score_#{m} #{m == 'hs' ? 'DESC' : 'ASC'}, date ASC")
-    else
-      board.order("rank_#{m} ASC")
-    end
+    # Truncate, fetch player names, and convert to hash
+    board = board.limit(truncate) if truncate > 0
+    return board if update
+    board.joins("INNER JOIN players ON players.id = player_id")
+         .pluck(*attrs).map{ |s| attr_names.zip(s).to_h }
   end
 
   # Return scores in JSON format expected by N++
   def get_scores(qt = 0, metanet_id = nil)
     # Determine leaderboard type
-    m = qt == 2 ? 'sr' : 'hs'
+    m = qt == 2 ? 'gm' : 'hs'
 
     # Fetch scores
     board = leaderboard(m)
-    list = board.limit(20)
-                .joins("INNER JOIN players ON players.id = mappack_scores.player_id")
-                .pluck(
-                  "score_#{m}",
-                  "players.metanet_id",
-                  "players.name",
-                  "mappack_scores.id"
-                ).uniq{ |s| s[1] }
 
     # Build response
     res = {}
@@ -697,13 +707,13 @@ module MappackHighscoreable
     #  "my_replay_id"    => score.id.to_i,
     #  "my_display_name" => score.player.name.to_s.remove("\\")
     #} if !score.nil?
-    res["scores"] = list.each_with_index.map{ |s, i|
+    res["scores"] = board.each_with_index.map{ |s, i|
       {
-        "score"     => m == 'hs' ? (1000 * s[0].to_i / 60.0).round : 1000 * s[0].to_i,
+        "score"     => m == 'hs' ? (1000 * s["score_#{m}"].to_i / 60.0).round : 1000 * s["score_#{m}"].to_i,
         "rank"      => i,
-        "user_id"   => s[1].to_i,
-        "user_name" => s[2].to_s.remove("\\"),
-        "replay_id" => s[3].to_i
+        "user_id"   => s['metanet_id'].to_i,
+        "user_name" => s['name'].to_s.remove("\\"),
+        "replay_id" => s['id'].to_i
       }
     }
     res["query_type"] = qt
@@ -729,8 +739,8 @@ module MappackHighscoreable
   def update_ranks(mode = 'hs', player_id = nil)
     return -1 if !['hs', 'sr'].include?(mode)
     rank = -1
-    board = leaderboard(mode, true)
-    tied_score = mode == 'hs' ? board[0].score_hs : board[0].score_sr
+    board = leaderboard(mode, true, truncate: 0, update: true)
+    tied_score = board[0]["score_#{mode}"]
     tied_rank = 0
     board.each_with_index{ |s, i|
       rank = i if !player_id.nil? && s.player_id == player_id
@@ -1125,7 +1135,7 @@ class MappackScore < ActiveRecord::Base
       return
     end
 
-    if score.highscoreable.type != type[:name]
+    if score.highscoreable.type.remove('Mappack') != type[:name]
       return forward(req) if CLE_FORWARD
       warn("Getting replay: Score with ID #{query['replay_id']} is not from a #{type[:name].downcase}")
       return

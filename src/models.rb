@@ -336,26 +336,25 @@ module Highscoreable
     ret
   end
 
+  # Argument is unused, but it's necessary to be compatible with the corresponding
+  # function in MappackHighscoreable
   def leaderboard(mode = 'hs')
-    scores
+    attr_names = %W[rank id score name metanet_id cool star]
+    attrs = [
+      'rank',
+      'scores.id',
+      'score',
+      'IF(display_name IS NOT NULL, display_name, name)',
+      'metanet_id',
+      'cool',
+      'star'
+    ]
+    scores.joins("INNER JOIN players ON players.id = player_id")
+          .pluck(*attrs).map{ |s| attr_names.zip(s).to_h }
   end
 
   def max_name_length(mode = 'hs')
-    leaderboard(mode).map{ |s| s.player.print_name.length }.max
-  end
-
-  def find_coolness
-    max = scores.map(&:score).max.to_i.to_s.length + 4
-    s1  = scores.first.score.to_s
-    s2  = scores.last.score.to_s
-    d   = (0...max).find{ |i| s1[i] != s2[i] }
-    if !d.nil?
-      d     = -(max - d - 5) - (max - d < 4 ? 1 : 0)
-      cools = scores.size.times.find{ |i| scores[i].score < s1.to_f.truncate(d) }
-    else
-      cools = 0
-    end
-    cools
+    leaderboard(mode).map{ |s| s['name'].to_s.length }.max
   end
 
   def format_scores_mode(mode = 'hs')
@@ -370,14 +369,14 @@ module Highscoreable
     # Calculate padding
     name_padding = max_name_length(mode)
     
-    field = !mappack ? :score : "score_#{mode}"
+    field = !mappack ? 'score' : "score_#{mode}"
     score_padding = boards.map{ |s|
       mappack && hs ? s[field] / 60.0 : s[field]
     }.max.to_i.to_s.length + (!mappack || hs ? 4 : 0)
 
     # Print scores
     boards.each_with_index.map{ |s, i|
-      s.format(name_padding, score_padding, true, mode, i)
+      Scorish.format(name_padding, score_padding, true, mode, i, mappack, boards[i])
     }
   end
 
@@ -391,7 +390,6 @@ module Highscoreable
     board_hs = board_hs.ljust(size, ' ' * length_hs)
     board_sr = board_sr.ljust(size, ' ' * length_sr)
     header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4) + "\n"
-    #header += '_' * (header.length - 1) + "\n"
     header + board_hs.zip(board_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }.join("\n")
   end
 
@@ -421,6 +419,20 @@ module Highscoreable
       diff = c ? "#{"++-"[c[:rank] <=> 0]}#{"%#{rank_padding}d" % [c[:rank].abs]}, +#{"%#{change_padding}.3f" % [c[:score]]}" : "new"
       "#{o[:score].format(name_padding, score_padding, false)} (#{diff})"
     }.join("\n")
+  end
+
+  def find_coolness
+    max = scores.map(&:score).max.to_i.to_s.length + 4
+    s1  = scores.first.score.to_s
+    s2  = scores.last.score.to_s
+    d   = (0...max).find{ |i| s1[i] != s2[i] }
+    if !d.nil?
+      d     = -(max - d - 5) - (max - d < 4 ? 1 : 0)
+      cools = scores.size.times.find{ |i| scores[i].score < s1.to_f.truncate(d) }
+    else
+      cools = 0
+    end
+    cools
   end
 
   # The next function navigates through highscoreables.
@@ -633,23 +645,28 @@ end
 
 # Implemented by Score and MappackScore
 module Scorish
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil)
-    mappack = self.is_a?(MappackScore)
+
+  def self.format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil, mappack = false, h = {})
     hs = mode == 'hs'
     gm = mode == 'gm'
 
     # Compose each element
-    t_star   = mappack ? '' : (star ? '*' : ' ')
-    t_rank   = !mappack ? rank : (gm ? (t_rank || 0) : self["rank_#{mode}"])
+    #byebug
+    t_star   = mappack ? '' : (h['star'] ? '*' : ' ')
+    t_rank   = !mappack ? h['rank'] : (t_rank || 0)
     t_rank   = Highscoreable.format_rank(t_rank)
-    t_player = player.format_name(name_padding)
-    t_score  = !mappack ? score : (hs ? self["score_#{mode}"] / 60.0 : self["score_#{mode}"])
+    t_player = format_string(h['name'], name_padding)
+    t_score  = !mappack ? h['score'] : (hs ? h["score_#{mode}"] / 60.0 : h["score_#{mode}"])
     t_fmt    = !mappack || hs ? "%#{score_padding}.3f" : "%#{score_padding}d"
     t_score  = t_fmt % [t_score]
-    t_cool   = !mappack && show_cools && cool ? " 😎" : ""
+    t_cool   = !mappack && show_cools && h['cool'] ? " 😎" : ""
 
     # Put everything together
     "#{t_star}#{t_rank}: #{t_player} - #{t_score}#{t_cool}"
+  end
+
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil)
+    self.class.format(name_padding, score_padding, show_cools, mode, t_rank, self.is_a?(MappackScore), self.as_json)
   end
 end
 
