@@ -336,9 +336,9 @@ module Highscoreable
     ret
   end
 
-  # Argument is unused, but it's necessary to be compatible with the corresponding
+  # Arguments are unused, but they're necessary to be compatible with the corresponding
   # function in MappackHighscoreable
-  def leaderboard(mode = 'hs')
+  def leaderboard(*args, **kwargs)
     attr_names = %W[rank id score name metanet_id cool star]
     attrs = [
       'rank',
@@ -353,10 +353,6 @@ module Highscoreable
           .pluck(*attrs).map{ |s| attr_names.zip(s).to_h }
   end
 
-  def max_name_length(mode = 'hs')
-    leaderboard(mode).map{ |s| s['name'].to_s.length }.max
-  end
-
   def format_scores_mode(mode = 'hs')
     mappack = self.is_a?(MappackHighscoreable)
     hs = mode == 'hs'
@@ -364,11 +360,10 @@ module Highscoreable
 
     # Reload scores, otherwise sometimes recent changes aren't in memory
     scores.reload
-    boards = leaderboard(mode)
+    boards = leaderboard(mode, aliases: true)
 
     # Calculate padding
-    name_padding = max_name_length(mode)
-    
+    name_padding = boards.map{ |s| s['name'].to_s.length }.max
     field = !mappack ? 'score' : "score_#{mode}"
     score_padding = boards.map{ |s|
       mappack && hs ? s[field] / 60.0 : s[field]

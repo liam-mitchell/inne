@@ -647,13 +647,14 @@ module MappackHighscoreable
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
   # Optionally sort by score and date instead of rank (used for computing the rank)
-  def leaderboard(m = 'hs', score = false, truncate: 20, update: false)
+  def leaderboard(m = 'hs', score = false, truncate: 20, update: false, aliases: false)
     m = 'hs' if !['hs', 'sr', 'gm'].include?(m)
+    names = aliases ? 'IF(display_name IS NOT NULL, display_name, name)' : 'name'
     attr_names = %W[id score_#{m} name metanet_id]
 
     # Handle standard boards
     if ['hs', 'sr'].include?(m)
-      attrs = %W[mappack_scores.id score_#{m} name metanet_id]
+      attrs = %W[mappack_scores.id score_#{m} #{names} metanet_id]
       board = scores.where("rank_#{m} IS NOT NULL")
       if score
         board = board.order("score_#{m} #{m == 'hs' ? 'DESC' : 'ASC'}, date ASC")
@@ -667,7 +668,7 @@ module MappackHighscoreable
       attrs = [
         'MIN(subquery.id) AS id',
         'MIN(score_gm) AS score_gm',
-        "MIN(IF(display_name IS NOT NULL, display_name, name)) AS name",
+        "MIN(#{names}) AS name",
         'subquery.metanet_id'
       ]
       join = %{
@@ -693,7 +694,7 @@ module MappackHighscoreable
   # Return scores in JSON format expected by N++
   def get_scores(qt = 0, metanet_id = nil)
     # Determine leaderboard type
-    m = qt == 2 ? 'gm' : 'hs'
+    m = qt == 2 ? 'sr' : 'hs'
 
     # Fetch scores
     board = leaderboard(m)
