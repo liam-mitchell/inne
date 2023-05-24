@@ -13,10 +13,11 @@ if LOG_SQL
   ActiveRecord::Base.logger = Logger.new(PATH_LOG_SQL) if LOG_TO_FILE
 end
 
-# Custom logging class for the terminal, that supports:
-#   - Multiple levels of verbosity (from quiet to debug)
-#   - Different modes for different purposes
-#   - Both raw and rich output (colored, unicode, etc)
+# Custom logging class, that supports:
+#   - 9 modes (info, error, debug, etc)
+#   - 5 levels of verbosity (from silent to all)
+#   - 3 outputs (terminal, file and Discord DMs)
+#   - Both raw and rich format (colored, unicode, etc)
 #   - Methods to config it on the fly from Discord
 module Log
 
@@ -161,16 +162,13 @@ module Log
     if log_to_file
       if File.size?(PATH_LOG_FILE).to_i >= LOG_FILE_MAX
         File.rename(PATH_LOG_FILE, PATH_LOG_OLD)
-        if !$log_warned
-          $log_warned = true
-          warn("Log file is full!", file: false, discord: true)
-        end
+        warn("Log file was filled!", file: false, discord: true)
       end
       File.write(PATH_LOG_FILE, msg[:plain] + "\n", mode: 'a')
     end
 
     # Log to Discord DMs, if specified
-    discord(text) if LOG_TO_DISCORD && discord
+    discord(text) if log_to_discord
 
     # Return original text
     text
@@ -187,7 +185,7 @@ module Log
     botmaster.pm.send_message(msg) if LOG_TO_DISCORD rescue nil
   end
 
-  # Clear 
+  # Clear the current terminal line
   def self.clear
     write('', :info, newline: false, pad: true)
   end

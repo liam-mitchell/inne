@@ -1162,10 +1162,10 @@ class MappackScore < ActiveRecord::Base
     if !id.nil? # If ID has been provided
       s = MappackScore.find_by(id: id)
       raise "Mappack score of ID #{id} not found" if score.nil?
-      scores = MappackScore.where(highscoreable: s.highscoreable, player: s.player)
-      raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
       highscoreable = s.highscoreable
       player = s.player
+      scores = MappackScore.where(highscoreable: highscoreable, player: player)
+      raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
     else # If highscoreable and player have been provided
       raise "#{highscoreable.name} does not belong to a mappack" if !highscoreable.is_a?(MappackHighscoreable)
       scores = self.where(highscoreable: highscoreable, player: player)
@@ -1174,8 +1174,13 @@ class MappackScore < ActiveRecord::Base
       raise "#{player.name}'s leaderboard score in #{highscoreable.name} not found" if s.nil?
     end
 
+    # Score integrity checks
+    new_score = (score * 60).round
+    gold = MappackScore.gold_count(highscoreable.type, new_score, s.score_sr)
+    raise "That score is incompatible with the framecount" if !MappackScore.verify_gold(gold)
+
     # Change score
-    s.update(score_hs: (score * 60).round)
+    s.update(score_hs: new_score, gold: gold.round)
 
     # Update player's ranks
     scores.update_all(rank_hs: nil, tied_rank_hs: nil)
@@ -1214,6 +1219,22 @@ class MappackScore < ActiveRecord::Base
   # gold count is not exactly an integer.
   def self.verify_gold(gold)
     (gold - gold.round).abs < 0.001
+  end
+
+  # Perform the gold check (see the 2 methods above) for every score in the
+  # database, returning the scores failing the check.
+  def self.gold_check
+    scores = []
+    self.all.each{ |s| scores << s if !s.verify_gold }
+    scores
+  end
+
+  def gold_count
+    self.class.gold_count(highscoreable.type, score_hs, score_sr)
+  end
+
+  def verify_gold
+    self.class.verify_gold(gold_count)
   end
 
   # Dumps demo data in the format N++ users for server communications

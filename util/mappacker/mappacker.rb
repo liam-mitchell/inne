@@ -3,15 +3,16 @@ require 'fileutils'
 #require 'tk'
 require 'win32/registry'
 
-MAPPACK = 'Classic'
-AUTHOR = 'NateyPooPoo'
-NAME = 'cla'
+MAPPACK = 'Duality'
+AUTHOR = 'w95559w'
+NAME = 'dua'
 HOST = 'https://dojo.nplusplus.ninja'
 PORT = 8126
 PROXY = '45.32.150.168'
 TARGET = "#{PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
 DIALOG = true
-PAD = 30
+PAD = 32
+CONTROLS = true
 
 def dialog(title, text)
   print "\a"
@@ -61,6 +62,27 @@ rescue => e
   log_exception(e, "Failed to find Steam folder")
 end
 
+# Find N++ folder in My Documents, where the nprofile and the npp.conf files are located
+def find_documents_folder(output = true)
+  # Find My Documents
+  print "┣━ Finding documents folder... ".ljust(PAD, ' ') if output
+  reg = Win32::Registry::HKEY_CURRENT_USER.open('Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders') rescue nil
+  raise "Shell folders not found" if reg.nil?
+  folder = reg['Personal'] rescue nil
+  raise "My Documents folder not found" if folder.nil?
+
+  # Find N++ folder
+  dir = File.join(folder, 'Metanet', 'N++')
+  raise "N++ documents folder not found" if !Dir.exist?(dir)
+
+  puts "OK" if output
+  dir
+rescue RuntimeError => e
+  log_exception('', e)
+rescue => e
+  log_exception(e, "Failed to find documents folder")
+end
+
 def find_npp_folder(output = true)
   folder = nil
   folders = find_steam_folders(output)
@@ -104,7 +126,7 @@ def patch(depatch = false, info = false)
   # Patch library
   raise "Failed to patch N++ files (incorrect target length)" if TARGET.length != HOST.length
   file = depatch ? file.gsub!(TARGET, HOST) : file.gsub!(HOST, TARGET)
-  raise "Failed to patch N++ files (host/target not found)" if file.nil?
+  raise "Failed to patch N++ files (host/target not found). If you have another mappack installed, please uninstall it first." if file.nil?
   File.binwrite(fn, file)
 
   puts "OK" if !info
@@ -118,16 +140,49 @@ def depatch
   patch(true)
 end
 
+def change_controls(install = true)
+  folder = find_documents_folder
+  print "┣━ Changing P2 controls#{install ? '' : ' back'}...".ljust(PAD, ' ')
+  # Read controls file
+  path = File.join(folder, 'keys.vars')
+  file = File.binread(path)
+  raise "keys.vars file not found" if file.nil?
+
+  # Parse controls
+  controls = file.split("\n").select{ |l| !!l[/=/] }.map{ |l|
+    arr = l.split("=")
+    [arr[0].strip, arr[1].strip[0..-2]]
+  }.to_h
+
+  # Change controls
+  controls['input_p2_left_key']  = install ? controls['input_p1_left_key']  : '-1'
+  controls['input_p2_right_key'] = install ? controls['input_p1_right_key'] : '-1'
+  controls['input_p2_jump_key']  = install ? controls['input_p1_jump_key']  : '-1'
+  controls['input_p2_alt2_key']  = install ? controls['input_p1_alt2_key']  : '-1'
+
+  # Export controls
+  controls = controls.map{ |k, v| "#{k} = #{v};" }.join("\n")
+  File.binwrite(path, controls)
+
+  puts "OK"
+rescue RuntimeError => e
+  log_exception('', e)
+rescue => e
+  log_exception(e, "Failed to change level files.")
+end
+
 def change_levels(install = true)
   print "┣━ Swapping map files#{install ? '' : ' back'}... ".ljust(PAD, ' ')
   # Find folder
   folder = File.join(find_npp_folder(false), 'NPP', 'Levels')
   raise "N++ levels folder not found" if !Dir.exist?(folder)
   
-  # Change file
+  # Change files
   tmp = $0[/(.*)\//, 1]
-  fn = install ? File.join(tmp, 'SI.txt') : File.join(tmp, 'SI_original.txt')
-  FileUtils.cp_r(fn, File.join(folder, 'SI.txt'), remove_destination: true)
+  ['C', 'C2'].each{ |f|
+    fn = install ? File.join(tmp, "#{f}.txt") : File.join(tmp, "#{f}_original.txt")
+    FileUtils.cp_r(fn, File.join(folder, "#{f}.txt"), remove_destination: true)
+  }
 
   puts "OK"
 rescue RuntimeError => e
@@ -150,6 +205,7 @@ def change_texts(install = true)
   # Change texts
   change_text(file, 'HIGH_SCORE_PANEL_FRIEND_HIGHSCORES_LONG', install ? 'Speedrun Boards' : 'Friends Highscores')
   change_text(file, 'HIGH_SCORE_PANEL_FRIEND_HIGHSCORES_SHORT', install ? 'Speedrun' : 'Friends')
+  change_text(file, 'PLAYER_PRESS_ANY', install ? "#{MAPPACK} by #{AUTHOR}" : 'Press Any Key')
 
   # Save file
   File.binwrite(fn, file)
@@ -163,6 +219,7 @@ def install
   patch
   change_levels(true)
   change_texts(true)
+  change_controls(true)
   puts "┃\n┗━━━ Installed '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Installed '#{MAPPACK}' N++ mappack successfully!")
 end
@@ -172,19 +229,21 @@ def uninstall
   depatch
   change_levels(false)
   change_texts(false)
+  change_controls(false)
   puts "┃\n┗━━━ Uninstalled '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Uninstalled '#{MAPPACK}' N++ mappack successfully!")
 end
 
 str1 = "   N++ MAPPACK INSTALLER   "
 str2 = "   '#{MAPPACK}' by #{AUTHOR}   "
-size = [str1.size, str2.size].max
+str3 = "Report technical issues to Eddy"
+size = [str1.size, str2.size, str3.size - 2].max
 puts
 puts "╔#{'═' * size}╗"
 puts "║#{str1.center(size)}║"
 puts "║#{str2.center(size)}║"
 puts "╚#{'═' * size}╝"
-puts "Report technical issues to Eddy"
+puts str3
 puts
 print "Checking current state... "
 $installed = patch(false, true)

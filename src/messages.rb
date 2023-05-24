@@ -1795,6 +1795,16 @@ def send_mappack_info(event)
   event << "Set mappack `#{mappack.code}` #{flags}."
 end
 
+def send_gold_check(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  event << "List of potentially incorrect mappack scores:"
+  event << format_block(MappackScore.gold_check.map{ |s|
+    "#{s.id} by #{s.player.name} in #{s.highscoreable.name}"
+  }.join("\n"))
+end
+
+
 def send_log_config(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
