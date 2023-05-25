@@ -81,6 +81,7 @@ module Map
   DIM     = 44
   WIDTH   = DIM * (COLUMNS + 2)
   HEIGHT  = DIM * (ROWS + 2)
+  UNITS   = 24
 
   # TODO: Perhaps store object data without transposing, hence being able to skip
   #       the decoding when dumping
@@ -320,11 +321,18 @@ module Map
   #                           SCREENSHOT GENERATOR
   # <-------------------------------------------------------------------------->
 
-  def coord(n) # transform N++ coordinates into pixel coordinates
-    DIM * n.to_f / 4
+  # Transform N++ tile coordinates into pixel coordinates
+  def coord(n)
+    (DIM * n.to_f / 4).round
   end
 
-  def check_dimensions(image, x, y) # ensure image is within limits
+  # Transform N++ unit coordinates into pixel coordinates
+  def u2px(n)
+    (DIM * n.to_f / 24).round
+  end
+
+  # Ensure image is within limits
+  def check_dimensions(image, x, y)
     x >= 0 && y >= 0 && x <= WIDTH - image.width && y <= HEIGHT - image.height
   end
 
@@ -360,7 +368,7 @@ module Map
     output
   end
 
-  def screenshot(theme = DEFAULT_PALETTE, file: false)
+  def screenshot(theme = DEFAULT_PALETTE, file: false, coords: [])
     bench(:start) if BENCHMARK
     themes = THEMES.map(&:downcase)
     theme = theme.downcase
@@ -429,8 +437,21 @@ module Map
         if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
       end
     end
+
+    # PAINT ROUTES
+    coords.each{ |c_list|
+      c_list.each_with_index{ |c, i|
+        next if i == 0
+        image.line(u2px(c_list[i - 1][0]), u2px(c_list[i - 1][1]), u2px(c[0]), u2px(c[1]), BLACK, false)
+      }
+    }
+
     bench(:step) if BENCHMARK
     file ? tmp_file(image.to_blob, self.name + '.png', true) : image.to_blob
+
+  rescue => e
+    lex(e, "Failed to generate screenshot for #{self.name}")
+    nil
   end
 end
 
@@ -464,8 +485,8 @@ class Mappack < ActiveRecord::Base
         mappack.read
       end
     }
-  rescue
-    err("Error seeding mappacks to database")
+  rescue => e
+    lex(e, "Error seeding mappacks to database")
   end
 
   # TODO: Parse challenge files, in a separate function with its own command,

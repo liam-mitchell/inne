@@ -1192,6 +1192,36 @@ def send_demo_download(event)
   send_file(event, score.demo.demo, "#{h.name}_#{rank.ordinalize}_replay", true)
 end
 
+# Use SimVYo's tool to trace the route of a run based on the map data and
+# the replay data.
+def send_trace(event)
+  # Parse message parameters
+  msg    = event.content
+  level  = parse_level_or_episode(msg)
+  raise "Episodes and columns can't be traced (yet)" if !level.is_a?(Levelish)
+  map = MappackLevel.find_by(id: level.id) if !level.is_a?(MappackHighscoreable)
+  raise "Level data not found" if map.nil?
+  ranks  = parse_ranks(msg, level.scores.size).take(4)
+
+  # Export input files
+  File.binwrite('map_data', map.dump_level)
+  ranks.each_with_index.map{ |r, i|
+    File.binwrite("inputs_#{i}", level.scores[r].demo.demo)
+  }
+  system "python3 util/ntrace.py"
+
+  # Read output files
+  file = File.binread('output.txt')
+  valid = file.scan(/True|False/).map{ |b| b == 'True' }
+  coords = file.split(/True|False/)[1..-1].map{ |d|
+    d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
+  }
+  system "rm map_data inputs_* output.txt"
+
+  # Draw
+  send_file(event, map.screenshot(coords: coords), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+end
+
 # Sends a PNG graph plotting the evolution of player's scores (e.g. top20 count,
 # 0th count, points...) over time.
 # Currently unavailable because the db structure changed between CCS and Eddy
@@ -1932,6 +1962,7 @@ def respond(event)
   send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   send_tally(event)          if msg =~ /\btally\b/i
   send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
+  send_trace(event)          if msg =~ /\btrace\b/i
   faceswap(event)            if msg =~ /faceswap/i
   testa(event) if msg =~ /testa/i
 

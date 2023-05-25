@@ -415,8 +415,8 @@ def parse_bottom_rank(msg)
   rank ? (20 - rank.to_i).clamp(0, 19) : nil
 end
 
-def parse_ranks(msg)
-  ranks = msg.scan(/\s+([0-9][0-9]?)/).map{ |r| r[0].to_i }.reject{ |r| r < 0 || r > 19 }
+def parse_ranks(msg, clamp = 20)
+  ranks = msg.scan(/\s+([0-9][0-9]?)/).map{ |r| r[0].to_i.clamp(0, clamp - 1) }
   ranks.empty? ? [0] : ranks
 end
 
@@ -1024,5 +1024,6 @@ def tmp_file(data, name = 'result.txt', binary = false)
 end
 
 def send_file(event, data, name = 'result.txt', binary = false)
+  return nil if data.nil?
   event.attach_file(tmp_file(data, name, binary))
 end

@@ -483,7 +483,7 @@ module Highscoreable
     new_id += type[:slots] * mappack.id if self.is_a?(MappackHighscoreable)
     self.class.find(new_id)
   rescue => e
-    lex(e, 'Failed to navigate highscoreable')
+    err('Failed to navigate highscoreable')
     self
   end
 
@@ -1088,17 +1088,27 @@ class Player < ActiveRecord::Base
   def self.login(req)
     # Forward request to Metanet
     res = forward(req)
-    raise 'Invalid response' if res.nil? || res == INVALID_RESP
+    invalid = res.nil? || res == INVALID_RESP
+    raise 'Invalid response' if invalid && !LOCAL_LOGIN
 
     # Parse response and register player in database
-    json = JSON.parse(res)
-    Player.find_or_create_by(metanet_id: json['user_id'].to_i).update(name: json['name'].to_s)
-    user = User.find_or_create_by(steam_id: json['steam_id'].to_s)
-    user.update(
-      playername: json['name'].to_s,
-      last_active: Time.now
-    )
-    user.update(username: json['name'].to_s) if user.username.nil?
+    if !invalid
+      json = JSON.parse(res)
+      Player.find_or_create_by(metanet_id: json['user_id'].to_i).update(name: json['name'].to_s)
+      user = User.find_or_create_by(steam_id: json['steam_id'].to_s)
+      user.update(
+        playername: json['name'].to_s,
+        last_active: Time.now
+      )
+      user.update(username: json['name'].to_s) if user.username.nil?
+    else
+      id = req.query['user_id'].to_i
+      player = Player.find_by(metanet_id: id) rescue nil
+      user = User.where.not(steam_id: nil).find_by(playername: player.name) rescue nil
+      raise "Couldn't login locally" if player.nil? || user.nil?
+      json = { 'user_id' => id, 'steam_id' => user.steam_id, 'name' => player.name }
+      res = json.to_json
+    end
 
     # Return the same response
     dbg("#{json['name'].to_s} (#{json['user_id']}) logged in")

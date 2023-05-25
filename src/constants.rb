@@ -87,6 +87,7 @@ PATH_LOG_FILE   = "#{DIR_LOGS}/log_outte"
 PATH_LOG_SQL    = "#{DIR_LOGS}/log_outte_sql"
 PATH_LOG_OLD    = "#{DIR_LOGS}/log_outte_old"
 PATH_LOG_REPORT = "#{DIR_LOGS}/log_report"
+NTRACE          = "./utils/ntrace.py"
 
 # <--------------------------------------------------------------------------->
 # <------                  MONKEY PATCHING VARIABLES                    ------>
@@ -255,6 +256,7 @@ QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 PWD              = ENV['NPP_HASH']
 CLE_FORWARD      = true            # Forward unrelated requests to Metanet
 INTEGRITY_CHECKS = false           # Verity replay security hashes
+LOCAL_LOGIN      = false           # Try to login user ourselves if Metanet fails
 
 # <--------------------------------------------------------------------------->
 # <------                       GAME VARIABLES                          ------>
