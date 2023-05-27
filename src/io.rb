@@ -1015,15 +1015,20 @@ def format_level_matches(event, msg, page, initial, matches, func)
   end
 end
 
-def tmp_file(data, name = 'result.txt', binary = false)
-  tmpfile = File.join(Dir.tmpdir, name)
+def tmp_filename(name)
+  File.join(Dir.tmpdir, name)
+end
+
+
+def tmp_file(data, name = 'result.txt', binary: false, file: true)
+  tmpfile = tmp_filename(name)
   File::open(tmpfile, binary ? 'wb' : 'w', crlf_newline: !binary) do |f|
     f.write(data)
   end
-  File::open(tmpfile)
+  file ? File::open(tmpfile) : tmpfile
 end
 
 def send_file(event, data, name = 'result.txt', binary = false)
   return nil if data.nil?
-  event.attach_file(tmp_file(data, name, binary))
+  event.attach_file(tmp_file(data, name, binary: binary))
 end

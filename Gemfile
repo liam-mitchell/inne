@@ -10,6 +10,7 @@ source 'https://rubygems.org' do
   gem 'damerau-levenshtein'
   gem 'rubyzip'
   gem 'unicode-emoji'
+  gem 'matplotlib'
 
 
   group :debug, :test do

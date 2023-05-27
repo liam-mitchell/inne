@@ -78,7 +78,7 @@ def initialize_vars
   $twitch_token    = nil
   $twitch_streams  = {}
   $boot_time       = Time.now.to_i
-  Dir.mkdir(DIR_LOGS) unless Dir.exist?(DIR_LOGS)
+  [DIR_LOGS].each{ |d| Dir.mkdir(d) unless Dir.exist?(d) }
   log("Initialized global variables")
 rescue => e
   fatal("Failed to initialize global variables: #{e}")

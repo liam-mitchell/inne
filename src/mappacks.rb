@@ -1,4 +1,5 @@
 require 'digest'
+require 'matplotlib/pyplot'
 require 'zlib'
 
 # TODO: This module should contain the functionality common to all maps:
@@ -438,16 +439,29 @@ module Map
       end
     end
 
-    # PAINT ROUTES
-    coords.each{ |c_list|
-      c_list.each_with_index{ |c, i|
-        next if i == 0
-        image.line(u2px(c_list[i - 1][0]), u2px(c_list[i - 1][1]), u2px(c[0]), u2px(c[1]), BLACK, false)
+    # PAINT ROUTES (we use python, better graphing capabilities)
+    if !coords.empty?
+      dpi = 390
+      mpl = Matplotlib::Pyplot
+      tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
+      coords.each{ |c|
+        mpl.plot(c.map(&:first), c.map(&:last), linewidth: 0.5)
       }
-    }
+      dx = (COLUMNS + 2) * UNITS
+      dy = (ROWS + 2) * UNITS
+      mpl.axis([0, dx, dy, 0])
+      mpl.axis('off')
+      ax = mpl.gca
+      ax.set_aspect('equal', adjustable: 'box')
+      img = mpl.imread(tmp)
+      ax.imshow(img, extent: [0, dx, dy, 0])
+      fn = tmp_filename("#{name}_tmp2.png")
+      mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: dpi)
+      image = ChunkyPNG::Image.from_file(fn)
+    end
 
     bench(:step) if BENCHMARK
-    file ? tmp_file(image.to_blob, self.name + '.png', true) : image.to_blob
+    file ? tmp_file(image.to_blob, self.name + '.png', binary: true) : image.to_blob
 
   rescue => e
     lex(e, "Failed to generate screenshot for #{self.name}")
