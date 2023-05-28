@@ -1192,21 +1192,29 @@ def send_demo_download(event)
   send_file(event, score.demo.demo, "#{h.name}_#{rank.ordinalize}_replay", true)
 end
 
-# Use SimVYo's tool to trace the route of a run based on the map data and
-# the replay data.
+# Use SimVYo's tool to trace the replay of a run based on the map data and
+# the demo data.
 def send_trace(event)
   # Parse message parameters
-  msg    = event.content
-  level  = parse_level_or_episode(msg)
+  msg = event.content
+  h = parse_palette(msg)
+  msg = h[:msg]
+  palette = h[:palette]
+  error = h[:error]
+  level = parse_level_or_episode(msg, mappack: true)
   raise "Episodes and columns can't be traced (yet)" if !level.is_a?(Levelish)
-  map = MappackLevel.find_by(id: level.id) if !level.is_a?(MappackHighscoreable)
+  mappack = level.is_a?(MappackHighscoreable)
+  map = !mappack ? MappackLevel.find_by(id: level.id) : level
   raise "Level data not found" if map.nil?
-  ranks  = parse_ranks(msg, level.scores.size).take(4)
+  board = parse_board(msg)
+  leaderboard = level.leaderboard(board, pluck: false)
+  ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
+  scores = ranks.map{ |r| leaderboard[r] }.compact
 
   # Export input files
   File.binwrite('map_data', map.dump_level)
-  ranks.each_with_index.map{ |r, i|
-    File.binwrite("inputs_#{i}", level.scores[r].demo.demo)
+  scores.each_with_index.map{ |s, i|
+    File.binwrite("inputs_#{i}", s.demo.demo)
   }
   system "python3 util/ntrace.py"
 
@@ -1219,7 +1227,16 @@ def send_trace(event)
   system "rm map_data inputs_* output.txt"
 
   # Draw
-  send_file(event, map.screenshot(coords: coords), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+  event << error.strip if !error.empty?
+  event << "Replay traces for #{level.name} in palette `#{palette}`:"
+  scores = level.format_scores(mode: board, ranks: ranks, join: false)
+                .each_with_index.map{ |s, i|
+                  s + (valid[i] ? '' : " (Trace error!)")
+                }
+  event << format_block(scores.join("\n"))
+  send_file(event, map.screenshot(palette, coords: coords), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+rescue => e
+  lex(e, 'Failed to trace replays')
 end
 
 # Sends a PNG graph plotting the evolution of player's scores (e.g. top20 count,

@@ -441,11 +441,16 @@ module Map
 
     # PAINT ROUTES (we use python, better graphing capabilities)
     if !coords.empty?
+      n = [coords.size, MAX_TRACES].min
+      color_idx = OBJECTS[0][:pal]
+      palette_idx = themes.index(theme)
       dpi = 390
       mpl = Matplotlib::Pyplot
       tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
-      coords.each{ |c|
-        mpl.plot(c.map(&:first), c.map(&:last), linewidth: 0.5)
+      coords.take(MAX_TRACES).reverse.each_with_index{ |c, i|
+        pixel = PALETTE[color_idx + n - 1 - i, palette_idx]
+        color = '#' + [pixel].pack('L>').unpack('H*')[0]
+        mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
       }
       dx = (COLUMNS + 2) * UNITS
       dy = (ROWS + 2) * UNITS
@@ -457,6 +462,8 @@ module Map
       ax.imshow(img, extent: [0, dx, dy, 0])
       fn = tmp_filename("#{name}_tmp2.png")
       mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: dpi)
+      mpl.clf
+      mpl.close
       image = ChunkyPNG::Image.from_file(fn)
     end
 
@@ -682,7 +689,7 @@ module MappackHighscoreable
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
   # Optionally sort by score and date instead of rank (used for computing the rank)
-  def leaderboard(m = 'hs', score = false, truncate: 20, update: false, aliases: false)
+  def leaderboard(m = 'hs', score = false, truncate: 20, pluck: true, aliases: false)
     m = 'hs' if !['hs', 'sr', 'gm'].include?(m)
     names = aliases ? 'IF(display_name IS NOT NULL, display_name, name)' : 'name'
     attr_names = %W[id score_#{m} name metanet_id]
@@ -721,7 +728,7 @@ module MappackHighscoreable
 
     # Truncate, fetch player names, and convert to hash
     board = board.limit(truncate) if truncate > 0
-    return board if update
+    return board if !pluck
     board.joins("INNER JOIN players ON players.id = player_id")
          .pluck(*attrs).map{ |s| attr_names.zip(s).to_h }
   end
@@ -775,7 +782,7 @@ module MappackHighscoreable
   def update_ranks(mode = 'hs', player_id = nil)
     return -1 if !['hs', 'sr'].include?(mode)
     rank = -1
-    board = leaderboard(mode, true, truncate: 0, update: true)
+    board = leaderboard(mode, true, truncate: 0, pluck: false)
     tied_score = board[0]["score_#{mode}"]
     tied_rank = 0
     board.each_with_index{ |s, i|

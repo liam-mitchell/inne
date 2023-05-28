@@ -477,6 +477,7 @@ TABS_NEW = {
 # <--------------------------------------------------------------------------->
 
 DEFAULT_TYPES  = ['Level', 'Episode'] # Default highscoreable types
+MAX_TRACES = 4 # Maximum amount of simultaneous replays to trace
 
 MIN_TIES = 3 # Minimum number of ties for 0th to be considered maxable
 MAX_SECS = 5 # Difference in seconds to consider two dates equal (for navigation)

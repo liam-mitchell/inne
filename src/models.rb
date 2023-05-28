@@ -349,34 +349,44 @@ module Highscoreable
       'cool',
       'star'
     ]
-    scores.joins("INNER JOIN players ON players.id = player_id")
-          .pluck(*attrs).map{ |s| attr_names.zip(s).to_h }
+    if !kwargs.key?(:pluck) || kwargs[:pluck]
+      scores.joins("INNER JOIN players ON players.id = player_id")
+            .pluck(*attrs).map{ |s| attr_names.zip(s).to_h }
+    else
+      scores
+    end
   end
 
-  def format_scores_mode(mode = 'hs')
+  def format_scores_mode(mode = 'hs', ranks: 20.times.to_a)
     mappack = self.is_a?(MappackHighscoreable)
     hs = mode == 'hs'
     gm = mode == 'gm'
 
     # Reload scores, otherwise sometimes recent changes aren't in memory
     scores.reload
-    boards = leaderboard(mode, aliases: true)
+    boards = leaderboard(mode, aliases: true).each_with_index.select{ |s, r|
+      ranks.include?(r)
+    }
 
     # Calculate padding
-    name_padding = boards.map{ |s| s['name'].to_s.length }.max
+    name_padding = boards.map{ |s, _| s['name'].to_s.length }.max
     field = !mappack ? 'score' : "score_#{mode}"
-    score_padding = boards.map{ |s|
+    score_padding = boards.map{ |s, _|
       mappack && hs ? s[field] / 60.0 : s[field]
     }.max.to_i.to_s.length + (!mappack || hs ? 4 : 0)
 
     # Print scores
-    boards.each_with_index.map{ |s, i|
-      Scorish.format(name_padding, score_padding, true, mode, i, mappack, boards[i])
+    boards.map{ |s, r|
+      Scorish.format(name_padding, score_padding, true, mode, r, mappack, s)
     }
   end
 
-  def format_scores(mode: nil)
-    return format_scores_mode(mode).join("\n") if !self.is_a?(MappackHighscoreable) || !mode.nil?
+  def format_scores(mode: nil, ranks: 20.times.to_a, join: true)
+    if !self.is_a?(MappackHighscoreable) || !mode.nil?
+      ret = format_scores_mode(mode, ranks: ranks)
+      ret = ret.join("\n") if join
+      return ret
+    end
     board_hs = format_scores_mode('hs')
     board_sr = format_scores_mode('sr')
     length_hs = board_hs.first.length
@@ -385,7 +395,9 @@ module Highscoreable
     board_hs = board_hs.ljust(size, ' ' * length_hs)
     board_sr = board_sr.ljust(size, ' ' * length_sr)
     header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4) + "\n"
-    header + board_hs.zip(board_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }.join("\n")
+    ret = header + board_hs.zip(board_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }
+    ret = ret.join("\n") if join
+    ret
   end
 
   def difference(old)
@@ -646,7 +658,6 @@ module Scorish
     gm = mode == 'gm'
 
     # Compose each element
-    #byebug
     t_star   = mappack ? '' : (h['star'] ? '*' : ' ')
     t_rank   = !mappack ? h['rank'] : (t_rank || 0)
     t_rank   = Highscoreable.format_rank(t_rank)
@@ -661,7 +672,9 @@ module Scorish
   end
 
   def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil)
-    self.class.format(name_padding, score_padding, show_cools, mode, t_rank, self.is_a?(MappackScore), self.as_json)
+    h = self.as_json
+    h['name'] = player.print_name if !h.key?('name')
+    Scorish.format(name_padding, score_padding, show_cools, mode, t_rank, self.is_a?(MappackScore), h)
   end
 end
 
