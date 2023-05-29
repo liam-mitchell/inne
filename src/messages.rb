@@ -1190,9 +1190,12 @@ def send_trace(event)
   scores = ranks.map{ |r| leaderboard[r] }.compact
 
   # Export input files
+  demos = []
   File.binwrite('map_data', map.dump_level)
   scores.each_with_index.map{ |s, i|
-    File.binwrite("inputs_#{i}", s.demo.demo)
+    demo = s.demo.demo
+    demos << Demo.decode(demo)
+    File.binwrite("inputs_#{i}", demo)
   }
   system "python3 #{PATH_NTRACE}"
 
@@ -1213,17 +1216,17 @@ def send_trace(event)
                   s + (valid[i] ? '' : " (Trace error!)")
                 }
   event << format_block(scores.join("\n"))
-  send_file(event, map.screenshot(palette, coords: coords), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+  send_file(event, map.screenshot(palette, coords: coords, demos: demos), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
 rescue RuntimeError
   raise
 rescue => e
   lex(e, 'Failed to trace replays')
 end
 
-# Return an episode's partial level scores using 2 methods:
+# Return an episode's partial level scores and splits using 2 methods:
 #   1) The actual episode splits, using SimVYo's tool
 #   2) The IL splits
-# Also return the difference
+# Also return the differences between both
 def send_splits(event)
   # Parse message parameters
   msg = event.content
@@ -1289,13 +1292,13 @@ def send_splits(event)
   rows = []
   rows << ['', '00', '01', '02', '03', '04']
   rows << :sep
-  rows << ['Ep  splits', *ep_splits]  if errors == 0
+  rows << ['Ep splits', *ep_splits]  if errors == 0
   rows << ['Lvl splits', *lvl_splits]
   rows << ['Total diff', *cum_diffs]  if errors == 0
   rows << :sep                        if errors == 0
   rows << ['Ep scores',  *ep_scores]  if errors == 0
   rows << ['Lvl scores', *lvl_scores]
-  rows << ['IL diffs',   *diffs]       if errors == 0
+  rows << ['Ind diffs',   *diffs]       if errors == 0
 
   event << "#{rank.ordinalize} splits for episode #{ep.name}:"
   event << format_block(make_table(rows))

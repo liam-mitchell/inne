@@ -366,7 +366,7 @@ module Highscoreable
     scores.reload
     boards = leaderboard(mode, aliases: true).each_with_index.select{ |s, r|
       ranks.include?(r)
-    }
+    }.sort_by{ |s, r| ranks.index(r) }
 
     # Calculate padding
     name_padding = boards.map{ |s, _| s['name'].to_s.length }.max

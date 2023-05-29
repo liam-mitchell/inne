@@ -369,7 +369,13 @@ module Map
     output
   end
 
-  def screenshot(theme = DEFAULT_PALETTE, file: false, coords: [])
+  def screenshot(
+      theme = DEFAULT_PALETTE, # Palette to generate screenshot in
+      file: false,             # Whether to export to a file or return the raw data
+      coords: [],              # Array of coordinates to plot routes
+      demos: [],               # Array of demo inputs, to mark parts of the route
+      markers: { jump: true, left: true, right: true} # Mark changes in replays
+    )
     bench(:start) if BENCHMARK
     themes = THEMES.map(&:downcase)
     theme = theme.downcase
@@ -441,6 +447,7 @@ module Map
 
     # PAINT ROUTES (we use python, better graphing capabilities)
     if !coords.empty?
+      demos = demos.take(MAX_TRACES).reverse
       n = [coords.size, MAX_TRACES].min
       color_idx = OBJECTS[0][:pal]
       palette_idx = themes.index(theme)
@@ -451,6 +458,18 @@ module Map
         pixel = PALETTE[color_idx + n - 1 - i, palette_idx]
         color = '#' + [pixel].pack('L>').unpack('H*')[0]
         mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
+        next if markers.values.count(true) == 0
+        demos[i].each_with_index{ |f, j|
+          if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
+            mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
+          end
+          if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
+            mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
+          end
+          if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
+            mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
+          end
+        }
       }
       dx = (COLUMNS + 2) * UNITS
       dy = (ROWS + 2) * UNITS
