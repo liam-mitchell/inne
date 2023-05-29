@@ -541,6 +541,18 @@ def round_score(score)
   score.is_a?(Integer) ? score : (score * 60).round / 60.0
 end
 
+# Calculate episode splits based on the 5 level scores
+def splits_from_scores(scores, start: 90.0, factor: 1, offset: 90.0)
+  acc = start
+  scores.map{ |s| round_score(acc += (s / factor - offset)) }
+end
+
+def scores_from_splits(splits, offset: 90.0)
+  splits.each_with_index.map{ |s, i|
+    round_score(i == 0 ? s : s - splits[i - 1] + offset)
+  }
+end
+
 # weighed average
 def wavg(arr, w)
   return -1 if arr.size != w.size

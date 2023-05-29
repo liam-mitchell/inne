@@ -381,21 +381,21 @@ module Highscoreable
     }
   end
 
-  def format_scores(mode: nil, ranks: 20.times.to_a, join: true)
-    if !self.is_a?(MappackHighscoreable) || !mode.nil?
+  def format_scores(mode: 'hs', ranks: 20.times.to_a, join: true)
+    if !self.is_a?(MappackHighscoreable) || mode != 'dual'
       ret = format_scores_mode(mode, ranks: ranks)
       ret = ret.join("\n") if join
       return ret
     end
-    board_hs = format_scores_mode('hs')
-    board_sr = format_scores_mode('sr')
+    board_hs = format_scores_mode('hs', ranks: ranks)
+    board_sr = format_scores_mode('sr', ranks: ranks)
     length_hs = board_hs.first.length
     length_sr = board_sr.first.length
     size = [board_hs.size, board_sr.size].max
     board_hs = board_hs.ljust(size, ' ' * length_hs)
     board_sr = board_sr.ljust(size, ' ' * length_sr)
-    header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4) + "\n"
-    ret = header + board_hs.zip(board_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }
+    header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4)
+    ret = [header, *board_hs.zip(board_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }]
     ret = ret.join("\n") if join
     ret
   end
@@ -565,9 +565,17 @@ module Episodish
     [name, lvls == 5, owner.name]
   end
 
-  def splits(rank = 0)
-    acc = 90
-    self.levels.map{ |l| acc += l.scores[rank].score - 90 }
+  def splits(rank = 0, board: 'hs')
+    mappack = self.is_a?(MappackHighscoreable)
+    scoref  = !mappack ? 'score' : "score_#{board}"
+    start   = mappack && board == 'sr' ? 0 : 90.0
+    factor  = mappack && board == 'hs' ? 60.0 : 1
+    offset  = !mappack || board == 'hs' ? 90.0 : 0
+    scores  = levels.map{ |l| l.leaderboard(board)[rank][scoref] }
+    splits_from_scores(scores, start: start, factor: factor, offset: offset)
+  rescue => e
+    lex(e, 'Failed to compute splits')
+    nil
   end
 end
 

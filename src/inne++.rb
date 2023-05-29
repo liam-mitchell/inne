@@ -37,6 +37,7 @@ require 'bundler/setup'
 # (each source file might contain further specific gems)
 require 'byebug'
 require 'discordrb'
+require 'fileutils'
 require 'json'
 require 'net/http'
 require 'time'

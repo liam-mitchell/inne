@@ -798,8 +798,16 @@ def parse_star(msg, strict = false, name = false)
   !!msg[/#{strict ? "(\A|\W)" : ""}\*#{strict ? "(\z|\W)" : ""}/i] || name && !!msg[/\bstar\b/i]
 end
 
-def parse_board(msg)
-  !!msg[/\bsr\b/i] || !!msg[/\bspeed\s*run\b/i] ? 'sr' : (!!msg[/\bdual\b/i] ? nil : (!!msg[/\bg--(\s|$)/i] ? 'gm' : 'hs'))
+# Parse type of leaderboard (highscore, speedrun, dual, ...)
+# Second parameter determines the default
+def parse_board(msg, dflt = nil)
+  board = nil
+  board = 'dual' if !!msg[/\bdual\b/i]
+  board = 'hs'   if !!msg[/\bhs\b/i] || !!msg[/\bhigh\s*score\b/i]
+  board = 'gm'   if !!msg[/\bng\b/i] || !!msg[/\bg--(\s|$)/i]
+  board = 'sr'   if !!msg[/\bsr\b/i] || !!msg[/\bspeed\s*run\b/i]
+  board = dflt   if board.nil?
+  board
 end
 
 # Pings a role by name (returns ping string)

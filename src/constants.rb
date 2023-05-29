@@ -87,7 +87,7 @@ PATH_LOG_FILE   = "#{DIR_LOGS}/log_outte"
 PATH_LOG_SQL    = "#{DIR_LOGS}/log_outte_sql"
 PATH_LOG_OLD    = "#{DIR_LOGS}/log_outte_old"
 PATH_LOG_REPORT = "#{DIR_LOGS}/log_report"
-NTRACE          = "./utils/ntrace.py"
+PATH_NTRACE     = "./util/ntrace.py"
 
 # <--------------------------------------------------------------------------->
 # <------                  MONKEY PATCHING VARIABLES                    ------>

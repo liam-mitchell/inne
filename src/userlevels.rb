@@ -203,6 +203,7 @@ class Userlevel < ActiveRecord::Base
   include Downloadable
   include Highscoreable
   include Map
+  include Levelish
   alias_attribute :scores, :userlevel_scores
   alias_attribute :author, :userlevel_author
   has_many :userlevel_scores

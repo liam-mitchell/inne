@@ -347,7 +347,10 @@ def send_scores(event, map = nil, ret = false, page: nil)
   h       = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
-  board   = parse_board(msg)
+  mappack = h.is_a?(MappackHighscoreable)
+  board   = parse_board(msg, 'hs')
+  board   = 'hs' if !mappack && board == 'dual'
+  raise "Sorry, Metanet levels only support highscore mode for now." if !mappack && board != 'hs'
   res     = ""
   #byebug
 
@@ -389,6 +392,8 @@ def send_scores(event, map = nil, ret = false, page: nil)
   #   which means it got sent immediately so we don't have to wait
   #   for these 5 level updates)
   h.levels.each(&:update_scores) if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
+rescue RuntimeError
+  raise
 rescue => e
   lex(e, 'Failed to send scores')
 end
@@ -869,13 +874,13 @@ def send_table(event)
   # table of totals first to do the weighed averages.
   if avg
     scores = player.table(:rank, ties, 0, 20)
-    totals = Level::tabs.map{ |tab, id|
+    totals = Level::tabs.select{ |tab, id| id < 7 }.map{ |tab, id|
       lvl = scores[0][tab] || 0
       ep  = scores[1][tab] || 0
       [format_tab(tab.to_sym), lvl, ep, lvl + ep]
     }
   end
-  table = Level::tabs.each_with_index.map{ |tab, i|
+  table = Level::tabs.select{ |tab, id| id < 7 }.each_with_index.map{ |tab, i|
     lvl = table[0][tab[0]] || 0
     ep  = table[1][tab[0]] || 0
     [
@@ -971,33 +976,6 @@ def send_comparison(event)
   # Send response
   event << header + format_block(table)
   send_file(event, list, "comparison-#{p1.sanitize_name}-#{p2.sanitize_name}.txt")
-end
-
-# Return an episode's partial level scores assuming the levels' 0th
-# (or, more generally, the levels' topN score) was done in an episode run
-def send_splits(event)
-  # Parse message parameters
-  msg = event.content
-  r   = (parse_rank(msg) || 1) - 1
-  ep  = parse_level_or_episode(msg)
-  ep  = Episode.find_by(name: ep.name[0..-4])  if ep.class == Level
-  raise "Sorry, columns can't be analyzed yet." if ep.class == Story
-
-  # Retrieve splits
-  splits = ep.splits(r)
-  if splits.nil?
-    event << "Sorry, that rank doesn't seem to exist for at least some of the levels."
-    return
-  end
-
-  # Send response
-  clean = round_score(ep.cleanliness(r)[1])
-  rank  = r.ordinalize
-  str   = "#{rank} splits for episode #{ep.name}: "
-  str  += "`#{splits.map{ |s| "%.3f, " % s }.join[0..-3]}`.\n"
-  str  += "#{rank} time: `#{"%.3f" % ep.scores[r].score}`. "
-  str  += "#{rank} cleanliness: `#{"%.3f (%df)" % [clean, (60 * clean).round]}`."
-  event << str
 end
 
 # Return a list of random highscoreables
@@ -1203,8 +1181,8 @@ def send_trace(event)
   error = h[:error]
   level = parse_level_or_episode(msg, mappack: true)
   raise "Episodes and columns can't be traced (yet)" if !level.is_a?(Levelish)
-  mappack = level.is_a?(MappackHighscoreable)
-  map = !mappack ? MappackLevel.find_by(id: level.id) : level
+  raise "Userlevels can't be traced yet" if level.is_a?(Userlevel)
+  map = !level.is_a?(Map) ? MappackLevel.find_by(id: level.id) : level
   raise "Level data not found" if map.nil?
   board = parse_board(msg)
   leaderboard = level.leaderboard(board, pluck: false)
@@ -1216,15 +1194,16 @@ def send_trace(event)
   scores.each_with_index.map{ |s, i|
     File.binwrite("inputs_#{i}", s.demo.demo)
   }
-  system "python3 util/ntrace.py"
+  system "python3 #{PATH_NTRACE}"
 
   # Read output files
-  file = File.binread('output.txt')
+  file = File.binread('output.txt') rescue nil
+  raise "NTrace failed." if file.nil?
   valid = file.scan(/True|False/).map{ |b| b == 'True' }
   coords = file.split(/True|False/)[1..-1].map{ |d|
     d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
   }
-  system "rm map_data inputs_* output.txt"
+  FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
 
   # Draw
   event << error.strip if !error.empty?
@@ -1235,8 +1214,95 @@ def send_trace(event)
                 }
   event << format_block(scores.join("\n"))
   send_file(event, map.screenshot(palette, coords: coords), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+rescue RuntimeError
+  raise
 rescue => e
   lex(e, 'Failed to trace replays')
+end
+
+# Return an episode's partial level scores using 2 methods:
+#   1) The actual episode splits, using SimVYo's tool
+#   2) The IL splits
+# Also return the difference
+def send_splits(event)
+  # Parse message parameters
+  msg = event.content
+  ep = parse_level_or_episode(msg, mappack: true)
+  ep = ep.episode if ep.is_a?(Levelish)
+  raise "Sorry, columns can't be analyzed yet." if ep.is_a?(Storyish)
+  mappack = ep.is_a?(MappackHighscoreable)
+  board = parse_board(msg, 'hs')
+  raise "Sorry, speedrun mode isn't available for Metanet levels yet." if !mappack && board == 'sr'
+  raise "Sorry, episode splits are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
+  scores = ep.leaderboard(board, pluck: false)
+  rank = parse_range(msg)[0].clamp(0, scores.size - 1)
+
+  # Calculate episode splits
+  if board == 'sr'
+    valid = [true] * 5
+    ep_scores = Demo.decode(scores[rank].demo.demo, true).map(&:size)
+    ep_splits = splits_from_scores(ep_scores, start: 0, factor: 1, offset: 0)
+  else
+    # Export input files
+    File.binwrite('inputs_episode', scores[rank].demo.demo)
+    ep.levels.each_with_index{ |l, i|
+      map = !l.is_a?(Map) ? MappackLevel.find(l.id) : l
+      File.binwrite("map_data_#{i}", map.dump_level)
+    }
+    system "python3 #{PATH_NTRACE}"
+
+    # Read output files
+    file = File.binread('output.txt') rescue nil
+    raise "NTrace failed." if file.nil?
+    valid = file.scan(/True|False/).map{ |b| b == 'True' }
+    ep_splits = file.split(/True|False/)[1..-1].map{ |d|
+      round_score(d.strip.to_i.to_f / 60.0)
+    }
+    ep_scores = scores_from_splits(ep_splits, offset: 90.0)
+    FileUtils.rm(['inputs_episode', *Dir.glob('map_data_*'), 'output.txt'])
+  end
+
+  # Calculate IL splits
+  lvl_splits = ep.splits(rank, board: board)
+  if lvl_splits.nil?
+    event << "Sorry, that rank doesn't seem to exist for at least some of the levels."
+    return
+  end
+  scoref = !mappack ? 'score' : "score_#{board}"
+  factor = mappack && board == 'hs' ? 60.0 : 1
+  lvl_scores = ep.levels.map{ |l| l.leaderboard(board)[rank][scoref] / factor }
+
+  # Send response
+  errors = valid.count(false)
+  if errors > 0
+    wrong = valid.each_with_index.map{ |v, i| !v ? i.to_s : nil }.compact.to_sentence
+    word = "level#{errors > 1 ? 's' : ''}"
+    event << "Warning: Couldn't calculate episode splits (incorrect level splits for #{word} #{wrong})."
+  end
+
+  cum_diffs = lvl_splits.each_with_index.map{ |ls, i|
+    mappack && board == 'sr' ? ep_splits[i] - ls : ls - ep_splits[i]
+  }
+  diffs = cum_diffs.each_with_index.map{ |d, i|
+    round_score(i == 0 ? d : d - cum_diffs[i - 1])
+  }
+  rows = []
+  rows << ['', '00', '01', '02', '03', '04']
+  rows << :sep
+  rows << ['Ep  splits', *ep_splits]  if errors == 0
+  rows << ['Lvl splits', *lvl_splits]
+  rows << ['Total diff', *cum_diffs]  if errors == 0
+  rows << :sep                        if errors == 0
+  rows << ['Ep scores',  *ep_scores]  if errors == 0
+  rows << ['Lvl scores', *lvl_scores]
+  rows << ['IL diffs',   *diffs]       if errors == 0
+
+  event << "#{rank.ordinalize} splits for episode #{ep.name}:"
+  event << format_block(make_table(rows))
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Failed to calculate episode splits')
 end
 
 # Sends a PNG graph plotting the evolution of player's scores (e.g. top20 count,
