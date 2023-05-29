@@ -1173,6 +1173,8 @@ end
 # Use SimVYo's tool to trace the replay of a run based on the map data and
 # the demo data.
 def send_trace(event)
+  assert_permissions(event, ['ntrace'])
+
   # Parse message parameters
   msg = event.content
   h = parse_palette(msg)
@@ -1188,6 +1190,9 @@ def send_trace(event)
   leaderboard = level.leaderboard(board, pluck: false)
   ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
   scores = ranks.map{ |r| leaderboard[r] }.compact
+  markers = { jump: false, left: false, right: false } if !!msg[/\bblank\b/i]
+  markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
+  markers = { jump: true,  left: false, right: false } if markers.nil?
 
   # Export input files
   demos = []
@@ -1216,7 +1221,7 @@ def send_trace(event)
                   s + (valid[i] ? '' : " (Trace error!)")
                 }
   event << format_block(scores.join("\n"))
-  send_file(event, map.screenshot(palette, coords: coords, demos: demos), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+  send_file(event, map.screenshot(palette, coords: coords, demos: demos, markers: markers), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
 rescue RuntimeError
   raise
 rescue => e
@@ -1306,6 +1311,38 @@ rescue RuntimeError
   raise
 rescue => e
   lex(e, 'Failed to calculate episode splits')
+end
+
+# Command to allow SimVYo to dynamically update his ntrace tool by sending the
+# file via Discord
+def update_ntrace(event)
+  # Ensure only those allowed can do this
+  assert_permissions(event, ['ntrace'])
+
+  # Fetch attached file and perform integrity checks
+  files = event.message.attachments.select{ |a| a.filename == 'ntrace.py' }
+  raise "File `ntrace.py` not found in the attachments" if files.size == 0
+  raise "Too many `ntrace.py` files found in the attachments" if files.size > 1
+  file = files.first
+  raise "The ntrace file provided is too big" if file.size > 1024 ** 2
+  res = Net::HTTP.get(URI(file.url))
+  raise "The received ntrace file is corrupt" if res.size != file.size
+
+  # Update file
+  old_date = File.mtime(PATH_NTRACE) rescue nil
+  old_size = File.size(PATH_NTRACE) rescue nil
+  File.binwrite(PATH_NTRACE, res)
+  new_date = File.mtime(PATH_NTRACE) rescue nil
+  new_size = File.size(PATH_NTRACE) rescue nil
+  event << (new_date.nil? ? 'Failed to update ntrace.' : "ntrace updated successfully.")
+  versions = ''
+  versions << "Old version: #{old_date.strftime('%Y/%m/%d %H:%M:%S')} (#{old_size} bytes)\n" if !old_date.nil?
+  versions << "New version: #{new_date.strftime('%Y/%m/%d %H:%M:%S')} (#{new_size} bytes)\n" if !new_date.nil?
+  event << format_block(versions)
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Failed to update ntrace file')
 end
 
 # Sends a PNG graph plotting the evolution of player's scores (e.g. top20 count,
@@ -2049,6 +2086,7 @@ def respond(event)
   send_tally(event)          if msg =~ /\btally\b/i
   send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
   send_trace(event)          if msg =~ /\btrace\b/i
+  update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
   faceswap(event)            if msg =~ /faceswap/i
   testa(event) if msg =~ /testa/i
 
