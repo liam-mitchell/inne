@@ -212,8 +212,6 @@ class Ninja:
             self.grounded = False
 
     def wall_jump(self):
-        if frame == 145:
-            print("debug")
 
         if self.pre_buffer and self.post_buffer_wall and not self.jumping and not self.wall_jumping and self.post_buffer != 4:
             if self.xspeed * self.wall_normal < 0:

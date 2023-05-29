@@ -1182,11 +1182,14 @@ def send_trace(event)
   palette = h[:palette]
   error = h[:error]
   level = parse_level_or_episode(msg, mappack: true)
-  raise "Episodes and columns can't be traced (yet)" if !level.is_a?(Levelish)
+  mappack = level.is_a?(MappackHighscoreable)
+  raise "Episodes and columns can't be traced" if !level.is_a?(Levelish)
   raise "Userlevels can't be traced yet" if level.is_a?(Userlevel)
   map = !level.is_a?(Map) ? MappackLevel.find_by(id: level.id) : level
   raise "Level data not found" if map.nil?
-  board = parse_board(msg)
+  board = parse_board(msg, 'hs')
+  raise "Speedrun mode isn't available for Metanet levels yet" if !mappack && board == 'sr'
+  raise "Traces are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
   leaderboard = level.leaderboard(board, pluck: false)
   ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
   scores = ranks.map{ |r| leaderboard[r] }.compact
@@ -1206,7 +1209,7 @@ def send_trace(event)
 
   # Read output files
   file = File.binread('output.txt') rescue nil
-  raise "NTrace failed." if file.nil?
+  raise "ntrace failed." if file.nil?
   valid = file.scan(/True|False/).map{ |b| b == 'True' }
   coords = file.split(/True|False/)[1..-1].map{ |d|
     d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
@@ -1215,7 +1218,7 @@ def send_trace(event)
 
   # Draw
   event << error.strip if !error.empty?
-  event << "Replay traces for #{level.name} in palette `#{palette}`:"
+  event << "Replay #{format_board(board)} traces for #{level.name} in palette `#{palette}`:"
   scores = level.format_scores(mode: board, ranks: ranks, join: false)
                 .each_with_index.map{ |s, i|
                   s + (valid[i] ? '' : " (Trace error!)")
@@ -1261,7 +1264,7 @@ def send_splits(event)
 
     # Read output files
     file = File.binread('output.txt') rescue nil
-    raise "NTrace failed." if file.nil?
+    raise "ntrace failed." if file.nil?
     valid = file.scan(/True|False/).map{ |b| b == 'True' }
     ep_splits = file.split(/True|False/)[1..-1].map{ |d|
       round_score(d.strip.to_i.to_f / 60.0)
@@ -1285,7 +1288,7 @@ def send_splits(event)
   if errors > 0
     wrong = valid.each_with_index.map{ |v, i| !v ? i.to_s : nil }.compact.to_sentence
     word = "level#{errors > 1 ? 's' : ''}"
-    event << "Warning: Couldn't calculate episode splits (incorrect level splits for #{word} #{wrong})."
+    event << "Warning: Couldn't calculate episode splits (error in #{word} #{wrong})."
   end
 
   cum_diffs = lvl_splits.each_with_index.map{ |ls, i|
@@ -1305,7 +1308,7 @@ def send_splits(event)
   rows << ['Lvl scores', *lvl_scores]
   rows << ['Ind diffs',   *diffs]       if errors == 0
 
-  event << "#{rank.ordinalize} splits for episode #{ep.name}:"
+  event << "#{rank.ordinalize} #{format_board(board)} splits for episode #{ep.name}:"
   event << format_block(make_table(rows))
 rescue RuntimeError
   raise

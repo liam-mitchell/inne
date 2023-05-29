@@ -662,6 +662,7 @@ end
 module Scorish
 
   def self.format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil, mappack = false, h = {})
+    mode = 'hs' if mode.nil?
     hs = mode == 'hs'
     gm = mode == 'gm'
 
