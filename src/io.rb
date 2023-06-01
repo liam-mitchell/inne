@@ -528,7 +528,7 @@ def parse_rtype(msg)
     'average_rank'
   elsif !!msg[/point/i]
     'point'
-  elsif !!msg[/score/i]
+  elsif !!msg[/\bscore/i]
     'score'
   elsif parse_singular(msg) == 1
     'singular_top1'
@@ -800,9 +800,9 @@ end
 
 # Parse type of leaderboard (highscore, speedrun, dual, ...)
 # Second parameter determines the default
-def parse_board(msg, dflt = nil)
+def parse_board(msg, dflt = nil, dual: false)
   board = nil
-  board = 'dual' if !!msg[/\bdual\b/i]
+  board = 'dual' if !!msg[/\bdual\b/i] && dual
   board = 'hs'   if !!msg[/\bhs\b/i] || !!msg[/\bhigh\s*score\b/i]
   board = 'gm'   if !!msg[/\bng\b/i] || !!msg[/\bg--(\s|$)/i]
   board = 'sr'   if !!msg[/\bsr\b/i] || !!msg[/\bspeed\s*run\b/i]
@@ -871,7 +871,18 @@ def format_bottom_rank(rank)
 end
 
 def format_board(board)
-  board == 'sr' ? 'speedrun' : 'highscore'
+  case board
+  when 'hs'
+    'highscore'
+  when 'sr'
+    'speedrun'
+  when 'gm'
+    'G--'
+  when 'dual'
+    'dual'
+  else
+    'highscore'
+  end
 end
 
 # 'empty' means we print nothing
@@ -993,12 +1004,17 @@ def format_sentence(e)
 end
 
 def format_list_score(s, board = nil)
-  rankf  = board.nil? ? 'rank' : "rank_#{board}"
-  scoref = board.nil? ? 'score' : "score_#{board}"
-  scale  = board == 'hs' ? 60.0 : 1
-  fmt    = board == 'sr' ? "%4d" : "%7.3f"
-  pad    = board.nil? ? 10 : 14
-  "#{Highscoreable.format_rank(s[rankf])}: #{s.highscoreable.name.ljust(pad, " ")} - #{fmt % [s[scoref] / scale]}"
+  p_rank  = board != 'gm'
+  p_score = board != 'gm'
+  rankf   = board.nil? ? 'rank' : "rank_#{board}"
+  scoref  = board.nil? ? 'score' : "score_#{board}"
+  scale   = board == 'hs' ? 60.0 : 1
+  fmt     = board == 'sr' ? "%4d" : "%7.3f"
+  pad     = board.nil? ? 10 : 14
+  rank_t  = p_rank ? "#{Highscoreable.format_rank(s[rankf])}: ": ''
+  name_t  = s.highscoreable.name.ljust(pad, " ")
+  score_t = p_score ? " - #{fmt % [s[scoref] / scale]}" : ''
+  "#{rank_t}#{name_t}#{score_t}"
 end
 
 def format_level_list(levels)

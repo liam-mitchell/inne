@@ -1166,22 +1166,32 @@ class Player < ActiveRecord::Base
     if mappack.nil?
       list = scores
     else
-      list = mappack_scores.where(mappack: mappack).where("rank_#{board} IS NOT NULL")
+      list = mappack_scores.where(mappack: mappack)
     end
 
     # Filter scores by type and tabs
     type = normalize_type(type, mappack: !mappack.nil?)
-    ret = list.where(highscoreable_type: type)
-    ret = ret.where(tab: tabs) if !tabs.empty?
+    list = list.where(highscoreable_type: type)
+    list = list.where(tab: tabs) if !tabs.empty?
+
+    # Further filters for mappack scores
+    if !mappack.nil?
+      case board
+      when 'hs', 'sr'
+        list = list.where.not("rank_#{board}" => nil)
+      when 'gm'
+        list = list.where(gold: 0).uniq{ |s| s.highscoreable_id }
+      end
+    end
 
     # Optionally, include other tables in the result for performance reasons
     case include
     when :scores
-      ret.includes(highscoreable: [:scores])
+      list.includes(highscoreable: [:scores])
     when :name
-      ret.includes(:highscoreable)
+      list.includes(:highscoreable)
     else
-      ret
+      list
     end
   end
 
@@ -1194,20 +1204,26 @@ class Player < ActiveRecord::Base
   # Otherwise, missing includes all the scores the player DOESN'T have.
   def range_ns(a, b, type, tabs, ties, tied = false, cool = false, star = false, missing = false, mappack = nil, board = 'hs')
     return missing(type, tabs, a, b, ties, tied, mappack, board) if missing && !cool && !star
+    
+    # Return highscoreable names rather than scores
+    high = !mappack.nil? && board == 'gm'
 
     # Filter scores by type and tabs
     ret = scores_by_type_and_tabs(type, tabs, nil, mappack, board)
+    return ret if high
 
     # Filter scores by rank
-    rankf = mappack.nil? ? 'rank' : "rank_#{board}"
-    trankf = "tied_#{rankf}"
-    if tied
-      q = "#{trankf} >= #{a} AND #{trankf} < #{b} AND NOT (#{rankf} >= #{a} AND #{rankf} < #{b})"
-    else
-      rank_type = ties ? trankf : rankf
-      q = "#{rank_type} >= #{a} AND #{rank_type} < #{b}"
+    if mappack.nil? || ['hs', 'sr'].include?(board)
+      rankf = mappack.nil? ? 'rank' : "rank_#{board}"
+      trankf = "tied_#{rankf}"
+      if tied
+        q = "#{trankf} >= #{a} AND #{trankf} < #{b} AND NOT (#{rankf} >= #{a} AND #{rankf} < #{b})"
+      else
+        rank_type = ties ? trankf : rankf
+        q = "#{rank_type} >= #{a} AND #{rank_type} < #{b}"
+      end
+      ret = ret.where(q)
     end
-    ret = ret.where(q)
 
     # Filter scores by cool and star, if not in a mappack
     if mappack.nil?
@@ -1217,7 +1233,7 @@ class Player < ActiveRecord::Base
     end
 
     # Order results and return
-    ret.order("#{rankf}, highscoreable_type DESC, highscoreable_id")
+    ret.order(rankf, 'highscoreable_type DESC', 'highscoreable_id')
   end
 
   def cools(type, tabs, r1 = 0, r2 = 20, ties = false, missing = false)

@@ -74,9 +74,10 @@ module Map
     "void",           "waka",            "witchy",        "wizard",
     "wyvern",         "xenon",           "yeti"
   ]
+  # Challenge: Figure out what the following constant encodes ;)
+  BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
   DEFAULT_PALETTE = "vasquez"
   PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
-  BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
   ROWS    = 23
   COLUMNS = 42
   DIM     = 44

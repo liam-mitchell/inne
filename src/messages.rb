@@ -18,7 +18,7 @@ def send_list(event, file = true, missing = false, third = false)
   player  = parse_player(msg, event.user.name, false, false, false, false, third)
   msg     = msg.remove!(player.name)
   mappack = parse_mappack(msg)
-  board   = parse_board(msg)
+  board   = parse_board(msg, 'hs')
   type    = parse_type(msg)
   tabs    = parse_tabs(msg)
   cool    = mappack.nil? ? parse_cool(msg) : false
@@ -49,7 +49,7 @@ def send_list(event, file = true, missing = false, third = false)
   max      = full ? max1 : max2
   type     = format_type(type).downcase
   tabs     = format_tabs(tabs)
-  range    = format_range(range[0], range[1], sing != 0)
+  range    = format_range(range[0], range[1], sing != 0 || board == 'gm')
   sing     = format_singular((missing ? -1 : 1) * sing)
   cool     = format_cool(cool)
   star     = format_star(star)
@@ -117,6 +117,8 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   type  = parse_type(msg, type, true, initial, rtype == 'score' ? 'Level' : nil)
   mappack = parse_mappack(msg)
   board = parse_board(msg)
+
+  raise "#{format_board(board)} rankings aren't available yet" if ['gm', 'dual'].include?(board)
 
   # The range must make sense
   if !range[2]
@@ -348,7 +350,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
   mappack = h.is_a?(MappackHighscoreable)
-  board   = parse_board(msg, 'hs')
+  board   = parse_board(msg, 'hs', dual: true)
   board   = 'hs' if !mappack && board == 'dual'
   raise "Sorry, Metanet levels only support highscore mode for now." if !mappack && board != 'hs'
   res     = ""
@@ -2065,7 +2067,7 @@ def respond(event)
   send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
   send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
   send_suggestions(event)    if (msg =~ /\bworst\b/i && msg !~ /\bnightmare\b/i) || msg =~ /\bimprovable\b/i
-  send_list(event)           if msg =~ /\blist\b/i unless msg =~ /of inappropriate words/i || !!msg[/\btally\b/i]
+  send_list(event)           if msg =~ /\blist\b/i unless msg =~ /of inappropriate words/i || !!msg[/\btally\b/i] || !!msg[/\bmissing\b/i]
   send_list(event, hm, true) if msg =~ /missing/i
   send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i && msg !~ /table/i
   send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i && msg !~ /table/i
