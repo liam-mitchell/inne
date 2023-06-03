@@ -5,6 +5,7 @@
 *.db
 *.swp
 .byebug_history
+Gemfile.lock
 \*
 \#*
 \.\#*

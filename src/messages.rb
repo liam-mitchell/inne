@@ -2085,7 +2085,7 @@ def respond(event)
   send_level_name(event)     if msg =~ /\blevel name\b/i
   send_level_id(event)       if msg =~ /\blevel id\b/i
   send_analysis(event)       if msg =~ /analysis/i
-  send_splits(event)         if msg =~ /\bsplits\b/i
+#  send_splits(event)         if msg =~ /\bsplits\b/i
   identify(event)            if msg =~ /my name is/i
   add_steam_id(event)        if msg =~ /my steam id is/i
   add_display_name(event)    if msg =~ /my display name is/i
@@ -2101,8 +2101,8 @@ def respond(event)
   send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   send_tally(event)          if msg =~ /\btally\b/i
   send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
-  send_trace(event)          if msg =~ /\btrace\b/i
-  update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
+#  send_trace(event)          if msg =~ /\btrace\b/i
+#  update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
   faceswap(event)            if msg =~ /faceswap/i
   testa(event) if msg =~ /testa/i
 

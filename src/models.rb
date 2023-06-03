@@ -1136,7 +1136,7 @@ class Player < ActiveRecord::Base
     dbg("#{json['name'].to_s} (#{json['user_id']}) logged in")
     res
   rescue => e
-    lex(e, 'Failed to proxy login request')
+    err('Failed to proxy login request')
     return nil
   end
 
