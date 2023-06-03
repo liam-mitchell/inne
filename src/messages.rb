@@ -352,6 +352,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   mappack = h.is_a?(MappackHighscoreable)
   board   = parse_board(msg, 'hs', dual: true)
   board   = 'hs' if !mappack && board == 'dual'
+  full    = parse_full(msg)
   raise "Sorry, Metanet levels only support highscore mode for now." if !mappack && board != 'hs'
   res     = ""
   #byebug
@@ -375,8 +376,18 @@ def send_scores(event, map = nil, ret = false, page: nil)
     res << "Connection to the server failed, sending local cached scores.\n"
   end
 
-  # Format response, add cleanliness if it's an episode
-  res << "#{format_board(board).pluralize.capitalize} for #{h.format_name}:\n#{format_block(h.format_scores(mode: board))}"
+  # Format scores
+  header =  "#{format_full(full)} #{format_board(board).pluralize} for #{h.format_name}:".squish
+  header[0] = header[0].upcase
+  res << header
+  scores = h.format_scores(mode: board, full: full, join: false)
+  if full && scores.count > 20
+    send_file(event, scores.join("\n"), "#{h.name}-scores.txt")
+  else
+    res << format_block(scores.join("\n"))
+  end
+
+  # Add cleanliness if it's an episode
   if h.is_a?(Episode)
     clean = round_score(h.cleanliness[1])
     res << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]

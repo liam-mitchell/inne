@@ -357,16 +357,16 @@ module Highscoreable
     end
   end
 
-  def format_scores_mode(mode = 'hs', ranks: 20.times.to_a)
+  def format_scores_mode(mode = 'hs', ranks: 20.times.to_a, full: false)
     mappack = self.is_a?(MappackHighscoreable)
     hs = mode == 'hs'
     gm = mode == 'gm'
 
     # Reload scores, otherwise sometimes recent changes aren't in memory
     scores.reload
-    boards = leaderboard(mode, aliases: true).each_with_index.select{ |s, r|
-      ranks.include?(r)
-    }.sort_by{ |s, r| ranks.index(r) }
+    boards = leaderboard(mode, aliases: true, truncate: full ? 0 : 20).each_with_index.select{ |s, r|
+      full ? true : ranks.include?(r)
+    }.sort_by{ |s, r| full ? r : ranks.index(r) }
 
     # Calculate padding
     name_padding = boards.map{ |s, _| s['name'].to_s.length }.max
@@ -381,14 +381,14 @@ module Highscoreable
     }
   end
 
-  def format_scores(mode: 'hs', ranks: 20.times.to_a, join: true)
+  def format_scores(mode: 'hs', ranks: 20.times.to_a, join: true, full: false)
     if !self.is_a?(MappackHighscoreable) || mode != 'dual'
-      ret = format_scores_mode(mode, ranks: ranks)
+      ret = format_scores_mode(mode, ranks: ranks, full: full)
       ret = ret.join("\n") if join
       return ret
     end
-    board_hs = format_scores_mode('hs', ranks: ranks)
-    board_sr = format_scores_mode('sr', ranks: ranks)
+    board_hs = format_scores_mode('hs', ranks: ranks, full: full)
+    board_sr = format_scores_mode('sr', ranks: ranks, full: full)
     length_hs = board_hs.first.length
     length_sr = board_sr.first.length
     size = [board_hs.size, board_sr.size].max
