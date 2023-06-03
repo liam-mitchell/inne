@@ -397,14 +397,11 @@ def send_scores(event, map = nil, ret = false, page: nil)
   if ret
     return res
   else
-    event.send_message(res)
+    event << res
   end
 
   # If it's an episode, update all 5 level scores in the background
-  #   (note we used "event.send_message" rather than "event <<",
-  #   which means it got sent immediately so we don't have to wait
-  #   for these 5 level updates)
-  h.levels.each(&:update_scores) if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
+  Thread.new { h.levels.each(&:update_scores) } if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
 rescue RuntimeError
   raise
 rescue => e
