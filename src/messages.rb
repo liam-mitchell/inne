@@ -1184,6 +1184,7 @@ end
 # the demo data.
 def send_trace(event)
   assert_permissions(event, ['ntrace'])
+  raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
 
   # Parse message parameters
   msg = event.content
@@ -1258,13 +1259,14 @@ def send_splits(event)
   raise "Sorry, episode splits are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
   scores = ep.leaderboard(board, pluck: false)
   rank = parse_range(msg)[0].clamp(0, scores.size - 1)
+  ntrace = board == 'hs' # Requires ntrace
 
   # Calculate episode splits
   if board == 'sr'
     valid = [true] * 5
     ep_scores = Demo.decode(scores[rank].demo.demo, true).map(&:size)
     ep_splits = splits_from_scores(ep_scores, start: 0, factor: 1, offset: 0)
-  else
+  elsif FEATURE_NTRACE
     # Export input files
     File.binwrite('inputs_episode', scores[rank].demo.demo)
     ep.levels.each_with_index{ |l, i|
@@ -1295,31 +1297,38 @@ def send_splits(event)
   lvl_scores = ep.levels.map{ |l| l.leaderboard(board)[rank][scoref] / factor }
 
   # Send response
-  errors = valid.count(false)
-  if errors > 0
-    wrong = valid.each_with_index.map{ |v, i| !v ? i.to_s : nil }.compact.to_sentence
-    word = "level#{errors > 1 ? 's' : ''}"
-    event << "Warning: Couldn't calculate episode splits (error in #{word} #{wrong})."
+  full = !ntrace || FEATURE_NTRACE
+
+  if full
+    errors = valid.count(false)
+    if errors > 0
+      wrong = valid.each_with_index.map{ |v, i| !v ? i.to_s : nil }.compact.to_sentence
+      word = "level#{errors > 1 ? 's' : ''}"
+      event << "Warning: Couldn't calculate episode splits (error in #{word} #{wrong})."
+      full = false
+    end
+
+    cum_diffs = lvl_splits.each_with_index.map{ |ls, i|
+      mappack && board == 'sr' ? ep_splits[i] - ls : ls - ep_splits[i]
+    }
+    diffs = cum_diffs.each_with_index.map{ |d, i|
+      round_score(i == 0 ? d : d - cum_diffs[i - 1])
+    }
   end
 
-  cum_diffs = lvl_splits.each_with_index.map{ |ls, i|
-    mappack && board == 'sr' ? ep_splits[i] - ls : ls - ep_splits[i]
-  }
-  diffs = cum_diffs.each_with_index.map{ |d, i|
-    round_score(i == 0 ? d : d - cum_diffs[i - 1])
-  }
   rows = []
   rows << ['', '00', '01', '02', '03', '04']
   rows << :sep
-  rows << ['Ep splits', *ep_splits]  if errors == 0
+  rows << ['Ep splits', *ep_splits]  if full
   rows << ['Lvl splits', *lvl_splits]
-  rows << ['Total diff', *cum_diffs]  if errors == 0
-  rows << :sep                        if errors == 0
-  rows << ['Ep scores',  *ep_scores]  if errors == 0
+  rows << ['Total diff', *cum_diffs]  if full
+  rows << :sep                        if full
+  rows << ['Ep scores',  *ep_scores]  if full
   rows << ['Lvl scores', *lvl_scores]
-  rows << ['Ind diffs',   *diffs]       if errors == 0
+  rows << ['Ind diffs',   *diffs]       if full
 
   event << "#{rank.ordinalize} #{format_board(board)} splits for episode #{ep.name}:"
+  event << "(Episode splits aren't available because ntrace is disabled)." if ntrace && !FEATURE_NTRACE
   event << format_block(make_table(rows))
 rescue RuntimeError
   raise

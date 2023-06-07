@@ -9,20 +9,22 @@
 # 2.2) DISCORD_TOKEN_TEST - Same as DISCORD_TOKEN, but for a secondary development
 #                           bot. If you don't care about this, never enable the
 #                           variable TEST in constants.rb.
-# 3) Configure the "outte" environment of the config file in ./db/config.yml,
-#    or create a new one and rename the DATABASE variable in constants.rb.
-# 4) Configure the "outte_test" environment of the config file (optional).
-# 5) Create, migrate and seed a database named "inne". Make sure to use MySQL 5.7
-#    with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
-#    care of the bot for a copy of the database (see Contact).
-# 6) Install Ruby 2.6 to maximize compatibility, then run the Bundler to
-#    obtain the correct version of all gems (libraries), I recommend using rbenv.
-#    In particular, ensure you have Rails 5.1.x and Discordrb >= 3.4.2.
-# 7) Make sure you edit and save the source files in UTF8.
-# 8) You might want to look into 'constants.rb' and configure some variables,
-#    in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID. For testing,
-#    also look into TEST, DO_NOTHING, and DO_EVERYTHING.
-# 9) Make sure the working directory is the bot's root directory when you run it.
+# 3)  Configure the "outte" environment of the config file in ./db/config.yml,
+#     or create a new one and rename the DATABASE variable in constants.rb.
+# 4)  Configure the "outte_test" environment of the config file (optional).
+# 5)  Create, migrate and seed a database named "inne". Make sure to use MySQL 5.7
+#     with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
+#     care of the bot for a copy of the database (see Contact).
+# 6)  Install Ruby 2.6 to maximize compatibility, then run the Bundler to
+#     obtain the correct version of all gems (libraries), I recommend using rbenv.
+#     In particular, ensure you have Rails 5.1.x and Discordrb >= 3.4.2.
+# 7)  Make sure you edit and save the source files in UTF8.
+# 8)  You might want to look into 'constants.rb' and configure some variables,
+#     in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID. For testing,
+#     also look into TEST, DO_NOTHING, and DO_EVERYTHING.
+# 9)  You need Python 3 for the tracing capabilities. If you want to disable them,
+#     toggle FEATURE_NTRACE to false.
+# 10) Make sure the working directory is the bot's root directory when you run it.
 #
 # Contact: Eddy @ https://discord.gg/nplusplus
 

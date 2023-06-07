@@ -459,7 +459,7 @@ module Map
       end
 
       # PAINT ROUTES (we use python, better graphing capabilities)
-      if !coords.empty?
+      if FEATURE_NTRACE && !coords.empty?
         demos = demos.take(MAX_TRACES).reverse
         n = [coords.size, MAX_TRACES].min
         color_idx = OBJECTS[0][:pal]
