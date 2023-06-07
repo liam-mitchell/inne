@@ -370,6 +370,14 @@ module Map
     output
   end
 
+  # Generate a PNG screenshot of a level in the chosen palette.
+  # [Depends on ChunkyPNG, a pure Ruby library]
+  #
+  # Optionally also plot routes.
+  # [Depends on Matplotlib using a Pycall, a Python wrapper]
+  #
+  # Note: This function is forked to a different process, because both ChunkyPNG
+  #       and Matplotlib have memory leaks we cannot handle.
   def screenshot(
       theme = DEFAULT_PALETTE, # Palette to generate screenshot in
       file: false,             # Whether to export to a file or return the raw data
@@ -377,121 +385,131 @@ module Map
       demos: [],               # Array of demo inputs, to mark parts of the route
       markers: { jump: true, left: true, right: true} # Mark changes in replays
     )
+
     bench(:start) if BENCHMARK
-    themes = THEMES.map(&:downcase)
-    theme = theme.downcase
-    if !themes.include?(theme) then theme = DEFAULT_PALETTE end
+    profile(:start)
 
-    # INITIALIZE IMAGES
-    tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, themes.index(theme), false)] }.to_h
-    object = OBJECTS.keys.map{ |o| [o, generate_object(o, themes.index(theme))] }.to_h
-    object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, themes.index(theme), true, true)] }.to_h
-    object.merge!(object_special)
-    border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-    image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, themes.index(theme)])
+    res = _fork do
+      themes = THEMES.map(&:downcase)
+      theme = theme.downcase
+      if !themes.include?(theme) then theme = DEFAULT_PALETTE end
 
-    # PARSE MAP
-    tiles = self.tiles.map(&:dup)
-    objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
-    objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
+      # INITIALIZE IMAGES
+      tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, themes.index(theme), false)] }.to_h
+      object = OBJECTS.keys.map{ |o| [o, generate_object(o, themes.index(theme))] }.to_h
+      object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, themes.index(theme), true, true)] }.to_h
+      object.merge!(object_special)
+      border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
+      image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, themes.index(theme)])
 
-    # PAINT OBJECTS
-    objects.each do |o|
-      new_object = !(o[3] % 2 == 1 && [10, 11].include?(o[0])) ? object[o[0]] : object[o[0] + 29]
-      if !FIXED_OBJECTS.include?(o[0]) then (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } end
-      if check_dimensions(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
-        image.compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
-      end
-    end
+      # PARSE MAP
+      tiles = self.tiles.map(&:dup)
+      objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
+      objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
 
-    # PAINT TILES
-    tiles.each{ |row| row.unshift(1).push(1) }
-    tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2))
-    tiles = tiles.map{ |row| row.map{ |tile| tile > 33 ? 0 : tile } } # remove glitched tiles
-    tiles.each_with_index do |slice, row|
-      slice.each_with_index do |t, column|
-        if t == 0 || t == 1 # empty and full tiles
-          new_tile = tile[t]
-        elsif t >= 2 && t <= 17 # half tiles and curved slopes
-          new_tile = tile[t - (t - 2) % 4]
-          (1 .. (t - 2) % 4).each{ |i| new_tile = new_tile.rotate_clockwise }
-        elsif t >= 18 && t <= 33 # small and big straight slopes
-          new_tile = tile[t - (t - 2) % 4]
-          if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
-          if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
-        else
-          new_tile = tile[0]
+      # PAINT OBJECTS
+      objects.each do |o|
+        new_object = !(o[3] % 2 == 1 && [10, 11].include?(o[0])) ? object[o[0]] : object[o[0] + 29]
+        if !FIXED_OBJECTS.include?(o[0]) then (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } end
+        if check_dimensions(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
+          image.compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
         end
-        image.compose!(new_tile, DIM * column, DIM * row)
       end
-    end
 
-    # PAINT TILE BORDERS
-    edge = ChunkyPNG::Image.from_file('images/b.png')
-    edge = mask(edge, BLACK, PALETTE[1, themes.index(theme)])
-    (0 .. ROWS).each do |row| # horizontal
-      (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
-        tile_a = tiles[row][col / 2]
-        tile_b = tiles[row + 1][col / 2]
-        bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
-        if bool == 1 then image.compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) end
+      # PAINT TILES
+      tiles.each{ |row| row.unshift(1).push(1) }
+      tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2))
+      tiles = tiles.map{ |row| row.map{ |tile| tile > 33 ? 0 : tile } } # remove glitched tiles
+      tiles.each_with_index do |slice, row|
+        slice.each_with_index do |t, column|
+          if t == 0 || t == 1 # empty and full tiles
+            new_tile = tile[t]
+          elsif t >= 2 && t <= 17 # half tiles and curved slopes
+            new_tile = tile[t - (t - 2) % 4]
+            (1 .. (t - 2) % 4).each{ |i| new_tile = new_tile.rotate_clockwise }
+          elsif t >= 18 && t <= 33 # small and big straight slopes
+            new_tile = tile[t - (t - 2) % 4]
+            if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
+            if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
+          else
+            new_tile = tile[0]
+          end
+          image.compose!(new_tile, DIM * column, DIM * row)
+        end
       end
-    end
-    (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
-      (0 .. COLUMNS).each do |col|
-        tile_a = tiles[row / 2][col]
-        tile_b = tiles[row / 2][col + 1]
-        bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
-        if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
-      end
-    end
 
-    # PAINT ROUTES (we use python, better graphing capabilities)
-    if !coords.empty?
-      demos = demos.take(MAX_TRACES).reverse
-      n = [coords.size, MAX_TRACES].min
-      color_idx = OBJECTS[0][:pal]
-      palette_idx = themes.index(theme)
-      dpi = 390
-      mpl = Matplotlib::Pyplot
-      tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
-      coords.take(MAX_TRACES).reverse.each_with_index{ |c, i|
-        pixel = PALETTE[color_idx + n - 1 - i, palette_idx]
-        color = '#' + [pixel].pack('L>').unpack('H*')[0]
-        mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
-        next if markers.values.count(true) == 0
-        demos[i].each_with_index{ |f, j|
-          if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
-            mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
-          end
-          if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
-            mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
-          end
-          if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
-            mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
-          end
+      # PAINT TILE BORDERS
+      edge = ChunkyPNG::Image.from_file('images/b.png')
+      edge = mask(edge, BLACK, PALETTE[1, themes.index(theme)])
+      (0 .. ROWS).each do |row| # horizontal
+        (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
+          tile_a = tiles[row][col / 2]
+          tile_b = tiles[row + 1][col / 2]
+          bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
+          if bool == 1 then image.compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) end
+        end
+      end
+      (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
+        (0 .. COLUMNS).each do |col|
+          tile_a = tiles[row / 2][col]
+          tile_b = tiles[row / 2][col + 1]
+          bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
+          if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
+        end
+      end
+
+      # PAINT ROUTES (we use python, better graphing capabilities)
+      if !coords.empty?
+        demos = demos.take(MAX_TRACES).reverse
+        n = [coords.size, MAX_TRACES].min
+        color_idx = OBJECTS[0][:pal]
+        palette_idx = themes.index(theme)
+        dpi = 390
+        mpl = Matplotlib::Pyplot
+        mpl.ioff
+        tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
+        coords.take(MAX_TRACES).reverse.each_with_index{ |c, i|
+          pixel = PALETTE[color_idx + n - 1 - i, palette_idx]
+          color = '#' + [pixel].pack('L>').unpack('H*')[0]
+          mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
+          next if markers.values.count(true) == 0
+          demos[i].each_with_index{ |f, j|
+            if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
+              mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
+            end
+            if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
+              mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
+            end
+            if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
+              mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
+            end
+          }
         }
-      }
-      dx = (COLUMNS + 2) * UNITS
-      dy = (ROWS + 2) * UNITS
-      mpl.axis([0, dx, dy, 0])
-      mpl.axis('off')
-      ax = mpl.gca
-      ax.set_aspect('equal', adjustable: 'box')
-      img = mpl.imread(tmp)
-      ax.imshow(img, extent: [0, dx, dy, 0])
-      fn = tmp_filename("#{name}_tmp2.png")
-      mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: dpi)
-      mpl.clf
-      mpl.close
-      image = ChunkyPNG::Image.from_file(fn)
+        dx = (COLUMNS + 2) * UNITS
+        dy = (ROWS + 2) * UNITS
+        mpl.axis([0, dx, dy, 0])
+        mpl.axis('off')
+        ax = mpl.gca
+        ax.set_aspect('equal', adjustable: 'box')
+        img = mpl.imread(tmp)
+        ax.imshow(img, extent: [0, dx, dy, 0])
+        fn = tmp_filename("#{name}_tmp2.png")
+        mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: dpi)
+        mpl.cla
+        mpl.clf
+        mpl.close('all')
+        image = ChunkyPNG::Image.from_file(fn)
+      end
+
+      image.to_blob
     end
 
+    profile(:stop)
     bench(:step) if BENCHMARK
-    file ? tmp_file(image.to_blob, self.name + '.png', binary: true) : image.to_blob
 
+    file ? tmp_file(res, self.name + '.png', binary: true) : res
   rescue => e
-    lex(e, "Failed to generate screenshot for #{self.name}")
+    lex(e, "Failed to generate screenshot")
     nil
   end
 end

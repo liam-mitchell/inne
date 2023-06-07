@@ -11,6 +11,7 @@ source 'https://rubygems.org' do
   gem 'rubyzip'
   gem 'unicode-emoji'
   gem 'matplotlib'
+  gem 'memory_profiler'
 
 
   group :debug, :test do

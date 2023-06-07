@@ -742,6 +742,8 @@ class Score < ActiveRecord::Base
       mappack: nil,   # Mappack.                  Def: None.
       board:   'hs'   # Highscore or speedrun.    Def: Highscore.
     )
+    board = 'hs' if board.nil?
+
     # Mappack rankings do not support excluding players yet
     players = [] if !mappack.nil?
 

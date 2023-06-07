@@ -282,28 +282,28 @@ MODES = {
 #   rt         - Replay type, used for replay headers
 TYPES = {
   'Level' => {
-    id: 0,
-    name: 'Level',
-    slots: 20000,
+    id:         0,
+    name:       'Level',
+    slots:      20000,
     min_scores: 100,
-    qt: 0,
-    rt: 0
+    qt:         0,
+    rt:         0
   },
   'Episode' => {
-    id: 1,
-    name: 'Episode',
-    slots:  4000,
-    min_scores:  50,
-    qt: 1,
-    rt: 1
+    id:         1,
+    name:       'Episode',
+    slots:      4000,
+    min_scores: 50,
+    qt:         1,
+    rt:         1
   },
   'Story' => {
-    id: 2,
-    name: 'Story',
-    slots:   800,
-    min_scores:  10,
-    qt: 4,
-    rt: 0
+    id:         2,
+    name:       'Story',
+    slots:      800,
+    min_scores: 10,
+    qt:         4,
+    rt:         0
   }
 }
 

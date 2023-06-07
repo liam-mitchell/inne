@@ -1234,7 +1234,8 @@ def send_trace(event)
                   s + (valid[i] ? '' : " (Trace error!)")
                 }
   event << format_block(scores.join("\n"))
-  send_file(event, map.screenshot(palette, coords: coords, demos: demos, markers: markers), "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+  trace = map.screenshot(palette, coords: coords, demos: demos, markers: markers)
+  send_file(event, trace, "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
 rescue RuntimeError
   raise
 rescue => e
@@ -1929,12 +1930,6 @@ def send_mappack_seed(event)
   event << "Seeded new mappacks"
 end
 
-def send_mappack_screenshot(event)
-  msg = remove_command(event.content)
-  flags = parse_flags(msg)
-  send_file(event, MappackLevel.find(flags[:id]).screenshot, flags[:id].to_s + ".png", true)
-end
-
 def send_mappack_patch(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
@@ -1999,12 +1994,13 @@ def respond_special(event)
   send_reaction(event)           if cmd == 'react'
   send_unreaction(event)         if cmd == 'unreact'
   send_mappack_seed(event)       if cmd == 'mappack_seed'
-  send_mappack_screenshot(event) if cmd == 'mappack_ss'
   send_mappack_patch(event)      if cmd == 'mappack_patch'
   send_mappack_info(event)       if cmd == 'mappack_info'
   send_log_config(event)         if cmd == 'log'
 rescue RuntimeError => e
   event << e
+rescue => e
+  lex(e, 'Failed to handle special message')
 end
 
 def respond(event)
@@ -2082,7 +2078,7 @@ def respond(event)
   send_level_name(event)     if msg =~ /\blevel name\b/i
   send_level_id(event)       if msg =~ /\blevel id\b/i
   send_analysis(event)       if msg =~ /analysis/i
-#  send_splits(event)         if msg =~ /\bsplits\b/i
+  send_splits(event)         if msg =~ /\bsplits\b/i
   identify(event)            if msg =~ /my name is/i
   add_steam_id(event)        if msg =~ /my steam id is/i
   add_display_name(event)    if msg =~ /my display name is/i
@@ -2098,8 +2094,8 @@ def respond(event)
   send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   send_tally(event)          if msg =~ /\btally\b/i
   send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
-#  send_trace(event)          if msg =~ /\btrace\b/i
-#  update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
+  send_trace(event)          if msg =~ /\btrace\b/i
+  update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
   faceswap(event)            if msg =~ /faceswap/i
   testa(event) if msg =~ /testa/i
 

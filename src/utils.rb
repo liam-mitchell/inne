@@ -366,6 +366,7 @@ def verbatim(str)
   "`#{str.gsub('`', '')}`"
 end
 
+# Wrapper to benchmark a piece of code
 def bench(action, msg = nil)
   @t ||= Time.now
   @total ||= 0
@@ -383,6 +384,43 @@ def bench(action, msg = nil)
     dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : msg}: #{"%7.3fms" % (int * 1000)} (Total: #{"%7.3fms" % (@total * 1000)}).")
   end
 end
+
+# Wrapper to do memory profiling for a piece of code
+def profile(action, name = '')
+  case action
+  when :start
+    MemoryProfiler.start
+  when :stop
+    MemoryProfiler.stop.pretty_print(
+      to_file:         '/mnt/c/Users/Usuario2/Downloads/N/report.txt',
+      scale_bytes:     true,
+      detailed_report: true,
+      normalize_paths: true
+    )
+  end
+end
+
+def _fork
+  read, write = IO.pipe
+
+  pid = fork do
+    read.close
+    result = yield
+    Marshal.dump(result, write)
+    exit!(0)
+  end
+
+  write.close
+  result = read.read
+  Process.wait(pid)
+  raise 'Child failed' if result.empty?
+  Marshal.load(result)
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Forking failed')
+end
+
 
 # This corrects a datetime in the database when it's out of
 # phase (e.g. after a long downtime of the bot).

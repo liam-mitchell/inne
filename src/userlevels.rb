@@ -851,6 +851,10 @@ def send_userlevel_individual(event, msg, &block)
     sleep(0.250) # Prevent rate limiting
     send_userlevel_browse(event, query: map)
   end
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Failed to execute individual userlevel function')
 end
 
 def send_userlevel_download(event)
