@@ -392,7 +392,7 @@ def profile(action, name = '')
     MemoryProfiler.start
   when :stop
     MemoryProfiler.stop.pretty_print(
-      to_file:         '/mnt/c/Users/Usuario2/Downloads/N/report.txt',
+      to_file:         File.join(DIR_LOGS, 'memory_profile.txt'),
       scale_bytes:     true,
       detailed_report: true,
       normalize_paths: true

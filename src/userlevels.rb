@@ -1,8 +1,6 @@
-require 'chunky_png' # for screenshot generation
 require 'time'
 require 'zlib'
-#require 'oily_png' # more efficient screenshot generation (broken?)
-include ChunkyPNG::Color
+
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'io.rb'

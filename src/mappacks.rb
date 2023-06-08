@@ -1,9 +1,11 @@
+require 'chunky_png'
 require 'digest'
 require 'matplotlib/pyplot'
+#require 'oily_png' # More efficient screenshot generation (broken?)
 require 'zlib'
 
-# TODO: This module should contain the functionality common to all maps:
-#       Include it in Userlevels
+include ChunkyPNG::Color
+
 module Map
   # pref - Drawing preference (for overlaps): lower = more to the front
   # att  - Number of object attributes in the old format
@@ -379,10 +381,10 @@ module Map
   # Note: This function is forked to a different process, because both ChunkyPNG
   #       and Matplotlib have memory leaks we cannot handle.
   def screenshot(
-      theme = DEFAULT_PALETTE, # Palette to generate screenshot in
-      file: false,             # Whether to export to a file or return the raw data
-      coords: [],              # Array of coordinates to plot routes
-      demos: [],               # Array of demo inputs, to mark parts of the route
+      theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
+      file:    false,           # Whether to export to a file or return the raw data
+      coords:  [],              # Array of coordinates to plot routes
+      demos:   [],              # Array of demo inputs, to mark parts of the route
       markers: { jump: true, left: true, right: true} # Mark changes in replays
     )
 
