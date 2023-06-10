@@ -385,7 +385,8 @@ module Map
       file:    false,           # Whether to export to a file or return the raw data
       coords:  [],              # Array of coordinates to plot routes
       demos:   [],              # Array of demo inputs, to mark parts of the route
-      markers: { jump: true, left: true, right: true} # Mark changes in replays
+      texts:   [],              # Names for the legend
+      markers: { jump: true, left: false, right: false} # Mark changes in replays
     )
 
     bench(:start) if BENCHMARK
@@ -462,19 +463,26 @@ module Map
 
       # PAINT ROUTES (we use python, better graphing capabilities)
       if FEATURE_NTRACE && !coords.empty?
+        coords = coords.take(MAX_TRACES).reverse
         demos = demos.take(MAX_TRACES).reverse
+        texts = texts.take(MAX_TRACES).reverse
         n = [coords.size, MAX_TRACES].min
         color_idx = OBJECTS[0][:pal]
         palette_idx = themes.index(theme)
         dpi = 390
         mpl = Matplotlib::Pyplot
         mpl.ioff
+        font = 'util/sys.ttf'
+        fm = PyCall.import_module('matplotlib.font_manager')
+        fm.fontManager.addfont(font)
+        mpl.rcParams['font.family'] = 'sans-serif'
+        mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
         tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
         coords.take(MAX_TRACES).reverse.each_with_index{ |c, i|
           pixel = PALETTE[color_idx + n - 1 - i, palette_idx]
           color = '#' + [pixel].pack('L>').unpack('H*')[0]
           mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
-          next if markers.values.count(true) == 0
+          next if markers.values.count(true) == 0 || demos[i].nil?
           demos[i].each_with_index{ |f, j|
             if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
               mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
@@ -486,6 +494,8 @@ module Map
               mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
             end
           }
+          next if texts[i].nil?
+          mpl.text(UNITS * (1 + COLUMNS * (texts.size - i - 1) / 4), UNITS - 4, texts[i], color: color, size: 'small')
         }
         dx = (COLUMNS + 2) * UNITS
         dy = (ROWS + 2) * UNITS

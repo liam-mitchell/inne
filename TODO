@@ -73,6 +73,9 @@ Eddy's TODO list for inne:
 \\ ------------------------ ntrace ------------------------
 
 - Option to change color of plot line with time (let's say, loop through rainbow as many times as specified, or once), to aid readability for long runs with many crosses.
+- Modify Python script to take a parameter that is appended to all filenames, so that they can be distinguished. Then, from outte, every time we use ntrace we send a different value (e.g., a random number, a counter, or the microseconds), so that multiple executions can take place simultaneously without the files being overwritten.
+- Add a keyword to print only traces, no map.
+- Add colored legend (in frame, or design algo to find open spot).
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.

@@ -1230,12 +1230,18 @@ def send_trace(event)
   # Draw
   event << error.strip if !error.empty?
   event << "Replay #{format_board(board)} traces for #{level.name} in palette `#{palette}`:"
-  scores = level.format_scores(mode: board, ranks: ranks, join: false)
+  legend = level.format_scores(mode: board, ranks: ranks, join: false)
                 .each_with_index.map{ |s, i|
                   s + (valid[i] ? '' : " (Trace error!)")
                 }
-  event << format_block(scores.join("\n"))
-  trace = map.screenshot(palette, coords: coords, demos: demos, markers: markers)
+  event << format_block(legend.join("\n"))
+  trace = map.screenshot(
+    palette,
+    coords:  coords,
+    demos:   demos,
+    markers: markers,
+    texts:   scores.map{ |s| s.player.format_name }
+  )
   send_file(event, trace, "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
 rescue RuntimeError
   raise
@@ -1296,7 +1302,7 @@ def send_splits(event)
   factor = mappack && board == 'hs' ? 60.0 : 1
   lvl_scores = ep.levels.map{ |l| l.leaderboard(board)[rank][scoref] / factor }
 
-  # Send response
+  # Calculate differences
   full = !ntrace || FEATURE_NTRACE
 
   if full
@@ -1316,6 +1322,7 @@ def send_splits(event)
     }
   end
 
+  # Format response
   rows = []
   rows << ['', '00', '01', '02', '03', '04']
   rows << :sep
@@ -1362,6 +1369,8 @@ def update_ntrace(event)
   versions << "Old version: #{old_date.strftime('%Y/%m/%d %H:%M:%S')} (#{old_size} bytes)\n" if !old_date.nil?
   versions << "New version: #{new_date.strftime('%Y/%m/%d %H:%M:%S')} (#{new_size} bytes)\n" if !new_date.nil?
   event << format_block(versions)
+
+  ld("#{event.user.name} updated ntrace (#{new_size} bytes).")
 rescue RuntimeError
   raise
 rescue => e

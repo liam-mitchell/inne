@@ -276,6 +276,10 @@ def botmaster
     member = server.member(BOTMASTER_ID)
     return member if !member.nil?
   }
+  err("Couldn't find botmaster")
+  nil
+rescue => e
+  lex(e, "Error finding botmaster")
   nil
 end
 
@@ -398,8 +402,11 @@ def profile(action, name = '')
       normalize_paths: true
     )
   end
+rescue => e
+  lex(e, 'Failed to do memory profiling')
 end
 
+# Execute code block in another process
 def _fork
   read, write = IO.pipe
 
