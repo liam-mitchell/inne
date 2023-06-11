@@ -496,9 +496,11 @@ module Map
             ddx = UNITS / 2
             bx = UNITS / 4
             c = 8
+            m = dx / 2.9
+            dm = 4
             x, y = UNITS + dx * (n - i - 1), UNITS - 5
-            vert_x = [x + bx, x + bx, x + bx + c, x + dx - bx - c, x + dx - bx, x + dx - bx]
-            vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
+            vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx -m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
+            vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - dm - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
             color_bg = chunky2hex(PALETTE[2, palette_idx])
             color_bd = color
             mpl.fill(vert_x, vert_y, facecolor: color_bg, edgecolor: color_bd, linewidth: 0.5)
