@@ -391,7 +391,6 @@ module Map
     )
 
     bench(:start) if BENCHMARK
-    profile(:start)
 
     res = _fork do
       themes = THEMES.map(&:downcase)
@@ -529,7 +528,6 @@ module Map
       image.to_blob
     end
 
-    profile(:stop)
     bench(:step) if BENCHMARK
 
     file ? tmp_file(res, self.name + '.png', binary: true) : res

@@ -19,7 +19,7 @@ raw_map_data_1 = "map_data_1"
 raw_map_data_2 = "map_data_2"
 raw_map_data_3 = "map_data_3"
 raw_map_data_4 = "map_data_4"
-map_img = "None" #This one is only needed for manual execution
+map_img = "SS2-E-03.PNG" #This one is only needed for manual execution
 
 #Import inputs.
 inputs_list = []
@@ -212,7 +212,6 @@ class Ninja:
             self.grounded = False
 
     def wall_jump(self):
-
         if self.pre_buffer and self.post_buffer_wall and not self.jumping and not self.wall_jumping and self.post_buffer != 4:
             if self.xspeed * self.wall_normal < 0:
                 self.xspeed = 0
@@ -246,9 +245,10 @@ class Ninja:
         neighbour_cells = self.neighbour_cells(self.radius + 0.1)
         for cell in neighbour_cells:
             for segment in segment_dic[cell]:
-                is_walled = segment.is_wall_intersecting(self)
-                if is_walled:
-                    self.walled = True
+                if segment.active:
+                    is_walled = segment.is_wall_intersecting(self)
+                    if is_walled:
+                        self.walled = True
         
             #Update all variables related to jump buffers
         if self.pre_buffer:
@@ -318,6 +318,7 @@ class GridSegmentLinear:
         self.y1 = p1[1]
         self.x2 = p2[0]
         self.y2 = p2[1]
+        self.active = True
 
     def collision_check(self, ninja):
         """Check if the ninja is interesecting with the segment.
@@ -349,13 +350,11 @@ class GridSegmentLinear:
     
 class Entity:
     """Class that all entity types (gold, bounce blocks, thwumps, etc.) inherit from."""
-    def __init__(self, type, xcoord, ycoord, orientation=0, mode=0):
+    def __init__(self, type, xcoord, ycoord):
         """Inititate a member from map data"""
         self.type = type
         self.xpos = xcoord*6
         self.ypos = ycoord*6
-        self.orientation = orientation
-        self.mode = mode
         self.active = True
         self.is_logical_collidable = False
         self.is_physical_collidable = False
@@ -426,6 +425,42 @@ class EntityExitSwitch(Entity):
             self.active = False
             self.parent.open = True
 
+class EntityDoorBase(Entity):
+    def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
+        super().__init__(type, xcoord, ycoord)
+        self.is_logical_collidable = True
+        self.sw_xpos = 6 * sw_xcoord
+        self.sw_ypos = 6 * sw_ycoord
+        if orientation == 0:
+            self.segment = GridSegmentLinear((self.xpos, self.ypos-12), (self.xpos, self.ypos+12))
+        if orientation == 2:
+            self.segment = GridSegmentLinear((self.xpos-12, self.ypos), (self.xpos+12, self.ypos))
+        segment_dic[self.cell].append(self.segment)
+        self.xpos = self.sw_xpos
+        self.ypos = self.sw_ypos
+        self.grid_move()
+
+class EntityDoorLocked(EntityDoorBase):
+    def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
+        super().__init__(type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord)
+        self.radius = 5
+
+    def logical_collision(self, ninja):
+        if self.is_colliding_circle(ninja):
+            self.segment.active = False
+            self.active = False
+
+class EntityDoorTrap(EntityDoorBase):
+    def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
+        super().__init__(type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord)
+        self.radius = 5
+        self.segment.active = False
+
+    def logical_collision(self, ninja):
+        if self.is_colliding_circle(ninja):
+            self.segment.active = True
+            self.active = False
+            
 class EntityBounceBlock(Entity):
     def __init__(self, type, xcoord, ycoord):
         super().__init__(type, xcoord, ycoord)
@@ -577,11 +612,12 @@ def tick(p, frame):
         biggest_penetration = 0 #What I did to your mom xd
         for cell in neighbour_cells:
             for segment in segment_dic[cell]:
-                cloesest_point, penetration = segment.collision_check(p)
-                if penetration > biggest_penetration:
-                    biggest_penetration = penetration
-                    closest_point_x = cloesest_point[0]
-                    closest_point_y = cloesest_point[1]
+                if segment.active:
+                    cloesest_point, penetration = segment.collision_check(p)
+                    if penetration > biggest_penetration:
+                        biggest_penetration = penetration
+                        closest_point_x = cloesest_point[0]
+                        closest_point_y = cloesest_point[1]
         if biggest_penetration == 0:
             break
         point_collision(p, closest_point_x, closest_point_y)
@@ -785,9 +821,17 @@ for i in range(len(inputs_list)):
             EntityGold(type, xcoord, ycoord)
         if type == 3:
             parent = EntityExit(type, xcoord, ycoord)
-            child_xcoord = mdata[index + 5* exit_door_count + 1]
-            child_ycoord = mdata[index + 5* exit_door_count + 2]
+            child_xcoord = mdata[index + 5*exit_door_count + 1]
+            child_ycoord = mdata[index + 5*exit_door_count + 2]
             EntityExitSwitch(4, child_xcoord, child_ycoord, parent)
+        if type == 6:
+            switch_xcoord = mdata[index + 6]
+            switch_ycoord = mdata[index + 7]
+            EntityDoorLocked(type, xcoord, ycoord, orientation, switch_xcoord, switch_ycoord)
+        if type == 8:
+            switch_xcoord = mdata[index + 6]
+            switch_ycoord = mdata[index + 7]
+            EntityDoorTrap(type, xcoord, ycoord, orientation, switch_xcoord, switch_ycoord)
         if type == 17:
             EntityBounceBlock(type, xcoord, ycoord)
         index += 5
