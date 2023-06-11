@@ -1109,7 +1109,7 @@ class Player < ActiveRecord::Base
   end
 
   # Proxy a login request and register player
-  def self.login(req)
+  def self.login(mappack, req)
     # Forward request to Metanet
     res = forward(req)
     invalid = res.nil? || res == INVALID_RESP
@@ -1135,7 +1135,7 @@ class Player < ActiveRecord::Base
     end
 
     # Return the same response
-    dbg("#{json['name'].to_s} (#{json['user_id']}) logged in")
+    dbg("#{json['name'].to_s} (#{json['user_id']}) logged in to #{mappack.to_s.upcase}")
     res
   rescue => e
     err('Failed to proxy login request')
@@ -2234,7 +2234,7 @@ module Cle extend self
       when 'submit_score'
         response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
       when 'login'
-        response = Player.login(req)
+        response = Player.login(mappack, req)
       else
         response = CLE_FORWARD ? forward(req) : nil
       end
