@@ -82,6 +82,7 @@ def initialize_vars
   $twitch_token    = nil
   $twitch_streams  = {}
   $boot_time       = Time.now.to_i
+  $mutex           = { ntrace: Mutex.new }
   [DIR_LOGS].each{ |d| Dir.mkdir(d) unless Dir.exist?(d) }
   log("Initialized global variables")
 rescue => e

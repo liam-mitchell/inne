@@ -479,7 +479,7 @@ module Map
         mpl.rcParams['font.family'] = 'sans-serif'
         mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
         tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
-        coords.take(MAX_TRACES).reverse.each_with_index{ |c, i|
+        coords.each_with_index{ |c, i|
           # Plot trace
           pixel = PALETTE[color_idx + n - 1 - i, palette_idx]
           color = '#' + [pixel].pack('L>').unpack('H*')[0]

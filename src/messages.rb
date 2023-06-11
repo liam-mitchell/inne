@@ -1182,10 +1182,7 @@ end
 
 # Use SimVYo's tool to trace the replay of a run based on the map data and
 # the demo data.
-def send_trace(event)
-  assert_permissions(event, ['ntrace'])
-  raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
-
+def _send_trace(event)
   # Parse message parameters
   msg = event.content
   h = parse_palette(msg)
@@ -1249,6 +1246,13 @@ rescue RuntimeError
   raise
 rescue => e
   lex(e, 'Failed to trace replays')
+end
+
+def send_trace(event)
+  assert_permissions(event, ['ntrace'])
+  raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
+  event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
+  $mutex[:ntrace].synchronize do _send_trace(event) end
 end
 
 # Return an episode's partial level scores and splits using 2 methods:
