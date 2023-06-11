@@ -1199,12 +1199,13 @@ def send_trace(event)
   map = !level.is_a?(Map) ? MappackLevel.find_by(id: level.id) : level
   raise "Level data not found" if map.nil?
   board = parse_board(msg, 'hs')
-  raise "Speedrun mode isn't available for Metanet levels yet" if !mappack && board == 'sr'
+  raise "Only highscore mode is available for Metanet levels for now" if !mappack && board != 'hs'
   raise "Traces are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
   leaderboard = level.leaderboard(board, pluck: false)
   ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
   scores = ranks.map{ |r| leaderboard[r] }.compact
-  markers = { jump: false, left: false, right: false } if !!msg[/\bblank\b/i]
+  blank = !!msg[/\bblank\b/i]
+  markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
   markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
   markers = { jump: true,  left: false, right: false } if markers.nil?
 
@@ -1228,19 +1229,20 @@ def send_trace(event)
   FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
 
   # Draw
+  names = scores.map{ |s| s.player.print_name }
+  wrong_names = names.each_with_index.select{ |_, i| !valid[i] }.map(&:first)
   event << error.strip if !error.empty?
-  event << "Replay #{format_board(board)} traces for #{level.name} in palette `#{palette}`:"
-  legend = level.format_scores(mode: board, ranks: ranks, join: false)
-                .each_with_index.map{ |s, i|
-                  s + (valid[i] ? '' : " (Trace error!)")
-                }
-  event << format_block(legend.join("\n"))
+  event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{level.name} in palette `#{palette}`:"
+  texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
+  event << "(Warning: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
   trace = map.screenshot(
     palette,
+    file:    false,
+    draw:    !blank,
     coords:  coords,
     demos:   demos,
     markers: markers,
-    texts:   scores.map{ |s| s.player.format_name }
+    texts:   !blank ? texts : []
   )
   send_file(event, trace, "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
 rescue RuntimeError

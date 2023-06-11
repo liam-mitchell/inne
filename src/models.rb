@@ -252,7 +252,7 @@ end
 # CLE (mappacks).
 module Highscoreable
   def self.format_rank(rank)
-    rank.nil? ? '--' : "#{rank < 10 ? '0' : ''}#{rank}"
+    rank.nil? ? '--' : rank.to_s.rjust(2, '0')
   end
 
   def self.spreads(n, type, tabs, small = false, player_id = nil)
@@ -357,7 +357,7 @@ module Highscoreable
     end
   end
 
-  def format_scores_mode(mode = 'hs', ranks: 20.times.to_a, full: false)
+  def format_scores_mode(mode = 'hs', np: 0, sp: 0, ranks: 20.times.to_a, full: false, cools: true, stars: true)
     mappack = self.is_a?(MappackHighscoreable)
     hs = mode == 'hs'
     gm = mode == 'gm'
@@ -369,26 +369,26 @@ module Highscoreable
     }.sort_by{ |s, r| full ? r : ranks.index(r) }
 
     # Calculate padding
-    name_padding = boards.map{ |s, _| s['name'].to_s.length }.max
+    name_padding = np > 0 ? np : boards.map{ |s, _| s['name'].to_s.length }.max
     field = !mappack ? 'score' : "score_#{mode}"
-    score_padding = boards.map{ |s, _|
+    score_padding = sp > 0 ? sp : boards.map{ |s, _|
       mappack && hs ? s[field] / 60.0 : s[field]
     }.max.to_i.to_s.length + (!mappack || hs ? 4 : 0)
 
     # Print scores
     boards.map{ |s, r|
-      Scorish.format(name_padding, score_padding, true, mode, r, mappack, s)
+      Scorish.format(name_padding, score_padding, cools: cools, stars: stars, mode: mode, t_rank: r, mappack: mappack, h: s)
     }
   end
 
-  def format_scores(mode: 'hs', ranks: 20.times.to_a, join: true, full: false)
+  def format_scores(np: 0, sp: 0, mode: 'hs', ranks: 20.times.to_a, join: true, full: false, cools: true, stars: true)
     if !self.is_a?(MappackHighscoreable) || mode != 'dual'
-      ret = format_scores_mode(mode, ranks: ranks, full: full)
+      ret = format_scores_mode(mode, np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
       ret = ret.join("\n") if join
       return ret
     end
-    board_hs = format_scores_mode('hs', ranks: ranks, full: full)
-    board_sr = format_scores_mode('sr', ranks: ranks, full: full)
+    board_hs = format_scores_mode('hs', np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
+    board_sr = format_scores_mode('sr', np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
     length_hs = board_hs.first.length
     length_sr = board_sr.first.length
     size = [board_hs.size, board_sr.size].max
@@ -661,29 +661,29 @@ end
 # Implemented by Score and MappackScore
 module Scorish
 
-  def self.format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil, mappack = false, h = {})
+  def self.format(name_padding = DEFAULT_PADDING, score_padding = 0, cools: true, stars: true, mode: 'hs', t_rank: nil, mappack: false, h: {})
     mode = 'hs' if mode.nil?
     hs = mode == 'hs'
     gm = mode == 'gm'
 
     # Compose each element
-    t_star   = mappack ? '' : (h['star'] ? '*' : ' ')
+    t_star   = mappack || !stars ? '' : (h['star'] ? '*' : ' ')
     t_rank   = !mappack ? h['rank'] : (t_rank || 0)
     t_rank   = Highscoreable.format_rank(t_rank)
     t_player = format_string(h['name'], name_padding)
     t_score  = !mappack ? h['score'] : (hs ? h["score_#{mode}"] / 60.0 : h["score_#{mode}"])
     t_fmt    = !mappack || hs ? "%#{score_padding}.3f" : "%#{score_padding}d"
     t_score  = t_fmt % [t_score]
-    t_cool   = !mappack && show_cools && h['cool'] ? " 😎" : ""
+    t_cool   = !mappack && cools && h['cool'] ? " 😎" : ""
 
     # Put everything together
     "#{t_star}#{t_rank}: #{t_player} - #{t_score}#{t_cool}"
   end
 
-  def format(name_padding = DEFAULT_PADDING, score_padding = 0, show_cools = true, mode = 'hs', t_rank = nil)
+  def format(name_padding = DEFAULT_PADDING, score_padding = 0, cools = true, mode = 'hs', t_rank = nil)
     h = self.as_json
     h['name'] = player.print_name if !h.key?('name')
-    Scorish.format(name_padding, score_padding, show_cools, mode, t_rank, self.is_a?(MappackScore), h)
+    Scorish.format(name_padding, score_padding, cools: cools, mode: mode, t_rank: t_rank, mappack: self.is_a?(MappackScore), h: h)
   end
 end
 
