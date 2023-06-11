@@ -335,6 +335,11 @@ module Map
     (DIM * n.to_f / 24).round
   end
 
+  # Transform a ChunkyPNG color to a standard hex string
+  def chunky2hex(pixel, hash: true)
+    color = (hash ? '#' : '') + [pixel].pack('L>').unpack('H*')[0]
+  end
+
   # Ensure image is within limits
   def check_dimensions(image, x, y)
     x >= 0 && y >= 0 && x <= WIDTH - image.width && y <= HEIGHT - image.height
@@ -481,8 +486,7 @@ module Map
         tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
         coords.each_with_index{ |c, i|
           # Plot trace
-          pixel = PALETTE[color_idx + n - 1 - i, palette_idx]
-          color = '#' + [pixel].pack('L>').unpack('H*')[0]
+          color = chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx])
           mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
 
           # Write legend
@@ -490,7 +494,14 @@ module Map
             name, score = texts[i].split('-').map(&:strip).map(&:to_s)
             dx = UNITS * COLUMNS / 4.0
             ddx = UNITS / 2
+            bx = UNITS / 4
+            c = 8
             x, y = UNITS + dx * (n - i - 1), UNITS - 5
+            vert_x = [x + bx, x + bx, x + bx + c, x + dx - bx - c, x + dx - bx, x + dx - bx]
+            vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
+            color_bg = chunky2hex(PALETTE[2, palette_idx])
+            color_bd = color
+            mpl.fill(vert_x, vert_y, facecolor: color_bg, edgecolor: color_bd, linewidth: 0.5)
             mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: color, size: 'x-small')
             mpl.text(x + dx - ddx, y, score, ha: 'right', va: 'baseline', color: color, size: 'x-small')
           end
