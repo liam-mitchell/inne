@@ -104,6 +104,7 @@ MONKEY_PATCH_CORE          = true # Enable Kernel patches (must!)
 MONKEY_PATCH_ACTIVE_RECORD = true # Enable ActiveRecord monkey patches (must!)
 MONKEY_PATCH_DISCORDRB     = true # Enable Discordrb monkey patches (optional)
 MONKEY_PATCH_WEBRICK       = true # Enable WEBrick monkey patches (optional)
+MONKEY_PATCH_CHUNKYPNG     = true # Enable ChunkyPNG monkey patches (optional)
 
 # <--------------------------------------------------------------------------->
 # <------                       FORMAT VARIABLES                        ------>

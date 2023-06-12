@@ -397,10 +397,14 @@ module Map
     bench(:start) if BENCHMARK
 
     res = _fork do
+      bench(:start)
       themes = THEMES.map(&:downcase)
       theme = theme.downcase
       if !themes.include?(theme) then theme = DEFAULT_PALETTE end
-      image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, themes.index(theme)])
+      bg_color = PALETTE[2, themes.index(theme)]
+      fg_color = PALETTE[0, themes.index(theme)]
+      image = ChunkyPNG::Image.new(WIDTH, HEIGHT, bg_color)
+      bench(:step, 'Setup     ')
 
       if draw
         msg.edit('Generating screenshot...') if !msg.nil?
@@ -410,11 +414,13 @@ module Map
         object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, themes.index(theme), true, true)] }.to_h
         object.merge!(object_special)
         border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
+        bench(:step, 'Initialize')
 
         # PARSE MAP
         tiles = self.tiles.map(&:dup)
         objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
         objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
+        bench(:step, 'Parse     ')
 
         # PAINT OBJECTS
         objects.each do |o|
@@ -424,6 +430,7 @@ module Map
             image.compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
           end
         end
+        bench(:step, 'Objects   ')
 
         # PAINT TILES
         tiles.each{ |row| row.unshift(1).push(1) }
@@ -431,6 +438,11 @@ module Map
         tiles = tiles.map{ |row| row.map{ |tile| tile > 33 ? 0 : tile } } # remove glitched tiles
         tiles.each_with_index do |slice, row|
           slice.each_with_index do |t, column|
+            next if t == 0
+            if t == 1
+              image.fast_rect(DIM * column, DIM * row, DIM * column + DIM - 1, DIM * row + DIM - 1, nil, fg_color)
+              next
+            end
             if t == 0 || t == 1 # empty and full tiles
               new_tile = tile[t]
             elsif t >= 2 && t <= 17 # half tiles and curved slopes
@@ -446,6 +458,7 @@ module Map
             image.compose!(new_tile, DIM * column, DIM * row)
           end
         end
+        bench(:step, 'Tiles     ')
 
         # PAINT TILE BORDERS
         edge = ChunkyPNG::Image.from_file('images/b.png')
@@ -466,11 +479,14 @@ module Map
             if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
           end
         end
+        bench(:step, 'Borders   ')
       end
 
       # PAINT ROUTES (we use python, better graphing capabilities)
       if FEATURE_NTRACE && !coords.empty?
         msg.edit('Plotting routes...') if !msg.nil?
+        tmp = nil
+        blob_thread = Thread.new{ tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false) }
         coords = coords.take(MAX_TRACES).reverse
         demos = demos.take(MAX_TRACES).reverse
         texts = texts.take(MAX_TRACES).reverse
@@ -484,7 +500,6 @@ module Map
         fm.fontManager.addfont(font)
         mpl.rcParams['font.family'] = 'sans-serif'
         mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
-        tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false)
         coords.each_with_index{ |c, i|
           # Plot trace
           color = chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx])
@@ -530,17 +545,20 @@ module Map
         mpl.axis('off')
         ax = mpl.gca
         ax.set_aspect('equal', adjustable: 'box')
+        blob_thread.join
+        bench(:step, 'Traces Blo')
         img = mpl.imread(tmp)
         ax.imshow(img, extent: [0, dx, dy, 0])
         fn = tmp_filename("#{name}_tmp2.png")
         mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390)
-        mpl.cla
-        mpl.clf
-        mpl.close('all')
-        image = ChunkyPNG::Image.from_file(fn)
+        #mpl.cla
+        #mpl.clf
+        #mpl.close('all')
+        image = File.binread(fn)
+        bench(:step, 'Traces Sav')
       end
 
-      image.to_blob
+      image.class == String ? image : image.to_blob
     end
 
     bench(:step) if BENCHMARK
@@ -609,6 +627,7 @@ module Map
       markers: markers,
       texts:   !blank ? texts : []
     )
+    raise 'Failed to trace replays' if trace.nil?
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
     tmp_msg.delete
   rescue RuntimeError => e

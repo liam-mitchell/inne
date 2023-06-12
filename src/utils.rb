@@ -385,7 +385,7 @@ def bench(action, msg = nil)
     int = Time.now - @t
     @total += int
     @t = Time.now
-    dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : msg}: #{"%7.3fms" % (int * 1000)} (Total: #{"%7.3fms" % (@total * 1000)}).")
+    dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : msg}: #{"%8.3fms" % (int * 1000)} (Total: #{"%8.3fms" % (@total * 1000)}).")
   end
 end
 

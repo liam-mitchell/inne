@@ -102,12 +102,41 @@ module MonkeyPatches
     end
   end
 
+  def self.patch_chunkypng
+    ::ChunkyPNG::Canvas::Drawing.class_eval do
+      def fast_rect(x0, y0, x1, y1, stroke_color = nil, fill_color = ChunkyPNG::Color::TRANSPARENT)
+        stroke_color = ChunkyPNG::Color.parse(stroke_color) unless stroke_color.nil?
+        fill_color   = ChunkyPNG::Color.parse(fill_color)
+
+        # Fill
+        unless fill_color == ChunkyPNG::Color::TRANSPARENT
+          [x0, x1].min.upto([x0, x1].max) do |x|
+            [y0, y1].min.upto([y0, y1].max) do |y|
+              pixels[y * width + x] = fill_color
+            end
+          end
+        end
+
+        # Stroke
+        if !stroke_color.nil?
+          line(x0, y0, x0, y1, stroke_color, false)
+          line(x0, y1, x1, y1, stroke_color, false)
+          line(x1, y1, x1, y0, stroke_color, false)
+          line(x1, y0, x0, y0, stroke_color, false)
+        end
+
+        self
+      end
+    end
+  end
+
   def self.apply
     return if !MONKEY_PATCH
     patch_core         if MONKEY_PATCH_CORE
     patch_activerecord if MONKEY_PATCH_ACTIVE_RECORD
     patch_discordrb    if MONKEY_PATCH_DISCORDRB
     patch_webrick      if MONKEY_PATCH_WEBRICK
+    patch_chunkypng    if MONKEY_PATCH_CHUNKYPNG
   end
 end
 
