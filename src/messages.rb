@@ -1182,77 +1182,18 @@ end
 
 # Use SimVYo's tool to trace the replay of a run based on the map data and
 # the demo data.
-def _send_trace(event)
-  # Parse message parameters
-  msg = event.content
-  h = parse_palette(msg)
-  msg = h[:msg]
-  palette = h[:palette]
-  error = h[:error]
-  level = parse_level_or_episode(msg, mappack: true)
-  mappack = level.is_a?(MappackHighscoreable)
-  raise "Episodes and columns can't be traced" if !level.is_a?(Levelish)
-  raise "Userlevels can't be traced yet" if level.is_a?(Userlevel)
-  map = !level.is_a?(Map) ? MappackLevel.find_by(id: level.id) : level
-  raise "Level data not found" if map.nil?
-  board = parse_board(msg, 'hs')
-  raise "Only highscore mode is available for Metanet levels for now" if !mappack && board != 'hs'
-  raise "Traces are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
-  leaderboard = level.leaderboard(board, pluck: false)
-  ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
-  scores = ranks.map{ |r| leaderboard[r] }.compact
-  blank = !!msg[/\bblank\b/i]
-  markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
-  markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
-  markers = { jump: true,  left: false, right: false } if markers.nil?
-
-  # Export input files
-  demos = []
-  File.binwrite('map_data', map.dump_level)
-  scores.each_with_index.map{ |s, i|
-    demo = s.demo.demo
-    demos << Demo.decode(demo)
-    File.binwrite("inputs_#{i}", demo)
-  }
-  system "python3 #{PATH_NTRACE}"
-
-  # Read output files
-  file = File.binread('output.txt') rescue nil
-  raise "ntrace failed." if file.nil?
-  valid = file.scan(/True|False/).map{ |b| b == 'True' }
-  coords = file.split(/True|False/)[1..-1].map{ |d|
-    d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
-  }
-  FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
-
-  # Draw
-  names = scores.map{ |s| s.player.print_name }
-  wrong_names = names.each_with_index.select{ |_, i| !valid[i] }.map(&:first)
-  event << error.strip if !error.empty?
-  event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{level.name} in palette `#{palette}`:"
-  texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
-  event << "(Warning: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
-  trace = map.screenshot(
-    palette,
-    file:    false,
-    draw:    !blank,
-    coords:  coords,
-    demos:   demos,
-    markers: markers,
-    texts:   !blank ? texts : []
-  )
-  send_file(event, trace, "#{map.name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
-rescue RuntimeError
-  raise
-rescue => e
-  lex(e, 'Failed to trace replays')
-end
-
 def send_trace(event)
   assert_permissions(event, ['ntrace'])
   raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
-  event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
-  $mutex[:ntrace].synchronize do _send_trace(event) end
+  wait_msg = event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
+  $mutex[:ntrace].synchronize do
+    wait_msg.delete if !wait_msg.nil?
+    level = parse_level_or_episode(event.content, mappack: true)
+    raise "Episodes and columns can't be traced" if !level.is_a?(Levelish)
+    map = !level.is_a?(Map) ? MappackLevel.find_by(id: level.id) : level
+    raise "Level data not found" if map.nil?
+    map.trace(event)
+  end
 end
 
 # Return an episode's partial level scores and splits using 2 methods:

@@ -4,8 +4,6 @@ require 'matplotlib/pyplot'
 #require 'oily_png' # More efficient screenshot generation (broken?)
 require 'zlib'
 
-include ChunkyPNG::Color
-
 module Map
   # pref - Drawing preference (for overlaps): lower = more to the front
   # att  - Number of object attributes in the old format
@@ -346,11 +344,11 @@ module Map
   end
 
   # The following two methods are used for theme generation
-  def mask(image, before, after, bg = WHITE, tolerance = 0.5)
-    new_image = ChunkyPNG::Image.new(image.width, image.height, TRANSPARENT)
+  def mask(image, before, after, bg = ChunkyPNG::Color::WHITE, tolerance = 0.5)
+    new_image = ChunkyPNG::Image.new(image.width, image.height, ChunkyPNG::Color::TRANSPARENT)
     image.width.times{ |x|
       image.height.times{ |y|
-        score = euclidean_distance_rgba(image[x,y], before).to_f / MAX_EUCLIDEAN_DISTANCE_RGBA
+        score = ChunkyPNG::Color.euclidean_distance_rgba(image[x,y], before).to_f / ChunkyPNG::Color::MAX_EUCLIDEAN_DISTANCE_RGBA
         if score < tolerance then new_image[x,y] = ChunkyPNG::Color.compose(after, bg) end
       }
     }
@@ -370,9 +368,9 @@ module Map
 
     # Paint and combine the layers
     masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file("images/#{object ? "object" : "tile"}_layers/" + part)] }
-    images = masks.map{ |mask| mask(mask[1], BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id]) }
+    images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id]) }
     dims = [ [DIM, *images.map{ |i| i.width }].max, [DIM, *images.map{ |i| i.height }].max ]
-    output = ChunkyPNG::Image.new(*dims, TRANSPARENT)
+    output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
     images.each{ |image| output.compose!(image, 0, 0) }
     output
   end
@@ -388,6 +386,7 @@ module Map
   def screenshot(
       theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
       file:    false,           # Whether to export to a file or return the raw data
+      msg:     nil,             # Message object (to edit progress messages)
       draw:    true,            # Draw the screenshot or not
       coords:  [],              # Array of coordinates to plot routes
       demos:   [],              # Array of demo inputs, to mark parts of the route
@@ -404,6 +403,7 @@ module Map
       image = ChunkyPNG::Image.new(WIDTH, HEIGHT, PALETTE[2, themes.index(theme)])
 
       if draw
+        msg.edit('Generating screenshot...') if !msg.nil?
         # INITIALIZE IMAGES
         tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, themes.index(theme), false)] }.to_h
         object = OBJECTS.keys.map{ |o| [o, generate_object(o, themes.index(theme))] }.to_h
@@ -449,7 +449,7 @@ module Map
 
         # PAINT TILE BORDERS
         edge = ChunkyPNG::Image.from_file('images/b.png')
-        edge = mask(edge, BLACK, PALETTE[1, themes.index(theme)])
+        edge = mask(edge, ChunkyPNG::Color::BLACK, PALETTE[1, themes.index(theme)])
         (0 .. ROWS).each do |row| # horizontal
           (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
             tile_a = tiles[row][col / 2]
@@ -470,6 +470,7 @@ module Map
 
       # PAINT ROUTES (we use python, better graphing capabilities)
       if FEATURE_NTRACE && !coords.empty?
+        msg.edit('Plotting routes...') if !msg.nil?
         coords = coords.take(MAX_TRACES).reverse
         demos = demos.take(MAX_TRACES).reverse
         texts = texts.take(MAX_TRACES).reverse
@@ -489,6 +490,21 @@ module Map
           color = chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx])
           mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
 
+          # Draw inputs
+          if markers.values.count(true) > 0  && !demos[i].nil?
+            demos[i].each_with_index{ |f, j|
+              if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
+                mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
+              end
+              if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
+                mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
+              end
+              if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
+                mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
+              end
+            }
+          end
+
           # Write legend
           if !texts[i].nil?
             name, score = texts[i].split('-').map(&:strip).map(&:to_s)
@@ -507,20 +523,6 @@ module Map
             mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: color, size: 'x-small')
             mpl.text(x + dx - ddx, y, score, ha: 'right', va: 'baseline', color: color, size: 'x-small')
           end
-
-          # Draw inputs
-          next if markers.values.count(true) == 0 || demos[i].nil?
-          demos[i].each_with_index{ |f, j|
-            if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
-              mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
-            end
-            if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
-              mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
-            end
-            if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
-              mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
-            end
-          }
         }
         dx = (COLUMNS + 2) * UNITS
         dy = (ROWS + 2) * UNITS
@@ -547,6 +549,79 @@ module Map
   rescue => e
     lex(e, "Failed to generate screenshot")
     nil
+  end
+
+  def trace(event)
+    msg = event.content
+    h = parse_palette(msg)
+    msg, palette, error = h[:msg], h[:palette], h[:error]
+    level = self.is_a?(MappackHighscoreable) && mappack.id == 0 ? Level.find_by(id: id) : self
+    raise "Error finding level object" if level.nil?
+    mappack = level.is_a?(MappackHighscoreable)
+    userlevel = level.is_a?(Userlevel)
+    board = parse_board(msg, 'hs')
+    raise "Non-highscore modes (e.g. speedrun) are only available for mappacks" if !mappack && board != 'hs'
+    raise "Traces are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
+    leaderboard = level.leaderboard(board, pluck: false)
+    ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
+    scores = ranks.map{ |r| leaderboard[r] }.compact
+    raise "No scores found for this level" if scores.empty?
+    blank = !!msg[/\bblank\b/i]
+    markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
+    markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
+    markers = { jump: true,  left: false, right: false } if markers.nil?
+
+    # Export input files
+    demos = []
+    File.binwrite('map_data', dump_level)
+    tmp_msg = event.send_message("#{userlevel ? 'Downloading' : 'Parsing'} replays...")
+    scores.each_with_index.map{ |s, i|
+      demo = userlevel ? Demo.encode(s.demo) : s.demo.demo
+      demos << Demo.decode(demo)
+      File.binwrite("inputs_#{i}", demo)
+    }
+    tmp_msg.edit('Calculating routes...')
+    system "python3 #{PATH_NTRACE}"
+
+    # Read output files
+    file = File.binread('output.txt') rescue nil
+    raise "ntrace failed." if file.nil?
+    valid = file.scan(/True|False/).map{ |b| b == 'True' }
+    coords = file.split(/True|False/)[1..-1].map{ |d|
+      d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
+    }
+    FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
+
+    # Draw
+    names = scores.map{ |s| s.player.print_name }
+    wrong_names = names.each_with_index.select{ |_, i| !valid[i] }.map(&:first)
+    event << error.strip if !error.empty?
+    event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel `#{level.name}`" : level.name} in palette `#{palette}`:"
+    texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
+    event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
+    trace = screenshot(
+      palette,
+      file:    false,
+      msg:     tmp_msg,
+      draw:    !blank,
+      coords:  coords,
+      demos:   demos,
+      markers: markers,
+      texts:   !blank ? texts : []
+    )
+    send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+    tmp_msg.delete
+  rescue RuntimeError => e
+    if !tmp_msg.nil?
+      tmp_msg.edit(e)
+    else
+      raise
+    end
+    event.drain
+  rescue => e
+    tmp_msg.edit('Failed to trace replays') if !tmp_msg.nil?
+    event.drain
+    lex(e, 'Failed to trace replays')
   end
 end
 

@@ -339,18 +339,19 @@ module Highscoreable
   # Arguments are unused, but they're necessary to be compatible with the corresponding
   # function in MappackHighscoreable
   def leaderboard(*args, **kwargs)
+    ul = self.is_a?(Userlevel)
     attr_names = %W[rank id score name metanet_id cool star]
     attrs = [
       'rank',
-      'scores.id',
+      "#{ul ? 'userlevel_' : ''}scores.id",
       'score',
-      'IF(display_name IS NOT NULL, display_name, name)',
-      'metanet_id',
-      'cool',
-      'star'
+      ul ? 'name' : 'IF(display_name IS NOT NULL, display_name, name)',
+      'metanet_id'
     ]
+    attrs.push('cool', 'star') if !ul
     if !kwargs.key?(:pluck) || kwargs[:pluck]
-      scores.joins("INNER JOIN players ON players.id = player_id")
+      pclass = ul ? 'userlevel_players' : 'players'
+      scores.joins("INNER JOIN #{pclass} ON #{pclass}.id = player_id")
             .pluck(*attrs).map{ |s| attr_names.zip(s).to_h }
     else
       scores
@@ -359,25 +360,26 @@ module Highscoreable
 
   def format_scores_mode(mode = 'hs', np: 0, sp: 0, ranks: 20.times.to_a, full: false, cools: true, stars: true)
     mappack = self.is_a?(MappackHighscoreable)
+    userlevel = self.is_a?(Userlevel)
     hs = mode == 'hs'
     gm = mode == 'gm'
 
     # Reload scores, otherwise sometimes recent changes aren't in memory
     scores.reload
-    boards = leaderboard(mode, aliases: true, truncate: full ? 0 : 20).each_with_index.select{ |s, r|
+    boards = leaderboard(mode, aliases: true, truncate: full ? 0 : 20).each_with_index.select{ |_, r|
       full ? true : ranks.include?(r)
-    }.sort_by{ |s, r| full ? r : ranks.index(r) }
+    }.sort_by{ |_, r| full ? r : ranks.index(r) }
 
     # Calculate padding
     name_padding = np > 0 ? np : boards.map{ |s, _| s['name'].to_s.length }.max
     field = !mappack ? 'score' : "score_#{mode}"
     score_padding = sp > 0 ? sp : boards.map{ |s, _|
-      mappack && hs ? s[field] / 60.0 : s[field]
+      mappack && hs || userlevel ? s[field] / 60.0 : s[field]
     }.max.to_i.to_s.length + (!mappack || hs ? 4 : 0)
 
     # Print scores
     boards.map{ |s, r|
-      Scorish.format(name_padding, score_padding, cools: cools, stars: stars, mode: mode, t_rank: r, mappack: mappack, h: s)
+      Scorish.format(name_padding, score_padding, cools: cools, stars: stars, mode: mode, t_rank: r, mappack: mappack, userlevel: userlevel, h: s)
     }
   end
 
@@ -519,6 +521,11 @@ end
 
 # Implemented by Level and MappackLevel
 module Levelish
+  # Return the Map object (containing map data), if it exists
+  def map
+    self.is_a?(Level) ? MappackLevel.find_by(id: id) : self
+  end
+
   def format_name
     "#{longname} (#{name})"
   end
@@ -661,7 +668,7 @@ end
 # Implemented by Score and MappackScore
 module Scorish
 
-  def self.format(name_padding = DEFAULT_PADDING, score_padding = 0, cools: true, stars: true, mode: 'hs', t_rank: nil, mappack: false, h: {})
+  def self.format(name_padding = DEFAULT_PADDING, score_padding = 0, cools: true, stars: true, mode: 'hs', t_rank: nil, mappack: false, userlevel: false, h: {})
     mode = 'hs' if mode.nil?
     hs = mode == 'hs'
     gm = mode == 'gm'
@@ -671,7 +678,9 @@ module Scorish
     t_rank   = !mappack ? h['rank'] : (t_rank || 0)
     t_rank   = Highscoreable.format_rank(t_rank)
     t_player = format_string(h['name'], name_padding)
-    t_score  = !mappack ? h['score'] : (hs ? h["score_#{mode}"] / 60.0 : h["score_#{mode}"])
+    f_score  = !mappack ? 'score' : "score_#{mode}"
+    s_score  = mappack && hs || userlevel ? 60.0 : 1
+    t_score  = h[f_score] / s_score
     t_fmt    = !mappack || hs ? "%#{score_padding}.3f" : "%#{score_padding}d"
     t_score  = t_fmt % [t_score]
     t_cool   = !mappack && cools && h['cool'] ? " 😎" : ""
@@ -1873,9 +1882,9 @@ class Demo < ActiveRecord::Base
   # Parse a demo, return array with inputs for each level
   def self.parse(replay, htype)
     data   = Zlib::Inflate.inflate(replay)
-    header = {'Level' => 0, 'Episode' =>  4, 'Story' =>   8}[htype]
-    offset = {'Level' => 0, 'Episode' => 24, 'Story' => 108}[htype]
-    count  = {'Level' => 1, 'Episode' =>  5, 'Story' =>  25}[htype]
+    header = { 'Level' => 0, 'Episode' =>  4, 'Story' =>   8 }[htype]
+    offset = { 'Level' => 0, 'Episode' => 24, 'Story' => 108 }[htype]
+    count  = { 'Level' => 1, 'Episode' =>  5, 'Story' =>  25 }[htype]
 
     mode  = _unpack(data[offset + 17..offset + 20])
     start = mode == 1 ? 34 : 30

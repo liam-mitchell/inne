@@ -111,12 +111,30 @@ class UserlevelScore < ActiveRecord::Base
     end
     scores
   end
+
+  # Download demo on the fly
+  def demo
+    uri = "https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=%s&steam_auth=&replay_id=#{replay_id}"
+    replay = get_data(
+      -> (steam_id) { URI.parse(uri % steam_id) },
+      -> (data) { data },
+      "Error downloading userlevel #{id} replay #{replay_id}"
+    )
+    raise "Error downloading userlevel replay" if replay.nil?
+    raise "Selected replay seems to be missing" if replay.empty?
+    Demo.parse(replay[16..-1], 'Level')
+  end
 end
 
 class UserlevelPlayer < ActiveRecord::Base
   alias_attribute :scores, :userlevel_scores
   has_many :userlevel_scores, foreign_key: :player_id
   has_many :userlevel_histories, foreign_key: :player_id
+
+  def print_name
+    user = User.where(playername: name).where.not(displayname: nil)
+    (user.empty? ? name : user.first.displayname).remove("`")
+  end
 
   def newest(id = Userlevel.min_id)
     scores.where("userlevel_id >= #{id}")
@@ -204,6 +222,7 @@ class Userlevel < ActiveRecord::Base
   include Levelish
   alias_attribute :scores, :userlevel_scores
   alias_attribute :author, :userlevel_author
+  alias_attribute :name, :title
   has_many :userlevel_scores
   belongs_to :userlevel_author, foreign_key: :author_id
   enum mode: [:solo, :coop, :race]
@@ -1330,6 +1349,20 @@ def send_userlevel_summary(event)
   send_userlevel_highscoring_summary(event) if highscoring || both
 end
 
+def send_userlevel_trace(event)
+  assert_permissions(event, ['ntrace'])
+  raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
+  wait_msg = event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
+  $mutex[:ntrace].synchronize do
+    wait_msg.delete if !wait_msg.nil?
+    msg = event.content.sub(/user\s*level/i, '').gsub(/\b\d{1,2}\b/, '')
+    msg = parse_palette(msg)[:msg]
+    send_userlevel_individual(event, msg){ |map|
+      map[:query].trace(event)
+    }
+  end
+end
+
 def send_userlevel_time(event)
   next_level = ($status_update + STATUS_UPDATE_FREQUENCY) - Time.now.to_i
   next_level_minutes = (next_level / 60).to_i
@@ -1388,5 +1421,6 @@ def respond_userlevels(event)
   send_userlevel_maxable(event)     if msg =~ /maxable/i
   send_random_userlevel(event)      if msg =~ /random/i
   send_userlevel_summary(event)     if msg =~ /summary/i
+  send_userlevel_trace(event)       if msg =~ /\btrace\b/i
   #csv(event) if msg =~ /csv/i
 end

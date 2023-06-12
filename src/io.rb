@@ -416,7 +416,7 @@ def parse_bottom_rank(msg)
 end
 
 def parse_ranks(msg, clamp = 20)
-  ranks = msg.scan(/\s+([0-9][0-9]?)/)
+  ranks = msg.scan(/\b\d{1,2}\b/)
              .map{ |r| r[0].to_i.clamp(0, clamp - 1) }
              .uniq
   ranks.empty? ? [0] : ranks
