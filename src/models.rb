@@ -163,11 +163,11 @@ module Downloadable
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}")
   end
 
-  def get_scores
+  def get_scores(fast: false)
     uri  = Proc.new { |steam_id| scores_uri(steam_id) }
     data = Proc.new { |data| correct_ties(clean_scores(JSON.parse(data)['scores'])) }
     err  = "error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}"
-    get_data(uri, data, err)
+    get_data(uri, data, err, fast: fast)
   end
 
   # Sanitize received leaderboard data:
@@ -272,11 +272,11 @@ module Downloadable
     end
   end
 
-  def update_scores
-    updated = get_scores
+  def update_scores(fast: false)
+    updated = get_scores(fast: fast)
 
     if updated.nil?
-      err("Failed to download scores for #{self.class.to_s.downcase} #{self.id}")
+      err("Failed to download scores for #{self.class.to_s.downcase} #{self.id}") if LOG_DOWNLOAD_ERRORS
       return -1
     end
 
@@ -1555,9 +1555,12 @@ class GlobalProperty < ActiveRecord::Base
   end
   
   # Select a new Steam ID to set (we do it in order, so that we can loop the list)
-  def self.update_last_steam_id
+  # If 'fast', we only try the recently active Steam IDs
+  def self.update_last_steam_id(fast = false)
     current   = (User.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
-    next_user = (User.where.not(steam_id: nil).where('id > ?', current).first || User.where.not(steam_id: nil).first) rescue nil
+    query = User.where.not(steam_id: nil)
+    query = query.where(active: true) if fast
+    next_user = (query.where('id > ?', current).first || query.first) rescue nil
     set_last_steam_id(next_user.steam_id) if !next_user.nil?
   end
   
@@ -1565,12 +1568,14 @@ class GlobalProperty < ActiveRecord::Base
   def self.activate_last_steam_id
     p = User.find_by(steam_id: get_last_steam_id)
     p.update(last_active: Time.now) if !p.nil?
+    update_steam_actives
   end
-  
-  # Mark date of when current Steam ID was inactive
-  def self.deactivate_last_steam_id
-    p = User.find_by(steam_id: get_last_steam_id)
-    p.update(last_inactive: Time.now) if !p.nil?   
+
+  # Update "active" boolean for recently active IDs
+  def self.update_steam_actives
+    period = FAST_PERIOD * 24 * 60 * 60
+    User.where("unix_timestamp(last_active) >= #{Time.now.to_i - period}").update_all(active: true)
+    User.where("unix_timestamp(last_active) < #{Time.now.to_i - period}").update_all(active: false)
   end
 end
 

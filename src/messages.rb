@@ -372,7 +372,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   # Update scores, unless we're in offline mode or the connection fails
   if OFFLINE_STRICT
     res << "Strict offline mode is ON, sending local cached scores.\n"
-  elsif !offline && h.is_a?(Downloadable) && h.update_scores == -1
+  elsif !offline && h.is_a?(Downloadable) && h.update_scores(fast: true) == -1
     res << "Connection to the server failed, sending local cached scores.\n"
   end
 

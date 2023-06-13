@@ -211,14 +211,19 @@ def ld  (msg)         Log.discord(msg)      end
 #   - data_proc: A Proc that handles response data before returning it
 #   - err:       Error string to log if the request fails
 #   - vargs:     Extra variable arguments to pass to the uri_proc
-def get_data(uri_proc, data_proc, err, *vargs)
+#   - fast:      Only try the recently active Steam IDs
+def get_data(uri_proc, data_proc, err, *vargs, fast: false)
   attempts ||= 0
+  ids = User.where.not(steam_id: nil)
+  ids = ids.where(active: true) if fast
+  count = ids.count
+  i = 0
   initial_id = GlobalProperty.get_last_steam_id
   response = Net::HTTP.get_response(uri_proc.call(initial_id, *vargs))
   while response.body == INVALID_RESP
-    GlobalProperty.deactivate_last_steam_id
-    GlobalProperty.update_last_steam_id
-    break if GlobalProperty.get_last_steam_id == initial_id
+    GlobalProperty.update_last_steam_id(fast)
+    i += 1
+    break if GlobalProperty.get_last_steam_id == initial_id || i > count
     response = Net::HTTP.get_response(uri_proc.call(GlobalProperty.get_last_steam_id, *vargs))
   end
   return nil if response.body == INVALID_RESP

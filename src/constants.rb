@@ -29,6 +29,9 @@ RETRIES        = 50      # Redownload attempts for boards / demos
 ATTEMPT_LIMIT  = 5       # Redownload attempts in general (bigger files)
 INVALID_RESP   = '-1337' # N++'s server response when Steam ID is inactive
 
+FAST_MANUAL = true # Only use a subset of Steam IDs for manual queries, for speed
+FAST_PERIOD = 7    # Days old until a Steam ID is marked as inactive
+
 UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 
 # <--------------------------------------------------------------------------->
@@ -73,6 +76,9 @@ LOG_LEVEL_FILE = :quiet  # Default file logging level (see Log class)
 LOG_APPS       = false   # Append source app to log msgs
 LOG_PAD        = 120     # Pad each log line to this many chars
 LOG_BACKTRACES = true    # Log exception backtraces
+
+# Log specific things
+LOG_DOWNLOAD_ERRORS = false # Too spammy if no Steam IDs are active
 
 # <--------------------------------------------------------------------------->
 # <------                        PATH VARIABLES                         ------>
