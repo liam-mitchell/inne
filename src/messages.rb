@@ -116,7 +116,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   rtype = fix_rtype(rtype, range[1])
   type  = parse_type(msg, type, true, initial, rtype == 'score' ? 'Level' : nil)
   mappack = parse_mappack(msg)
-  board = parse_board(msg)
+  board = parse_board(msg, 'hs')
 
   raise "#{format_board(board)} rankings aren't available yet" if ['gm', 'dual'].include?(board)
 

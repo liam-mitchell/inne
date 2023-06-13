@@ -69,6 +69,7 @@ Eddy's TODO list for inne:
 - Cleanliness for mappacks
 - Dual 0ths (both hs and sr 0ths), and dual ownages
 - Use get_process_mem to track outte's memory usage in a thread, and send warning to Discord when it gets too high (e.g., when over a certain threshold with respect to the total memory, which for portability, we could also get dynamically). Restart process when it gets over a certain threshold.
+- Ability to subscribe to mappacks or certain things (e.g. "subscribe to cla sr top20" will warn when the user loses a sr top20 in mappack CLA)
 
 \\ ------------------------ ntrace ------------------------
 
