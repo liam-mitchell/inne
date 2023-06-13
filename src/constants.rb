@@ -13,6 +13,7 @@ BYEBUG         = false # Breakpoint right after loading the bot
 # Test specific features
 TEST_REPORT    = false # Produces the report immediately once
 TEST_LOTD      = false # Posts lotd immediately once
+BENCH_IMAGES   = false # Benchmark image manipulation steps
 
 # Internal
 WAIT           = 1     # Seconds between iterations of infinite loops

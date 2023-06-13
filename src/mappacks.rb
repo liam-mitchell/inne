@@ -398,14 +398,15 @@ module Map
   #       memory leaks we cannot handle.
   def screenshot(
       theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
-      file:    false            # Whether to export to a file or return the raw data
+      file:    false,           # Whether to export to a file or return the raw data
+      blank:   false            # Only draw background
     )
 
     bench(:start) if BENCHMARK
 
     res = _fork do
       # Parse palette and colors
-      bench(:start)
+      bench(:start) if BENCH_IMAGES
       themes = THEMES.map(&:downcase)
       theme = theme.downcase
       if !themes.include?(theme) then theme = DEFAULT_PALETTE end
@@ -413,29 +414,30 @@ module Map
       bg_color = PALETTE[2, palette_idx]
       fg_color = PALETTE[0, palette_idx]
       image = ChunkyPNG::Image.new(WIDTH, HEIGHT, bg_color)
-      bench(:step, 'Setup     ')
+      next image.to_blob if blank
+      bench(:step, 'Setup     ') if BENCH_IMAGES
 
       # Initialize tile and object images in the palette
       $t1, $t2, $t3 = 0.0, 0.0, 0.0
       tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, palette_idx, false)] }.to_h
-      bench(:step, 'Init tiles')
+      bench(:step, 'Init tiles') if BENCH_IMAGES
       object = OBJECTS.keys.map{ |o| [o, generate_object(o, palette_idx)] }.to_h
-      bench(:step, 'Init objs ')
+      bench(:step, 'Init objs ') if BENCH_IMAGES
       object_special = OBJECTS.keys.select{ |id| SPECIAL_OBJECTS.include?(id) }.map{ |o| [o + 29, generate_object(o, palette_idx, true, true)] }.to_h
-      bench(:step, 'Init sobjs')
+      bench(:step, 'Init sobjs') if BENCH_IMAGES
       object.merge!(object_special)
       border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-      bench(:step, 'Initialize')
-      puts "Masking times:"
-      puts "Loads: #{"%8.3fms" % [1000 * $t1]}"
-      puts "Masks: #{"%8.3fms" % [1000 * $t2]}"
-      puts "Compo: #{"%8.3fms" % [1000 * $t3]}"
+      bench(:step, 'Initialize') if BENCH_IMAGES
+      puts "Masking times:" if BENCH_IMAGES
+      puts "Loads: #{"%8.3fms" % [1000 * $t1]}" if BENCH_IMAGES
+      puts "Masks: #{"%8.3fms" % [1000 * $t2]}" if BENCH_IMAGES
+      puts "Compo: #{"%8.3fms" % [1000 * $t3]}" if BENCH_IMAGES
 
       # Parse map
       tiles = self.tiles.map(&:dup)
       objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
       objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
-      bench(:step, 'Parse     ')
+      bench(:step, 'Parse     ') if BENCH_IMAGES
 
       # Draw objects
       objects.each do |o|
@@ -443,7 +445,7 @@ module Map
         (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } if !FIXED_OBJECTS.include?(o[0])
         image.fast_compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
       end
-      bench(:step, 'Objects   ')
+      bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
       tiles.each{ |row| row.unshift(1).push(1) }
@@ -469,7 +471,7 @@ module Map
           image.fast_compose!(new_tile, DIM * column, DIM * row)
         end
       end
-      bench(:step, 'Tiles     ')
+      bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
       edge = ChunkyPNG::Image.from_file('images/b.png')
@@ -490,10 +492,10 @@ module Map
           image.fast_compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) if bool == 1
         end
       end
-      bench(:step, 'Borders   ')
+      bench(:step, 'Borders   ') if BENCH_IMAGES
 
       res = image.to_blob
-      bench(:step, 'Blobify   ')
+      bench(:step, 'Blobify   ') if BENCH_IMAGES
       res
     end
 
@@ -543,7 +545,7 @@ module Map
       fm.fontManager.addfont(font)
       mpl.rcParams['font.family'] = 'sans-serif'
       mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
-      bench(:step, 'Trace setup')
+      bench(:step, 'Trace setup') if BENCH_IMAGES
 
       # Plot routes, inputs and texts (legend)
       coords.each_with_index{ |c, i|
@@ -593,18 +595,18 @@ module Map
       mpl.axis('off')
       ax = mpl.gca
       ax.set_aspect('equal', adjustable: 'box')
-      bench(:step, 'Trace draw ')
+      bench(:step, 'Trace draw ') if BENCH_IMAGES
 
       # Load background image (screenshot)
       img = mpl.imread(bg)
       ax.imshow(img, extent: [0, dx, dy, 0])
-      bench(:step, 'Trace image')
+      bench(:step, 'Trace image') if BENCH_IMAGES
 
       # Save result
       fn = tmp_filename("#{name}_aux.png")
       mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390)
       image = File.binread(fn)
-      bench(:step, 'Trace save ')
+      bench(:step, 'Trace save ') if BENCH_IMAGES
       image
 
       # Perform cleanup (commented because we do this in a fork anyway)
@@ -665,7 +667,7 @@ module Map
     texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
-    screenshot = screenshot(palette, file: true)
+    screenshot = screenshot(palette, file: true, blank: blank)
     raise 'Failed to generate screenshot' if screenshot.nil?
     concurrent_edit(event, tmp_msg, 'Plotting routes...')
     trace = _trace(
@@ -680,16 +682,16 @@ module Map
     raise 'Failed to trace replays' if trace.nil?
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
     tmp_msg.first.delete rescue nil
-    log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}")
+    log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES
   rescue RuntimeError => e
-    if !tmp_msg.nil?
-      tmp_msg.edit(e)
+    if !tmp_msg.first.nil?
+      tmp_msg.first.edit(e)
     else
       raise
     end
     event.drain
   rescue => e
-    tmp_msg.edit('Failed to trace replays') if !tmp_msg.nil?
+    tmp_msg.first.edit('Failed to trace replays') if !tmp_msg.first.nil?
     event.drain
     lex(e, 'Failed to trace replays')
   end
