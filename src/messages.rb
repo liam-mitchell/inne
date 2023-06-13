@@ -474,7 +474,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   else
     hash[:error] = "Sorry, Metanet levels are only available in the Classic palette.\n" if hash[:palette] != Map::DEFAULT_PALETTE
     name = h.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
-    filename = "screenshots/#{name}.jpg"
+    filename = File.join(DIR_SCREENSHOTS, "#{name}.jpg")
 
     if !File.exist?(filename)
       str = "I don't have a screenshot for #{h.format_name}... :("
@@ -1273,13 +1273,13 @@ def send_splits(event)
   rows = []
   rows << ['', '00', '01', '02', '03', '04']
   rows << :sep
-  rows << ['Ep splits', *ep_splits]  if full
+  rows << ['Ep splits',  *ep_splits]  if full
   rows << ['Lvl splits', *lvl_splits]
   rows << ['Total diff', *cum_diffs]  if full
   rows << :sep                        if full
   rows << ['Ep scores',  *ep_scores]  if full
   rows << ['Lvl scores', *lvl_scores]
-  rows << ['Ind diffs',   *diffs]       if full
+  rows << ['Ind diffs',  *diffs]      if full
 
   event << "#{rank.ordinalize} #{format_board(board)} splits for episode #{ep.name}:"
   event << "(Episode splits aren't available because ntrace is disabled)." if ntrace && !FEATURE_NTRACE
@@ -1317,7 +1317,7 @@ def update_ntrace(event)
   versions << "New version: #{new_date.strftime('%Y/%m/%d %H:%M:%S')} (#{new_size} bytes)\n" if !new_date.nil?
   event << format_block(versions)
 
-  ld("#{event.user.name} updated ntrace (#{new_size} bytes).")
+  Thread.new { ld("#{event.user.name} updated ntrace:\n#{format_block(versions)}") }
 rescue RuntimeError
   raise
 rescue => e
@@ -1471,13 +1471,13 @@ def thanks(event)
 end
 
 def faceswap(event)
-  avatars    = Dir.entries("images/avatars").select{ |f| File.file?("images/avatars/" + f) }
+  avatars    = Dir.entries(PATH_AVATARS).select{ |f| File.file?(File.join(PATH_AVATARS, f)) }
   old_avatar = get_avatar
   new_avatar = old_avatar
   while new_avatar == old_avatar
     new_avatar = avatars.sample
   end
-  File::open("images/avatars/" + new_avatar) do |f|
+  File::open(File.join(PATH_AVATARS, new_avatar)) do |f|
     $bot.profile.avatar = f
   end
 rescue

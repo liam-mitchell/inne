@@ -80,7 +80,7 @@ module Map
   # Challenge: Figure out what the following constant encodes ;)
   BORDERS = "100FF87E1781E0FC3F03C0FC3F03C0FC3F03C078370388FC7F87C0EC1E01C1FE3F13E"
   DEFAULT_PALETTE = "vasquez"
-  PALETTE = ChunkyPNG::Image.from_file('images/palette.png')
+  PALETTE = ChunkyPNG::Image.from_file(PATH_PALETTES)
   ROWS    = 23
   COLUMNS = 42
   DIM     = 44
@@ -372,13 +372,14 @@ module Map
   def generate_object(object_id, palette_id, object = true, special = false)
     # Select necessary layers
     t = Time.now
-    parts = Dir.entries("images/#{object ? "object" : "tile"}_layers").select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
+    path = object ? PATH_OBJECTS : PATH_TILES
+    parts = Dir.entries(path).select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
     parts_normal = parts.select{ |file| file[-6] == "-" }
     parts_special = parts.select{ |file| file[-6] == "s" }
     parts = (!special ? parts_normal : (parts_special.empty? ? parts_normal : parts_special))
 
     # Paint and combine the layers
-    masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file("images/#{object ? "object" : "tile"}_layers/" + part)] }
+    masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file(File.join(path, part))] }
     $t1 += Time.now - t
     t = Time.now
     images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id], fast: true) }
@@ -474,7 +475,7 @@ module Map
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
-      edge = ChunkyPNG::Image.from_file('images/b.png')
+      edge = ChunkyPNG::Image.from_file(PATH_BORDER)
       edge = mask(edge, ChunkyPNG::Color::BLACK, PALETTE[1, palette_idx])
       (0 .. ROWS).each do |row| # horizontal
         (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
@@ -540,7 +541,7 @@ module Map
       mpl.ioff
 
       # Prepare custom font (Sys)
-      font = 'util/sys.ttf'
+      font = "#{DIR_UTILS}/sys.ttf"
       fm = PyCall.import_module('matplotlib.font_manager')
       fm.fontManager.addfont(font)
       mpl.rcParams['font.family'] = 'sans-serif'

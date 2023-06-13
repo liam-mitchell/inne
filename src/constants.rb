@@ -84,17 +84,32 @@ LOG_DOWNLOAD_ERRORS = false # Too spammy if no Steam IDs are active
 # <------                        PATH VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-# TODO: Create constants for all other relevant directories (e.g., screenies,
-# migrations, userlevels, etc), and substitute all hardcoded references in the
-# source code.
-CONFIG          = './db/config.yml'
-DIR_MAPPACKS    = './db/mappacks'
+DIR_DB          = './db'
+DIR_MIGRATION   = "#{DIR_DB}/migrate"
+CONFIG          = "#{DIR_DB}/config.yml"
+DIR_MAPPACKS    = "#{DIR_DB}/mappacks"
+
+DIR_IMAGES      = './images'
+PATH_AVATARS    = "#{DIR_IMAGES}/avatars"
+PATH_PALETTES   = "#{DIR_IMAGES}/palette.png"
+PATH_OBJECTS    = "#{DIR_IMAGES}/object_layers"
+PATH_TILES      = "#{DIR_IMAGES}/tile_layers"
+PATH_BORDER     = "#{DIR_IMAGES}/b.png"
+
 DIR_LOGS        = './logs'
 PATH_LOG_FILE   = "#{DIR_LOGS}/log_outte"
 PATH_LOG_SQL    = "#{DIR_LOGS}/log_outte_sql"
 PATH_LOG_OLD    = "#{DIR_LOGS}/log_outte_old"
 PATH_LOG_REPORT = "#{DIR_LOGS}/log_report"
-PATH_NTRACE     = "./util/ntrace.py"
+
+DIR_SCREENSHOTS = "./screenshots"
+
+DIR_SOURCE      = './src'
+
+DIR_TEST        = './test'
+
+DIR_UTILS       = './util'
+PATH_NTRACE     = "#{DIR_UTILS}/ntrace.py"
 
 # <--------------------------------------------------------------------------->
 # <------                      FEATURE VARIABLES                        ------>

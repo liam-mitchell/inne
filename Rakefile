@@ -20,12 +20,12 @@ end
 
 namespace :db do
   task :environment do
-    DATABASE_ENV = ENV['DATABASE_ENV'] || 'outte'
-    MIGRATIONS_DIR = ENV['MIGRATIONS_DIR'] || 'db/migrate'
+    DATABASE_ENV = ENV['DATABASE_ENV'] || DATABASE
+    MIGRATIONS_DIR = ENV['MIGRATIONS_DIR'] || DIR_MIGRATION
   end
 
   task :configuration => :environment do
-    @config = YAML.load_file('db/config.yml')[DATABASE_ENV]
+    @config = YAML.load_file(CONFIG)[DATABASE_ENV]
   end
 
   task :configure_connection => :configuration do
@@ -41,7 +41,7 @@ namespace :db do
   end
 
   task :migrate => :configure_connection do
-    require_relative 'src/models.rb'
+    require_relative "#{DIR_SOURCE}/models.rb"
     ActiveRecord::Migrator.migrate(MIGRATIONS_DIR, ENV['VERSION'] ? ENV['VERSION'].to_i : nil)
   end
 
@@ -50,13 +50,13 @@ namespace :db do
   end
 
   task :seed => :configure_connection do
-    require_relative 'src/models.rb'
-    require_relative 'db/seeds.rb'
+    require_relative "#{DIR_SOURCE}/models.rb"
+    require_relative "#{DIR_DB}/seeds.rb"
   end
 
   task :test => :configure_connection do
-    require 'test/unit'
-    require 'test/unit/ui/console/testrunner'
+    require "#{DIR_TEST}/unit"
+    require "#{DIR_TEST}/unit/ui/console/testrunner"
     require 'mocha/test_unit'
 
     class Test::Unit::TestCase
@@ -65,8 +65,8 @@ namespace :db do
 
     FactoryBot.find_definitions
 
-    require_relative 'test/test_models.rb'
-    require_relative 'test/test_messages.rb'
+    require_relative "#{DIR_TEST}/test_models.rb"
+    require_relative "#{DIR_TEST}/test_messages.rb"
 
     DatabaseCleaner.strategy = :transaction
 

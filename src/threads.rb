@@ -511,9 +511,10 @@ end
 
 # Special screenshot function, used for lotd/eotw/cotm.
 # The one that users can call is in src/messages.rb
+# TODO: Refactor to use that one to avoid code duplication
 def send_channel_screenshot(name, caption)
   name = name.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
-  screenshot = "screenshots/#{name}.jpg"
+  screenshot = File.join(DIR_SCREENSHOTS, "#{name}.jpg")
   if File.exist? screenshot
     $channel.send_file(File::open(screenshot), caption: caption)
   else

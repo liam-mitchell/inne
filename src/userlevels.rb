@@ -1406,7 +1406,7 @@ def respond_userlevels(event)
   send_userlevel_times(event)       if msg =~ /\bwhen\b/i
   send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bsearch\b/i
   send_userlevel_download(event)    if msg =~ /\bdownload\b/i
-  send_userlevel_screenshot(event)  if msg =~ /\bscreenshots*\b/i
+  send_userlevel_screenshot(event)  if msg =~ /\bscreenshots?\b/i
   send_userlevel_scores(event)      if msg =~ /scores\b/i
   send_userlevel_count(event)       if msg =~ /how many/i
   send_userlevel_spreads(event)     if msg =~ /spread/i
