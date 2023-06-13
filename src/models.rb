@@ -102,7 +102,9 @@ module MonkeyPatches
     end
   end
 
+  # Custom faster image manipulation functions
   def self.patch_chunkypng
+    # Faster method to render an opaque rectangle (~4x faster)
     ::ChunkyPNG::Canvas::Drawing.class_eval do
       def fast_rect(x0, y0, x1, y1, stroke_color = nil, fill_color = ChunkyPNG::Color::TRANSPARENT)
         stroke_color = ChunkyPNG::Color.parse(stroke_color) unless stroke_color.nil?
@@ -125,6 +127,19 @@ module MonkeyPatches
           line(x1, y0, x0, y0, stroke_color, false)
         end
 
+        self
+      end
+    end
+
+    # Faster method to compose images where the pixels are either fully solid
+    # or fully transparent (~6x faster)
+    ::ChunkyPNG::Canvas::Operations.class_eval do
+      def fast_compose!(other, offset_x = 0, offset_y = 0)
+        check_size_constraints!(other, offset_x, offset_y)
+        w = other.width
+        other.pixels.each_with_index{ |color, p|
+          pixels[(offset_y + (p - p % w) / w) * width + (offset_x + p % w)] = color unless color == 0
+        }
         self
       end
     end

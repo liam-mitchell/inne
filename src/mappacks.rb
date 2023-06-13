@@ -40,7 +40,10 @@ module Map
     0x1B => { name: 'alt deathball',      pref: 11, att: 2, old: 24, pal: 86 },
     0x1C => { name: 'shove thwump',       pref:  2, att: 2, old: 25, pal: 88 }
   }
+  # Objects that do not admit rotations
   FIXED_OBJECTS = [0, 1, 2, 3, 4, 7, 9, 16, 17, 18, 19, 21, 22, 24, 25, 28]
+  # Objects that admit diagonal rotations
+  SPECIAL_OBJECTS = [10, 11]
   THEMES = [
     "acid",           "airline",         "argon",         "autumn",
     "BASIC",          "berry",           "birthday cake", "bloodmoon",
@@ -343,16 +346,23 @@ module Map
     x >= 0 && y >= 0 && x <= WIDTH - image.width && y <= HEIGHT - image.height
   end
 
-  # The following two methods are used for theme generation
-  def mask(image, before, after, bg = ChunkyPNG::Color::WHITE, tolerance = 0.5)
-    new_image = ChunkyPNG::Image.new(image.width, image.height, ChunkyPNG::Color::TRANSPARENT)
-    image.width.times{ |x|
-      image.height.times{ |y|
-        score = ChunkyPNG::Color.euclidean_distance_rgba(image[x,y], before).to_f / ChunkyPNG::Color::MAX_EUCLIDEAN_DISTANCE_RGBA
-        if score < tolerance then new_image[x,y] = ChunkyPNG::Color.compose(after, bg) end
+  # Change color 'before' to color 'after' in 'image'.
+  # The normal version uses tolerance to change close enough colors, alpha blending...
+  # The fast version doesn't do any of this, but is 10x faster
+  def mask(image, before, after, bg: ChunkyPNG::Color::WHITE, tolerance: 0.5, fast: false)
+    if fast
+      image.pixels.map!{ |p| p == before ? after : 0 }
+      image
+    else
+      new_image = ChunkyPNG::Image.new(image.width, image.height, ChunkyPNG::Color::TRANSPARENT)
+      image.width.times{ |x|
+        image.height.times{ |y|
+          score = ChunkyPNG::Color.euclidean_distance_rgba(image[x,y], before).to_f / ChunkyPNG::Color::MAX_EUCLIDEAN_DISTANCE_RGBA
+          if score < tolerance then new_image[x,y] = ChunkyPNG::Color.compose(after, bg) end
+        }
       }
-    }
-    new_image
+      new_image
+    end
   end
 
   # Generate the image of an object in the specified palette, by painting and combining each layer.
@@ -361,6 +371,7 @@ module Map
   # different image for that, which we call special.
   def generate_object(object_id, palette_id, object = true, special = false)
     # Select necessary layers
+    t = Time.now
     parts = Dir.entries("images/#{object ? "object" : "tile"}_layers").select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
     parts_normal = parts.select{ |file| file[-6] == "-" }
     parts_special = parts.select{ |file| file[-6] == "s" }
@@ -368,208 +379,243 @@ module Map
 
     # Paint and combine the layers
     masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file("images/#{object ? "object" : "tile"}_layers/" + part)] }
-    images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id]) }
+    $t1 += Time.now - t
+    t = Time.now
+    images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id], fast: true) }
+    $t2 += Time.now - t
+    t = Time.now
     dims = [ [DIM, *images.map{ |i| i.width }].max, [DIM, *images.map{ |i| i.height }].max ]
     output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
-    images.each{ |image| output.compose!(image, 0, 0) }
+    images.each{ |image| output.fast_compose!(image, 0, 0) }
+    $t3 += Time.now - t
     output
   end
 
   # Generate a PNG screenshot of a level in the chosen palette.
   # [Depends on ChunkyPNG, a pure Ruby library]
   #
-  # Optionally also plot routes.
-  # [Depends on Matplotlib using Pycall, a Python wrapper]
-  #
-  # Note: This function is forked to a different process, because both ChunkyPNG
-  #       and Matplotlib have memory leaks we cannot handle.
+  # Note: This function is forked to a different process, because ChunkyPNG has
+  #       memory leaks we cannot handle.
   def screenshot(
       theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
-      file:    false,           # Whether to export to a file or return the raw data
-      msg:     nil,             # Message object (to edit progress messages)
-      draw:    true,            # Draw the screenshot or not
-      coords:  [],              # Array of coordinates to plot routes
-      demos:   [],              # Array of demo inputs, to mark parts of the route
-      texts:   [],              # Names for the legend
-      markers: { jump: true, left: false, right: false} # Mark changes in replays
+      file:    false            # Whether to export to a file or return the raw data
     )
 
     bench(:start) if BENCHMARK
 
     res = _fork do
+      # Parse palette and colors
       bench(:start)
       themes = THEMES.map(&:downcase)
       theme = theme.downcase
       if !themes.include?(theme) then theme = DEFAULT_PALETTE end
-      bg_color = PALETTE[2, themes.index(theme)]
-      fg_color = PALETTE[0, themes.index(theme)]
+      palette_idx = themes.index(theme)
+      bg_color = PALETTE[2, palette_idx]
+      fg_color = PALETTE[0, palette_idx]
       image = ChunkyPNG::Image.new(WIDTH, HEIGHT, bg_color)
       bench(:step, 'Setup     ')
 
-      if draw
-        msg.edit('Generating screenshot...') if !msg.nil?
-        # INITIALIZE IMAGES
-        tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, themes.index(theme), false)] }.to_h
-        object = OBJECTS.keys.map{ |o| [o, generate_object(o, themes.index(theme))] }.to_h
-        object_special = OBJECTS.keys.map{ |o| [o + 29, generate_object(o, themes.index(theme), true, true)] }.to_h
-        object.merge!(object_special)
-        border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-        bench(:step, 'Initialize')
+      # Initialize tile and object images in the palette
+      $t1, $t2, $t3 = 0.0, 0.0, 0.0
+      tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, palette_idx, false)] }.to_h
+      bench(:step, 'Init tiles')
+      object = OBJECTS.keys.map{ |o| [o, generate_object(o, palette_idx)] }.to_h
+      bench(:step, 'Init objs ')
+      object_special = OBJECTS.keys.select{ |id| SPECIAL_OBJECTS.include?(id) }.map{ |o| [o + 29, generate_object(o, palette_idx, true, true)] }.to_h
+      bench(:step, 'Init sobjs')
+      object.merge!(object_special)
+      border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
+      bench(:step, 'Initialize')
+      puts "Masking times:"
+      puts "Loads: #{"%8.3fms" % [1000 * $t1]}"
+      puts "Masks: #{"%8.3fms" % [1000 * $t2]}"
+      puts "Compo: #{"%8.3fms" % [1000 * $t3]}"
 
-        # PARSE MAP
-        tiles = self.tiles.map(&:dup)
-        objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
-        objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
-        bench(:step, 'Parse     ')
+      # Parse map
+      tiles = self.tiles.map(&:dup)
+      objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
+      objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
+      bench(:step, 'Parse     ')
 
-        # PAINT OBJECTS
-        objects.each do |o|
-          new_object = !(o[3] % 2 == 1 && [10, 11].include?(o[0])) ? object[o[0]] : object[o[0] + 29]
-          if !FIXED_OBJECTS.include?(o[0]) then (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } end
-          if check_dimensions(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
-            image.compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
-          end
-        end
-        bench(:step, 'Objects   ')
-
-        # PAINT TILES
-        tiles.each{ |row| row.unshift(1).push(1) }
-        tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2))
-        tiles = tiles.map{ |row| row.map{ |tile| tile > 33 ? 0 : tile } } # remove glitched tiles
-        tiles.each_with_index do |slice, row|
-          slice.each_with_index do |t, column|
-            next if t == 0
-            if t == 1
-              image.fast_rect(DIM * column, DIM * row, DIM * column + DIM - 1, DIM * row + DIM - 1, nil, fg_color)
-              next
-            end
-            if t == 0 || t == 1 # empty and full tiles
-              new_tile = tile[t]
-            elsif t >= 2 && t <= 17 # half tiles and curved slopes
-              new_tile = tile[t - (t - 2) % 4]
-              (1 .. (t - 2) % 4).each{ |i| new_tile = new_tile.rotate_clockwise }
-            elsif t >= 18 && t <= 33 # small and big straight slopes
-              new_tile = tile[t - (t - 2) % 4]
-              if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
-              if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
-            else
-              new_tile = tile[0]
-            end
-            image.compose!(new_tile, DIM * column, DIM * row)
-          end
-        end
-        bench(:step, 'Tiles     ')
-
-        # PAINT TILE BORDERS
-        edge = ChunkyPNG::Image.from_file('images/b.png')
-        edge = mask(edge, ChunkyPNG::Color::BLACK, PALETTE[1, themes.index(theme)])
-        (0 .. ROWS).each do |row| # horizontal
-          (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
-            tile_a = tiles[row][col / 2]
-            tile_b = tiles[row + 1][col / 2]
-            bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
-            if bool == 1 then image.compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) end
-          end
-        end
-        (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
-          (0 .. COLUMNS).each do |col|
-            tile_a = tiles[row / 2][col]
-            tile_b = tiles[row / 2][col + 1]
-            bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
-            if bool == 1 then image.compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) end
-          end
-        end
-        bench(:step, 'Borders   ')
+      # Draw objects
+      objects.each do |o|
+        new_object = !(o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0])) ? object[o[0]] : object[o[0] + 29]
+        (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } if !FIXED_OBJECTS.include?(o[0])
+        image.fast_compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
       end
+      bench(:step, 'Objects   ')
 
-      # PAINT ROUTES (we use python, better graphing capabilities)
-      if FEATURE_NTRACE && !coords.empty?
-        msg.edit('Plotting routes...') if !msg.nil?
-        tmp = nil
-        blob_thread = Thread.new{ tmp = tmp_file(image.to_blob, "#{name}_tmp1.png", binary: true, file: false) }
-        coords = coords.take(MAX_TRACES).reverse
-        demos = demos.take(MAX_TRACES).reverse
-        texts = texts.take(MAX_TRACES).reverse
-        n = [coords.size, MAX_TRACES].min
-        color_idx = OBJECTS[0][:pal]
-        palette_idx = themes.index(theme)
-        mpl = Matplotlib::Pyplot
-        mpl.ioff
-        font = 'util/sys.ttf'
-        fm = PyCall.import_module('matplotlib.font_manager')
-        fm.fontManager.addfont(font)
-        mpl.rcParams['font.family'] = 'sans-serif'
-        mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
-        coords.each_with_index{ |c, i|
-          # Plot trace
-          color = chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx])
-          mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
-
-          # Draw inputs
-          if markers.values.count(true) > 0  && !demos[i].nil?
-            demos[i].each_with_index{ |f, j|
-              if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
-                mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
-              end
-              if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
-                mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
-              end
-              if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
-                mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
-              end
-            }
+      # Draw tiles
+      tiles.each{ |row| row.unshift(1).push(1) }
+      tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2))
+      tiles = tiles.map{ |row| row.map{ |tile| tile > 33 ? 0 : tile } } # remove glitched tiles
+      tiles.each_with_index do |slice, row|
+        slice.each_with_index do |t, column|
+          next if t == 0
+          if t == 1
+            image.fast_rect(DIM * column, DIM * row, DIM * column + DIM - 1, DIM * row + DIM - 1, nil, fg_color)
+            next
           end
-
-          # Write legend
-          if !texts[i].nil?
-            name, score = texts[i].split('-').map(&:strip).map(&:to_s)
-            dx = UNITS * COLUMNS / 4.0
-            ddx = UNITS / 2
-            bx = UNITS / 4
-            c = 8
-            m = dx / 2.9
-            dm = 4
-            x, y = UNITS + dx * (n - i - 1), UNITS - 5
-            vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx -m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
-            vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - dm - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
-            color_bg = chunky2hex(PALETTE[2, palette_idx])
-            color_bd = color
-            mpl.fill(vert_x, vert_y, facecolor: color_bg, edgecolor: color_bd, linewidth: 0.5)
-            mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: color, size: 'x-small')
-            mpl.text(x + dx - ddx, y, score, ha: 'right', va: 'baseline', color: color, size: 'x-small')
+          if t >= 2 && t <= 17 # half tiles and curved slopes
+            new_tile = tile[t - (t - 2) % 4]
+            (1 .. (t - 2) % 4).each{ |i| new_tile = new_tile.rotate_clockwise }
+          elsif t >= 18 && t <= 33 # small and big straight slopes
+            new_tile = tile[t - (t - 2) % 4]
+            if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
+            if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
+          else
+            new_tile = tile[0]
           end
-        }
-        dx = (COLUMNS + 2) * UNITS
-        dy = (ROWS + 2) * UNITS
-        mpl.axis([0, dx, dy, 0])
-        mpl.axis('off')
-        ax = mpl.gca
-        ax.set_aspect('equal', adjustable: 'box')
-        blob_thread.join
-        bench(:step, 'Traces Blo')
-        img = mpl.imread(tmp)
-        ax.imshow(img, extent: [0, dx, dy, 0])
-        fn = tmp_filename("#{name}_tmp2.png")
-        mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390)
-        #mpl.cla
-        #mpl.clf
-        #mpl.close('all')
-        image = File.binread(fn)
-        bench(:step, 'Traces Sav')
+          image.fast_compose!(new_tile, DIM * column, DIM * row)
+        end
       end
+      bench(:step, 'Tiles     ')
 
-      image.class == String ? image : image.to_blob
+      # Draw tile borders
+      edge = ChunkyPNG::Image.from_file('images/b.png')
+      edge = mask(edge, ChunkyPNG::Color::BLACK, PALETTE[1, palette_idx])
+      (0 .. ROWS).each do |row| # horizontal
+        (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
+          tile_a = tiles[row][col / 2]
+          tile_b = tiles[row + 1][col / 2]
+          bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
+          image.fast_compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) if bool == 1
+        end
+      end
+      (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
+        (0 .. COLUMNS).each do |col|
+          tile_a = tiles[row / 2][col]
+          tile_b = tiles[row / 2][col + 1]
+          bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
+          image.fast_compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) if bool == 1
+        end
+      end
+      bench(:step, 'Borders   ')
+
+      res = image.to_blob
+      bench(:step, 'Blobify   ')
+      res
     end
 
     bench(:step) if BENCHMARK
 
-    file ? tmp_file(res, self.name + '.png', binary: true) : res
+    file ? tmp_file(res, "#{self.name}.png", binary: true) : res
   rescue => e
     lex(e, "Failed to generate screenshot")
     nil
   end
 
+  # Plot routes and legend on top of an image (typically a screenshot)
+  # [Depends on Matplotlib using Pycall, a Python wrapper]
+  #
+  # Note: This function is forked to a different process, because Matplotlib has
+  #       memory leaks we cannot handle.
+  def _trace(
+      theme:   DEFAULT_PALETTE, # Palette to generate screenshot in
+      bg:      nil,             # Background image (screenshot) file object
+      coords:  [],              # Array of coordinates to plot routes
+      demos:   [],              # Array of demo inputs, to mark parts of the route
+      texts:   [],              # Names for the legend
+      markers: { jump: true, left: false, right: false} # Mark changes in replays
+    )
+    return if coords.empty?
+
+    _fork do
+      # Parse palette
+      bench(:start)
+      themes = THEMES.map(&:downcase)
+      theme = theme.to_s.downcase!
+      theme = DEFAULT_PALETTE.downcase if !themes.include?(theme)
+      palette_idx = themes.index(theme)
+
+      # Setup parameters and Matplotlib
+      coords = coords.take(MAX_TRACES).reverse
+      demos = demos.take(MAX_TRACES).reverse
+      texts = texts.take(MAX_TRACES).reverse
+      n = [coords.size, MAX_TRACES].min
+      color_idx = OBJECTS[0][:pal]
+      mpl = Matplotlib::Pyplot
+      mpl.ioff
+
+      # Prepare custom font (Sys)
+      font = 'util/sys.ttf'
+      fm = PyCall.import_module('matplotlib.font_manager')
+      fm.fontManager.addfont(font)
+      mpl.rcParams['font.family'] = 'sans-serif'
+      mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
+      bench(:step, 'Trace setup')
+
+      # Plot routes, inputs and texts (legend)
+      coords.each_with_index{ |c, i|
+        # Plot trace
+        color = chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx])
+        mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
+
+        # Draw inputs
+        if markers.values.count(true) > 0  && !demos[i].nil?
+          demos[i].each_with_index{ |f, j|
+            if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
+              mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
+            end
+            if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
+              mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
+            end
+            if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
+              mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
+            end
+          }
+        end
+
+        # Write legend
+        if !texts[i].nil?
+          name, score = texts[i].split('-').map(&:strip).map(&:to_s)
+          dx = UNITS * COLUMNS / 4.0
+          ddx = UNITS / 2
+          bx = UNITS / 4
+          c = 8
+          m = dx / 2.9
+          dm = 4
+          x, y = UNITS + dx * (n - i - 1), UNITS - 5
+          vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx -m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
+          vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - dm - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
+          color_bg = chunky2hex(PALETTE[2, palette_idx])
+          color_bd = color
+          mpl.fill(vert_x, vert_y, facecolor: color_bg, edgecolor: color_bd, linewidth: 0.5)
+          mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: color, size: 'x-small')
+          mpl.text(x + dx - ddx, y, score, ha: 'right', va: 'baseline', color: color, size: 'x-small')
+        end
+      }
+
+      # Configure axis
+      dx = (COLUMNS + 2) * UNITS
+      dy = (ROWS + 2) * UNITS
+      mpl.axis([0, dx, dy, 0])
+      mpl.axis('off')
+      ax = mpl.gca
+      ax.set_aspect('equal', adjustable: 'box')
+      bench(:step, 'Trace draw ')
+
+      # Load background image (screenshot)
+      img = mpl.imread(bg)
+      ax.imshow(img, extent: [0, dx, dy, 0])
+      bench(:step, 'Trace image')
+
+      # Save result
+      fn = tmp_filename("#{name}_aux.png")
+      mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390)
+      image = File.binread(fn)
+      bench(:step, 'Trace save ')
+      image
+
+      # Perform cleanup (commented because we do this in a fork anyway)
+      #mpl.cla
+      #mpl.clf
+      #mpl.close('all')
+    end
+  end
+
   def trace(event)
+    t = Time.now
     msg = event.content
     h = parse_palette(msg)
     msg, palette, error = h[:msg], h[:palette], h[:error]
@@ -588,17 +634,18 @@ module Map
     markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
     markers = { jump: true,  left: false, right: false } if markers.nil?
+    tmp_msg = [nil]
 
     # Export input files
     demos = []
+    concurrent_edit(event, tmp_msg, "Downloading replays...") if userlevel
     File.binwrite('map_data', dump_level)
-    tmp_msg = event.send_message("#{userlevel ? 'Downloading' : 'Parsing'} replays...")
     scores.each_with_index.map{ |s, i|
       demo = userlevel ? Demo.encode(s.demo) : s.demo.demo
       demos << Demo.decode(demo)
       File.binwrite("inputs_#{i}", demo)
     }
-    tmp_msg.edit('Calculating routes...')
+    concurrent_edit(event, tmp_msg, 'Calculating routes...')
     system "python3 #{PATH_NTRACE}"
 
     # Read output files
@@ -617,19 +664,23 @@ module Map
     event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel `#{level.name}`" : level.name} in palette `#{palette}`:"
     texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
-    trace = screenshot(
-      palette,
-      file:    false,
-      msg:     tmp_msg,
-      draw:    !blank,
+    concurrent_edit(event, tmp_msg, 'Generating screenshot...')
+    screenshot = screenshot(palette, file: true)
+    raise 'Failed to generate screenshot' if screenshot.nil?
+    concurrent_edit(event, tmp_msg, 'Plotting routes...')
+    trace = _trace(
+      theme:   palette,
+      bg:      screenshot,
       coords:  coords,
       demos:   demos,
       markers: markers,
       texts:   !blank ? texts : []
     )
+    screenshot.close
     raise 'Failed to trace replays' if trace.nil?
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
-    tmp_msg.delete
+    tmp_msg.first.delete rescue nil
+    log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}")
   rescue RuntimeError => e
     if !tmp_msg.nil?
       tmp_msg.edit(e)

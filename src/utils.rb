@@ -283,6 +283,22 @@ rescue => e
   nil
 end
 
+# Send or edit a Discord message in parallel
+# We actually send an array of messages, not only so that we can edit them all,
+# but mainly because that way we actually can edit the original message object.
+# (i.e. simulate pass-by-reference via encapsulation)
+def concurrent_edit(event, msgs, content)
+  Thread.new do
+    msgs.map!{ |msg|
+      msg.nil? ? event.send_message(content) : msg.edit(content)
+    }
+  rescue
+    msgs
+  end
+rescue
+  msg
+end
+
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute
 def parse_int(bytes)
