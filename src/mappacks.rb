@@ -1175,7 +1175,11 @@ class MappackScore < ActiveRecord::Base
     sid = query[id_field].to_i
     h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
     if h.nil?
-      return forward(req) if CLE_FORWARD
+      if CLE_FORWARD
+        res = forward(req)
+        Thread.new { Userlevel.find_by(id: sid).update_scores } if sid >= MIN_ID && !res.nil?
+        return res
+      end
       warn("Score submitted by #{name}: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
       return
     end
