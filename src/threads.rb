@@ -5,6 +5,8 @@
 # See the TASK VARIABLES in src/constants.rb for configuration. Also, see the
 # end of src/inne++.rb for the joining thread.
 
+require 'get_process_mem'
+
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'models.rb'
@@ -640,9 +642,22 @@ def start_level_of_the_day
   end
 end
 
+def monitor_memory
+  loop do
+    mem = GetProcessMem.new.mb
+    puts "Memory: #{"%.3f" % mem}"
+    sleep(2)
+  end
+rescue => e
+  lex(e, 'Failed to monitor memory')
+  sleep(1)
+  retry
+end
+
 # Start all the tasks in this file in independent threads
 def start_threads
   $threads = []
+  $threads << Thread.new { monitor_memory }
   $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
