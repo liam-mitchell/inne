@@ -3,15 +3,21 @@ require 'fileutils'
 #require 'tk'
 require 'win32/registry'
 
+# Mappack-specific constants
 MAPPACK = 'Duality'
-AUTHOR = 'w95559w'
-NAME = 'dua'
-HOST = 'https://dojo.nplusplus.ninja'
-PORT = 8126
-PROXY = '45.32.150.168'
-TARGET = "#{PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
-DIALOG = true
-PAD = 32
+AUTHOR  = 'w95559w'
+NAME    = 'dua'
+FILES   = ['C', 'C2']
+
+# General constants
+TEST     = false
+HOST     = 'https://dojo.nplusplus.ninja'
+PORT     = 8126
+PROXY    = '45.32.150.168'
+LOCAL    = '127.0.0.1'
+TARGET   = "#{TEST ? LOCAL : PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
+DIALOG   = true
+PAD      = 32
 CONTROLS = true
 
 def dialog(title, text)
@@ -23,9 +29,9 @@ end
 
 def log_exception(e, msg)
   str1 = "ERROR! Failed to #{$installed ? 'uninstall' : 'install'} '#{MAPPACK}' N++ mappack :("
-  str2 = "See the console for details"
+  str2 = e.class.to_s == 'RuntimeError' ? e.to_s : "See the console for details"
   print "\n\n#{str1}\n\n"
-  puts "#{msg}\nDetails: #{e}"
+  puts "#{!msg.empty? ? "#{msg}\n" : ''}Details: #{e}\n\n"
   dialog('Error', "#{str1}\" & vbCrLf & vbCrLf & \"#{str2}") if DIALOG
   exit
 end
@@ -57,7 +63,7 @@ def find_steam_folders(output = true)
   puts "OK" if output
   folders
 rescue RuntimeError => e
-  log_exception('', e)
+  log_exception(e, '')
 rescue => e
   log_exception(e, "Failed to find Steam folder")
 end
@@ -78,7 +84,7 @@ def find_documents_folder(output = true)
   puts "OK" if output
   dir
 rescue RuntimeError => e
-  log_exception('', e)
+  log_exception(e, '')
 rescue => e
   log_exception(e, "Failed to find documents folder")
 end
@@ -96,7 +102,7 @@ def find_npp_folder(output = true)
   puts "OK" if output
   folder
 rescue RuntimeError => e
-  log_exception('', e)
+  log_exception(e, '')
 rescue => e
   log_exception(e, "Failed to find N++ folder.")
 end
@@ -111,7 +117,7 @@ def find_npp_library(output = true)
   puts "OK" if output
   fn
 rescue RuntimeError => e
-  log_exception('', e)
+  log_exception(e, '')
 rescue => e
   log_exception(e, "Failed to find N++ files.")
 end
@@ -121,7 +127,24 @@ def patch(depatch = false, info = false)
   fn = find_npp_library(!info)
   print "┣━ #{depatch ? 'Depatching' : 'Patching'} npp.dll... ".ljust(PAD, ' ') if !info
   file = File.binread(fn)
-  return !file[/#{HOST}/] if info
+
+  # Determine state
+  if info
+    offset_host = file.index(HOST)
+    offset_proxy = file.index(TEST ? LOCAL : PROXY)
+    if !offset_host.nil?
+      return false
+    elsif !offset_proxy.nil?
+      mappack = file[offset_proxy ... offset_proxy + HOST.size].split('/').last.strip
+      if mappack == NAME
+        return true
+      else
+        raise "Mappack #{mappack.upcase} seems to be installed, please uninstall it first"
+      end
+    else
+      raise "Couldn't find URL in npp.dll to patch"
+    end
+  end
 
   # Patch library
   raise "Failed to patch N++ files (incorrect target length)" if TARGET.length != HOST.length
@@ -131,9 +154,9 @@ def patch(depatch = false, info = false)
 
   puts "OK" if !info
 rescue RuntimeError => e
-  log_exception('', e)
+  log_exception(e, '')
 rescue => e
-  log_exception(e, "Failed to patch N++ files.")
+  log_exception(e, "Failed to patch N++ files#{info ? ' for info' : ''}.")
 end
 
 def depatch
@@ -166,7 +189,7 @@ def change_controls(install = true)
 
   puts "OK"
 rescue RuntimeError => e
-  log_exception('', e)
+  log_exception(e, '')
 rescue => e
   log_exception(e, "Failed to change level files.")
 end
@@ -179,14 +202,14 @@ def change_levels(install = true)
   
   # Change files
   tmp = $0[/(.*)\//, 1]
-  ['C', 'C2'].each{ |f|
+  FILES.each{ |f|
     fn = install ? File.join(tmp, "#{f}.txt") : File.join(tmp, "#{f}_original.txt")
     FileUtils.cp_r(fn, File.join(folder, "#{f}.txt"), remove_destination: true)
   }
 
   puts "OK"
 rescue RuntimeError => e
-  log_exception('', e)
+  log_exception(e, '')
 rescue => e
   log_exception(e, "Failed to change level files.")
 end
@@ -219,7 +242,7 @@ def install
   patch
   change_levels(true)
   change_texts(true)
-  change_controls(true)
+  change_controls(true) if CONTROLS
   puts "┃\n┗━━━ Installed '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Installed '#{MAPPACK}' N++ mappack successfully!")
 end
@@ -229,13 +252,13 @@ def uninstall
   depatch
   change_levels(false)
   change_texts(false)
-  change_controls(false)
+  change_controls(false) if CONTROLS
   puts "┃\n┗━━━ Uninstalled '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Uninstalled '#{MAPPACK}' N++ mappack successfully!")
 end
 
-str1 = "   N++ MAPPACK INSTALLER   "
-str2 = "   '#{MAPPACK}' by #{AUTHOR}   "
+str1 = " N++ MAPPACK INSTALLER "
+str2 = " '#{MAPPACK}' by #{AUTHOR} "
 str3 = "Report technical issues to Eddy"
 size = [str1.size, str2.size, str3.size - 2].max
 puts

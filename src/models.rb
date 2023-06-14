@@ -499,9 +499,12 @@ module Highscoreable
   #   appears in the game).
   def nav(c, tab: true)
     klass = self.class.to_s.remove("Mappack")
-    tabs = [:SI, :S, :SU, :SL, :SS, :SS2].take(klass == "Level" ? 6 : 4)
-    i = tabs.index(self.tab.to_sym)
-    tabs.map!{ |t| TABS_NEW[t] }
+    short = klass != 'Level'
+    mode = self.mode rescue 0
+    tabs = TABS_NEW.select{ |k, v| v[:mode] == mode && (short ? !v[:secret] : true) }
+                   .sort_by{ |k, v| v[:index] }.to_h
+    i = tabs.keys.index(self.tab.to_sym)
+    tabs = tabs.values
     old_id = self.is_a?(MappackHighscoreable) ? inner_id : id
 
     # Scale factor to translate Level IDs to Episode / Story IDs
