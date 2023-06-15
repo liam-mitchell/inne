@@ -415,7 +415,7 @@ module Map
       bg_color = PALETTE[2, palette_idx]
       fg_color = PALETTE[0, palette_idx]
       image = ChunkyPNG::Image.new(WIDTH, HEIGHT, bg_color)
-      next image.to_blob if blank
+      next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
 
       # Initialize tile and object images in the palette
@@ -495,7 +495,7 @@ module Map
       end
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
-      res = image.to_blob
+      res = image.to_blob(:fast_rgba)
       bench(:step, 'Blobify   ') if BENCH_IMAGES
       res
     end
@@ -525,7 +525,7 @@ module Map
 
     _fork do
       # Parse palette
-      bench(:start)
+      bench(:start) if BENCH_IMAGES
       themes = THEMES.map(&:downcase)
       theme = theme.to_s.downcase!
       theme = DEFAULT_PALETTE.downcase if !themes.include?(theme)
@@ -605,7 +605,8 @@ module Map
 
       # Save result
       fn = tmp_filename("#{name}_aux.png")
-      mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390)
+      byebug
+      mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
       image = File.binread(fn)
       bench(:step, 'Trace save ') if BENCH_IMAGES
       image

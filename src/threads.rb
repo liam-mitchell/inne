@@ -5,8 +5,6 @@
 # See the TASK VARIABLES in src/constants.rb for configuration. Also, see the
 # end of src/inne++.rb for the joining thread.
 
-require 'get_process_mem'
-
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'models.rb'

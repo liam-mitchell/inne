@@ -12,8 +12,6 @@ source 'https://rubygems.org' do
   gem 'unicode-emoji'
   gem 'matplotlib'
   gem 'memory_profiler'
-  gem 'get_process_mem'
-
 
   group :debug, :test do
     gem 'byebug'

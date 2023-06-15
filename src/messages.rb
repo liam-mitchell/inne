@@ -1959,7 +1959,7 @@ def send_meminfo(event)
   used = total - available
 
   str =  "system: #{"%4d MB" % available} of #{"%4d MB" % total} (#{"%5.2f%%" % [100 * available / total]}) available\n"
-  str << "outte:  #{"%4d MB" % mem} of #{"%4d MB" % available} (#{"%5.2f%%" % [100 * mem / available]}) used"
+  str << "outte:  #{"%4d MB" % mem} of #{"%4d MB" % used} (#{"%5.2f%%" % [100 * mem / used]}) used"
   event << "Memory usage:\n#{format_block(str)}"
 end
 
