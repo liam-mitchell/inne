@@ -605,7 +605,6 @@ module Map
 
       # Save result
       fn = tmp_filename("#{name}_aux.png")
-      byebug
       mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
       image = File.binread(fn)
       bench(:step, 'Trace save ') if BENCH_IMAGES
