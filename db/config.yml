@@ -1,13 +1,3 @@
-#inne_eddy:
-#  adapter: mysql2
-#  encoding: utf8
-#  reconnect: false
-#  database: inne
-#  pool: 5
-#  username: root
-#  password: root
-#  host: localhost
-
 outte:
   adapter: mysql2
   encoding: utf8mb4
@@ -19,55 +9,3 @@ outte:
   password: root
   pool: 50
   timeout: 5000
-
-outte_test:
-  adapter: mysql2
-  encoding: utf8mb4
-  charset: utf8mb4
-  collation: utf8mb4_unicode_ci
-  database: inne
-  host: localhost
-  username: root
-  password: root
-  pool: 50
-  timeout: 5000
-
-development:
-  adapter: mysql2
-  database: inne_back
-  host: localhost
-  username: inne
-  password: '#69inne#69'
-  level_update_frequency: 60
-  episode_update_frequency: 460
-  encoding: utf8mb4
-  collation: utf8mb4_unicode_ci
-  #host: localhost
-  #  username: inne
-  #  password: '#69inne#69'
-  #  encoding: utf8mb4
-  #  collation: utf8mb4_unicode_ci
-  token: Mjk2MjE3NTkyODA3NDI0MDAw.C7vBqA.2N95P6C0RMnYkdPobKvao4thJ3g
-  client_id: 296217592807424000
-  #  level_update_frequency: 60
-  #  episode_update_frequency: 460
-
-production:
-  adapter: mysql2
-  database: inne_dev
-  host: localhost
-  username: inne
-  password: '#69inne#69'
-  encoding: utf8mb4
-  collation: utf8mb4_unicode_ci
-  token: Mjk2MjE3NTkyODA3NDI0MDAw.C7vBqA.2N95P6C0RMnYkdPobKvao4thJ3g
-  client_id: 296217592807424000
-  token: Mjg5MTQxNzc2MjA2MjY2MzY5.C6IDyQ.1B1a2x_k7CF4UfaGWvhbGFVqdqM
-  client_id: 289141776206266369
-
-test:
-  adapter: sqlite3
-  database: inne-test.db
-  host: localhost
-  level_update_frequency: 1
-  episode_update_frequency: 5

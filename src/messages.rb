@@ -1951,6 +1951,18 @@ def send_log_config(event)
   }
 end
 
+# Print outte and overall memory usage
+def send_meminfo(event)
+  mem = `ps -p #{Process.pid} -o rss=`.to_i / 1024.0
+  total = meminfo['MemTotal']
+  available = meminfo['MemAvailable']
+  used = total - available
+
+  str =  "system: #{"%4d MB" % available} of #{"%4d MB" % total} (#{"%5.2f%%" % [100 * available / total]}) available\n"
+  str << "outte:  #{"%4d MB" % mem} of #{"%4d MB" % available} (#{"%5.2f%%" % [100 * mem / available]}) used"
+  event << "Memory usage:\n#{format_block(str)}"
+end
+
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
@@ -1962,6 +1974,7 @@ def respond_special(event)
   send_mappack_patch(event)      if cmd == 'mappack_patch'
   send_mappack_info(event)       if cmd == 'mappack_info'
   send_log_config(event)         if cmd == 'log'
+  send_meminfo(event)            if cmd == 'meminfo'
 rescue RuntimeError => e
   event << e
 rescue => e

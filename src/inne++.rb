@@ -43,6 +43,7 @@ require 'fileutils'
 require 'json'
 require 'memory_profiler'
 require 'net/http'
+require 'rbconfig'
 require 'time'
 require 'yaml'
 require 'zlib'
@@ -82,6 +83,10 @@ def initialize_vars
   $twitch_token    = nil
   $twitch_streams  = {}
   $boot_time       = Time.now.to_i
+  $active_tasks    = {}
+  $memory_warned   = false
+  $memory_warned_c = false
+  $linux           = RbConfig::CONFIG['host_os'] =~ /linux/i
   $mutex           = { ntrace: Mutex.new }
   [DIR_LOGS].each{ |d| Dir.mkdir(d) unless Dir.exist?(d) }
   log("Initialized global variables")

@@ -18,6 +18,7 @@ require_relative 'models.rb'
 def update_status
   while(true)
     sleep(WAIT) # prevent crazy loops
+    $active_tasks[:status] = true
     if !OFFLINE_STRICT
       (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
       $status_update = Time.now.to_i
@@ -25,7 +26,8 @@ def update_status
       GlobalProperty.get_current(Episode).update_scores
       GlobalProperty.get_current(Story).update_scores
     end
-    $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)  
+    $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
+    $active_tasks[:status] = false
     sleep(STATUS_UPDATE_FREQUENCY)
   end
 rescue => e
@@ -45,12 +47,14 @@ def update_twitch
   end
   while(true)
     sleep(WAIT)
+    $active_tasks[:twitch] = true
     Twitch::update_twitch_streams
     Twitch::new_streams.each{ |game, list|
       list.each{ |stream|
         Twitch::post_stream(stream)
       }
     }
+    $active_tasks[:twitch] = false
     sleep(TWITCH_UPDATE_FREQUENCY)
   end
 rescue => e
@@ -62,6 +66,7 @@ end
 # Update missing demos (e.g., if they failed to download originally)
 def download_demos
   log("Downloading missing demos...")
+  $active_tasks[:demos] = true
   archives = Archive.where(lost: false)
                     .joins("LEFT JOIN demos ON demos.id = archives.id")
                     .where("demos.demo IS NULL")
@@ -73,6 +78,7 @@ def download_demos
     lex(e, "Updating demo with ID #{ar[0].to_s}")
     ((attempts += 1) < ATTEMPT_LIMIT) ? retry : next
   end
+  $active_tasks[:demos] = false
   succ("Downloaded missing demos")
   return true
 rescue => e
@@ -98,6 +104,7 @@ end
 # Compute and send the weekly highscoring report and the daily summary
 def send_report
   log("Sending highscoring report...")
+  $active_tasks[:report] = true
   if $channel.nil?
     err("Not connected to a channel, not sending highscoring report")
     return false
@@ -199,6 +206,7 @@ def send_report
   }.join("\n")
   $channel.send_message("**Daily highscoring summary**:\n" + total)
 
+  $active_tasks[:report] = false
   succ("Highscoring report sent")  
   return true
 end
@@ -229,6 +237,7 @@ end
 # 500 userlevels.
 def send_userlevel_report
   log("Sending userlevel highscoring report...")
+  $active_tasks[:userlevel_report] = true
   if $channel.nil?
     err("Not connected to a channel, not sending highscoring report")
     return false
@@ -246,6 +255,8 @@ def send_userlevel_report
   $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
   $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n```#{zeroes}```")
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
+
+  $active_tasks[:userlevel_report] = false
   succ("Userlevel highscoring report sent")
   return true
 end
@@ -270,6 +281,7 @@ end
 # Update database scores for Metanet Solo levels, episodes and stories
 def download_high_scores
   log("Downloading highscores...")
+  $active_tasks[:scores] = true
   # We handle exceptions within each instance so that they don't force
   # a retry of the whole function.
   # Note: Exception handling inside do blocks requires ruby 2.5 or greater.
@@ -282,6 +294,7 @@ def download_high_scores
       ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
     end
   end
+  $active_tasks[:scores] = false
   succ("Downloaded highscores")
   return true
 rescue => e
@@ -315,6 +328,7 @@ end
 # Therefore, this function is not being used anymore.
 def update_histories
   log("Updating histories...")
+  $active_tasks[:histories] = true
   now = Time.now
   [:SI, :S, :SL, :SS, :SU, :SS2].each do |tab|
     [Level, Episode, Story].each do |type|
@@ -343,6 +357,7 @@ def update_histories
       end
     end
   end
+  $active_tasks[:histories] = false
   succ("Updated highscore histories")
   return true
 rescue => e
@@ -370,6 +385,7 @@ end
 # like for Metanet levels, this function is NOT deprecated.
 def update_userlevel_histories
   log("Updating userlevel histories...")
+  $active_tasks[:userlevel_histories] = true
   now = Time.now
 
   [-1, 1, 5, 10, 20].each{ |rank|
@@ -380,6 +396,7 @@ def update_userlevel_histories
     end
   }
 
+  $active_tasks[:userlevel_histories] = false
   succ("Updated userlevel histories")
   return true   
 rescue => e
@@ -406,6 +423,7 @@ end
 # the daily userlevel highscoring rankings.
 def download_userlevel_scores
   log("Downloading newest userlevel scores...")
+  $active_tasks[:userlevel_scores] = true
   Userlevel.where(mode: :solo).order(id: :desc).take(USERLEVEL_REPORT_SIZE).each do |u|
     attempts ||= 0
     u.update_scores
@@ -413,6 +431,7 @@ def download_userlevel_scores
     lex(e, "Downloading scores for userlevel #{u.id}")
     ((attempts += 1) <= ATTEMPT_LIMIT) ? retry : next
   end
+  $active_tasks[:userlevel_scores] = false
   succ("Downloaded newest userlevel scores")
   return true
 rescue => e
@@ -472,6 +491,7 @@ end
 # 3 modes, to keep those lists up to date in the database
 def update_userlevel_tabs
   log("Downloading userlevel tabs")
+  $active_tasks[:tabs] = true
   ["solo", "coop", "race"].each_with_index{ |mode, m|
     [7, 8, 9, 11].each { |qt|
       tab = USERLEVEL_TABS[qt][:name]
@@ -487,6 +507,7 @@ def update_userlevel_tabs
       end
     }
   }
+  $active_tasks[:tabs] = false
   succ("Downloaded userlevel tabs")
   return true   
 rescue => e
@@ -606,7 +627,8 @@ def start_level_of_the_day
       delay = next_level_update - Time.now
       sleep(delay) unless delay < 0
 
-     if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
+      $active_tasks[:lotd] = true
+      if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
         log("Starting level of the day...")
         next if !send_channel_next(Level)
         succ("Sent next level, next update at #{GlobalProperty.get_next_update(Level).to_s}")
@@ -635,6 +657,7 @@ def start_level_of_the_day
       if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
       episode_day = false
       story_day = false
+      $active_tasks[:score_update] = false
     end
   rescue => e
     lex(e, "Updating level of the day")
@@ -642,11 +665,37 @@ def start_level_of_the_day
   end
 end
 
+# Prevent running out of memory due to memory leaks and risking the OOM killer
+# from obliterating outte by preemptively restarting it when no active tasks
+# (e.g. lotd or score update) are being executed.
 def monitor_memory
   loop do
-    mem = GetProcessMem.new.mb
-    puts "Memory: #{"%.3f" % mem}"
-    sleep(2)
+    # Gather memory info
+    mem = `ps -p #{Process.pid} -o rss=`.to_i / 1024.0
+    total = meminfo['MemTotal']
+    available = meminfo['MemAvailable']
+    used = total - available
+
+    # If below 25% of available memory, take action
+    available_ratio = available.to_f / total
+    used_ratio = mem.to_f / used
+    if available_ratio < MEMORY_LIMIT.clamp(0, 1)
+      str = "#{"%.2f%%" % [100 - 100 * available_ratio]} used, #{"%.2f%%" % [100 * used_ratio]} by outte"
+      if used_ratio > MEMORY_USAGE.clamp(0, 1)
+        restart("Lack of memory (#{str}).")
+      elsif !$memory_warned
+        warn("Something's taking up excessive memory, and it's not outte! (#{str})", discord: true)
+        $memory_warned = true
+      end
+    end
+
+    # If below 5%, send another warning to Discord, regardless of outte usage
+    if available_ratio < MEMORY_CRITICAL.clamp(0, 1) && !$memory_warned_c
+      warn("Memory usage is critical! (#{"%.2f%%" % [100 - 100 * available_ratio]})", discord: true)
+      $memory_warned_c = true
+    end
+
+    sleep(MEMORY_DELAY)
   end
 rescue => e
   lex(e, 'Failed to monitor memory')
@@ -657,7 +706,7 @@ end
 # Start all the tasks in this file in independent threads
 def start_threads
   $threads = []
-  $threads << Thread.new { monitor_memory }
+  $threads << Thread.new { monitor_memory }            if $linux
   $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE

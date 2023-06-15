@@ -304,6 +304,12 @@ rescue
   msg
 end
 
+# Return system's memory info in MB as a hash (Linux only)
+def meminfo
+  File.read("/proc/meminfo").split("\n").map{ |f| f.split(':') }
+      .map{ |name, value| [name, value.to_i / 1024.0] }.to_h
+end
+
 # Turn a little endian binary array into an integer
 # TODO: This is just a special case of_unpack, substitute
 def parse_int(bytes)
@@ -959,4 +965,20 @@ def leave_unknown_servers
     end
   }
   warn("Left #{names.count} unknown servers: #{names.join(', ')}") if names.count > 0
+end
+
+def force_restart(reason = 'Unknown reason')
+  warn("Restarted outte due to: #{reason}.", discord: true)
+  exec('./inne')
+end
+
+def restart(reason = 'Unknown reason')
+  log("Attempting to restart outte due to: #{reason}.")
+  log("Waiting for active tasks to finish...") if $active_tasks.values.count(true) > 0
+  sleep(5) while $active_tasks.values.count(true) > 0
+  force_restart(reason)
+rescue => e
+  lex(e, 'Failed to restart outte', discord: true)
+  sleep(5)
+  retry
 end

@@ -16,8 +16,15 @@ TEST_LOTD      = false # Posts lotd immediately once
 BENCH_IMAGES   = false # Benchmark image manipulation steps
 
 # Internal
-WAIT           = 1     # Seconds between iterations of infinite loops
-DATABASE       = TEST ? 'outte_test' : 'outte' # Database environment
+WAIT            = 1       # Seconds between iterations of infinite loops
+DATABASE        = 'outte' # Database environment
+
+# Memory
+MEMORY_LIMIT    = 0.25    # Available memory (ratio) before restarting
+MEMORY_USAGE    = 0.5     # Memory usage by outte (ratio) before restarting
+MEMORY_CRITICAL = 0.05    # Critical memory available ratio
+MEMORY_DELAY    = 60      # Seconds between memory checks during monitoring
+
 
 # <--------------------------------------------------------------------------->
 # <------                     NETWORK VARIABLES                         ------>
