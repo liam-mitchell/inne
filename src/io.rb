@@ -1024,7 +1024,7 @@ end
 
 def format_level_matches(event, msg, page, initial, matches, func)
   exact = matches[0].split(' ')[0] == 'Multiple'
-  if exact  # Multiple partial matches
+  if exact # Multiple partial matches
     page = parse_page(msg, page, false, event.message.components)
     pag  = compute_pages(matches[1].size, page)
     list = matches[1][pag[:offset]...pag[:offset] + PAGE_SIZE]

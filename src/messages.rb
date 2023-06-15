@@ -355,7 +355,6 @@ def send_scores(event, map = nil, ret = false, page: nil)
   full    = parse_full(msg)
   raise "Sorry, Metanet levels only support highscore mode for now." if !mappack && board != 'hs'
   res     = ""
-  #byebug
 
   # Navigating scores goes into a different method (see below this one)
   if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i] && !h.is_a?(MappackHighscoreable)
@@ -1180,6 +1179,18 @@ def send_demo_download(event)
   send_file(event, score.demo.demo, "#{h.name}_#{rank.ordinalize}_replay", true)
 end
 
+def send_download(event, page: nil)
+  initial = page.nil?
+  msg     = event.content
+  h       = parse_level_or_episode(msg, partial: true, mappack: true)
+
+  return format_level_matches(event, msg, page, initial, h, 'download') if h.is_a?(Array)
+  raise "Only levels can be downloaded" if !h.is_a?(Levelish)
+  h = MappackLevel.find_by(id: h.id) if !h.is_a?(MappackLevel)
+  event << "Downloading #{h.format_name}:"
+  send_file(event, h.dump_level, h.name, true)
+end
+
 # Use SimVYo's tool to trace the replay of a run based on the map data and
 # the demo data.
 def send_trace(event)
@@ -1869,8 +1880,30 @@ def robot(event)
   event.send_message(start.sample + middle.sample + ending.sample)
 end
 
-def testa(event)
+def send_test(event)
   assert_permissions(event)
+
+  levels = MappackLevel.where(mappack_id: 0)
+  count = levels.count
+  levels.each_with_index{ |l, i|
+    print("Changing level #{"%4d" % [i + 1]} / #{count}...".ljust(80, ' ') + "\r")
+    l.update(name: 'MET-' + l.name.split('-')[1..-1].join('-'))
+  }
+  puts
+  episodes = MappackEpisode.where(mappack_id: 0)
+  count = episodes.count
+  episodes.each_with_index{ |l, i|
+    print("Changing episode #{"%4d" % [i + 1]} / #{count}...".ljust(80, ' ') + "\r")
+    l.update(name: 'MET-' + l.name.split('-')[1..-1].join('-'))
+  }
+  puts
+  stories = MappackStory.where(mappack_id: 0)
+  count = stories.count
+  stories.each_with_index{ |l, i|
+    print("Changing story #{"%4d" % [i + 1]} / #{count}...".ljust(80, ' ') + "\r")
+    l.update(name: 'MET-' + l.name.split('-')[1..-1].join('-'))
+  }
+  puts
 
 #  maps = send_userlevel_browse(nil, socket: event.content)
 #  Userlevel::dump_query(maps, 10, 0)
@@ -1975,6 +2008,7 @@ def respond_special(event)
   send_mappack_info(event)       if cmd == 'mappack_info'
   send_log_config(event)         if cmd == 'log'
   send_meminfo(event)            if cmd == 'meminfo'
+  send_test(event)               if cmd == 'test'
 rescue RuntimeError => e
   event << e
 rescue => e
@@ -2071,11 +2105,11 @@ def respond(event)
   sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
   send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   send_tally(event)          if msg =~ /\btally\b/i
+  send_download(event)       if msg =~ /\bdownload\b/i
   send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
   send_trace(event)          if msg =~ /\btrace\b/i
   update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
   faceswap(event)            if msg =~ /faceswap/i
-  testa(event) if msg =~ /testa/i
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
