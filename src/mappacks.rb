@@ -516,6 +516,7 @@ module Map
   def _trace(
       theme:   DEFAULT_PALETTE, # Palette to generate screenshot in
       bg:      nil,             # Background image (screenshot) file object
+      animate: false,           # Animate trace instead of still image
       coords:  [],              # Array of coordinates to plot routes
       demos:   [],              # Array of demo inputs, to mark parts of the route
       texts:   [],              # Names for the legend
@@ -537,6 +538,7 @@ module Map
       texts = texts.take(MAX_TRACES).reverse
       n = [coords.size, MAX_TRACES].min
       color_idx = OBJECTS[0][:pal]
+      colors = n.times.map{ |i| chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx]) }
       mpl = Matplotlib::Pyplot
       mpl.ioff
 
@@ -548,47 +550,6 @@ module Map
       mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
       bench(:step, 'Trace setup') if BENCH_IMAGES
 
-      # Plot routes, inputs and texts (legend)
-      coords.each_with_index{ |c, i|
-        # Plot trace
-        color = chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx])
-        mpl.plot(c.map(&:first), c.map(&:last), color, linewidth: 0.5)
-
-        # Draw inputs
-        if markers.values.count(true) > 0  && !demos[i].nil?
-          demos[i].each_with_index{ |f, j|
-            if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
-              mpl.plot(c[j][0], c[j][1], color: color, marker: '.', markersize: 1)
-            end
-            if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
-              mpl.plot(c[j][0], c[j][1], color: color, marker: '>', markersize: 1)
-            end
-            if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
-              mpl.plot(c[j][0], c[j][1], color: color, marker: '<', markersize: 1)
-            end
-          }
-        end
-
-        # Write legend
-        if !texts[i].nil?
-          name, score = texts[i].split('-').map(&:strip).map(&:to_s)
-          dx = UNITS * COLUMNS / 4.0
-          ddx = UNITS / 2
-          bx = UNITS / 4
-          c = 8
-          m = dx / 2.9
-          dm = 4
-          x, y = UNITS + dx * (n - i - 1), UNITS - 5
-          vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx -m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
-          vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - dm - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
-          color_bg = chunky2hex(PALETTE[2, palette_idx])
-          color_bd = color
-          mpl.fill(vert_x, vert_y, facecolor: color_bg, edgecolor: color_bd, linewidth: 0.5)
-          mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: color, size: 'x-small')
-          mpl.text(x + dx - ddx, y, score, ha: 'right', va: 'baseline', color: color, size: 'x-small')
-        end
-      }
-
       # Configure axis
       dx = (COLUMNS + 2) * UNITS
       dy = (ROWS + 2) * UNITS
@@ -596,16 +557,82 @@ module Map
       mpl.axis('off')
       ax = mpl.gca
       ax.set_aspect('equal', adjustable: 'box')
-      bench(:step, 'Trace draw ') if BENCH_IMAGES
 
       # Load background image (screenshot)
       img = mpl.imread(bg)
       ax.imshow(img, extent: [0, dx, dy, 0])
       bench(:step, 'Trace image') if BENCH_IMAGES
 
+      # Plot inputs
+      n.times.each{ |i|
+        break if markers.values.count(true) == 0  || demos[i].nil?
+        demos[i].each_with_index{ |f, j|
+          if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
+            mpl.plot(coords[i][j][0], coords[i][j][1], color: colors[i], marker: '.', markersize: 1)
+          end
+          if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
+            mpl.plot(coords[i][j][0], coords[i][j][1], color: colors[i], marker: '>', markersize: 1)
+          end
+          if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
+            mpl.plot(coords[i][j][0], coords[i][j][1], color: colors[i], marker: '<', markersize: 1)
+          end
+        }
+      }
+      bench(:step, 'Trace input') if BENCH_IMAGES
+
+      # Plot legend
+      n.times.each{ |i|
+        break if texts[i].nil?
+        name, score = texts[i].split('-').map(&:strip).map(&:to_s)
+        dx = UNITS * COLUMNS / 4.0
+        ddx = UNITS / 2
+        bx = UNITS / 4
+        c = 8
+        m = dx / 2.9
+        dm = 4
+        x, y = UNITS + dx * (n - i - 1), UNITS - 5
+        vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx -m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
+        vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - dm - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
+        color_bg = chunky2hex(PALETTE[2, palette_idx])
+        color_bd = colors[i]
+        mpl.fill(vert_x, vert_y, facecolor: color_bg, edgecolor: color_bd, linewidth: 0.5)
+        mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: colors[i], size: 'x-small')
+        mpl.text(x + dx - ddx, y, score, ha: 'right', va: 'baseline', color: colors[i], size: 'x-small')
+      }
+      bench(:step, 'Trace texts') if BENCH_IMAGES
+
+      # Plot or animate traces
+      if animate
+        anim = PyCall.import_module('matplotlib.animation')
+        x = []
+        y = []
+        plt = mpl.plot(x, y, colors[0], linewidth: 0.5)
+        an = anim.FuncAnimation.new(
+          mpl.gcf,
+          -> (f) {
+            x << coords[0][f][0]
+            y << coords[0][f][1]
+            plt[0].set_data(x, y)
+            plt
+          },
+          frames: 20,
+          interval: 200
+        )
+        an.save(
+          '/mnt/c/Users/Usuario2/Downloads/N/test.gif',
+          writer: 'imagemagick',
+          savefig_kwargs: { bbox_inches: 'tight', pad_inches: 0, dpi: 390 }
+        )
+      else
+        coords.each_with_index{ |c, i|
+          mpl.plot(c.map(&:first), c.map(&:last), colors[i], linewidth: 0.5)
+        }
+      end
+      bench(:step, 'Trace plot ') if BENCH_IMAGES
+
       # Save result
       fn = tmp_filename("#{name}_aux.png")
-      mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
+      mpl.savefig(fn, bbox_inches: 'tight')#, pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
       image = File.binread(fn)
       bench(:step, 'Trace save ') if BENCH_IMAGES
       image
@@ -637,6 +664,7 @@ module Map
     markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
     markers = { jump: true,  left: false, right: false } if markers.nil?
+    animate = !!msg[/\banimate\b/i]
     tmp_msg = [nil]
 
     # Export input files
@@ -674,6 +702,7 @@ module Map
     trace = _trace(
       theme:   palette,
       bg:      screenshot,
+      animate: animate,
       coords:  coords,
       demos:   demos,
       markers: markers,
