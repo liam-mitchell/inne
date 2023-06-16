@@ -741,17 +741,26 @@ def parse_userlevel(msg)
 end
 
 # The palette may or may not be quoted, but it MUST go at the end of the command
-# if it's not quoted
-def parse_palette(msg)
+# if it's not quoted.
+def parse_palette(event, dflt = Map::DEFAULT_PALETTE)
+  msg = event.content
   err = ""
+
+  # Parse message for explicit palette specification
   pal, msg = parse_term(msg, quoted: ['palette'], final: ['palette'], remove: true)
   if !pal.empty?
-    if !Userlevel::THEMES.include?(pal)
+    if !Map::THEMES.include?(pal)
       err = "Palette `#{pal}` doesn't exit, using `#{Userlevel::DEFAULT_PALETTE}`."
       pal = ''
     end
   end
-  pal = Userlevel::DEFAULT_PALETTE if pal.empty?
+
+  # Fall back to default if no explicit palette
+  if pal.empty?
+    p = User.find_by(username: event.user.name).palette rescue nil
+    pal = p || dflt
+  end
+
   err += "\n" if !err.empty?
   { msg: msg, palette: pal, error: err }
 end

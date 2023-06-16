@@ -888,9 +888,10 @@ end
 # We can pass the actual level instead of parsing it from the message
 # This is used e.g. by the random userlevel function
 def send_userlevel_screenshot(event, userlevel = nil)
-  msg = clean_userlevel_message(event.content)
-  msg = remove_word_first(msg, 'screenshot')
-  h = parse_palette(msg)
+  event.content.sub!(/(for|of)?\w*userlevel\w*/i, '')
+  event.content.sub!(/\w*screenshot\w*/i, '')
+  event.content.squish!
+  h = parse_palette(event)
   send_userlevel_individual(event, h[:msg]){ |map|
     output = "#{h[:error]}Screenshot of userlevel `#{map[:query].title}` with ID `#{map[:query].id.to_s}"
     output += "` by `#{map[:query].author.name.empty? ? " " : map[:query].author.name}` using palette `"

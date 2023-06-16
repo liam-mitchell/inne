@@ -454,7 +454,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  hash    = parse_palette(msg)
+  hash    = parse_palette(event)
   msg     = hash[:msg]
   h       = map.nil? ? parse_level_or_episode(msg, partial: true, mappack: true) : map
   nav     = parse_nav(msg) || !initial
@@ -1471,6 +1471,21 @@ def add_display_name(event)
   end
 end
 
+def set_default_palette(event)
+  msg = event.content
+  palette = msg[/my palette is (.*)[\.\s]*$/i, 1]
+  raise "You need to specify a palette name." if palette.nil?
+  palette.strip!
+  raise "Palette `#{palette}` does not exist." if !Map::THEMES.include?(palette)
+  user = User.find_or_create_by(username: event.user.name).update(palette: palette)
+  event << "Great, from now on your default screenshot palette will be `#{palette}`."
+rescue RuntimeError
+  raise
+rescue => e
+  event << "Failed to set default palette!"
+  lex(e, 'Failed to set default palette')
+end
+
 def hello(event)
   $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
   event << "Hi!"
@@ -2094,6 +2109,7 @@ def respond(event)
   identify(event)            if msg =~ /my name is/i
   add_steam_id(event)        if msg =~ /my steam id is/i
   add_display_name(event)    if msg =~ /my display name is/i
+  set_default_palette(event) if msg =~ /my palette is/i
   send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
   send_challenges(event)     if msg =~ /\bchallenges\b/i
   send_unique_holders(event) if msg =~ /\bunique holders\b/i

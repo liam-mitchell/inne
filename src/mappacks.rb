@@ -620,8 +620,8 @@ module Map
         )
         an.save(
           '/mnt/c/Users/Usuario2/Downloads/N/test.gif',
-          writer: 'imagemagick'
-          #savefig_kwargs: { bbox_inches: 'tight', pad_inches: 0, dpi: 390 }
+          writer: 'imagemagick',
+          savefig_kwargs: { bbox_inches: 'tight', pad_inches: 0, dpi: 390 }
         )
       else
         coords.each_with_index{ |c, i|
