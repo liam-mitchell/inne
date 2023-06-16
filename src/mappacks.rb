@@ -620,8 +620,8 @@ module Map
         )
         an.save(
           '/mnt/c/Users/Usuario2/Downloads/N/test.gif',
-          writer: 'imagemagick',
-          savefig_kwargs: { bbox_inches: 'tight', pad_inches: 0, dpi: 390 }
+          writer: 'imagemagick'
+          #savefig_kwargs: { bbox_inches: 'tight', pad_inches: 0, dpi: 390 }
         )
       else
         coords.each_with_index{ |c, i|
@@ -632,7 +632,7 @@ module Map
 
       # Save result
       fn = tmp_filename("#{name}_aux.png")
-      mpl.savefig(fn, bbox_inches: 'tight')#, pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
+      mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
       image = File.binread(fn)
       bench(:step, 'Trace save ') if BENCH_IMAGES
       image

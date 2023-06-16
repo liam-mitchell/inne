@@ -574,7 +574,7 @@ module Levelish
   end
 
   def format_name
-    "#{longname} (#{name})"
+    "#{longname} (#{name.remove('MET-')})"
   end
 
   def format_challenges

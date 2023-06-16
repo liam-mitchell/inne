@@ -467,11 +467,11 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
 
   # Single match, retrieve screenshot
   #scores = scores.nav(offset.to_i)
+  h = h.map if h.is_a?(Level) && hash[:palette] != 'classic'
   if h.is_a?(MappackHighscoreable)
     return event.send_message("Sorry, mappack episodes and stories don't have screenshots yet.") if !h.is_a?(MappackLevel)
     screenshot = h.screenshot(hash[:palette], file: true)
   else
-    hash[:error] = "Sorry, Metanet levels are only available in the Classic palette.\n" if hash[:palette] != Map::DEFAULT_PALETTE
     name = h.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
     filename = File.join(DIR_SCREENSHOTS, "#{name}.jpg")
 
