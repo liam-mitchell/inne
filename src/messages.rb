@@ -2010,6 +2010,10 @@ def send_meminfo(event)
   event << "Memory usage:\n#{format_block(str)}"
 end
 
+def send_restart(event)
+  restart('Manual')
+end
+
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
@@ -2022,6 +2026,7 @@ def respond_special(event)
   send_mappack_info(event)       if cmd == 'mappack_info'
   send_log_config(event)         if cmd == 'log'
   send_meminfo(event)            if cmd == 'meminfo'
+  send_restart(event)            if cmd == 'restart'
   send_test(event)               if cmd == 'test'
 rescue RuntimeError => e
   event << e
