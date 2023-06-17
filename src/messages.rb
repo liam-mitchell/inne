@@ -485,7 +485,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   end
     
   # Send response
-  str  = "#{hash[:error]}Screenshot for #{h.format_name}"
+  str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette `#{hash[:palette]}`:"
   file = screenshot
   return [file, str] if ret
   if nav
@@ -1475,8 +1475,7 @@ def set_default_palette(event)
   msg = event.content
   palette = msg[/my palette is (.*)[\.\s]*$/i, 1]
   raise "You need to specify a palette name." if palette.nil?
-  palette.strip!
-  raise "Palette `#{palette}` does not exist." if !Map::THEMES.include?(palette)
+  palette = parse_palette(event, pal: palette, fallback: false)[:palette]
   user = User.find_or_create_by(username: event.user.name).update(palette: palette)
   event << "Great, from now on your default screenshot palette will be `#{palette}`."
 rescue RuntimeError

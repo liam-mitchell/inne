@@ -845,7 +845,7 @@ end
 # * Find distance between two strings using the classic Damerau-Levenshtein
 # * Returns nil if the threshold is surpassed
 # * Read 'string_distance_list_mixed' for detailed docs
-def string_distance(word1, word2, max: 3, th: nil)
+def string_distance(word1, word2, max: 3, th: 3)
   d = DamerauLevenshtein.distance(word1, word2, 1, max)
   (d - [word1.length, word2.length].min).abs < th ? nil : d
 end
@@ -854,7 +854,7 @@ end
 # Same as before, but compares a word with a phrase, but comparing word by word
 #   and taking the MINIMUM (for single-word matches, which is common)
 # Returns nil if the threshold is surpassed for EVERY word
-def string_distance_chunked(word, phrase, max: 3, th: nil)
+def string_distance_chunked(word, phrase, max: 3, th: 3)
   phrase.split(/\W|_/i).reject{ |chunk| chunk.strip.empty? }.map{ |chunk|
     string_distance(word, chunk, max: max, th: th)
   }.compact.min
@@ -862,7 +862,7 @@ end
 
 # DISTANCE BETWEEN WORD AND LIST
 # (read 'string_distance_list_mixed' for docs)
-def string_distance_list(word, list, max: 3, th: nil, chunked: false)
+def string_distance_list(word, list, max: 3, th: 3, chunked: false)
   # Determine if IDs have been provided
   ids = list[0].is_a?(Array)
   # Sort and group by distance, rejecting invalids

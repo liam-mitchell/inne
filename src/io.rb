@@ -741,16 +741,41 @@ def parse_userlevel(msg)
 end
 
 # The palette may or may not be quoted, but it MUST go at the end of the command
-# if it's not quoted.
-def parse_palette(event, dflt = Map::DEFAULT_PALETTE)
+# if it's not quoted. Only look in 'pal' if not nil. 'fallback' will default
+# to the default palette if no good matches, otherwise exception.
+def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
   msg = event.content
   err = ""
+  pal.strip! if !pal.nil?
 
   # Parse message for explicit palette specification
-  pal, msg = parse_term(msg, quoted: ['palette'], final: ['palette'], remove: true)
-  if !pal.empty?
-    if !Map::THEMES.include?(pal)
-      err = "Palette `#{pal}` doesn't exit, using `#{Userlevel::DEFAULT_PALETTE}`."
+  pal, msg = parse_term(msg, quoted: ['palette'], final: ['palette'], remove: true) if pal.nil?
+  ret = { msg: msg, palette: pal, error: err }
+
+  if !ret[:palette].empty?
+    themes = Map::THEMES.map(&:downcase)
+
+    # If no perfect matches
+    if !themes.include?(ret[:palette].downcase)
+      # Look for partial matches
+      matches = themes.select{ |t| !!t[/#{pal}/i] }
+      if matches.size == 1
+        ret[:palette] = matches.first 
+        return ret
+      end
+      raise "Multiple matches found for palette `#{ret[:palette]}`#{matches.size > 10 ? " (#{matches.size} matches, showing 10)" : ''}:\n#{format_block(matches.take(10).join("\n"))}" if matches.size > 0
+
+      # Look for approximate matches
+      matches = string_distance_list_mixed(ret[:palette].downcase, themes.each_with_index.to_a.map(&:reverse)).map(&:last)
+      if matches.size == 1
+        ret[:palette] = matches.first
+        return ret
+      end
+      raise "No matches found for palette `#{ret[:palette]}`. Did you mean...\n#{format_block(matches.join("\n"))}" if matches.size > 0
+
+      # No matches whatsoever
+      raise "No good matches for palette `#{ret[:palette]}` found." if !fallback
+      err = "No good matches for palette `#{ret[:palette]}` found, using `#{Userlevel::DEFAULT_PALETTE}`."
       pal = ''
     end
   end
@@ -763,6 +788,10 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE)
 
   err += "\n" if !err.empty?
   { msg: msg, palette: pal, error: err }
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Failed to parse palette')
 end
 
 def parse_global(msg)
