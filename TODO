@@ -129,7 +129,6 @@ Others:
 
 \\ ------------------------ Screenshots ------------------------
 
-- Regular doors aren't being placed correctly, sometimes at least, see e.g. 42069, in which horizontal doors are shifted half a tile up, and vertical doos are shifted half a tile to the left. There have been more examples.
 - For tile borders, rather than placing them in the center, move them inside the tile so that they don't protrude.
 - Show glitch tiles with some soft shade, e.g. red or the inverse of the background, perhaps with a pattern too, e.g. lines or dotted.
 - Draw lasers, even if in basic fashion (straight lines till tile)

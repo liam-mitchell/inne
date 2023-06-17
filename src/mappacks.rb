@@ -475,22 +475,35 @@ module Map
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
-      edge = ChunkyPNG::Image.from_file(PATH_BORDER)
-      edge = mask(edge, ChunkyPNG::Color::BLACK, PALETTE[1, palette_idx])
+      bd_color = PALETTE[1, palette_idx]
       (0 .. ROWS).each do |row| # horizontal
-        (0 .. 2 * (COLUMNS + 2) - 1).each do |col|
+        (0 ... 2 * (COLUMNS + 2)).each do |col|
           tile_a = tiles[row][col / 2]
           tile_b = tiles[row + 1][col / 2]
           bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
-          image.fast_compose!(edge.rotate_clockwise, DIM * (0.5 * col), DIM * (row + 1)) if bool == 1
+          image.fast_rect(
+            DIM / 2 * col - 1,
+            DIM * (row + 1) - 1,
+            DIM / 2 * col + 22,
+            DIM * (row + 1),
+            nil,
+            bd_color
+          ) if bool == 1
         end
       end
-      (0 .. 2 * (ROWS + 2) - 1).each do |row| # vertical
+      (0 ... 2 * (ROWS + 2)).each do |row| # vertical
         (0 .. COLUMNS).each do |col|
           tile_a = tiles[row / 2][col]
           tile_b = tiles[row / 2][col + 1]
           bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
-          image.fast_compose!(edge, DIM * (col + 1), DIM * (0.5 * row)) if bool == 1
+          image.fast_rect(
+            DIM * (col + 1) - 1,
+            DIM / 2 * row - 1,
+            DIM * (col + 1),
+            DIM / 2 * row + 22,
+            nil,
+            bd_color
+          ) if bool == 1
         end
       end
       bench(:step, 'Borders   ') if BENCH_IMAGES
