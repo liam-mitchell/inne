@@ -541,7 +541,7 @@ module Map
       # Parse palette
       bench(:start) if BENCH_IMAGES
       themes = THEMES.map(&:downcase)
-      theme = theme.to_s.downcase!
+      theme = theme.to_s.downcase
       theme = DEFAULT_PALETTE.downcase if !themes.include?(theme)
       palette_idx = themes.index(theme)
 
@@ -660,7 +660,7 @@ module Map
   def trace(event)
     t = Time.now
     msg = event.content
-    h = parse_palette(msg)
+    h = parse_palette(event)
     msg, palette, error = h[:msg], h[:palette], h[:error]
     level = self.is_a?(MappackHighscoreable) && mappack.id == 0 ? Level.find_by(id: id) : self
     raise "Error finding level object" if level.nil?
@@ -1654,7 +1654,3 @@ class MappackScoresTweak < ActiveRecord::Base
     nil
   end
 end
-
-def respond_mappacks(event)
-  msg = event.content
-end 

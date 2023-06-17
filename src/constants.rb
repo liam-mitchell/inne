@@ -45,13 +45,14 @@ UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 # <------                     DISCORD VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-BOTMASTER_ID   = 204332624288677890 # User ID of the bot manager (Eddy)
-SERVER_ID      = 197765375503368192 # Discord server/guild ID (N++ Server)
-CHANNEL_ID     = 210778111594332181 # Discord main channel ID (#highscores)
-USERLEVELS_ID  = 221721273405800458 # ... (#mapping)
-NV2_ID         = 197774025844457472 # ... (#nv2)
-CONTENT_ID     = 197793786389200896 # ... (#content-creation)
-DISCORD_LIMIT  = 2000               # Message character limit
+BOTMASTER_ID       = 204332624288677890 # User ID of the bot manager (Eddy)
+SERVER_ID          = 197765375503368192 # Discord server/guild ID (N++ Server)
+CHANNEL_ID         = 210778111594332181 # Discord main channel ID (#highscores)
+USERLEVELS_ID      = 221721273405800458 # ... (#mapping)
+NV2_ID             = 197774025844457472 # ... (#nv2)
+CONTENT_ID         = 197793786389200896 # ... (#content-creation)
+DISCORD_CHAR_LIMIT = 2000               # Message character limit
+DISCORD_FILE_LIMIT = 25 * 1000 ** 2
 
 # Non-standard character widths in the monospaced font (for padding adjustments)
 WIDTH_EMOJI = 2
@@ -245,7 +246,7 @@ REPORT_UPDATE_FREQUENCY     =       24 * 60 * 60
 REPORT_UPDATE_SIZE          =   7 * 24 * 60 * 60
 SUMMARY_UPDATE_SIZE         =   1 * 24 * 60 * 60
 USERLEVEL_SCORE_FREQUENCY   =       24 * 60 * 60
-USERLEVEL_UPDATE_RATE       =                 15
+USERLEVEL_UPDATE_RATE       =                  5
 USERLEVEL_HISTORY_FREQUENCY =       24 * 60 * 60
 USERLEVEL_REPORT_FREQUENCY  =       24 * 60 * 60
 USERLEVEL_TAB_FREQUENCY     =       24 * 60 * 60

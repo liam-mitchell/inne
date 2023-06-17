@@ -239,6 +239,18 @@ class Userlevel < ActiveRecord::Base
   #   objects      - Object data compressed in zlib, stored in userlevel_data
   # Note: For details about how map data is stored, see the encode_ and decode_ methods below.
 
+  def self.dump_csv
+    count = self.count
+    csv = "id,author_id,author,title,favs,date,mode\n"
+    csv << self.all.each_with_index.map{ |m, i|
+      dbg("Dumping userlevel #{"%6d" % [i + 1]} / #{count}...", pad: true, newline: false)
+      #print("\rDumping userlevel #{"%6d" % [i + 1]} / #{count}...")
+      "#{m.id},#{m.author_id},#{m.author.name.tr(',', ';')},#{m.title.tr(',', ';')},#{m.favs},#{m.date.strftime(DATE_FORMAT_OUTTE)},#{m.mode.to_i}"
+    }.join("\n")
+    Log.clear
+    csv
+  end
+
   def self.mode(mode)
     mode == -1 ? Userlevel : Userlevel.where(mode: mode)
   end
@@ -969,7 +981,7 @@ def send_userlevel_rankings(event)
   header = "Userlevel #{full} #{global} #{type} #{ties} rankings #{format_author(author)} #{format_max(max)} #{format_time}:".squish
   length = header.length + top.length
   event << header
-  length < DISCORD_LIMIT ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
+  length < DISCORD_CHAR_LIMIT ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
 end
 
 def send_userlevel_count(event)
@@ -1356,72 +1368,62 @@ def send_userlevel_trace(event)
   wait_msg = event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
     wait_msg.delete if !wait_msg.nil?
-    msg = event.content.sub(/user\s*level/i, '').gsub(/\b\d{1,2}\b/, '')
-    msg = parse_palette(msg)[:msg]
+    event.content.sub!(/user\s*level/i, '')
+    event.content.squish!
+    msg = parse_palette(event)[:msg]
     send_userlevel_individual(event, msg){ |map|
       map[:query].trace(event)
     }
   end
 end
 
-def send_userlevel_time(event)
+def send_userlevel_times(event)
+  event << "Userlevel database update times:"
+  times = []
+
   next_level = ($status_update + STATUS_UPDATE_FREQUENCY) - Time.now.to_i
   next_level_minutes = (next_level / 60).to_i
   next_level_seconds = next_level - (next_level / 60).to_i * 60
+  event << "* I'll update the userlevel database in #{next_level_minutes} minutes and #{next_level_seconds} seconds."
 
-  event << "I'll update the userlevel database in #{next_level_minutes} minutes and #{next_level_seconds} seconds."
-end
-
-def send_userlevel_scores_time(event)
   next_level = GlobalProperty.get_next_update('userlevel_score') - Time.now
   next_level_hours = (next_level / (60 * 60)).to_i
   next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
+  event << "* I'll update the newest userlevel scores in #{next_level_hours} hours and #{next_level_minutes} minutes."
 
-  event << "I'll update the *newest* userlevel scores in #{next_level_hours} hours and #{next_level_minutes} minutes."
-end
-
-def send_userlevel_times(event)
-  send_userlevel_time(event)
-  send_userlevel_scores_time(event)
-end
-
-# Exports userlevel database (bar level data) to CSV, for testing purposes.
-def csv(event)
-  assert_permissions(event)
-  s = "id,author_id,author,title,favs,date,mode\n"
-  s << Userlevel.all.map{ |m|
-    "#{m.id},#{m.author_id},#{m.author.name},#{m.title},#{m.favs},#{m.date.strftime(DATE_FORMAT_OUTTE)},#{m.mode}"
-  }.join("\n")
-  File.write("userlevels.csv", s)
-  event << "CSV exported."
+  next_level = GlobalProperty.get_next_update('userlevel_tab') - Time.now
+  next_level_hours = (next_level / (60 * 60)).to_i
+  next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
+  event << "* I'll update the userlevel tabs (e.g. hardest) in #{next_level_hours} hours and #{next_level_minutes} minutes."
 end
 
 def respond_userlevels(event)
   msg = event.content
 
-  # exclusively global methods
+  # Exclusively global methods
   if !msg[NAME_PATTERN, 2]
-    send_userlevel_rankings(event)   if msg =~ /\brank/i
+    return send_userlevel_rankings(event)  if msg =~ /\brank/i
   end
 
-  send_userlevel_times(event)       if msg =~ /\bwhen\b/i
-  send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bsearch\b/i
-  send_userlevel_download(event)    if msg =~ /\bdownload\b/i
-  send_userlevel_screenshot(event)  if msg =~ /\bscreenshots?\b/i
-  send_userlevel_scores(event)      if msg =~ /scores\b/i
-  send_userlevel_count(event)       if msg =~ /how many/i
-  send_userlevel_spreads(event)     if msg =~ /spread/i
-  send_userlevel_points(event)      if msg =~ /point/i && msg !~ /rank/i && msg !~ /average/i
-  send_userlevel_avg_points(event)  if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
-  send_userlevel_avg_rank(event)    if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
-  send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
-  send_userlevel_total_score(event) if msg =~ /total score/i && msg !~ /rank/i
-  send_userlevel_list(event)        if msg =~ /\blist\b/i
-  send_userlevel_stats(event)       if msg =~ /stat/i
-  send_userlevel_maxed(event)       if msg =~ /maxed/i
-  send_userlevel_maxable(event)     if msg =~ /maxable/i
-  send_random_userlevel(event)      if msg =~ /random/i
-  send_userlevel_summary(event)     if msg =~ /summary/i
-  send_userlevel_trace(event)       if msg =~ /\btrace\b/i
-  #csv(event) if msg =~ /csv/i
+  return send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bsearch\b/i
+  return send_userlevel_screenshot(event)  if msg =~ /\bscreenshots?\b/i
+  return send_userlevel_scores(event)      if msg =~ /scores\b/i
+  return send_userlevel_download(event)    if msg =~ /\bdownload\b/i
+  return send_userlevel_trace(event)       if msg =~ /\btrace\b/i
+  return send_userlevel_count(event)       if msg =~ /how many/i
+  return send_userlevel_spreads(event)     if msg =~ /spread/i
+  return send_userlevel_avg_points(event)  if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
+  return send_userlevel_points(event)      if msg =~ /point/i && msg !~ /rank/i
+  return send_userlevel_avg_rank(event)    if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
+  return send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
+  return send_userlevel_total_score(event) if msg =~ /total score/i && msg !~ /rank/i
+  return send_userlevel_list(event)        if msg =~ /\blist\b/i
+  return send_userlevel_stats(event)       if msg =~ /stat/i
+  return send_userlevel_maxed(event)       if msg =~ /maxed/i
+  return send_userlevel_maxable(event)     if msg =~ /maxable/i
+  return send_random_userlevel(event)      if msg =~ /random/i
+  return send_userlevel_summary(event)     if msg =~ /summary/i
+  return send_userlevel_times(event)       if msg =~ /\bwhen\b/i
+
+  event << "Sorry, I didn't understand your userlevel command."
 end

@@ -135,8 +135,8 @@ module Log
 
     # Format text
     header = {
-      fancy: "\r[#{date}] #{type[:fancy]}#{app[:fancy]} ",
-      plain: "\r[#{date}] #{type[:plain]}#{app[:plain]} ",
+      fancy: "[#{date}] #{type[:fancy]}#{app[:fancy]} ",
+      plain: "[#{date}] #{type[:plain]}#{app[:plain]} ",
     }
     lines = {
       fancy: text.split("\n").map{ |l| (header[:fancy] + "#{m[:fmt]}#{l}#{RESET}").strip },
@@ -147,8 +147,8 @@ module Log
       plain: lines[:plain].map{ |l| l.ljust(LOG_PAD, ' ') }
     } if pad
     msg = {
-      fancy: lines[:fancy].join("\n"),
-      plain: lines[:plain].join("\n")
+      fancy: "\r" + lines[:fancy].join("\n"),
+      plain: "\r" + lines[:plain].join("\n")
     }
 
     # Log to the terminal, if specified

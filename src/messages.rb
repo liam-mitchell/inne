@@ -241,7 +241,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   else
     length = header.length + rank.length
     event << header
-    length < DISCORD_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
+    length < DISCORD_CHAR_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
   end
 rescue RuntimeError
   raise
@@ -467,7 +467,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
 
   # Single match, retrieve screenshot
   #scores = scores.nav(offset.to_i)
-  h = h.map if h.is_a?(Level) && hash[:palette] != 'classic'
+  h = h.map if h.is_a?(Level)
   if h.is_a?(MappackHighscoreable)
     return event.send_message("Sorry, mappack episodes and stories don't have screenshots yet.") if !h.is_a?(MappackLevel)
     screenshot = h.screenshot(hash[:palette], file: true)
@@ -578,7 +578,7 @@ def send_stats(event)
   msg2    = "#{histogram}```"
 
   # Send response (careful, it can go over the char limit)
-  if msg1.length + msg2.length <= DISCORD_LIMIT
+  if msg1.length + msg2.length <= DISCORD_CHAR_LIMIT
     event << msg1
     event << msg2
   else
@@ -1511,38 +1511,6 @@ else
   set_avatar(new_avatar)
 end
 
-def send_level_time(event)
-  next_level = GlobalProperty.get_next_update(Level) - Time.now
-  next_level_hours = (next_level / (60 * 60)).to_i
-  next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
-
-  event << "I'll post a new level of the day in #{next_level_hours} hours and #{next_level_minutes} minutes."
-end
-
-def send_episode_time(event)
-  next_episode = GlobalProperty.get_next_update(Episode) - Time.now
-
-  next_episode_days = (next_episode / (24 * 60 * 60)).to_i
-  next_episode_hours = (next_episode / (60 * 60)).to_i - (next_episode / (24 * 60 * 60)).to_i * 24
-
-  event << "I'll post a new episode of the week in #{next_episode_days} days and #{next_episode_hours} hours."
-end
-
-def send_story_time(event)
-  next_story = GlobalProperty.get_next_update(Story) - Time.now
-
-  next_story_days = (next_story / (24 * 60 * 60)).to_i
-  next_story_hours = (next_story / (60 * 60)).to_i - (next_story / (24 * 60 * 60)).to_i * 24
-
-  event << "I'll post a new column of the month in #{next_story_days} days and #{next_story_hours} hours."
-end
-
-def send_times(event)
-  send_level_time(event)
-  send_episode_time(event)
-  send_story_time(event)
-end
-
 def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
   text_rows = rows.select{ |r| r.is_a?(Array) }
   count = text_rows.map(&:size).max
@@ -1657,16 +1625,37 @@ def send_help(event)
   event << "If the command is related to a specific player, you can specify it by ending your message with 'for <username>'. Otherwise, I'll use the one you specified earlier."
 end
 
-def send_level(event)
-  event << "The current level of the day is #{GlobalProperty.get_current(Level).format_name}."
+def send_lotd_info(event)
+  level = GlobalProperty.get_current(Level)
+  next_level = GlobalProperty.get_next_update(Level) - Time.now
+  next_level_hours = (next_level / (60 * 60)).to_i
+  next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
+
+  event << "The current level of the day is #{level.format_name}."
+  event << "I'll post a new level of the day in #{next_level_hours} hours and #{next_level_minutes} minutes."
+  event.attach_file(send_screenshot(event, level, true)[0])
 end
 
-def send_episode(event)
-  event << "The current episode of the week is #{GlobalProperty.get_current(Episode).format_name}."
+def send_eotw_info(event)
+  episode = GlobalProperty.get_current(Episode)
+  next_episode = GlobalProperty.get_next_update(Episode) - Time.now
+  next_episode_days = (next_episode / (24 * 60 * 60)).to_i
+  next_episode_hours = (next_episode / (60 * 60)).to_i - (next_episode / (24 * 60 * 60)).to_i * 24
+
+  event << "The current episode of the week is #{episode.format_name}."
+  event << "I'll post a new episode of the week in #{next_episode_days} days and #{next_episode_hours} hours."
+  event.attach_file(send_screenshot(event, episode, true)[0])
 end
 
-def send_story(event)
-  event << "The current column of the month is #{GlobalProperty.get_current(Story).format_name}."
+def send_cotm_info(event)
+  story = GlobalProperty.get_current(Story)
+  next_story = GlobalProperty.get_next_update(Story) - Time.now
+  next_story_days = (next_story / (24 * 60 * 60)).to_i
+  next_story_hours = (next_story / (60 * 60)).to_i - (next_story / (24 * 60 * 60)).to_i * 24
+
+  event << "The current column of the month is #{story.format_name}."
+  event << "I'll post a new column of the month in #{next_story_days} days and #{next_story_hours} hours."
+  event.attach_file(send_screenshot(event, story, true)[0])
 end
 
 def dump(event)
@@ -1968,6 +1957,10 @@ def send_mappack_info(event)
   event << "Set mappack `#{mappack.code}` #{flags}."
 end
 
+def send_userlevel_csv(event)
+  send_file(event, Userlevel.dump_csv, 'userlevels.csv')
+end
+
 def send_gold_check(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
@@ -2024,6 +2017,7 @@ def respond_special(event)
   send_mappack_seed(event)       if cmd == 'mappack_seed'
   send_mappack_patch(event)      if cmd == 'mappack_patch'
   send_mappack_info(event)       if cmd == 'mappack_info'
+  send_userlevel_csv(event)      if cmd == 'userlevel_csv'
   send_log_config(event)         if cmd == 'log'
   send_meminfo(event)            if cmd == 'meminfo'
   send_restart(event)            if cmd == 'restart'
@@ -2036,100 +2030,81 @@ end
 
 def respond(event)
   msg = event.content
-
-  # match exactly "lotd" or "eotw", regardless of capitalization or leading/trailing whitespace
-  if msg =~ /\A\s*lotd\s*\Z/i
-    send_level(event)
-    return
-  elsif msg =~ /\A\s*eotw\s*\Z/i
-    send_episode(event)
-    return
-  elsif msg =~ /\A\s*cotm\s*\Z/i
-    send_story(event)
-    return
-  end
-
-  # userlevel methods
-  if !!msg[/userlevel/i]
-    respond_userlevels(event)
-    return
-  end
-
-  # mappack methods
-  if !!msg[/mappack/i]
-    respond_mappacks(event)
-    return
-  end
-
-  # exclusively global methods, this conditional avoids the problem stated in the comment below
-  if !msg[NAME_PATTERN, 2]
-    send_rankings(event)    if msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i
-    send_history(event)     if msg =~ /history/i && msg !~ /rank/i
-    send_diff(event)        if msg =~ /\bdiff\b/i
-    send_community(event)   if msg =~ /community/i
-    send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
-    send_ownages(event)     if msg =~ /ownage/i
-    send_help(event)        if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
-    send_help2(event)       if msg =~ /help2/i
-    send_random(event)      if msg =~ /random/i
-  end
-
-  # on this methods, we will exclude a few problematic words that appear
-  # in some level names which would accidentally trigger them
   hm = !msg[/\bhow many\b/i]
-  hello(event)               if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
-  thanks(event)              if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
-  dump(event)                if msg =~ /dump/i
-  send_level(event)          if msg =~ /what.*(level|lotd)/i
-  send_episode(event)        if msg =~ /what.*(episode|eotw)/i
-  send_story(event)          if msg =~ /what.*(story|column|cotm)/i
-  send_level_time(event)     if msg =~ /(when|next).*(level|lotd)/i
-  send_episode_time(event)   if msg =~ /(when|next).*(episode|eotw)/i
-  send_story_time(event)     if msg =~ /(when|next).*(story|column|cotm)/i
-  send_points(event)         if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /average/i && msg !~ /table/i && msg !~ /floating/i && msg !~ /legrange/i
-  send_spreads(event)        if msg =~ /spread/i
-  send_average_points(event) if msg =~ /\bpoints/i && msg !~ /history/i && msg !~ /rank/i && msg =~ /average/i && msg !~ /table/i && msg !~ /floating/i && msg !~ /legrange/i
-  send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i && !!msg[NAME_PATTERN, 2]
-  send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i && msg !~ /table/i
-  send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
-  send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i && msg !~ /table/i && msg !~ /community/i
-  send_list(event, false)    if msg =~ /how many/i && msg !~ /point/i unless !!msg[/\bmissing\b/i]
-  send_list(event, false, false, true) if msg =~ /how cool/i 
-  send_table(event)          if msg =~ /\btable\b/i
-  send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
-  send_stats(event)          if msg =~ /\bstat/i && msg !~ /generator/i && msg !~ /hooligan/i && msg !~ /space station/i
-  send_screenshot(event)     if msg =~ /screenshot/i
-  send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
-  send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
-  send_suggestions(event)    if (msg =~ /\bworst\b/i && msg !~ /\bnightmare\b/i) || msg =~ /\bimprovable\b/i
-  send_list(event)           if msg =~ /\blist\b/i unless msg =~ /of inappropriate words/i || !!msg[/\btally\b/i] || !!msg[/\bmissing\b/i]
-  send_list(event, hm, true) if msg =~ /missing/i
-  send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i && msg !~ /table/i
-  send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i && msg !~ /table/i
-  send_level_name(event)     if msg =~ /\blevel name\b/i
-  send_level_id(event)       if msg =~ /\blevel id\b/i
-  send_analysis(event)       if msg =~ /analysis/i
-  send_splits(event)         if msg =~ /\bsplits\b/i
-  identify(event)            if msg =~ /my name is/i
-  add_steam_id(event)        if msg =~ /my steam id is/i
-  add_display_name(event)    if msg =~ /my display name is/i
-  set_default_palette(event) if msg =~ /my palette is/i
-  send_videos(event)         if msg =~ /\bvideo\b/i || msg =~ /\bmovie\b/i
-  send_challenges(event)     if msg =~ /\bchallenges\b/i
-  send_unique_holders(event) if msg =~ /\bunique holders\b/i
-  send_twitch(event)         if msg =~ /\btwitch\b/i
-  add_role(event)            if msg =~ /\badd\s*role\b/i
-  send_aliases(event)        if msg =~ /\baliases\b/i
-  add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
-  send_dmmc(event)           if msg =~ /\bdmmcize\b/i
-  sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
-  send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
-  send_tally(event)          if msg =~ /\btally\b/i
-  send_download(event)       if msg =~ /\bdownload\b/i
-  send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
-  send_trace(event)          if msg =~ /\btrace\b/i
-  update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
-  faceswap(event)            if msg =~ /faceswap/i
+
+  # Divert flow to userlevel specific functions
+  return respond_userlevels(event) if !!msg[/userlevel/i]
+
+  # Exclusively global methods
+  if !msg[NAME_PATTERN, 2]
+    return send_rankings(event)    if msg =~ /rank/i && msg !~ /history/i && msg !~ /table/i
+    return send_history(event)     if msg =~ /history/i
+    return send_diff(event)        if msg =~ /\bdiff\b/i
+    return send_community(event)   if msg =~ /community/i
+    return send_cleanliness(event) if msg =~ /cleanest/i || msg =~ /dirtiest/i
+    return send_ownages(event)     if msg =~ /ownage/i
+    return send_random(event)      if msg =~ /random/i
+    return send_help(event)        if msg =~ /\bhelp\b/i || msg =~ /\bcommands\b/i
+    return send_help2(event)       if msg =~ /help2/i
+  end
+
+  # For some methods we exclude a few problematic words that appear in some
+  # level names which would accidentally trigger them
+  #
+  # Note that the order of these methods matters. Therefore, we put the more
+  # specific ones (e.g. lotd, or sending scores) at the top.
+  return send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
+  return send_screenshot(event)     if msg =~ /screenshot/i
+  return send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
+  return send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
+  return send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
+  return send_lotd_info(event)      if msg =~ /\A\s*lotd\s*\Z/i
+  return send_eotw_info(event)      if msg =~ /\A\s*eotw\s*\Z/i
+  return send_cotm_info(event)      if msg =~ /\A\s*cotm\s*\Z/i
+  return send_table(event)          if msg =~ /\btable\b/i
+  return send_average_points(event) if msg =~ /\bpoints/i && msg =~ /average/i
+  return send_points(event)         if msg =~ /\bpoints/i
+  return send_spreads(event)        if msg =~ /spread/i
+  return send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
+  return send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
+  return send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
+  return send_list(event, hm, true) if msg =~ /missing/i
+  return send_list(event, false)    if msg =~ /how many/i
+  return send_list(event, false, false, true) if msg =~ /how cool/i 
+  return send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
+  return send_stats(event)          if msg =~ /\bstat/i
+  return send_suggestions(event)    if msg =~ /\bworst\b/i || msg =~ /\bimprovable\b/i
+  return send_tally(event)          if msg =~ /\btally\b/i
+  return send_list(event)           if msg =~ /\blist\b/i
+  return send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i
+  return send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i
+  return send_level_name(event)     if msg =~ /\blevel name\b/i
+  return send_level_id(event)       if msg =~ /\blevel id\b/i
+  return send_analysis(event)       if msg =~ /analysis/i
+  return send_splits(event)         if msg =~ /\bsplits\b/i
+  return identify(event)            if msg =~ /my name is/i
+  return add_steam_id(event)        if msg =~ /my steam id is/i
+  return add_display_name(event)    if msg =~ /my display name is/i
+  return set_default_palette(event) if msg =~ /my palette is/i
+  return send_videos(event)         if msg =~ /\bvideo\b/i
+  return send_challenges(event)     if msg =~ /\bchallenges\b/i
+  return send_unique_holders(event) if msg =~ /\bunique holders\b/i
+  return send_twitch(event)         if msg =~ /\btwitch\b/i
+  return add_role(event)            if msg =~ /\badd\s*role\b/i
+  return send_aliases(event)        if msg =~ /\baliases\b/i
+  return add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
+  return send_dmmc(event)           if msg =~ /\bdmmcize\b/i
+  return sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
+  return send_download(event)       if msg =~ /\bdownload\b/i
+  return send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
+  return send_trace(event)          if msg =~ /\btrace\b/i
+  return update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
+  return faceswap(event)            if msg =~ /faceswap/i
+  return hello(event)               if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
+  return thanks(event)              if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
+  return dump(event)                if msg =~ /\bdump\b/i
+
+  event << "Sorry, I didn't understand your command."
 
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
