@@ -1,7 +1,7 @@
-require 'chunky_png'
+#require 'chunky_png'
+require 'oily_png'    # C wrapper for ChunkyPNG
 require 'digest'
 require 'matplotlib/pyplot'
-#require 'oily_png' # More efficient screenshot generation (broken?)
 require 'zlib'
 
 module Map
@@ -554,7 +554,7 @@ module Map
       end
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
-      res = image.to_blob(:fast_rgba)
+      res = image.to_blob(:fast_rgb)
       bench(:step, 'Blobify   ') if BENCH_IMAGES
       res
     end
