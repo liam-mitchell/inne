@@ -385,7 +385,7 @@ module Map
     images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id], fast: true) }
     $t2 += Time.now - t
     t = Time.now
-    dims = [ [DIM, *images.map{ |i| i.width }].max, [DIM, *images.map{ |i| i.height }].max ]
+    dims = [ images.map{ |i| i.width }.max, images.map{ |i| i.height }.max ]
     output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
     images.each{ |image| output.fast_compose!(image, 0, 0) }
     $t3 += Time.now - t
@@ -436,7 +436,7 @@ module Map
 
       # Parse map
       tiles = self.tiles.map(&:dup)
-      objects = self.objects.reject{ |o| o[0] > 28 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects
+      objects = self.objects.reject{ |o| o[0] > 28 || o[0] == 8 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects and trap doors
       objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
       bench(:step, 'Parse     ') if BENCH_IMAGES
 

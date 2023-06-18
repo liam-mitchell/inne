@@ -132,6 +132,7 @@ Others:
 - Show glitch tiles with some soft shade, e.g. red or the inverse of the background, perhaps with a pattern too, e.g. lines or dotted.
 - Draw lasers, even if in basic fashion (straight lines till tile)
 - Optionally show editor info in the screenshot (door-switch lines, etc)
+- Minis are missing the eye (remember the second color needs to be composed in a special way to obtain the final color)
 
 - Implement custom palettes, and commands for users to submit their palettes, instead of editing the spreadsheet. Commands to list palettes, showcase examples, etc.
 - Go through palette channel and add custom palettes that haven't been added (list zip files or something).

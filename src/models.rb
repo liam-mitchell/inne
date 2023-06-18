@@ -132,13 +132,17 @@ module MonkeyPatches
     end
 
     # Faster method to compose images where the pixels are either fully solid
-    # or fully transparent (~6x faster)
+    # or fully transparent (~10x faster)
     ::ChunkyPNG::Canvas::Operations.class_eval do
       def fast_compose!(other, offset_x = 0, offset_y = 0)
         check_size_constraints!(other, offset_x, offset_y)
         w = other.width
+        o = width - w + 1
+        i = offset_y * width + offset_x - o
         other.pixels.each_with_index{ |color, p|
-          pixels[(offset_y + (p - p % w) / w) * width + (offset_x + p % w)] = color unless color == 0
+          i += (p % w == 0 ? o : 1)
+          next if color == 0
+          pixels[i] = color
         }
         self
       end
