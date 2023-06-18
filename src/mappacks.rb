@@ -418,65 +418,110 @@ module Map
       next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
 
-      # Initialize tile and object images in the palette
+      # Parse map
+      tiles = self.tiles.map(&:dup)
+      objects = self.objects.reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
+                    .sort_by{ |o| -OBJECTS[o[0]][:pref] }         # Sort objs by overlap preference
+      objects.each{ |o|
+        o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0])      # Remove glitched orientations
+      }
+      bench(:step, 'Parse     ') if BENCH_IMAGES
+
+      # Initialize tile images
       $t1, $t2, $t3 = 0.0, 0.0, 0.0
-      tile = [0, 1, 2, 6, 10, 14, 18, 22, 26, 30].map{ |o| [o, generate_object(o, palette_idx, false)] }.to_h
+      tile = {}
+      tiles.flatten.uniq.reject{ |t| t == 0 || t == 1 }.each{ |t|
+        # Initialize base tile images
+        o = (t - 2) % 4                # Orientation
+        base = t - o                   # Base shape
+        tile[base] = generate_object(base, palette_idx, false) if !tile.key?(base)
+        next if base == t
+
+        # Initialize rotated / flipped copies
+        tile[t] = tile[base].dup
+        if t >= 2 && t <= 17           # Half tiles and curved slopes
+          case o
+          when 1
+            tile[t].rotate_right!
+          when 2
+            tile[t].rotate_180!
+          when 3
+            tile[t].rotate_left!
+          end
+        elsif t >= 18 && t <= 33       # Small and big straight slopes
+          case o
+          when 1
+            tile[t].flip_vertically!
+          when 2
+            tile[t].flip_horizontally!
+            tile[t].flip_vertically!
+          when 3
+            tile[t].flip_horizontally!
+          end
+        end
+      }
       bench(:step, 'Init tiles') if BENCH_IMAGES
-      object = OBJECTS.keys.map{ |o| [o, generate_object(o, palette_idx)] }.to_h
+
+      # Initialize object images
+      object = 60.times.map{ |i| [i, {}] }.to_h
+      objects.uniq{ |o| [o[0], o[3]] }.each{ |o|
+        # Initialize base object images
+        s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
+        id = s ? o[0] + 30 : o[0]
+        object[id][0] = generate_object(o[0], palette_idx, true, s) if !object[id].key?(0)
+        next if o[3] <= 1
+
+        # Initialize rotated copies
+        r = o[3] / 2
+        object[id][r] = object[id][0].dup
+        case r
+        when 1
+          object[id][r].rotate_right!
+        when 2
+          object[id][r].rotate_180!
+        when 3
+          object[id][r].rotate_left!
+        end
+      }
       bench(:step, 'Init objs ') if BENCH_IMAGES
-      object_special = OBJECTS.keys.select{ |id| SPECIAL_OBJECTS.include?(id) }.map{ |o| [o + 29, generate_object(o, palette_idx, true, true)] }.to_h
-      bench(:step, 'Init sobjs') if BENCH_IMAGES
-      object.merge!(object_special)
+
       border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-      bench(:step, 'Initialize') if BENCH_IMAGES
       puts "Masking times:" if BENCH_IMAGES
       puts "Loads: #{"%8.3fms" % [1000 * $t1]}" if BENCH_IMAGES
       puts "Masks: #{"%8.3fms" % [1000 * $t2]}" if BENCH_IMAGES
       puts "Compo: #{"%8.3fms" % [1000 * $t3]}" if BENCH_IMAGES
 
-      # Parse map
-      tiles = self.tiles.map(&:dup)
-      objects = self.objects.reject{ |o| o[0] > 28 || o[0] == 8 }.sort_by{ |o| -OBJECTS[o[0]][:pref] } # remove glitched objects and trap doors
-      objects.each{ |o| if o[3] > 7 then o[3] = 0 end } # remove glitched orientations
-      bench(:step, 'Parse     ') if BENCH_IMAGES
-
       # Draw objects
       objects.each do |o|
-        new_object = !(o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0])) ? object[o[0]] : object[o[0] + 29]
-        (1 .. o[3] / 2).each{ |i| new_object = new_object.rotate_clockwise } if !FIXED_OBJECTS.include?(o[0])
-        image.fast_compose!(new_object, coord(o[1]) - new_object.width / 2, coord(o[2]) - new_object.height / 2)
+        id = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) ? o[0] + 30 : o[0]
+        obj = object[id][o[3] / 2]
+        image.fast_compose!(obj, coord(o[1]) - obj.width / 2, coord(o[2]) - obj.height / 2)
       end
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
-      tiles.each{ |row| row.unshift(1).push(1) }
-      tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2))
-      tiles = tiles.map{ |row| row.map{ |tile| tile > 33 ? 0 : tile } } # remove glitched tiles
+      tiles.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
+      tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
+      tiles.map!{ |row| row.map{ |tile| tile > 33 ? 0 : tile } }   # Reject glitch tiles
       tiles.each_with_index do |slice, row|
         slice.each_with_index do |t, column|
+          # Empty and full tiles are handled separately
           next if t == 0
           if t == 1
             image.fast_rect(DIM * column, DIM * row, DIM * column + DIM - 1, DIM * row + DIM - 1, nil, fg_color)
             next
           end
-          if t >= 2 && t <= 17 # half tiles and curved slopes
-            new_tile = tile[t - (t - 2) % 4]
-            (1 .. (t - 2) % 4).each{ |i| new_tile = new_tile.rotate_clockwise }
-          elsif t >= 18 && t <= 33 # small and big straight slopes
-            new_tile = tile[t - (t - 2) % 4]
-            if (t - 2) % 4 >= 2 then new_tile = new_tile.flip_horizontally end
-            if (t - 2) % 4 == 1 || (t - 2) % 4 == 2 then new_tile = new_tile.flip_vertically end
-          else
-            new_tile = tile[0]
-          end
-          image.fast_compose!(new_tile, DIM * column, DIM * row)
+
+          # Compose all other tiles
+          image.fast_compose!(tile[t], DIM * column, DIM * row)
         end
       end
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
       bd_color = PALETTE[1, palette_idx]
-      (0 .. ROWS).each do |row| # horizontal
+      #                  Horizontal borders
+      (0 .. ROWS).each do |row|
         (0 ... 2 * (COLUMNS + 2)).each do |col|
           tile_a = tiles[row][col / 2]
           tile_b = tiles[row + 1][col / 2]
@@ -491,7 +536,8 @@ module Map
           ) if bool == 1
         end
       end
-      (0 ... 2 * (ROWS + 2)).each do |row| # vertical
+      #                  Vertical borders
+      (0 ... 2 * (ROWS + 2)).each do |row|
         (0 .. COLUMNS).each do |col|
           tile_a = tiles[row / 2][col]
           tile_b = tiles[row / 2][col + 1]

@@ -102,7 +102,8 @@ module MonkeyPatches
     end
   end
 
-  # Custom faster image manipulation functions
+  # Patch ChunkyPNG to significantly optimize a few methods and add several
+  # new functions
   def self.patch_chunkypng
     # Faster method to render an opaque rectangle (~4x faster)
     ::ChunkyPNG::Canvas::Drawing.class_eval do
@@ -134,14 +135,14 @@ module MonkeyPatches
     # Faster method to compose images where the pixels are either fully solid
     # or fully transparent (~10x faster)
     ::ChunkyPNG::Canvas::Operations.class_eval do
-      def fast_compose!(other, offset_x = 0, offset_y = 0)
+      def fast_compose!(other, offset_x = 0, offset_y = 0, bg = 0)
         check_size_constraints!(other, offset_x, offset_y)
         w = other.width
         o = width - w + 1
         i = offset_y * width + offset_x - o
         other.pixels.each_with_index{ |color, p|
           i += (p % w == 0 ? o : 1)
-          next if color == 0
+          next if color == bg
           pixels[i] = color
         }
         self
