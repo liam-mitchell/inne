@@ -1194,7 +1194,8 @@ end
 # Use SimVYo's tool to trace the replay of a run based on the map data and
 # the demo data.
 def send_trace(event)
-  assert_permissions(event, ['ntrace'])
+  Role.where(role: 'ntrace').update_all(role: 'ntracer')
+  assert_permissions(event, ['ntracer'])
   raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
   wait_msg = event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do

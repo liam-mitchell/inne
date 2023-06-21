@@ -276,16 +276,62 @@ rescue
   nil
 end
 
-def botmaster
-  $bot.servers.each{ |id, server|
-    member = server.member(BOTMASTER_ID)
-    return member if !member.nil?
-  }
-  err("Couldn't find botmaster")
-  nil
+# Execute code block in another process
+def _fork
+  read, write = IO.pipe
+
+  pid = fork do
+    read.close
+    result = yield
+    Marshal.dump(result, write)
+    exit!(0)
+  end
+
+  write.close
+  result = read.read
+  Process.wait(pid)
+  raise 'Child failed' if result.empty?
+  Marshal.load(result)
+rescue RuntimeError
+  raise
 rescue => e
-  lex(e, "Error finding botmaster")
-  nil
+  lex(e, 'Forking failed')
+end
+
+# Wrapper to benchmark a piece of code
+def bench(action, msg = nil)
+  @t ||= Time.now
+  @total ||= 0
+  @step ||= 0
+  case action
+  when :start
+    @step = 0
+    @total = 0
+    @t = Time.now
+  when :step
+    @step += 1
+    int = Time.now - @t
+    @total += int
+    @t = Time.now
+    dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : msg}: #{"%8.3fms" % (int * 1000)} (Total: #{"%8.3fms" % (@total * 1000)}).")
+  end
+end
+
+# Wrapper to do memory profiling for a piece of code
+def profile(action, name = '')
+  case action
+  when :start
+    MemoryProfiler.start
+  when :stop
+    MemoryProfiler.stop.pretty_print(
+      to_file:         File.join(DIR_LOGS, 'memory_profile.txt'),
+      scale_bytes:     true,
+      detailed_report: true,
+      normalize_paths: true
+    )
+  end
+rescue => e
+  lex(e, 'Failed to do memory profiling')
 end
 
 # Send or edit a Discord message in parallel
@@ -301,13 +347,15 @@ def concurrent_edit(event, msgs, content)
     msgs
   end
 rescue
-  msg
+  msgs
 end
 
 # Return system's memory info in MB as a hash (Linux only)
 def meminfo
   File.read("/proc/meminfo").split("\n").map{ |f| f.split(':') }
       .map{ |name, value| [name, value.to_i / 1024.0] }.to_h
+rescue
+  {}
 end
 
 # Turn a little endian binary array into an integer
@@ -332,6 +380,8 @@ rescue
   str
 end
 
+# Ensure a string is filename-safe (printable ASCII only, minus Windows's
+# reserved characters)
 def sanitize_filename(s)
   return '' if s.nil?
   s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
@@ -396,65 +446,6 @@ def verbatim(str)
   return "` `" if str.empty?
   "`#{str.gsub('`', '')}`"
 end
-
-# Wrapper to benchmark a piece of code
-def bench(action, msg = nil)
-  @t ||= Time.now
-  @total ||= 0
-  @step ||= 0
-  case action
-  when :start
-    @step = 0
-    @total = 0
-    @t = Time.now
-  when :step
-    @step += 1
-    int = Time.now - @t
-    @total += int
-    @t = Time.now
-    dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : msg}: #{"%8.3fms" % (int * 1000)} (Total: #{"%8.3fms" % (@total * 1000)}).")
-  end
-end
-
-# Wrapper to do memory profiling for a piece of code
-def profile(action, name = '')
-  case action
-  when :start
-    MemoryProfiler.start
-  when :stop
-    MemoryProfiler.stop.pretty_print(
-      to_file:         File.join(DIR_LOGS, 'memory_profile.txt'),
-      scale_bytes:     true,
-      detailed_report: true,
-      normalize_paths: true
-    )
-  end
-rescue => e
-  lex(e, 'Failed to do memory profiling')
-end
-
-# Execute code block in another process
-def _fork
-  read, write = IO.pipe
-
-  pid = fork do
-    read.close
-    result = yield
-    Marshal.dump(result, write)
-    exit!(0)
-  end
-
-  write.close
-  result = read.read
-  Process.wait(pid)
-  raise 'Child failed' if result.empty?
-  Marshal.load(result)
-rescue RuntimeError
-  raise
-rescue => e
-  lex(e, 'Forking failed')
-end
-
 
 # This corrects a datetime in the database when it's out of
 # phase (e.g. after a long downtime of the bot).
@@ -752,12 +743,13 @@ def check_permission(event, role)
   when 'botmaster'
     {
       granted: event.user.id == BOTMASTER_ID,
-      allowed: 'botmasters'
+      allowed: ['botmasters']
     }
   else
+    names = Role.owners(role).pluck(:username)
     {
       granted: Role.exists(event.user.id, role),
-      allowed: Role.owners(role).pluck(:username)
+      allowed: names.empty? ? role.pluralize : names
     }
   end
 end
@@ -766,7 +758,7 @@ def assert_permissions(event, roles = [])
   roles.push('botmaster') # Can do everything
   permissions = roles.map{ |role| check_permission(event, role) }
   granted = permissions.map{ |p| p[:granted] }.count(true) > 0
-  error = "Sorry, only #{permissions.map{ |p| p[:allowed] }.join(', ')} are allowed to execute this command."
+  error = "Sorry, only #{permissions.map{ |p| p[:allowed] }.flatten.to_sentence} are allowed to execute this command."
   raise error if !granted
 end
 
@@ -776,6 +768,19 @@ end
 
 def remove_word_first(msg, word)
   msg.sub(/\w*#{word}\w*/i, '').squish
+end
+
+# Find the botmaster's Discord user
+def botmaster
+  $bot.servers.each{ |id, server|
+    member = server.member(BOTMASTER_ID)
+    return member if !member.nil?
+  }
+  err("Couldn't find botmaster")
+  nil
+rescue => e
+  lex(e, "Error finding botmaster")
+  nil
 end
 
 # Find Discord server the bot is in, by name

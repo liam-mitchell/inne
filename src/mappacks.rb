@@ -387,7 +387,7 @@ module Map
     t = Time.now
     dims = [ images.map{ |i| i.width }.max, images.map{ |i| i.height }.max ]
     output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
-    images.each{ |image| output.fast_compose!(image, 0, 0) }
+    images.each{ |image| output.compose!(image, 0, 0) }
     $t3 += Time.now - t
     output
   end
@@ -495,7 +495,7 @@ module Map
       objects.each do |o|
         id = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) ? o[0] + 30 : o[0]
         obj = object[id][o[3] / 2]
-        image.fast_compose!(obj, coord(o[1]) - obj.width / 2, coord(o[2]) - obj.height / 2)
+        image.compose!(obj, coord(o[1]) - obj.width / 2, coord(o[2]) - obj.height / 2)
       end
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
@@ -513,7 +513,7 @@ module Map
           end
 
           # Compose all other tiles
-          image.fast_compose!(tile[t], DIM * column, DIM * row)
+          image.compose!(tile[t], DIM * column, DIM * row)
         end
       end
       bench(:step, 'Tiles     ') if BENCH_IMAGES
@@ -554,6 +554,7 @@ module Map
       end
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
+      # rb_p(rb_str_new_cstr("Hello, world!"));
       res = image.to_blob(:fast_rgb)
       bench(:step, 'Blobify   ') if BENCH_IMAGES
       res

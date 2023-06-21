@@ -12,7 +12,7 @@ source 'https://rubygems.org' do
   group :imaging do
     gem 'gruff'
     gem 'chunky_png'
-    gem 'oily_png', github: 'edelkas/oily_png', branch: 'master'
+    gem 'oily_png', github: 'edelkas/oily_png', branch: 'dev'
     gem 'matplotlib'
   end
 
