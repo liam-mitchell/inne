@@ -19,7 +19,7 @@ raw_map_data_1 = "map_data_1"
 raw_map_data_2 = "map_data_2"
 raw_map_data_3 = "map_data_3"
 raw_map_data_4 = "map_data_4"
-map_img = "SS2-E-03.PNG" #This one is only needed for manual execution
+map_img = "screenshot.PNG" #This one is only needed for manual execution
 
 #Import inputs.
 inputs_list = []
@@ -97,6 +97,7 @@ class Ninja:
         self.yspeed = 0
         self.applied_gravity = gravity
         self.grounded = False
+        self.grounded_old = False
         self.ground_normal = (0, -1)
         self.ground_sliding = 0
         self.walled = False
@@ -162,6 +163,7 @@ class Ninja:
         self.yspeed += self.applied_gravity
         self.xpos += self.xspeed
         self.ypos += self.yspeed
+        self.grounded_old = self.grounded
         self.grounded = False
         self.walled = False
 
@@ -272,8 +274,8 @@ class Ninja:
             self.ground_jump()
 
         #Check if ground/wall sliding
-        if self.hor_input == 0 or self.hor_input * self.xspeed < (-0.1 if self.ground_normal == (0, -1) else 0):
-            self.ground_sliding += 1
+        if (self.hor_input == 0 or self.hor_input * self.xspeed < (-0.1 if self.ground_normal == (0, -1) else 0)) and self.grounded:
+            self.ground_sliding += (1 if self.grounded_old else 2)
         else:
             self.ground_sliding = 0
         if self.walled and self.yspeed > 0 and self.post_buffer != 4:
@@ -293,7 +295,7 @@ class Ninja:
             if self.ground_normal == (0, -1) or self.yspeed > 0:
                 self.xspeed *= friction_ground
             else:
-            #This is the worst friction formula ever concieved
+            #This is the worst friction formula ever concieved. For when the ninja is sliding on a slope upwards.
                 speed_scalar = math.sqrt(self.xspeed**2 + self.yspeed**2)
                 fric_force = abs(self.xspeed * (1-friction_ground) * self.ground_normal[1])
                 fric_force2 = speed_scalar - fric_force * self.ground_normal[1]**2
@@ -605,6 +607,9 @@ def tick(p, frame):
         for entity in entity_dic[cell]:
             if entity.is_physical_collidable and entity.active:
                 entity.physical_collision(p)
+
+    if frame == 89:
+        print("debug")
 
     #Handle collisions with tile segments.
     for i in range(32):
