@@ -130,6 +130,10 @@ Others:
 
 \\ ------------------------ Screenshots ------------------------
 
+- Optimizations:
+  * Draw all tiles using polygon (in OilyPNG) rather than compose (and bench it)
+  * Initialize the canvas in C
+
 - Show glitch tiles with some soft shade, e.g. red or the inverse of the background, perhaps with a pattern too, e.g. lines or dotted.
 - Draw lasers, even if in basic fashion (straight lines till tile)
 - Optionally show editor info in the screenshot (door-switch lines, etc)
