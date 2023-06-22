@@ -83,10 +83,11 @@ module Map
   PALETTE = ChunkyPNG::Image.from_file(PATH_PALETTES)
   ROWS    = 23
   COLUMNS = 42
-  DIM     = 44
+  UNITS   = 24
+  DIM     = 44 # Pixels per tile
+  PPC     = 11 # Pixels per coordinate (1/4th tile)
   WIDTH   = DIM * (COLUMNS + 2)
   HEIGHT  = DIM * (ROWS + 2)
-  UNITS   = 24
 
   # TODO: Perhaps store object data without transposing, hence being able to skip
   #       the decoding when dumping
@@ -326,16 +327,6 @@ module Map
   #                           SCREENSHOT GENERATOR
   # <-------------------------------------------------------------------------->
 
-  # Transform N++ tile coordinates into pixel coordinates
-  def coord(n)
-    (DIM * n.to_f / 4).round
-  end
-
-  # Transform N++ unit coordinates into pixel coordinates
-  def u2px(n)
-    (DIM * n.to_f / 24).round
-  end
-
   # Transform a ChunkyPNG color to a standard hex string
   def chunky2hex(pixel, hash: true)
     color = (hash ? '#' : '') + [pixel].pack('L>').unpack('H*')[0]
@@ -371,7 +362,6 @@ module Map
   # different image for that, which we call special.
   def generate_object(object_id, palette_id, object = true, special = false)
     # Select necessary layers
-    t = Time.now
     path = object ? PATH_OBJECTS : PATH_TILES
     parts = Dir.entries(path).select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
     parts_normal = parts.select{ |file| file[-6] == "-" }
@@ -380,15 +370,10 @@ module Map
 
     # Paint and combine the layers
     masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file(File.join(path, part))] }
-    $t1 += Time.now - t
-    t = Time.now
     images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id], fast: true) }
-    $t2 += Time.now - t
-    t = Time.now
     dims = [ images.map{ |i| i.width }.max, images.map{ |i| i.height }.max ]
     output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
     images.each{ |image| output.compose!(image, 0, 0) }
-    $t3 += Time.now - t
     output
   end
 
@@ -428,74 +413,73 @@ module Map
       bench(:step, 'Parse     ') if BENCH_IMAGES
 
       # Initialize tile images
-      $t1, $t2, $t3 = 0.0, 0.0, 0.0
       tile = {}
-      tiles.flatten.uniq.reject{ |t| t == 0 || t == 1 }.each{ |t|
-        # Initialize base tile images
-        o = (t - 2) % 4                # Orientation
-        base = t - o                   # Base shape
-        tile[base] = generate_object(base, palette_idx, false) if !tile.key?(base)
-        next if base == t
+      tiles.each{ |row|
+        row.each{ |t|
+          # Skip if this tile is already initialized
+          next if tile.key?(t) || t == 0 || t == 1
 
-        # Initialize rotated / flipped copies
-        tile[t] = tile[base].dup
-        if t >= 2 && t <= 17           # Half tiles and curved slopes
-          case o
-          when 1
-            tile[t].rotate_right!
-          when 2
-            tile[t].rotate_180!
-          when 3
-            tile[t].rotate_left!
+          # Initialize base tile image
+          o = (t - 2) % 4                # Orientation
+          base = t - o                   # Base shape
+          tile[base] = generate_object(base, palette_idx, false) if !tile.key?(base)
+          next if base == t
+
+          # Initialize rotated / flipped copies
+          if t >= 2 && t <= 17           # Half tiles and curved slopes
+            case o
+            when 1
+              tile[t] = tile[base].rotate_right
+            when 2
+              tile[t] = tile[base].rotate_180
+            when 3
+              tile[t] = tile[base].rotate_left
+            end
+          elsif t >= 18 && t <= 33       # Small and big straight slopes
+            case o
+            when 1
+              tile[t] = tile[base].flip_vertically
+            when 2
+              tile[t] = tile[base].flip_horizontally.flip_vertically
+            when 3
+              tile[t] = tile[base].flip_horizontally
+            end
           end
-        elsif t >= 18 && t <= 33       # Small and big straight slopes
-          case o
-          when 1
-            tile[t].flip_vertically!
-          when 2
-            tile[t].flip_horizontally!
-            tile[t].flip_vertically!
-          when 3
-            tile[t].flip_horizontally!
-          end
-        end
+        }
       }
       bench(:step, 'Init tiles') if BENCH_IMAGES
 
       # Initialize object images
-      object = 60.times.map{ |i| [i, {}] }.to_h
-      objects.uniq{ |o| [o[0], o[3]] }.each{ |o|
-        # Initialize base object images
+      object = 30.times.map{ |i| [i, {}] }.to_h
+      objects.each{ |o|
+        # Skip if this object is already initialized
+        next if object.key?(o[0]) && object[o[0]].key?(o[3])
+        
+        # Initialize base object image
         s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
-        id = s ? o[0] + 30 : o[0]
-        object[id][0] = generate_object(o[0], palette_idx, true, s) if !object[id].key?(0)
+        base = s ? 1 : 0
+        object[o[0]][base] = generate_object(o[0], palette_idx, true, s) if !object[o[0]].key?(base)
         next if o[3] <= 1
 
         # Initialize rotated copies
-        r = o[3] / 2
-        object[id][r] = object[id][0].dup
-        case r
+        case o[3] / 2
         when 1
-          object[id][r].rotate_right!
+          object[o[0]][o[3]] = object[o[0]][base].rotate_right
         when 2
-          object[id][r].rotate_180!
+          object[o[0]][o[3]] = object[o[0]][base].rotate_180
         when 3
-          object[id][r].rotate_left!
+          object[o[0]][o[3]] = object[o[0]][base].rotate_left
         end
       }
       bench(:step, 'Init objs ') if BENCH_IMAGES
 
+      # Parse tile borders
       border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-      puts "Masking times:" if BENCH_IMAGES
-      puts "Loads: #{"%8.3fms" % [1000 * $t1]}" if BENCH_IMAGES
-      puts "Masks: #{"%8.3fms" % [1000 * $t2]}" if BENCH_IMAGES
-      puts "Compo: #{"%8.3fms" % [1000 * $t3]}" if BENCH_IMAGES
 
       # Draw objects
       objects.each do |o|
-        id = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) ? o[0] + 30 : o[0]
-        obj = object[id][o[3] / 2]
-        image.compose!(obj, coord(o[1]) - obj.width / 2, coord(o[2]) - obj.height / 2)
+        obj = object[o[0]][o[3]]
+        image.compose!(obj, PPC * o[1] - obj.width / 2, PPC * o[2] - obj.height / 2)
       end
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
@@ -555,6 +539,7 @@ module Map
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
       # rb_p(rb_str_new_cstr("Hello, world!"));
+      # rb_p(rb_sprintf("x0 = %ld", x0));
       res = image.to_blob(:fast_rgb)
       bench(:step, 'Blobify   ') if BENCH_IMAGES
       res
@@ -662,7 +647,7 @@ module Map
       bench(:step, 'Trace texts') if BENCH_IMAGES
 
       # Plot or animate traces
-      if animate
+      if false# animate
         anim = PyCall.import_module('matplotlib.animation')
         x = []
         y = []

@@ -103,11 +103,12 @@ module MonkeyPatches
   end
 
   # Patch ChunkyPNG to significantly optimize a few methods and add several
-  # new functions
+  # new functions (obsolete, since I'm now using the corresponding methods
+  # in the C extension (OilyPNG))
   def self.patch_chunkypng
     # Faster method to render an opaque rectangle (~4x faster)
     ::ChunkyPNG::Canvas::Drawing.class_eval do
-      def fast_rect(x0, y0, x1, y1, stroke_color = nil, fill_color = ChunkyPNG::Color::TRANSPARENT)
+      def old_rect(x0, y0, x1, y1, stroke_color = nil, fill_color = ChunkyPNG::Color::TRANSPARENT)
         stroke_color = ChunkyPNG::Color.parse(stroke_color) unless stroke_color.nil?
         fill_color   = ChunkyPNG::Color.parse(fill_color)
 
@@ -135,7 +136,7 @@ module MonkeyPatches
     # Faster method to compose images where the pixels are either fully solid
     # or fully transparent (~10x faster)
     ::ChunkyPNG::Canvas::Operations.class_eval do
-      def fast_compose!(other, offset_x = 0, offset_y = 0, bg = 0)
+      def old_compose!(other, offset_x = 0, offset_y = 0, bg = 0)
         check_size_constraints!(other, offset_x, offset_y)
         w = other.width
         o = width - w + 1
@@ -1505,7 +1506,7 @@ class User < ActiveRecord::Base
   end
 
   def self.search(name, tag = nil)
-    $bot.servers[SERVER_ID].users.select{ |u| u.username == name && (!tag.nil? ? u.tag == tag : true) }
+    $bot.servers[SERVER_ID].users.select{ |u| u.username.downcase == name && (!tag.nil? ? u.tag == tag : true) }
   end
 end
 

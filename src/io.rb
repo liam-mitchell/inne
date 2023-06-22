@@ -209,7 +209,7 @@ end
 
 # The username can include the tag after a hash
 def parse_discord_user(msg)
-  user = msg[NAME_PATTERN, 2]
+  user = msg[NAME_PATTERN, 2].downcase
   raise "You need to provide a user." if user.nil?
 
   parts = user.split('#')
