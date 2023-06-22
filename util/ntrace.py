@@ -82,6 +82,7 @@ ground_accel = 0.06666666666666665
 air_accel = 0.04444444444444444
 drag = 0.9933221725495059 # 0.99^(2/3)
 friction_ground = 0.9459290248857720 # 0.92^(2/3)
+friction_ground_slow = 0.8617738760127536 # 0.80^(2/3)
 friction_wall = 0.9113380468927672 # 0.87^(2/3)
 max_xspeed = 3.333333333333333 
 
@@ -95,7 +96,10 @@ class Ninja:
         self.ypos = yspawn
         self.xspeed = 0
         self.yspeed = 0
+        self.xspeed_old = 0
+        self.yspeed_old = 0
         self.applied_gravity = gravity
+        self.applied_friction = friction_ground
         self.grounded = False
         self.grounded_old = False
         self.ground_normal = (0, -1)
@@ -158,6 +162,8 @@ class Ninja:
     
     def pre_collision(self):
         """Update the speeds and positions of the ninja before the collision phase."""
+        self.xspeed_old = self.xspeed
+        self.yspeed_old = self.yspeed
         self.xspeed *= drag
         self.yspeed *= drag
         self.yspeed += self.applied_gravity
@@ -274,7 +280,7 @@ class Ninja:
             self.ground_jump()
 
         #Check if ground/wall sliding
-        if (self.hor_input == 0 or self.hor_input * self.xspeed < (-0.1 if self.ground_normal == (0, -1) else 0)) and self.grounded:
+        if (self.hor_input == 0 or self.hor_input * self.xspeed < 0) and self.grounded:
             self.ground_sliding += (1 if self.grounded_old else 2)
         else:
             self.ground_sliding = 0
@@ -291,9 +297,12 @@ class Ninja:
             self.wall_sliding = 0
 
         #Apply ground/wall friction if applicable
+        
         if self.grounded and self.ground_sliding > 1:
-            if self.ground_normal == (0, -1) or self.yspeed > 0:
-                self.xspeed *= friction_ground
+            if abs(self.xspeed) <= 0.1 and self.hor_input:
+                self.applied_friction = 1
+            if self.ground_normal == (0, -1) or self.yspeed > 0: #regular friction formula for flat ground or slope downwards.
+                self.xspeed *= self.applied_friction
             else:
             #This is the worst friction formula ever concieved. For when the ninja is sliding on a slope upwards.
                 speed_scalar = math.sqrt(self.xspeed**2 + self.yspeed**2)
@@ -301,6 +310,10 @@ class Ninja:
                 fric_force2 = speed_scalar - fric_force * self.ground_normal[1]**2
                 self.xspeed = self.xspeed / speed_scalar * fric_force2
                 self.yspeed = self.yspeed / speed_scalar * fric_force2
+            if abs(self.xspeed) > 0.1:
+                self.applied_friction = friction_ground
+            else:
+                self.applied_friction = (1 if self.hor_input else friction_ground_slow)
         if self.wall_sliding > 1:
             self.yspeed *= friction_wall
 
