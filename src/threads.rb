@@ -31,6 +31,8 @@ def update_status
 rescue => e
   lex(e, "Updating status")
   retry
+ensure
+  $active_tasks[:status] = false
 end
 
 # Check for new Twitch streams, and send notices.
@@ -59,6 +61,8 @@ rescue => e
   lex(e, "Updating twitch")
   sleep(WAIT)
   retry
+ensure
+  $active_tasks[:twitch] = false
 end
 
 # Update missing demos (e.g., if they failed to download originally)
@@ -82,6 +86,8 @@ def download_demos
 rescue => e
   lex(e, "Downloading missing demos")
   return false
+ensure
+  $active_tasks[:demos] = false
 end
 
 # Driver for the function above
@@ -207,6 +213,8 @@ def send_report
   $active_tasks[:report] = false
   succ("Highscoring report sent")  
   return true
+ensure
+  $active_tasks[:report] = false
 end
 
 # Driver for the function above
@@ -257,6 +265,8 @@ def send_userlevel_report
   $active_tasks[:userlevel_report] = false
   succ("Userlevel highscoring report sent")
   return true
+ensure
+  $active_tasks[:userlevel_report] = false
 end
 
 # Driver for the function above
@@ -298,6 +308,8 @@ def download_high_scores
 rescue => e
   lex(e, "Downloading highscores")
   return false
+ensure
+  $active_tasks[:scores] = false
 end
 
 # Driver for the function above
@@ -361,6 +373,8 @@ def update_histories
 rescue => e
   lex(e, "Updating histories")
   return false  
+ensure
+  $active_tasks[:histories] = false
 end
 
 # Driver for the function above, which is not used anymore (see comment there)
@@ -400,6 +414,8 @@ def update_userlevel_histories
 rescue => e
   lex(e, "Updating userlevel histories")
   return false
+ensure
+  $active_tasks[:userlevel_histories] = false
 end
 
 # Driver for the function above
@@ -435,6 +451,8 @@ def download_userlevel_scores
 rescue => e
   lex(e, "Downloading newest userlevel scores")
   return false
+ensure
+  $active_tasks[:userlevel_scores] = false
 end
 
 # Driver for the function above
@@ -511,6 +529,8 @@ def update_userlevel_tabs
 rescue => e
   lex(e, "Downloading userlevel tabs")
   return false
+ensure
+  $active_tasks[:tabs] = false
 end
 
 # Driver for the function above
@@ -607,60 +627,60 @@ end
 
 # Driver for the function above (takes care of timing, db update, etc)
 def start_level_of_the_day
-  begin
+  episode_day = false
+  story_day = false
+  while true
+    sleep(WAIT)
+    if TEST && TEST_LOTD
+      next if !send_channel_next(Level)
+      next if !send_channel_next(Episode)
+      next if !send_channel_next(Story)
+      return
+    end
+    next_level_update = correct_time(GlobalProperty.get_next_update(Level), LEVEL_UPDATE_FREQUENCY)
+    next_episode_update = correct_time(GlobalProperty.get_next_update(Episode), EPISODE_UPDATE_FREQUENCY)
+    GlobalProperty.set_next_update(Level, next_level_update)
+    GlobalProperty.set_next_update(Episode, next_episode_update)
+    delay = next_level_update - Time.now
+    sleep(delay) unless delay < 0
+
+    $active_tasks[:lotd] = true
+    if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
+      log("Starting level of the day...")
+      next if !send_channel_next(Level)
+      succ("Sent next level, next update at #{GlobalProperty.get_next_update(Level).to_s}")
+    end
+
+    if (UPDATE_EPISODE || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
+      sleep(30) # let discord catch up
+      send_channel_next(Episode)
+      episode_day = true
+      succ("Sent next episode, next update at #{GlobalProperty.get_next_update(Episode).to_s}")
+    end
+
+    if (UPDATE_STORY || DO_EVERYTHING) && !DO_NOTHING && GlobalProperty.get_next_update(Story) < Time.now
+      # we add days until we get to the first day of the next month
+      next_story_update = GlobalProperty.get_next_update(Story)
+      month = next_story_update.month
+      next_story_update += LEVEL_UPDATE_FREQUENCY while next_story_update.month == month
+      GlobalProperty.set_next_update(Story, next_story_update)
+      sleep(30) # let discord catch up
+      send_channel_next(Story)
+      story_day = true
+      succ("Sent next story, next update at #{GlobalProperty.get_next_update(Story).to_s}")
+    end
+
+    if !episode_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_reminder end
+    if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
     episode_day = false
     story_day = false
-    while true
-      sleep(WAIT)
-      if TEST && TEST_LOTD
-        next if !send_channel_next(Level)
-        next if !send_channel_next(Episode)
-        next if !send_channel_next(Story)
-        return
-      end
-      next_level_update = correct_time(GlobalProperty.get_next_update(Level), LEVEL_UPDATE_FREQUENCY)
-      next_episode_update = correct_time(GlobalProperty.get_next_update(Episode), EPISODE_UPDATE_FREQUENCY)
-      GlobalProperty.set_next_update(Level, next_level_update)
-      GlobalProperty.set_next_update(Episode, next_episode_update)
-      delay = next_level_update - Time.now
-      sleep(delay) unless delay < 0
-
-      $active_tasks[:lotd] = true
-      if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
-        log("Starting level of the day...")
-        next if !send_channel_next(Level)
-        succ("Sent next level, next update at #{GlobalProperty.get_next_update(Level).to_s}")
-      end
-
-      if (UPDATE_EPISODE || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
-        sleep(30) # let discord catch up
-        send_channel_next(Episode)
-        episode_day = true
-        succ("Sent next episode, next update at #{GlobalProperty.get_next_update(Episode).to_s}")
-      end
-
-      if (UPDATE_STORY || DO_EVERYTHING) && !DO_NOTHING && GlobalProperty.get_next_update(Story) < Time.now
-        # we add days until we get to the first day of the next month
-        next_story_update = GlobalProperty.get_next_update(Story)
-        month = next_story_update.month
-        next_story_update += LEVEL_UPDATE_FREQUENCY while next_story_update.month == month
-        GlobalProperty.set_next_update(Story, next_story_update)
-        sleep(30) # let discord catch up
-        send_channel_next(Story)
-        story_day = true
-        succ("Sent next story, next update at #{GlobalProperty.get_next_update(Story).to_s}")
-      end
-
-      if !episode_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_reminder end
-      if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
-      episode_day = false
-      story_day = false
-      $active_tasks[:score_update] = false
-    end
-  rescue => e
-    lex(e, "Updating level of the day")
-    retry
+    $active_tasks[:score_update] = false
   end
+rescue => e
+  lex(e, "Updating level of the day")
+  retry
+ensure
+  $active_tasks[:score_update] = false
 end
 
 # Prevent running out of memory due to memory leaks and risking the OOM killer
@@ -705,6 +725,8 @@ end
 def start_threads
   $threads = []
   $threads << Thread.new { monitor_memory }            if $linux
+  $threads << Thread.new { Cuse::on }                  if SOCKET && CUSE_SOCKET && !DO_NOTHING
+  $threads << Thread.new { Cle::on }                   if SOCKET && CLE_SOCKET && !DO_NOTHING
   $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
@@ -717,8 +739,6 @@ def start_threads
   $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { potato }                    if POTATO && !DO_NOTHING
-  $threads << Thread.new { Cuse::on }                  if SOCKET && CUSE_SOCKET && !DO_NOTHING
-  $threads << Thread.new { Cle::on }                   if SOCKET && CLE_SOCKET && !DO_NOTHING
   $threads << Thread.new { sleep }
 end
 

@@ -164,7 +164,7 @@ module Log
         File.rename(PATH_LOG_FILE, PATH_LOG_OLD)
         warn("Log file was filled!", file: false, discord: true)
       end
-      File.write(PATH_LOG_FILE, msg[:plain] + "\n", mode: 'a')
+      File.write(PATH_LOG_FILE, msg[:plain].strip + "\n", mode: 'a')
     end
 
     # Log to Discord DMs, if specified
@@ -175,9 +175,9 @@ module Log
   end
 
   # Handle exceptions
-  def self.exception(e, msg = '')
-    err("#{msg}: #{e}")
-    dbg(e.backtrace.join("\n")) if LOG_BACKTRACES
+  def self.exception(e, msg = '', **kwargs)
+    write("#{msg}: #{e}", :error, kwargs)
+    write(e.backtrace.join("\n"), :debug) if LOG_BACKTRACES
   end
 
   # Send DM to botmaster
@@ -201,8 +201,8 @@ def dbg   (msg, **kwargs) Log.write(msg, :debug, kwargs) end
 def lin   (msg, **kwargs) Log.write(msg, :in,    kwargs) end
 def lout  (msg, **kwargs) Log.write(msg, :out,   kwargs) end
 def fatal (msg, **kwargs) Log.write(msg, :fatal, kwargs) end
-def lex (e, msg = '') Log.exception(e, msg) end
-def ld  (msg)         Log.discord(msg)      end
+def lex (e, msg = '', **kwargs)    Log.exception(e, msg) end
+def ld  (msg)                      Log.discord(msg)      end
 
 # Make a request to N++'s server.
 # Since we need to use an open Steam ID, the function goes through all
@@ -979,7 +979,8 @@ end
 
 def restart(reason = 'Unknown reason')
   log("Attempting to restart outte due to: #{reason}.")
-  log("Waiting for active tasks to finish...") if $active_tasks.values.count(true) > 0
+  tasks = $active_tasks.select{ |k, v| v }.to_h
+  log("Waiting for active tasks to finish... (#{tasks.keys.map(&:to_s).join(', ')})") if tasks.size > 0
   sleep(5) while $active_tasks.values.count(true) > 0
   force_restart(reason)
 rescue => e
