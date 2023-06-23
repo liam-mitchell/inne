@@ -102,9 +102,9 @@ module MonkeyPatches
     end
   end
 
-  # Patch ChunkyPNG to significantly optimize a few methods and add several
-  # new functions (obsolete, since I'm now using the corresponding methods
-  # in the C extension (OilyPNG))
+  # Patch ChunkyPNG to add functionality and significantly optimize a few methods
+  # Optimizations are no obsolete, since I'm now using the corresponding methods
+  # in the C extension (OilyPNG)
   def self.patch_chunkypng
     # Faster method to render an opaque rectangle (~4x faster)
     ::ChunkyPNG::Canvas::Drawing.class_eval do
@@ -146,6 +146,54 @@ module MonkeyPatches
           next if color == bg
           pixels[i] = color
         }
+        self
+      end
+    end
+
+    ::ChunkyPNG::Canvas::Drawing.class_eval do
+      # Draws one chunk (set of pixels around one coordinate) of an anti-aliased line
+      def line_chunk(x, y, color = 0xFF, weight = 1, frac = 0xFF, s = 1, swap = false)
+        if !swap
+          compose_pixel(x       , y       , ChunkyPNG::Color.fade(color, frac))
+          compose_pixel(x + s[0], y + s[1], ChunkyPNG::Color.fade(color, 0xFF - frac))
+        else
+          compose_pixel(y       , x       , ChunkyPNG::Color.fade(color, frac))
+          compose_pixel(y + s[1], x + s[0], ChunkyPNG::Color.fade(color, 0xFF - frac))
+        end
+      end
+
+      # Simplified version of ChunkyPNG's implementation
+      def line(x0, y0, x1, y1, stroke_color, inclusive = true, weight: 1)
+        stroke_color = ChunkyPNG::Color.parse(stroke_color)
+
+        # Normalize coordinates
+        swap = (y1 - y0).abs > (x1 - x0).abs
+        x0, x1, y0, y1 = y0, y1, x0, x1 if swap
+
+        # Precompute useful parameters
+        dx = x1 - x0
+        dy = y1 - y0
+        sx = dx < 0 ? -1 : 1
+        sy = dy < 0 ? -1 : 1
+        dx *= sx
+        dy *= sy
+        x, y = x0, y0
+        s = [sx, sy]
+
+        # Draw line
+        line_chunk(x0, y0, stroke_color, weight, 0xFF, s, swap)
+        return self if dx == 0
+        e_acc = 0
+        e = ((dy << 16) / dx.to_f).round
+        0.upto(dx - 1) do
+          e_acc += e
+          y += sy if e_acc > 0xFFFF
+          e_acc &= 0xFFFF
+          w = 0xFF - (e_acc >> 8)
+          line_chunk(x, y, stroke_color, weight, w, s, swap)
+          x += sx
+        end
+
         self
       end
     end

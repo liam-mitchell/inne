@@ -83,9 +83,10 @@ module Map
   PALETTE = ChunkyPNG::Image.from_file(PATH_PALETTES)
   ROWS    = 23
   COLUMNS = 42
-  UNITS   = 24
-  DIM     = 44 # Pixels per tile
-  PPC     = 11 # Pixels per coordinate (1/4th tile)
+  UNITS   = 24               # Game units per tile
+  DIM     = 44               # Pixels per tile
+  PPC     = 11               # Pixels per coordinate (1/4th tile)
+  PPU     = DIM.to_f / UNITS # Pixels per unit
   WIDTH   = DIM * (COLUMNS + 2)
   HEIGHT  = DIM * (ROWS + 2)
 
@@ -378,6 +379,7 @@ module Map
   end
 
   # Generate a PNG screenshot of a level in the chosen palette.
+  # Optionally, plot animated routes and export to GIF.
   # [Depends on ChunkyPNG, a pure Ruby library]
   #
   # Note: This function is forked to a different process, because ChunkyPNG has
@@ -385,7 +387,8 @@ module Map
   def screenshot(
       theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
       file:    false,           # Whether to export to a file or return the raw data
-      blank:   false            # Only draw background
+      blank:   false,           # Only draw background
+      coords:  []               # Coordinates of routes to trace
     )
 
     bench(:start) if BENCHMARK
@@ -537,6 +540,24 @@ module Map
         end
       end
       bench(:step, 'Borders   ') if BENCH_IMAGES
+
+      # Plot routes
+      if !coords.empty?
+        coords = coords.take(MAX_TRACES).reverse
+        coords.each{ |c_list|
+          c_list.each{ |coord|
+            coord.map!{ |c| (PPU * c).round }
+          }
+        }
+        n = [coords.size, MAX_TRACES].min
+        colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
+        coords.each_with_index{ |c_list, i|
+          c_list[0..-2].each_with_index{ |c, j|
+            image.line(c[0], c[1], c_list[j + 1][0], c_list[j + 1][1], colors[i], false)
+          }
+        }
+      end
+      bench(:step, 'Routes    ') if BENCH_IMAGES
 
       # rb_p(rb_str_new_cstr("Hello, world!"));
       # rb_p(rb_sprintf("x0 = %ld", x0));
@@ -722,7 +743,7 @@ module Map
       File.binwrite("inputs_#{i}", demo)
     }
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    system "python3 #{PATH_NTRACE}"
+    `python3 #{PATH_NTRACE}`
 
     # Read output files
     file = File.binread('output.txt') rescue nil
@@ -741,21 +762,26 @@ module Map
     texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
-    screenshot = screenshot(palette, file: true, blank: blank)
-    raise 'Failed to generate screenshot' if screenshot.nil?
-    concurrent_edit(event, tmp_msg, 'Plotting routes...')
-    trace = _trace(
-      theme:   palette,
-      bg:      screenshot,
-      animate: animate,
-      coords:  coords,
-      demos:   demos,
-      markers: markers,
-      texts:   !blank ? texts : []
-    )
-    screenshot.close
-    raise 'Failed to trace replays' if trace.nil?
-    send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.png", true)
+    if animate
+      trace = screenshot(palette, coords: coords, blank: blank)
+      raise 'Failed to generate screenshot' if trace.nil?
+    else
+      screenshot = screenshot(palette, file: true, blank: blank)
+      raise 'Failed to generate screenshot' if screenshot.nil?
+      concurrent_edit(event, tmp_msg, 'Plotting routes...')
+      trace = _trace(
+        theme:   palette,
+        bg:      screenshot,
+        coords:  coords,
+        demos:   demos,
+        markers: markers,
+        texts:   !blank ? texts : []
+      )
+      screenshot.close
+      raise 'Failed to trace replays' if trace.nil?
+    end
+    ext = 'png'#animate ? 'gif' : 'png'
+    send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
     tmp_msg.first.delete rescue nil
     log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES
   rescue RuntimeError => e

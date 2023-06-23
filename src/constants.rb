@@ -3,17 +3,17 @@
 # <--------------------------------------------------------------------------->
 
 # General
-TEST           = false # Switch to the local test bot
+TEST           = true  # Switch to the local test bot
 BENCHMARK      = false # Benchmark and log functions (for optimization)
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = true  # Execute all threads
+DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
 
 # Test specific features
 TEST_REPORT    = false # Produces the report immediately once
 TEST_LOTD      = false # Posts lotd immediately once
-BENCH_IMAGES   = false # Benchmark image manipulation steps
+BENCH_IMAGES   = true  # Benchmark image manipulation steps
 
 # Internal
 WAIT            = 1       # Seconds between iterations of infinite loops
