@@ -185,9 +185,9 @@ module MonkeyPatches
         return self if dx == 0
         e_acc = 0
         e = ((dy << 16) / dx.to_f).round
-        0.upto(dx - 1) do
+        0.upto(dx - 1) do |i|
           e_acc += e
-          y += sy if e_acc > 0xFFFF
+          y += sy if e_acc > 0xFFFF unless i == 0 && e == 0x10000
           e_acc &= 0xFFFF
           w = 0xFF - (e_acc >> 8)
           line_chunk(x, y, stroke_color, weight, w, s, swap)
