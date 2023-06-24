@@ -420,7 +420,7 @@ module Map
       tiles.each{ |row|
         row.each{ |t|
           # Skip if this tile is already initialized
-          next if tile.key?(t) || t == 0 || t == 1
+          next if tile.key?(t) || t <= 1
 
           # Initialize base tile image
           o = (t - 2) % 4                # Orientation
@@ -489,7 +489,7 @@ module Map
       # Draw tiles
       tiles.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
       tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
-      tiles.map!{ |row| row.map{ |tile| tile > 33 ? 0 : tile } }   # Reject glitch tiles
+      tiles.each{ |row| row.map!{ |tile| tile > 33 ? 0 : tile } }  # Reject glitch tiles
       tiles.each_with_index do |slice, row|
         slice.each_with_index do |t, column|
           # Empty and full tiles are handled separately
@@ -543,17 +543,22 @@ module Map
 
       # Plot routes
       if !coords.empty?
+        # Prepare parameters
         coords = coords.take(MAX_TRACES).reverse
+        n = [coords.size, MAX_TRACES].min
+        colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
+
+        # Scale coordinates
         coords.each{ |c_list|
           c_list.each{ |coord|
             coord.map!{ |c| (PPU * c).round }
           }
         }
-        n = [coords.size, MAX_TRACES].min
-        colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
+        
+        # Plot lines
         coords.each_with_index{ |c_list, i|
           c_list[0..-2].each_with_index{ |c, j|
-            image.line(c[0], c[1], c_list[j + 1][0], c_list[j + 1][1], colors[i], false)
+            image.line(c[0], c[1], c_list[j + 1][0], c_list[j + 1][1], colors[i], false, weight: 2)
           }
         }
       end

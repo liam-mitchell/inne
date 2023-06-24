@@ -102,13 +102,13 @@ module MonkeyPatches
     end
   end
 
-  # Patch ChunkyPNG to add functionality and significantly optimize a few methods
-  # Optimizations are no obsolete, since I'm now using the corresponding methods
+  # Patch ChunkyPNG to add functionality and significantly optimize a few methods.
+  # Optimizations are now obsolete, since I'm using the corresponding methods
   # in the C extension (OilyPNG)
   def self.patch_chunkypng
     # Faster method to render an opaque rectangle (~4x faster)
     ::ChunkyPNG::Canvas::Drawing.class_eval do
-      def old_rect(x0, y0, x1, y1, stroke_color = nil, fill_color = ChunkyPNG::Color::TRANSPARENT)
+      def fast_rect(x0, y0, x1, y1, stroke_color = nil, fill_color = ChunkyPNG::Color::TRANSPARENT)
         stroke_color = ChunkyPNG::Color.parse(stroke_color) unless stroke_color.nil?
         fill_color   = ChunkyPNG::Color.parse(fill_color)
 
@@ -136,7 +136,7 @@ module MonkeyPatches
     # Faster method to compose images where the pixels are either fully solid
     # or fully transparent (~10x faster)
     ::ChunkyPNG::Canvas::Operations.class_eval do
-      def old_compose!(other, offset_x = 0, offset_y = 0, bg = 0)
+      def fast_compose!(other, offset_x = 0, offset_y = 0, bg = 0)
         check_size_constraints!(other, offset_x, offset_y)
         w = other.width
         o = width - w + 1
@@ -151,14 +151,54 @@ module MonkeyPatches
     end
 
     ::ChunkyPNG::Canvas::Drawing.class_eval do
+      # For an anti-aliased line, this adjusts the shade of each of the 2 borders
+      # when there's a fractional line width. It also provides information to
+      # adjust the integer width of the line later, which may've increased
+      def adjust_fractional_width(w, frac_a, frac_b)
+        # "Odd fractional part" (distance to greatest smaller odd number)
+        # d in [0, 2)
+        wi = w.to_i
+        d = w - wi + (wi + 1) % 2
+
+        # Extra darkness to add to each border of the line
+        # frac_e in [0, 255]
+        frac_e = (128 * d).to_i
+
+        # Compute new border shades, and specify if we rolled over
+        new_frac_a = (frac_a + frac_e) & 0xFF        
+        inc_a = new_frac_a < frac_a
+        new_frac_b = (frac_b + frac_e) & 0xFF
+        inc_b = new_frac_b < frac_b
+
+        [new_frac_a, new_frac_b, inc_a, inc_b]
+      end
+
       # Draws one chunk (set of pixels around one coordinate) of an anti-aliased line
+      # Allows for arbitrary widths, even fractional
       def line_chunk(x, y, color = 0xFF, weight = 1, frac = 0xFF, s = 1, swap = false)
+        # Adjust line width and shade of line borders
+        weight = 1.0 if weight < 1.0
+        frac_a, frac_b, inc_a, inc_b = adjust_fractional_width(weight, frac, 0xFF - frac)
+        weight = weight.to_i - (weight.to_i + 1) % 2
+
+        # Prepare color shades
+        fade_a = ChunkyPNG::Color.fade(color, frac_a)
+        fade_b = ChunkyPNG::Color.fade(color, frac_b)
+        fade_a, fade_b = fade_b, fade_a if s[1] < 0
+        inc_a, inc_b = inc_b, inc_a if s[1] < 0
+
+        # Draw
+        min = - weight / 2 - (inc_a ? 1 : 0)
+        max =   weight / 2 + (inc_b ? 1 : 0)
+        w = min
         if !swap
-          compose_pixel(x       , y       , ChunkyPNG::Color.fade(color, frac))
-          compose_pixel(x + s[0], y + s[1], ChunkyPNG::Color.fade(color, 0xFF - frac))
+          compose_pixel(x, y + w, fade_a)
+          compose_pixel(x, y + w, color ) while (w += 1) < max
+          compose_pixel(x, y + w, fade_b)
         else
-          compose_pixel(y       , x       , ChunkyPNG::Color.fade(color, frac))
-          compose_pixel(y + s[1], x + s[0], ChunkyPNG::Color.fade(color, 0xFF - frac))
+          compose_pixel(y + w, x, fade_a)
+          compose_pixel(y + w, x, color ) while (w += 1) < max
+          compose_pixel(y + w, x, fade_b)
         end
       end
 
@@ -180,12 +220,18 @@ module MonkeyPatches
         x, y = x0, y0
         s = [sx, sy]
 
-        # Draw line
-        line_chunk(x0, y0, stroke_color, weight, 0xFF, s, swap)
-        return self if dx == 0
+        # If both endpoints are the same, draw a single point and return
+        if dx == 0
+          line_chunk(x0, y0, stroke_color, weight, 0xFF, s, swap)
+          return self
+        end
+
+        # Rotate weight
         e_acc = 0
         e = ((dy << 16) / dx.to_f).round
-        0.upto(dx - 1) do |i|
+        max = dy <= 1 ? dx - 1 : dx + weight.to_i - 2
+        weight *= (1 + (dy.to_f / dx) ** 2) ** 0.5
+        0.upto(max) do |i|
           e_acc += e
           y += sy if e_acc > 0xFFFF unless i == 0 && e == 0x10000
           e_acc &= 0xFFFF
