@@ -1,11 +1,12 @@
 outte:
-  adapter: mysql2
-  encoding: utf8mb4
-  charset: utf8mb4
+  adapter:   mysql2
+  encoding:  utf8mb4
+  charset:   utf8mb4
   collation: utf8mb4_unicode_ci
-  database: inne
-  host: localhost
-  username: root
-  password: root
-  pool: 50
-  timeout: 5000
+  database:  inne
+  host:      localhost
+  username:  root
+  password:  root
+  pool:      50
+  timeout:   5000
+  reconnect: true

@@ -43,7 +43,7 @@ module Map
   # Objects that do not admit rotations
   FIXED_OBJECTS = [0, 1, 2, 3, 4, 7, 9, 16, 17, 18, 19, 21, 22, 24, 25, 28]
   # Objects that admit diagonal rotations
-  SPECIAL_OBJECTS = [10, 11]
+  SPECIAL_OBJECTS = [10, 11, 23]
   THEMES = [
     "acid",           "airline",         "argon",         "autumn",
     "BASIC",          "berry",           "birthday cake", "bloodmoon",
@@ -328,11 +328,6 @@ module Map
   #                           SCREENSHOT GENERATOR
   # <-------------------------------------------------------------------------->
 
-  # Transform a ChunkyPNG color to a standard hex string
-  def self.chunky2hex(pixel, hash: true)
-    color = (hash ? '#' : '') + [pixel].pack('L>').unpack('H*')[0]
-  end
-
   # Change color 'before' to color 'after' in 'image'.
   # The normal version uses tolerance to change close enough colors, alpha blending...
   # The fast version doesn't do any of this, but is 10x faster
@@ -535,7 +530,10 @@ module Map
       objects.each_with_index do |m, i|
         # Compose images
         m.each do |o|
-          obj = object[o[0]][o[3]]
+          next if !object.key?(o[0])
+          r = object[o[0]].key?(o[3]) ? o[3] : object[o[0]].keys.first
+          next if r.nil?
+          obj = object[o[0]][r]
           image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2)
         end
 
@@ -575,6 +573,7 @@ module Map
             end
 
             # Compose all other tiles
+            next if !tile.key?(t)
             image.compose!(tile[t], off_x + dim * column, off_y + dim * row)
           end
         end
@@ -719,7 +718,7 @@ module Map
       texts = texts.take(MAX_TRACES).reverse
       n = [coords.size, MAX_TRACES].min
       color_idx = OBJECTS[0][:pal]
-      colors = n.times.map{ |i| chunky2hex(PALETTE[color_idx + n - 1 - i, palette_idx]) }
+      colors = n.times.map{ |i| ChunkyPNG::Color.to_hex(PALETTE[color_idx + n - 1 - i, palette_idx]) }
       mpl = Matplotlib::Pyplot
       mpl.ioff
 
@@ -774,7 +773,7 @@ module Map
         x, y = UNITS + dx * (n - i - 1), UNITS - 5
         vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx -m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
         vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - dm - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
-        color_bg = chunky2hex(PALETTE[2, palette_idx])
+        color_bg = ChunkyPNG::Color.to_hex(PALETTE[2, palette_idx])
         color_bd = colors[i]
         mpl.fill(vert_x, vert_y, facecolor: color_bg, edgecolor: color_bd, linewidth: 0.5)
         mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: colors[i], size: 'x-small')

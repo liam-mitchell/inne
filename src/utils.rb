@@ -277,16 +277,26 @@ rescue
 end
 
 # Execute code block in another process
+#
+# Technical note: We disconnect from the db before forking and reconnect after,
+# because otherwise the forked process inherits the same connection, and if
+# it's broken there (e.g. by an unhandled exception), then it's also broken
+# in the parent, thus losing connection until we restart.
 def _fork
   read, write = IO.pipe
+  ActiveRecord::Base.connection.disconnect!
 
   pid = fork do
     read.close
     result = yield
     Marshal.dump(result, write)
     exit!(0)
+  rescue => e
+    lex(e, 'Error in forked process')
+    nil
   end
 
+  ActiveRecord::Base.connection.reconnect!
   write.close
   result = read.read
   Process.wait(pid)

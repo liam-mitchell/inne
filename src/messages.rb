@@ -469,6 +469,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   #scores = scores.nav(offset.to_i)
   h = h.map if !h.is_a?(MappackHighscoreable)
   screenshot = Map.screenshot(hash[:palette], file: true, h: h)
+  raise "Failed to generate screenshot!" if screenshot.nil?
     
   # Send response
   str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette `#{hash[:palette]}`:"

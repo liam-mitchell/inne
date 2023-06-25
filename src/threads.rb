@@ -550,25 +550,9 @@ end
 
 ############ LOTD FUNCTIONS ############
 
-# Special screenshot function, used for lotd/eotw/cotm.
-# The one that users can call is in src/messages.rb
-# TODO: Refactor to use that one to avoid code duplication
-def send_channel_screenshot(name, caption)
-  name = name.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
-  screenshot = File.join(DIR_SCREENSHOTS, "#{name}.jpg")
-  if File.exist? screenshot
-    $channel.send_file(File::open(screenshot), caption: caption)
-  else
-    $channel.send_message(caption + "\nI don't have a screenshot for this one... :(")
-  end
-end
-
 # Send the score differences in the old lotd/eotw/cotm
 def send_channel_diff(level, old_scores, since)
-  return if level.nil? || old_scores.nil?
 
-  diff = level.format_difference(old_scores)
-  $channel.send_message("Score changes on #{level.format_name} since #{since}:\n```#{diff}```")
 end
 
 # Daily reminders for eotw and cotm
@@ -589,36 +573,40 @@ def send_channel_next(type)
     return false
   end
 
+  # Get old and new levels/episodes/stories
   last = GlobalProperty.get_current(type)
   current = GlobalProperty.get_next(type)
   GlobalProperty.set_current(type, current)
-
   if current.nil?
     err("No more #{type.to_s.downcase.pluralize}")
     return false
   end
 
+  # Update scores, if need be
   if !OFFLINE_STRICT && UPDATE_SCORES_ON_LOTD
-    if !last.nil?
-      last.update_scores
-    end
+    last.update_scores if !last.nil?
     current.update_scores
   end
 
+  # Format caption
   prefix = (type == Level ? "Time" : "It's also time")
   duration = (type == Level ? "day" : (type == Episode ? "week" : "month"))
   time = (type == Level ? "today" : (type == Episode ? "this week" : "this month"))
   since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
   typename = type != Story ? type.to_s.downcase : "column"
-
   caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
-  send_channel_screenshot(current.name, caption)
-  $channel.send_message("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores}```")
 
-  if !OFFLINE_STRICT
-    send_channel_diff(last, GlobalProperty.get_saved_scores(type), since)
+  # Send screenshot and scores, and optionally, differences
+  screenshot = Map.screenshot(file: true, h: current.map) rescue nil
+  caption += "\nThere was a problem generating the screenshot!" if screenshot.nil?
+  $channel.send(caption, false, nil, screenshot.nil? ? [] : [screenshot])
+  $channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores}```")
+  old_scores = GlobalProperty.get_saved_scores(type)
+  if !OFFLINE_STRICT && !last.nil? && !old_scores.nil?
+    diff = last.format_difference(old_scores)
+    $channel.send("Score changes on #{last.format_name} since #{since}:\n```#{diff}```")
   else
-    $channel.send_message("Strict offline mode activated, not sending score differences.")
+    $channel.send("Strict offline mode activated, not sending score differences.")
   end
   GlobalProperty.set_saved_scores(type, current)
 
@@ -633,8 +621,8 @@ def start_level_of_the_day
     sleep(WAIT)
     if TEST && TEST_LOTD
       next if !send_channel_next(Level)
-      next if !send_channel_next(Episode)
-      next if !send_channel_next(Story)
+      send_channel_next(Episode)
+      send_channel_next(Story)
       return
     end
     next_level_update = correct_time(GlobalProperty.get_next_update(Level), LEVEL_UPDATE_FREQUENCY)

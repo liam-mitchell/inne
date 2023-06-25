@@ -658,6 +658,11 @@ class Userlevel < ActiveRecord::Base
     sanitize_sql_for_conditions([string, par])
   end
 
+  # For compatibility
+  def map
+    self
+  end
+
   def data
     UserlevelData.find(self.id)
   end
