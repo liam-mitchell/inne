@@ -770,6 +770,8 @@ def assert_permissions(event, roles = [])
   granted = permissions.map{ |p| p[:granted] }.count(true) > 0
   error = "Sorry, only #{permissions.map{ |p| p[:allowed] }.flatten.to_sentence} are allowed to execute this command."
   raise error if !granted
+rescue
+  raise "Permission check failed"
 end
 
 def clean_userlevel_message(msg)
