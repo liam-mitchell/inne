@@ -647,12 +647,12 @@ def start_level_of_the_day
     $active_tasks[:lotd] = true
     if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
       log("Starting level of the day...")
-      next if !send_channel_next(Level)
+      send_channel_next(Level)
       succ("Sent next level, next update at #{GlobalProperty.get_next_update(Level).to_s}")
     end
 
     if (UPDATE_EPISODE || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
-      sleep(30) # let discord catch up
+      sleep(5)
       send_channel_next(Episode)
       episode_day = true
       succ("Sent next episode, next update at #{GlobalProperty.get_next_update(Episode).to_s}")
@@ -664,7 +664,7 @@ def start_level_of_the_day
       month = next_story_update.month
       next_story_update += LEVEL_UPDATE_FREQUENCY while next_story_update.month == month
       GlobalProperty.set_next_update(Story, next_story_update)
-      sleep(30) # let discord catch up
+      sleep(5)
       send_channel_next(Story)
       story_day = true
       succ("Sent next story, next update at #{GlobalProperty.get_next_update(Story).to_s}")
@@ -674,13 +674,13 @@ def start_level_of_the_day
     if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
     episode_day = false
     story_day = false
-    $active_tasks[:score_update] = false
+    $active_tasks[:lotd] = false
   end
 rescue => e
   lex(e, "Updating level of the day")
   retry
 ensure
-  $active_tasks[:score_update] = false
+  $active_tasks[:lotd] = false
 end
 
 # Prevent running out of memory due to memory leaks and risking the OOM killer

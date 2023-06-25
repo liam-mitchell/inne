@@ -329,19 +329,14 @@ module Map
   # <-------------------------------------------------------------------------->
 
   # Transform a ChunkyPNG color to a standard hex string
-  def chunky2hex(pixel, hash: true)
+  def self.chunky2hex(pixel, hash: true)
     color = (hash ? '#' : '') + [pixel].pack('L>').unpack('H*')[0]
-  end
-
-  # Ensure image is within limits
-  def check_dimensions(image, x, y)
-    x >= 0 && y >= 0 && x <= WIDTH - image.width && y <= HEIGHT - image.height
   end
 
   # Change color 'before' to color 'after' in 'image'.
   # The normal version uses tolerance to change close enough colors, alpha blending...
   # The fast version doesn't do any of this, but is 10x faster
-  def mask(image, before, after, bg: ChunkyPNG::Color::WHITE, tolerance: 0.5, fast: false)
+  def self.mask(image, before, after, bg: ChunkyPNG::Color::WHITE, tolerance: 0.5, fast: false)
     if fast
       image.pixels.map!{ |p| p == before ? after : 0 }
       image
@@ -361,7 +356,7 @@ module Map
   # Note: "special" indicates that we take the special version of the layers. In practice,
   # this is used because we can't rotate images 45 degrees with this library, so we have a
   # different image for that, which we call special.
-  def generate_object(object_id, palette_id, object = true, special = false)
+  def self.generate_object(object_id, palette_id, object = true, special = false)
     # Select necessary layers
     path = object ? PATH_OBJECTS : PATH_TILES
     parts = Dir.entries(path).select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
@@ -384,10 +379,12 @@ module Map
   #
   # Note: This function is forked to a different process, because ChunkyPNG has
   #       memory leaks we cannot handle.
-  def screenshot(
+  def self.screenshot(
       theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
       file:    false,           # Whether to export to a file or return the raw data
       blank:   false,           # Only draw background
+      ppc:     PPC,             # Points per coordinate (essentially the scale)
+      h:       nil,             # Highscoreable to screenshot
       coords:  []               # Coordinates of routes to trace
     )
 
@@ -396,83 +393,136 @@ module Map
     res = _fork do
       # Parse palette and colors
       bench(:start) if BENCH_IMAGES
+      return nil if h.nil?
       themes = THEMES.map(&:downcase)
       theme = theme.downcase
       if !themes.include?(theme) then theme = DEFAULT_PALETTE end
       palette_idx = themes.index(theme)
       bg_color = PALETTE[2, palette_idx]
       fg_color = PALETTE[0, palette_idx]
-      image = ChunkyPNG::Image.new(WIDTH, HEIGHT, bg_color)
+
+      # Prepare map data and other graphic params
+      if h.is_a?(Levelish)
+        maps = [h]
+        ppc = PPC
+        cols = 1
+        rows = 1
+      elsif h.is_a?(Episodish)
+        maps = h.levels
+        ppc = 3
+        cols = 5
+        rows = 1
+      else
+        maps = h.episodes.map{ |e| e.levels }.flatten
+        ppc = 2
+        cols = 5
+        rows = 5
+      end
+
+      # Compute scale params
+      dim = 4 * ppc          # Dimension of a tile, in pixels
+      ppu = dim.to_f / UNITS # Pixels per in-game unit
+      scale = ppc.to_f / PPC # Scale of screenshot
+
+      # Initialize image
+      width = dim * (COLUMNS + 2)
+      height = dim * (ROWS + 2)
+      frame = !h.is_a?(Levelish)
+      image = ChunkyPNG::Image.new(
+        cols * width  + (cols - 1) * dim + (frame ? 2 : 0) * dim,
+        rows * height + (rows - 1) * dim + (frame ? 2 : 0) * dim,
+        bg_color
+      )
       next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
 
       # Parse map
-      tiles = self.tiles.map(&:dup)
-      objects = self.objects.reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
-                    .sort_by{ |o| -OBJECTS[o[0]][:pref] }         # Sort objs by overlap preference
-      objects.each{ |o|
-        o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0])      # Remove glitched orientations
+      tiles = maps.map{ |m| m.tiles.map(&:dup) }
+      objects = maps.map{ |m|
+        m.objects.reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
+         .sort_by{ |o| -OBJECTS[o[0]][:pref] }         # Sort objs by overlap preference
+      }
+      objects.each{ |m|
+        m.each{ |o|
+          o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0]) # Remove glitched orientations
+        }
       }
       bench(:step, 'Parse     ') if BENCH_IMAGES
 
       # Initialize tile images
       tile = {}
-      tiles.each{ |row|
-        row.each{ |t|
-          # Skip if this tile is already initialized
-          next if tile.key?(t) || t <= 1
+      tiles.each{ |m|
+        m.each{ |row|
+          row.each{ |t|
+            # Skip if this tile is already initialized
+            next if tile.key?(t) || t <= 1
 
-          # Initialize base tile image
-          o = (t - 2) % 4                # Orientation
-          base = t - o                   # Base shape
-          tile[base] = generate_object(base, palette_idx, false) if !tile.key?(base)
-          next if base == t
+            # Initialize base tile image
+            o = (t - 2) % 4                # Orientation
+            base = t - o                   # Base shape
+            if !tile.key?(base)
+              tile[base] = generate_object(base, palette_idx, false)
+              tile[base].resample_bilinear!(
+                (scale * tile[base].width).round,
+                (scale * tile[base].height).round,
+              ) if ppc != PPC
+            end
+            next if base == t
 
-          # Initialize rotated / flipped copies
-          if t >= 2 && t <= 17           # Half tiles and curved slopes
-            case o
-            when 1
-              tile[t] = tile[base].rotate_right
-            when 2
-              tile[t] = tile[base].rotate_180
-            when 3
-              tile[t] = tile[base].rotate_left
+            # Initialize rotated / flipped copies
+            if t >= 2 && t <= 17           # Half tiles and curved slopes
+              case o
+              when 1
+                tile[t] = tile[base].rotate_right
+              when 2
+                tile[t] = tile[base].rotate_180
+              when 3
+                tile[t] = tile[base].rotate_left
+              end
+            elsif t >= 18 && t <= 33       # Small and big straight slopes
+              case o
+              when 1
+                tile[t] = tile[base].flip_vertically
+              when 2
+                tile[t] = tile[base].flip_horizontally.flip_vertically
+              when 3
+                tile[t] = tile[base].flip_horizontally
+              end
             end
-          elsif t >= 18 && t <= 33       # Small and big straight slopes
-            case o
-            when 1
-              tile[t] = tile[base].flip_vertically
-            when 2
-              tile[t] = tile[base].flip_horizontally.flip_vertically
-            when 3
-              tile[t] = tile[base].flip_horizontally
-            end
-          end
+          }
         }
       }
       bench(:step, 'Init tiles') if BENCH_IMAGES
 
       # Initialize object images
       object = 30.times.map{ |i| [i, {}] }.to_h
-      objects.each{ |o|
-        # Skip if this object is already initialized
-        next if object.key?(o[0]) && object[o[0]].key?(o[3])
-        
-        # Initialize base object image
-        s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
-        base = s ? 1 : 0
-        object[o[0]][base] = generate_object(o[0], palette_idx, true, s) if !object[o[0]].key?(base)
-        next if o[3] <= 1
+      objects.each{ |m|
+        m.each{ |o|
+          # Skip if this object is already initialized
+          next if object.key?(o[0]) && object[o[0]].key?(o[3])
+          
+          # Initialize base object image
+          s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
+          base = s ? 1 : 0
+          if !object[o[0]].key?(base)
+            object[o[0]][base] = generate_object(o[0], palette_idx, true, s)
+            object[o[0]][base].resample_bilinear!(
+              (scale * object[o[0]][base].width).round,
+              (scale * object[o[0]][base].height).round,
+            ) if ppc != PPC
+          end
+          next if o[3] <= 1
 
-        # Initialize rotated copies
-        case o[3] / 2
-        when 1
-          object[o[0]][o[3]] = object[o[0]][base].rotate_right
-        when 2
-          object[o[0]][o[3]] = object[o[0]][base].rotate_180
-        when 3
-          object[o[0]][o[3]] = object[o[0]][base].rotate_left
-        end
+          # Initialize rotated copies
+          case o[3] / 2
+          when 1
+            object[o[0]][o[3]] = object[o[0]][base].rotate_right
+          when 2
+            object[o[0]][o[3]] = object[o[0]][base].rotate_180
+          when 3
+            object[o[0]][o[3]] = object[o[0]][base].rotate_left
+          end
+        }
       }
       bench(:step, 'Init objs ') if BENCH_IMAGES
 
@@ -480,69 +530,125 @@ module Map
       border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
 
       # Draw objects
-      objects.each do |o|
-        obj = object[o[0]][o[3]]
-        image.compose!(obj, PPC * o[1] - obj.width / 2, PPC * o[2] - obj.height / 2)
+      off_x = frame ? dim : 0
+      off_y = frame ? dim : 0
+      objects.each_with_index do |m, i|
+        # Compose images
+        m.each do |o|
+          obj = object[o[0]][o[3]]
+          image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2)
+        end
+
+        # Adjust offsets
+        off_x += width + dim
+        if i % 5 == 4
+          off_x = frame ? dim : 0
+          off_y += height + dim
+        end
       end
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
-      tiles.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
-      tiles.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
-      tiles.each{ |row| row.map!{ |tile| tile > 33 ? 0 : tile } }  # Reject glitch tiles
-      tiles.each_with_index do |slice, row|
-        slice.each_with_index do |t, column|
-          # Empty and full tiles are handled separately
-          next if t == 0
-          if t == 1
-            image.fast_rect(DIM * column, DIM * row, DIM * column + DIM - 1, DIM * row + DIM - 1, nil, fg_color)
-            next
-          end
+      off_x = frame ? dim : 0
+      off_y = frame ? dim : 0
+      tiles.each_with_index do |m, i|
+        # Prepare tiles
+        m.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
+        m.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
+        m.each{ |row| row.map!{ |t| t > 33 ? 0 : t } }           # Reject glitch tiles
 
-          # Compose all other tiles
-          image.compose!(tile[t], DIM * column, DIM * row)
+        # Draw images
+        m.each_with_index do |slice, row|
+          slice.each_with_index do |t, column|
+            # Empty and full tiles are handled separately
+            next if t == 0
+            if t == 1
+              image.fast_rect(
+                off_x + dim * column,
+                off_y + dim * row,
+                off_x + dim * column + dim - 1,
+                off_y + dim * row + dim - 1,
+                nil,
+                fg_color
+              )
+              next
+            end
+
+            # Compose all other tiles
+            image.compose!(tile[t], off_x + dim * column, off_y + dim * row)
+          end
+        end
+
+        # Adjust offsets
+        off_x += width + dim
+        if i % 5 == 4
+          off_x = frame ? dim : 0
+          off_y += height + dim
         end
       end
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
       bd_color = PALETTE[1, palette_idx]
-      #                  Horizontal borders
-      (0 .. ROWS).each do |row|
-        (0 ... 2 * (COLUMNS + 2)).each do |col|
-          tile_a = tiles[row][col / 2]
-          tile_b = tiles[row + 1][col / 2]
-          bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
+      off_x = frame ? dim : 0
+      off_y = frame ? dim : 0
+      thin = ppc <= 6
+      tiles.each_with_index do |m, i|
+        #                  Frame surrounding entire level
+        if frame
           image.fast_rect(
-            DIM / 2 * col - 1,
-            DIM * (row + 1) - 1,
-            DIM / 2 * col + 22,
-            DIM * (row + 1),
-            nil,
-            bd_color
-          ) if bool == 1
+            off_x, off_y, off_x + width - 1, off_y + height - 1, bd_color, nil
+          )
+          image.fast_rect(
+            off_x + 1, off_y + 1, off_x + width - 2, off_y + height - 2, bd_color, nil
+          )
         end
-      end
-      #                  Vertical borders
-      (0 ... 2 * (ROWS + 2)).each do |row|
-        (0 .. COLUMNS).each do |col|
-          tile_a = tiles[row / 2][col]
-          tile_b = tiles[row / 2][col + 1]
-          bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
-          image.fast_rect(
-            DIM * (col + 1) - 1,
-            DIM / 2 * row - 1,
-            DIM * (col + 1),
-            DIM / 2 * row + 22,
-            nil,
-            bd_color
-          ) if bool == 1
+
+        #                  Horizontal borders
+        (0 .. ROWS).each do |row|
+          (0 ... 2 * (COLUMNS + 2)).each do |col|
+            tile_a = m[row][col / 2]
+            tile_b = m[row + 1][col / 2]
+            bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
+            image.fast_rect(
+              off_x + dim / 2 * col - (thin ? 0 : 1),
+              off_y + dim * (row + 1) - (thin ? 0 : 1),
+              off_x + dim / 2 * (col + 1) - (thin ? 1 : 0),
+              off_y + dim * (row + 1),
+              nil,
+              bd_color
+            ) if bool == 1
+          end
+        end
+
+        #                  Vertical borders
+        (0 ... 2 * (ROWS + 2)).each do |row|
+          (0 .. COLUMNS).each do |col|
+            tile_a = m[row / 2][col]
+            tile_b = m[row / 2][col + 1]
+            bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
+            image.fast_rect(
+              off_x + dim * (col + 1) - (thin ? 0 : 1),
+              off_y + dim / 2 * row - (thin ? 0 : 1),
+              off_x + dim * (col + 1),
+              off_y + dim / 2 * (row + 1) - (thin ? 1 : 0),
+              nil,
+              bd_color
+            ) if bool == 1
+          end
+        end
+
+        # Adjust offsets
+        off_x += width + dim
+        if i % 5 == 4
+          off_x = frame ? dim : 0
+          off_y += height + dim
         end
       end
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
       # Plot routes
-      if !coords.empty?
+      if !coords.empty? && h.is_a?(Levelish)
         # Prepare parameters
         coords = coords.take(MAX_TRACES).reverse
         n = [coords.size, MAX_TRACES].min
@@ -551,7 +657,7 @@ module Map
         # Scale coordinates
         coords.each{ |c_list|
           c_list.each{ |coord|
-            coord.map!{ |c| (PPU * c).round }
+            coord.map!{ |c| (ppu * c).round }
           }
         }
         
@@ -573,10 +679,14 @@ module Map
 
     bench(:step) if BENCHMARK
 
-    file ? tmp_file(res, "#{self.name}.png", binary: true) : res
+    file ? tmp_file(res, "#{h.name}.png", binary: true) : res
   rescue => e
     lex(e, "Failed to generate screenshot")
     nil
+  end
+
+  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, coords: [])
+    Map.screenshot(theme, file: file, blank: blank, coords: coords, h: self)
   end
 
   # Plot routes and legend on top of an image (typically a screenshot)
@@ -718,6 +828,7 @@ module Map
   def trace(event)
     t = Time.now
     msg = event.content
+    tmp_msg = [nil]
     h = parse_palette(event)
     msg, palette, error = h[:msg], h[:palette], h[:error]
     level = self.is_a?(MappackHighscoreable) && mappack.id == 0 ? Level.find_by(id: id) : self
@@ -736,7 +847,6 @@ module Map
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
     markers = { jump: true,  left: false, right: false } if markers.nil?
     animate = !!msg[/\banimate\b/i]
-    tmp_msg = [nil]
 
     # Export input files
     demos = []

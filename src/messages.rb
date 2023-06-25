@@ -467,22 +467,8 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
 
   # Single match, retrieve screenshot
   #scores = scores.nav(offset.to_i)
-  h = h.map if h.is_a?(Level)
-  if h.is_a?(MappackHighscoreable)
-    return event.send_message("Sorry, mappack episodes and stories don't have screenshots yet.") if !h.is_a?(MappackLevel)
-    screenshot = h.screenshot(hash[:palette], file: true)
-  else
-    name = h.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2')
-    filename = File.join(DIR_SCREENSHOTS, "#{name}.jpg")
-
-    if !File.exist?(filename)
-      str = "I don't have a screenshot for #{h.format_name}... :("
-      return [nil, str] if ret
-      return event.send_message(str)
-    end
-
-    screenshot = File::open(filename)
-  end
+  h = h.map if !h.is_a?(MappackHighscoreable)
+  screenshot = Map.screenshot(hash[:palette], file: true, h: h)
     
   # Send response
   str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette `#{hash[:palette]}`:"
@@ -1886,25 +1872,9 @@ end
 def send_test(event)
   assert_permissions(event)
 
-  levels = MappackLevel.where(mappack_id: 0)
-  count = levels.count
-  levels.each_with_index{ |l, i|
-    print("Changing level #{"%4d" % [i + 1]} / #{count}...".ljust(80, ' ') + "\r")
-    l.update(name: 'MET-' + l.name.split('-')[1..-1].join('-'))
-  }
-  puts
-  episodes = MappackEpisode.where(mappack_id: 0)
-  count = episodes.count
-  episodes.each_with_index{ |l, i|
-    print("Changing episode #{"%4d" % [i + 1]} / #{count}...".ljust(80, ' ') + "\r")
-    l.update(name: 'MET-' + l.name.split('-')[1..-1].join('-'))
-  }
-  puts
-  stories = MappackStory.where(mappack_id: 0)
-  count = stories.count
-  stories.each_with_index{ |l, i|
-    print("Changing story #{"%4d" % [i + 1]} / #{count}...".ljust(80, ' ') + "\r")
-    l.update(name: 'MET-' + l.name.split('-')[1..-1].join('-'))
+  Level.all.each_with_index{ |l, i|
+    print "Removing level screenshot #{"%3d" % i}...\r"
+    FileUtils.rm('screenshots/' + l.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2') + '.jpg')
   }
   puts
 

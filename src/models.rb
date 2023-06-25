@@ -110,10 +110,10 @@ module MonkeyPatches
     ::ChunkyPNG::Canvas::Drawing.class_eval do
       def fast_rect(x0, y0, x1, y1, stroke_color = nil, fill_color = ChunkyPNG::Color::TRANSPARENT)
         stroke_color = ChunkyPNG::Color.parse(stroke_color) unless stroke_color.nil?
-        fill_color   = ChunkyPNG::Color.parse(fill_color)
+        fill_color   = ChunkyPNG::Color.parse(fill_color) unless fill_color.nil?
 
         # Fill
-        unless fill_color == ChunkyPNG::Color::TRANSPARENT
+        if !fill_color.nil? && fill_color != ChunkyPNG::Color::TRANSPARENT
           [x0, x1].min.upto([x0, x1].max) do |x|
             [y0, y1].min.upto([y0, y1].max) do |y|
               pixels[y * width + x] = fill_color
@@ -122,7 +122,7 @@ module MonkeyPatches
         end
 
         # Stroke
-        if !stroke_color.nil?
+        if !stroke_color.nil? && stroke_color != ChunkyPNG::Color::TRANSPARENT
           line(x0, y0, x0, y1, stroke_color, false)
           line(x0, y1, x1, y1, stroke_color, false)
           line(x1, y1, x1, y0, stroke_color, false)
@@ -701,8 +701,13 @@ end
 
 # Implemented by Episode and MappackEpisode
 module Episodish
+  # Return the Map object (containing map data), if it exists
+  def map
+    self.is_a?(Episode) ? MappackEpisode.find_by(id: id) : self
+  end
+
   def format_name
-    "#{name}"
+    "#{name.remove('MET-')}"
   end
 
   def cleanliness(rank = 0)
@@ -798,8 +803,13 @@ end
 
 # Implemented by Story and MappackStory
 module Storyish
+  # Return the Map object (containing map data), if it exists
+  def map
+    self.is_a?(Story) ? MappackStory.find_by(id: id) : self
+  end
+
   def format_name
-    "#{name}"
+    "#{name.remove('MET-')}"
   end
 end
 

@@ -749,7 +749,7 @@ def check_permission(event, role)
     names = Role.owners(role).pluck(:username)
     {
       granted: Role.exists(event.user.id, role),
-      allowed: names.empty? ? role.pluralize : names
+      allowed: role.pluralize #names
     }
   end
 end
