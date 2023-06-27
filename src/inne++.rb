@@ -88,6 +88,7 @@ def initialize_vars
   $memory_warned_c = false
   $linux           = RbConfig::CONFIG['host_os'] =~ /linux/i
   $mutex           = { ntrace: Mutex.new }
+  ENV['DISCORDRB_NONACL'] = '1' # Prevent libsodium warning message
   [DIR_LOGS].each{ |d| Dir.mkdir(d) unless Dir.exist?(d) }
   log("Initialized global variables")
 rescue => e
