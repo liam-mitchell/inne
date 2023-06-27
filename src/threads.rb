@@ -550,11 +550,6 @@ end
 
 ############ LOTD FUNCTIONS ############
 
-# Send the score differences in the old lotd/eotw/cotm
-def send_channel_diff(level, old_scores, since)
-
-end
-
 # Daily reminders for eotw and cotm
 def send_channel_reminder
   $channel.send_message("Also, remember that the current episode of the week is #{GlobalProperty.get_current(Episode).format_name}.")
