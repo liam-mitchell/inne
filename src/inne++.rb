@@ -22,8 +22,9 @@
 # 8)  You might want to look into 'constants.rb' and configure some variables,
 #     in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID. For testing,
 #     also look into TEST, DO_NOTHING, and DO_EVERYTHING.
-# 9)  You need Python 3 for the tracing capabilities. If you want to disable them,
-#     toggle FEATURE_NTRACE to false.
+# 9)  Other dependencies:
+#     - Python 3 for the tracing capabilities. To disable, toggle FEATURE_NTRACE.
+#     - FFmpeg for animations. To disable, toggle FEATURE_ANIMATE.
 # 10) Make sure the working directory is the bot's root directory when you run it.
 #
 # Contact: Eddy @ https://discord.gg/nplusplus

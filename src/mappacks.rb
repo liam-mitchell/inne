@@ -396,6 +396,7 @@ module Map
       palette_idx = themes.index(theme)
       bg_color = PALETTE[2, palette_idx]
       fg_color = PALETTE[0, palette_idx]
+      anim = false if !FEATURE_ANIMATE
 
       # Prepare map data and other graphic params
       if h.is_a?(Levelish)

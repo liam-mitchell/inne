@@ -123,7 +123,8 @@ PATH_NTRACE     = "#{DIR_UTILS}/ntrace.py"
 # <------                      FEATURE VARIABLES                        ------>
 # <--------------------------------------------------------------------------->
 
-FEATURE_NTRACE = true # Enable SimVYo's ntrace tool
+FEATURE_NTRACE  = true # Enable SimVYo's ntrace tool (required Python 3)
+FEATURE_ANIMATE = true # Enable animation for traces (requires FFmpeg)
 
 # <--------------------------------------------------------------------------->
 # <------                  MONKEY PATCHING VARIABLES                    ------>
