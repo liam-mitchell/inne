@@ -378,8 +378,9 @@ module Map
       theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
       file:    false,           # Whether to export to a file or return the raw data
       blank:   false,           # Only draw background
-      ppc:     PPC,             # Points per coordinate (essentially the scale)
+      ppc:     0,               # Points per coordinate (essentially the scale) (0 = use default)
       h:       nil,             # Highscoreable to screenshot
+      anim:    false,           # Whether to animate plotted coords or not
       coords:  []               # Coordinates of routes to trace
     )
 
@@ -399,17 +400,17 @@ module Map
       # Prepare map data and other graphic params
       if h.is_a?(Levelish)
         maps = [h]
-        ppc = PPC
+        ppc = ppc == 0 ? PPC : ppc
         cols = 1
         rows = 1
       elsif h.is_a?(Episodish)
         maps = h.levels
-        ppc = 3
+        ppc = ppc == 0 ? 3 : ppc
         cols = 5
         rows = 1
       else
         maps = h.episodes.map{ |e| e.levels }.flatten
-        ppc = 2
+        ppc = ppc == 0 ? 2 : ppc
         cols = 5
         rows = 5
       end
@@ -661,31 +662,51 @@ module Map
         }
         
         # Plot lines
-        coords.each_with_index{ |c_list, i|
-          c_list[0..-2].each_with_index{ |c, j|
-            image.line(c[0], c[1], c_list[j + 1][0], c_list[j + 1][1], colors[i], false, weight: 2)
+        sizes = coords.map(&:size)
+        frames = sizes.max
+        for f in (0 .. frames - 2) do
+          dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
+          coords.each_with_index{ |c_list, i|
+            image.line(
+              c_list[f][0],
+              c_list[f][1],
+              c_list[f + 1][0],
+              c_list[f + 1][1],
+              colors[i],
+              false,
+              weight: 2,
+              antialiasing: false
+            ) if sizes[i] >= f + 2
           }
-        }
+          image.save("frames/#{'%4d' % f}.png", :fast_rgb) if anim
+        end
+        bench(:step, 'Routes    ') if BENCH_IMAGES
       end
-      bench(:step, 'Routes    ') if BENCH_IMAGES
+      
 
       # rb_p(rb_str_new_cstr("Hello, world!"));
       # rb_p(rb_sprintf("x0 = %ld", x0));
-      res = image.to_blob(:fast_rgb)
+      if anim
+        `ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
+        res = File.binread('frames/anim.mp4')
+        FileUtils.rm(Dir.glob('frames/*'))
+      else
+        res = image.to_blob(:fast_rgb)
+      end
       bench(:step, 'Blobify   ') if BENCH_IMAGES
       res
     end
 
     bench(:step) if BENCHMARK
 
-    file ? tmp_file(res, "#{h.name}.png", binary: true) : res
+    file ? tmp_file(res, "#{h.name}.#{anim ? 'mp4' : 'png'}", binary: true) : res
   rescue => e
     lex(e, "Failed to generate screenshot")
     nil
   end
 
-  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, coords: [])
-    Map.screenshot(theme, file: file, blank: blank, coords: coords, h: self)
+  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, anim: false, coords: [])
+    Map.screenshot(theme, file: file, blank: blank, anim: anim, coords: coords, h: self, ppc: anim ? 4 : 0)
   end
 
   # Plot routes and legend on top of an image (typically a screenshot)
@@ -782,6 +803,9 @@ module Map
       bench(:step, 'Trace texts') if BENCH_IMAGES
 
       # Plot or animate traces
+      # Note: I've deprecated the animation code because the performance was horrible.
+      # Instead, for animations I render each frame in the screenshot function,
+      # and then call ffmpeg to render an mp4.
       if false# animate
         anim = PyCall.import_module('matplotlib.animation')
         x = []
@@ -877,7 +901,7 @@ module Map
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if animate
-      trace = screenshot(palette, coords: coords, blank: blank)
+      trace = screenshot(palette, coords: coords, blank: blank, anim: true)
       raise 'Failed to generate screenshot' if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
@@ -894,7 +918,7 @@ module Map
       screenshot.close
       raise 'Failed to trace replays' if trace.nil?
     end
-    ext = 'png'#animate ? 'gif' : 'png'
+    ext = animate ? 'mp4' : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
     tmp_msg.first.delete rescue nil
     log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES

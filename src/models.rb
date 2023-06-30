@@ -175,35 +175,47 @@ module MonkeyPatches
 
       # Draws one chunk (set of pixels around one coordinate) of an anti-aliased line
       # Allows for arbitrary widths, even fractional
-      def line_chunk(x, y, color = 0xFF, weight = 1, frac = 0xFF, s = 1, swap = false)
-        # Adjust line width and shade of line borders
+      def line_chunk(x, y, color = 0xFF, weight = 1, frac = 0xFF, s = 1, swap = false, antialiasing = true)
         weight = 1.0 if weight < 1.0
-        frac_a, frac_b, inc_a, inc_b = adjust_fractional_width(weight, frac, 0xFF - frac)
-        weight = weight.to_i - (weight.to_i + 1) % 2
 
-        # Prepare color shades
-        fade_a = ChunkyPNG::Color.fade(color, frac_a)
-        fade_b = ChunkyPNG::Color.fade(color, frac_b)
-        fade_a, fade_b = fade_b, fade_a if s[1] < 0
-        inc_a, inc_b = inc_b, inc_a if s[1] < 0
+        # Optionally compute antialiased shades and new line width
+        if antialiasing
+          # Adjust line width and shade of line borders
+          frac_a, frac_b, inc_a, inc_b = adjust_fractional_width(weight, frac, 0xFF - frac)
+          weight = weight.to_i - (weight.to_i + 1) % 2
+
+          # Prepare color shades
+          fade_a = ChunkyPNG::Color.fade(color, frac_a)
+          fade_b = ChunkyPNG::Color.fade(color, frac_b)
+          fade_a, fade_b = fade_b, fade_a if s[1] < 0
+          inc_a, inc_b = inc_b, inc_a if s[1] < 0
+
+          # Draw range
+          min = - weight / 2 - (inc_a ? 1 : 0)
+          max =   weight / 2 + (inc_b ? 1 : 0)
+        else
+          weight = weight.to_i
+          fade_a = color
+          fade_b = color
+          min = - weight / 2 + 1
+          max =   weight / 2
+        end
 
         # Draw
-        min = - weight / 2 - (inc_a ? 1 : 0)
-        max =   weight / 2 + (inc_b ? 1 : 0)
         w = min
         if !swap
           compose_pixel(x, y + w, fade_a)
           compose_pixel(x, y + w, color ) while (w += 1) < max
-          compose_pixel(x, y + w, fade_b)
+          compose_pixel(x, y + w, fade_b) if w <= max
         else
           compose_pixel(y + w, x, fade_a)
           compose_pixel(y + w, x, color ) while (w += 1) < max
-          compose_pixel(y + w, x, fade_b)
+          compose_pixel(y + w, x, fade_b) if w <= max
         end
       end
 
       # Simplified version of ChunkyPNG's implementation
-      def line(x0, y0, x1, y1, stroke_color, inclusive = true, weight: 1)
+      def line(x0, y0, x1, y1, stroke_color, inclusive = true, weight: 1, antialiasing: true)
         stroke_color = ChunkyPNG::Color.parse(stroke_color)
 
         # Normalize coordinates
@@ -236,7 +248,7 @@ module MonkeyPatches
           y += sy if e_acc > 0xFFFF unless i == 0 && e == 0x10000
           e_acc &= 0xFFFF
           w = 0xFF - (e_acc >> 8)
-          line_chunk(x, y, stroke_color, weight, w, s, swap)
+          line_chunk(x, y, stroke_color, weight, w, s, swap, antialiasing)
           x += sx
         end
 
