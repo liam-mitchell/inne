@@ -2308,6 +2308,7 @@ module Twitch extend self
 
   def post_stream(stream)
     game = GAME_IDS.invert[stream['game_id'].to_i]
+    return if !game
     $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>")
     return if !$twitch_streams.key?(game)
     s = $twitch_streams[game].select{ |s| s['user_id'] ==  stream['user_id'] }.first

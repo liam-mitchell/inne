@@ -9,7 +9,7 @@ Eddy's TODO list for inne:
 - For Archive scores function: Make sure to sort ties in descending order by using the replay id.
 - Improve the migration of video challenges to the database: Parse the spreadsheet directly, otherwise it takes longer to update it and it doesn't work unless you have the csv files, which are not in the github repo.
 - Suggestion: Change Steam ID when we get the Bad Gateway error, since I think it depends on the player and thus we might benefit from a new ID, although we don't want to lose the other one since we know it's active, so maybe we could keep a cache of recently active Steam IDs that lasts, say, 1 hour. Another idea is to have a column in the database "last seen active" that we could refer to for this purpose.
-- "nevermind": delete last inne message prompted by that user.
+- "nevermind": delete last inne message prompted by that user. Alternatively, use a reaction (like the X emoji). Have time limit to perform deletion (e.g. 5 min).
 - Implement "index" (maybe "tally"): Outputs file with a list (like "list") of something, like all 0ths. With a parameter we specify what, for instance, 0th scores or 0th frames. With another parameter we specify the order, like the natural one, or by score in descending order...
 - Compare local scores (nprofile) vs server scores to find differences, a la NReality Score Comparer.
 - Add total <rank> score, and show total score and total 19th score gained daily and weekly.
