@@ -26,6 +26,10 @@ module MonkeyPatches
       def stable_sort;    sort_by.with_index{ |x, idx| [      x,  idx] } end
       def stable_sort_by; sort_by.with_index{ |x, idx| [yield(x), idx] } end
     end
+
+    # Add bool to int casting
+    ::TrueClass.class_eval do def to_i; 1 end end
+    ::FalseClass.class_eval do def to_i; 0 end end
   end
 
   def self.patch_activerecord
@@ -264,6 +268,118 @@ module MonkeyPatches
     patch_discordrb    if MONKEY_PATCH_DISCORDRB
     patch_webrick      if MONKEY_PATCH_WEBRICK
     patch_chunkypng    if MONKEY_PATCH_CHUNKYPNG
+  end
+end
+
+# Small class to generate GIFs from RGB data. It's not a full implementation of
+# the GIF format, only what we need for trace animations.
+# Reference: https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+class Gif
+  SIGNATURE = 'GIF89a'
+
+  # Represents a single image. Images inside GIFs need not be animation frames (they
+  # could simply be tiles of a static image), but it's the only use we'll give them.
+  # Crucially, images inside GIFs can be smaller than the canvas, thus being placed
+  # in an offset of it, thus saving space and time. We'll often exploit this.
+  class Frame
+    def initialize(width, height, x, y)
+      @width  = width  # Width of frame (not canvas)
+      @height = height # Height of frame (not canvas)
+      @x      = x      # X offset of frame in canvas
+      @y      = y      # Y offset of frame in canvas
+
+      # Local Color Table and flags
+      @lct_flag  = false # Local color table not present
+      @lct_sort  = false # Colors in LCT not ordered by importance
+      @lct_size  = 0     # Number of colors in LCT (0 - 256, power of 2)
+      @lct       = []
+
+      @interlace = false # No interlacing
+    end
+
+    # Set the values of the pixels
+    def set(pixels)
+
+    end
+
+    # Encode the image data to GIF format and write to stream
+    def encode(stream)
+      # Image descriptor
+      stream << ','
+      stream << [@x, @y, @width, @height].pack('S<4')
+      size = @lct_size < 2 ? 0 : Math.log2(@lct_size - 1).to_i
+      stream << [
+          (@lct_flag.to_i & 0b1  ) << 7
+        | (@interlace     & 0b1  ) << 6
+        | (@lct_sort      & 0b1  ) << 5
+        | (0              & 0b11 ) << 3
+        | (size           & 0b111)
+      ]
+
+      # Local Color Table
+      @lct.each{ |c|
+        stream << [c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF].pack('C3')
+      }
+    end
+  end
+
+  def initialize(width, height, bg: 0)
+    @frames = []
+
+    @width  = width  # Width of the logical screen in pixels
+    @height = height # Height of the logical screen in pixels
+    @bg     = bg     # Index of background color in GCT (see below)
+    @ar     = 0      # Pixel aspect ratio (unused -> square)
+    @depth  = 8      # Color depth per channel in bits
+
+    # Global Color Table flags and flags
+    @gct_flag  = true  # Global color table present
+    @gct_sort  = false # Colors in GCT not ordered by importance
+    @gct_size  = 0     # Number of colors in GCT (0 - 256, power of 2)
+    @gct = []
+  end
+
+  # Encode the image data as a GIF and write to a stream
+  def encode(stream, delay: 4)
+    # Header
+    stream << SIGNATURE
+
+    # Logical Screen Descriptor
+    stream << [@width, @height].pack('S<2')
+    size = @gct_size < 2 ? 0 : Math.log2(@gct_size - 1).to_i
+    stream << [
+        (@gct_flag.to_i & 0b1  ) << 7
+      | (@gct_depth - 1 & 0b111) << 4
+      | (@gct_sort.to_i & 0b1  ) << 3
+      | (size           & 0b111)
+    ].pack('C')
+    stream << [@bg, @ar].pack('C')
+
+    # Global Color Table
+    @gct.each{ |c|
+      stream << [c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF].pack('C3')
+    }
+
+    # Encode frames containing image data
+    @frames.each{ |f| f.encode(f) }
+  rescue => e
+    lex(e, 'Failed to encode GIF')
+    nil
+  end
+
+  # Return GIF data as a string
+  def write(stream)
+    str = StringIO.new
+    str.set_encoding("ASCII-8BIT")
+    encode(str)
+    str.string
+  end
+
+  # Save the GIF to a file
+  def save(filename)
+    File.open(filename, 'wb') do |f|
+      encode(f)
+    end
   end
 end
 

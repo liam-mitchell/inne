@@ -72,6 +72,7 @@ Eddy's TODO list for inne:
 - Ability to subscribe to mappacks or certain things (e.g. "subscribe to cla sr top20" will warn when the user loses a sr top20 in mappack CLA)
 - Package outte as a gem
 - Across-mappacks rankings and stuff
+- TASes in outte, perhaps add to CLE too (scores around mine?)
 
 \\ ------------------------ ntrace ------------------------
 
