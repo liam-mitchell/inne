@@ -277,6 +277,18 @@ end
 class Gif
   SIGNATURE = 'GIF89a'
 
+  # Divide data block into a series of sub-blocks of size at most 256 bytes each,
+  # adding the block terminator at the end. This is how raw data (e.g. compressed
+  # pixel data or extension data) is stored in GIFs.
+  def blockify(data)
+    return '0x00' if data.size == 0
+    blocks = data.scan(/.{1,255}/m)
+    blocks[0..-2].each{ |d| d.prepend('0xFF') } if blocks.size > 1
+    blocks[-1].prepend([blocks[-1].size].pack('C'))
+    blocks.append('0x00')
+    blocks.join
+  end
+
   # Represents a single image. Images inside GIFs need not be animation frames (they
   # could simply be tiles of a static image), but it's the only use we'll give them.
   # Crucially, images inside GIFs can be smaller than the canvas, thus being placed
@@ -323,6 +335,58 @@ class Gif
     end
   end
 
+  module Extension
+    def initialize(label)
+      @label = label
+    end
+
+    def encode(stream)
+      stream << "!"    # Extension Introducer
+      stream << @label # Extension Label
+      stream << body   # Extension content
+    end
+  end
+
+  class GraphicControlExtension
+    include Extension
+
+    def initialize
+      super(0xF9)
+      # Fill in other fields...
+    end
+
+    def body
+
+    end
+  end
+
+  module ApplicationExtension
+   include Extension
+
+    def initialize(id, code, data)
+      super(0xFF)
+      @id   = id   # Application Identified
+      @code = code # Application Authentication Code
+      @data = data # Application Data
+    end
+
+    def body
+      # Return extension's body (needs to call the specific extension's "data" method)
+    end
+  end
+
+  class NetscapeExtension
+    include ApplicationExtension
+
+    def initialize(loops)
+      @loops = loops
+    end
+
+    def data
+      # Call blockify to block-encode the data (http://www.vurdalakov.net/misc/gif/netscape-looping-application-extension)
+    end
+  end
+
   def initialize(width, height, bg: 0)
     @frames = []
 
@@ -362,6 +426,9 @@ class Gif
 
     # Encode frames containing image data
     @frames.each{ |f| f.encode(f) }
+
+    # Trailer
+    stream << ';'
   rescue => e
     lex(e, 'Failed to encode GIF')
     nil
