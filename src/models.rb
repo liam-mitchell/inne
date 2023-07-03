@@ -294,7 +294,7 @@ class Gif
   # Crucially, images inside GIFs can be smaller than the canvas, thus being placed
   # in an offset of it, thus saving space and time. We'll often exploit this.
   class Frame
-    def initialize(width, height, x, y)
+    def initialize(width, height, x, y, delay: nil, t_color: nil)
       @width  = width  # Width of frame (not canvas)
       @height = height # Height of frame (not canvas)
       @x      = x      # X offset of frame in canvas
@@ -307,6 +307,19 @@ class Gif
       @lct       = []
 
       @interlace = false # No interlacing
+      @pixels = []
+
+      # Extended features
+      @delay   = delay   # Delay between this frame and the next (in 1/100ths of sec)
+      @t_color = t_color # Transparent color (keeps pixel from previous frame)
+      @extensions = []
+      if !@delay.nil? || !@t_color.nil?
+        @extensions << GraphicControlExtension.new(
+          @delay,
+          transparency: !@t_color.nil?,
+          t_color: @t_color
+        )
+      end
     end
 
     # Set the values of the pixels
@@ -316,6 +329,9 @@ class Gif
 
     # Encode the image data to GIF format and write to stream
     def encode(stream)
+      # Optional extensions go before the image data
+      stream << @extensions.each{ |e| e.encode(stream) }
+
       # Image descriptor
       stream << ','
       stream << [@x, @y, @width, @height].pack('S<4')
@@ -326,15 +342,21 @@ class Gif
         | (@lct_sort      & 0b1  ) << 5
         | (0              & 0b11 ) << 3
         | (size           & 0b111)
-      ]
+      ].pack('C')
 
       # Local Color Table
       @lct.each{ |c|
         stream << [c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF].pack('C3')
-      }
+      } if @lct_flag
+
+      # LZW-compressed image data
     end
   end
 
+  # Extensions were added in the second and final specification of the GIF format
+  # in 1989. They are always wrapped in the same light container below. The "body"
+  # is the content of that container, and must be defined for each class that
+  # implements this module.
   module Extension
     def initialize(label)
       @label = label
@@ -347,60 +369,120 @@ class Gif
     end
   end
 
+  # This extension precedes a frame, and mostly controls its duration, and thus, the
+  # the framerate of the GIF. It can also specify a palette index to use as
+  # transparent color, which means the pixel will remain the same color as the
+  # previous frame. The other flags are hardly supported.
   class GraphicControlExtension
     include Extension
 
-    def initialize
+    def initialize(delay = 10, disposal: :none, user_input: false, transparency: false, t_color: 0xFF)
       super(0xF9)
-      # Fill in other fields...
+
+      # Packed flags
+      @disposal     = [:none, :no, :bg, :prev].include?(disposal) ? disposal : :none
+      @user_input   = user_input
+      @transparency = transparency
+
+      # Main params
+      @delay   = delay & 0xFFFF
+      @t_color = t_color & 0xFF
     end
 
     def body
+      disposal = {
+        none: 0,
+        no:   1,
+        bg:   2,
+        prev: 3
+      }[@disposal] || 0
 
+      # Packed flags
+      str = [
+          (0                  & 0b111) << 5
+        | (disposal           & 0b111) << 2
+        | (@user_input.to_i   & 0b1  ) << 1
+        | (@transparency.to_i & 0b1  )
+      ].pack('C')
+
+      # Main params
+      str += [@delay].pack('S<')
+      str += [@t_color].pack('C') if @transparency
+
+      blockify(str)
     end
   end
 
+  # This generic extension was added to the GIF specification to allow software
+  # developers to inject their own features into the format. Only one became truly
+  # standard, the Netscape extension (see below). It's a container in itself,
+  # and the specific contents are the "data" method, which must be implemented
+  # by any class that includes this module.
   module ApplicationExtension
    include Extension
 
     def initialize(id, code, data)
       super(0xFF)
-      @id   = id   # Application Identified
+      @id   = id   # Application Identifier
       @code = code # Application Authentication Code
       @data = data # Application Data
     end
 
     def body
-      # Return extension's body (needs to call the specific extension's "data" method)
+      str = '0x0B' # Application id block size
+      str += @id[0...8].ljust(8, '0x00')
+      str += @code[0...3].ljust(3, '0x00')
+      str += blockify(data)
+      str
     end
   end
 
+  # This is the only application extension that became the defacto standard. It's
+  # what controls whether the GIF loops or not, and how many times.
   class NetscapeExtension
     include ApplicationExtension
 
-    def initialize(loops)
-      @loops = loops
+    def initialize(loops = 0)
+      @loops = loops & 0xFFFF # Amount of loops (0 = infinite)
     end
 
+    # Note: We do not add the block size or null terminator here, since it will
+    # be blockified later
     def data
-      # Call blockify to block-encode the data (http://www.vurdalakov.net/misc/gif/netscape-looping-application-extension)
+      str = '0x01' # Sub-block ID
+      str += [@loops].pack('S<')
+      str
     end
   end
 
-  def initialize(width, height, bg: 0)
-    @frames = []
-
+  def initialize(width, height, bg: 0, loops: -1, delay: nil, fps: 10)
+    # Main GIF params
     @width  = width  # Width of the logical screen in pixels
     @height = height # Height of the logical screen in pixels
     @bg     = bg     # Index of background color in GCT (see below)
     @ar     = 0      # Pixel aspect ratio (unused -> square)
     @depth  = 8      # Color depth per channel in bits
 
-    # Global Color Table flags and flags
+    # Global Color Table and flags
     @gct_flag  = true  # Global color table present
     @gct_sort  = false # Colors in GCT not ordered by importance
     @gct_size  = 0     # Number of colors in GCT (0 - 256, power of 2)
     @gct = []
+
+    # Extension params
+    @loops = loops # Number of times to loop the GIF (-1 = infinite)
+    @delay = delay # Delay between frames (in 1/100ths of a sec)
+    @fps   = fps   # Frames per second (will be used if no explicit delay)
+
+    # Main GIF elements
+    @frames     = []
+    @extensions = []
+    
+    # If we want the GIF to loop, then add the Netscape Extension
+    if @loops != 0
+      loops = @loops == -1 ? 0 : @loops
+      @extensions << NetscapeExtension.new(loops)
+    end
   end
 
   # Encode the image data as a GIF and write to a stream
@@ -417,15 +499,18 @@ class Gif
       | (@gct_sort.to_i & 0b1  ) << 3
       | (size           & 0b111)
     ].pack('C')
-    stream << [@bg, @ar].pack('C')
+    stream << [@bg, @ar].pack('C2')
 
     # Global Color Table
     @gct.each{ |c|
       stream << [c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF].pack('C3')
-    }
+    } if @gct_flag
 
-    # Encode frames containing image data
-    @frames.each{ |f| f.encode(f) }
+    # Global extensions
+    @extensions.each{ |e| e.encode(stream) }
+
+    # Encode frames containing image data (and local extensions)
+    @frames.each{ |f| f.encode(stream) }
 
     # Trailer
     stream << ';'
