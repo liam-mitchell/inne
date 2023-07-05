@@ -156,6 +156,10 @@ rescue => e
   exit
 end
 
+# Setup triggers for DMs, mentions, messages and interactions.
+# Discordrb creates a new thread for each of these, so we must either take
+# a db connection from the pool or remember to disconnect at the end to prevent
+# zombie connections.
 def setup_bot
   $bot.private_message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
@@ -165,6 +169,8 @@ def setup_bot
     str = special ? 'Special ' : ''
     str = "#{str}DM by #{event.user.name}: #{event.content}"
     special ? succ(str) : msg(str)
+  ensure
+    release_connection
   end
 
   $bot.mention do |event|
@@ -172,6 +178,8 @@ def setup_bot
     remove_mentions!(event.content)
     respond(event)
     msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
+  ensure
+    release_connection
   end
 
   $bot.message do |event|
@@ -187,16 +195,22 @@ def setup_bot
       respond_special(event)
       succ("Special command: #{event.content}")
     end
+  ensure
+    release_connection
   end
 
   $bot.button do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_button(event)
+  ensure
+    release_connection
   end
 
   $bot.select_menu do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_menu(event)
+  ensure
+    release_connection
   end
   log("Configured bot")
 rescue => e

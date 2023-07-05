@@ -400,7 +400,13 @@ def send_scores(event, map = nil, ret = false, page: nil)
   end
 
   # If it's an episode, update all 5 level scores in the background
-  Thread.new { h.levels.each(&:update_scores) } if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
+  if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
+    Thread.new do
+      h.levels.each(&:update_scores)
+    ensure
+      release_connection
+    end
+  end
 rescue RuntimeError
   raise
 rescue => e
@@ -1872,12 +1878,6 @@ end
 
 def send_test(event)
   assert_permissions(event)
-
-  Level.all.each_with_index{ |l, i|
-    print "Removing level screenshot #{"%3d" % i}...\r"
-    FileUtils.rm('screenshots/' + l.name.upcase.gsub(/\?/, 'SS').gsub(/!/, 'SS2') + '.jpg')
-  }
-  puts
 
 #  maps = send_userlevel_browse(nil, socket: event.content)
 #  Userlevel::dump_query(maps, 10, 0)

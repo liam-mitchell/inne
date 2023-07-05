@@ -452,7 +452,7 @@ module Map
         m.each{ |row|
           row.each{ |t|
             # Skip if this tile is already initialized
-            next if tile.key?(t) || t <= 1
+            next if tile.key?(t) || t <= 1 || t >= 34
 
             # Initialize base tile image
             o = (t - 2) % 4                # Orientation
@@ -1417,7 +1417,15 @@ class MappackScore < ActiveRecord::Base
     if h.nil?
       if CLE_FORWARD
         res = forward(req)
-        Thread.new { Userlevel.find_by(id: sid).update_scores(fast: true) } if sid >= MIN_ID && !res.nil?
+        if sid >= MIN_ID && !res.nil?
+          Thread.new do
+            Userlevel.find_by(id: sid).update_scores(fast: true)
+          rescue
+            nil
+          ensure
+            release_connection
+          end
+        end
         return res
       end
       warn("Score submitted by #{name}: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")

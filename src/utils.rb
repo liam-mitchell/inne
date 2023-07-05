@@ -308,6 +308,11 @@ rescue => e
   lex(e, 'Forking failed')
 end
 
+def release_connection
+  #ActiveRecord::Base.connection_pool.release_connection
+  ActiveRecord::Base.connection.disconnect!
+end
+
 # Wrapper to benchmark a piece of code
 def bench(action, msg = nil)
   @t ||= Time.now

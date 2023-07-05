@@ -337,11 +337,11 @@ class Gif
       stream << [@x, @y, @width, @height].pack('S<4')
       size = @lct_size < 2 ? 0 : Math.log2(@lct_size - 1).to_i
       stream << [
-          (@lct_flag.to_i & 0b1  ) << 7
-        | (@interlace     & 0b1  ) << 6
-        | (@lct_sort      & 0b1  ) << 5
-        | (0              & 0b11 ) << 3
-        | (size           & 0b111)
+        (@lct_flag.to_i & 0b1  ) << 7 |
+        (@interlace     & 0b1  ) << 6 |
+        (@lct_sort      & 0b1  ) << 5 |
+        (0              & 0b11 ) << 3 |
+        (size           & 0b111)
       ].pack('C')
 
       # Local Color Table
@@ -399,10 +399,10 @@ class Gif
 
       # Packed flags
       str = [
-          (0                  & 0b111) << 5
-        | (disposal           & 0b111) << 2
-        | (@user_input.to_i   & 0b1  ) << 1
-        | (@transparency.to_i & 0b1  )
+        (0                  & 0b111) << 5 |
+        (disposal           & 0b111) << 2 |
+        (@user_input.to_i   & 0b1  ) << 1 |
+        (@transparency.to_i & 0b1  )
       ].pack('C')
 
       # Main params
@@ -494,10 +494,10 @@ class Gif
     stream << [@width, @height].pack('S<2')
     size = @gct_size < 2 ? 0 : Math.log2(@gct_size - 1).to_i
     stream << [
-        (@gct_flag.to_i & 0b1  ) << 7
-      | (@gct_depth - 1 & 0b111) << 4
-      | (@gct_sort.to_i & 0b1  ) << 3
-      | (size           & 0b111)
+      (@gct_flag.to_i & 0b1  ) << 7 |
+      (@gct_depth - 1 & 0b111) << 4 |
+      (@gct_sort.to_i & 0b1  ) << 3 |
+      (size           & 0b111)
     ].pack('C')
     stream << [@bg, @ar].pack('C2')
 
