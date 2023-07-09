@@ -2670,28 +2670,35 @@ module Cle extend self
     response = nil
 
     # Build response
-    case req.request_method
-    when 'GET'
-      case query
-      when 'get_scores'
-        response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
-      when 'get_replay'
-        response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
-      else
-        response = CLE_FORWARD ? forward(req) : nil
-      end
-    when 'POST'
-      req.continue # Respond to "Expect: 100-continue"
-      case query
-      when 'submit_score'
-        response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
-      when 'login'
-        response = Player.login(mappack, req)
-      else
-        response = CLE_FORWARD ? forward(req) : nil
-      end
+    if CLE_FORWARD && ['rdx'].include?(mappack)
+      # Automatically forward requests for certain mappacks
+      # that do not have custom boards
+      response = forward(req)
     else
-      response = nil
+      # Parse request
+      case req.request_method
+      when 'GET'
+        case query
+        when 'get_scores'
+          response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
+        when 'get_replay'
+          response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
+        else
+          response = CLE_FORWARD ? forward(req) : nil
+        end
+      when 'POST'
+        req.continue # Respond to "Expect: 100-continue"
+        case query
+        when 'submit_score'
+          response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
+        when 'login'
+          response = Player.login(mappack, req)
+        else
+          response = CLE_FORWARD ? forward(req) : nil
+        end
+      else
+        response = nil
+      end
     end
 
     # Set up response parameters
