@@ -2,23 +2,25 @@ require 'byebug'
 require 'fileutils'
 #require 'tk'
 require 'win32/registry'
+require 'zip'
 
 # Mappack-specific constants
-MAPPACK = 'Duality'
-AUTHOR  = 'w95559w'
-NAME    = 'dua'
-FILES   = ['C', 'C2']
+MAPPACK = 'Redux'
+AUTHOR  = 'WheatyTruffles & DarkStuff'
+NAME    = 'rdx'
+FILES   = ['S', 'Scodes']
 
 # General constants
-TEST     = false
-HOST     = 'https://dojo.nplusplus.ninja'
-PORT     = 8126
-PROXY    = '45.32.150.168'
-LOCAL    = '127.0.0.1'
-TARGET   = "#{TEST ? LOCAL : PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
-DIALOG   = true
-PAD      = 32
-CONTROLS = true
+TEST      = false
+HOST      = 'https://dojo.nplusplus.ninja'
+PORT      = 8126
+PROXY     = '45.32.150.168'
+LOCAL     = '127.0.0.1'
+TARGET    = "#{TEST ? LOCAL : PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
+DIALOG    = true
+PAD       = 32
+CONTROLS  = false
+NPROFILE  = false
 
 def dialog(title, text)
   print "\a"
@@ -194,6 +196,65 @@ rescue => e
   log_exception(e, "Failed to change level files.")
 end
 
+def swap_save(new_file, bak_file, nprofile, zip_in: true, zip_out: true)
+  # Return if there are duplicates in the specified names
+  return false if [new_file, bak_file, nprofile].uniq.size < 3
+
+  # Return if the specified new file doesn't exist
+  return false if !File.file?(new_file)
+
+  # Backup the current save
+  if File.file?(nprofile)
+    if zip_out
+      cur = File.binread(nprofile)
+      buf = Zip::OutputStream.write_buffer{ |zip|
+        zip.put_next_entry('nprofile')
+        zip.write(cur)
+      }
+      File.binwrite(bak_file, buf.string)
+    else
+      File.rename(nprofile, bak_file)
+    end
+  end
+
+  # Copy the new save
+  if zip_in
+    Zip::File.open(new_file){ |zip|
+      File.binwrite(nprofile, zip.glob('nprofile').first.get_input_stream.read)
+    }
+  else
+    File.copy(new_file, nprofile)
+  end
+
+  return true
+rescue
+  return false
+end
+
+def change_nprofile(install = true)
+  folder = find_documents_folder
+  print "┣━ Changing nprofile#{install ? '' : ' back'}...".ljust(PAD, ' ')
+
+  # Copy nprofile file (from the nprofile folder, or the temp folder if we provided it)
+  tmp = $0[/(.*)\//, 1]
+  nprofile = File.join(folder, 'nprofile')
+  og = File.join(folder, 'nprofile_original.zip')
+  if install
+    res = swap_save(File.join(folder, "nprofile_#{NAME}.zip"), og, nprofile)
+    res = swap_save(File.join(tmp,    'nprofile.zip'        ), og, nprofile) if !res
+    return puts "NOT DONE" if !res
+  else
+    res = swap_save(og, File.join(folder, "nprofile_#{NAME}.zip"), nprofile)
+    return puts "NOT DONE" if !res
+  end
+  
+  puts "OK"
+rescue RuntimeError => e
+  log_exception(e, '')
+rescue => e
+  log_exception(e, "Failed to swap nprofile.")
+end
+
 def change_levels(install = true)
   print "┣━ Swapping map files#{install ? '' : ' back'}... ".ljust(PAD, ' ')
   # Find folder
@@ -243,6 +304,7 @@ def install
   change_levels(true)
   change_texts(true)
   change_controls(true) if CONTROLS
+  change_nprofile(true) if NPROFILE
   puts "┃\n┗━━━ Installed '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Installed '#{MAPPACK}' N++ mappack successfully!")
 end
@@ -253,6 +315,7 @@ def uninstall
   change_levels(false)
   change_texts(false)
   change_controls(false) if CONTROLS
+  change_nprofile(false) if NPROFILE
   puts "┃\n┗━━━ Uninstalled '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Uninstalled '#{MAPPACK}' N++ mappack successfully!")
 end

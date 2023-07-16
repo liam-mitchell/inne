@@ -2670,10 +2670,11 @@ module Cle extend self
     response = nil
 
     # Build response
-    if CLE_FORWARD && ['rdx'].include?(mappack)
-      # Automatically forward requests for certain mappacks
-      # that do not have custom boards
-      response = forward(req)
+    
+    # Automatically forward requests for certain mappacks
+    # that do not have custom boards
+    if ['rdx'].include?(mappack)
+      response = CLE_FORWARD ? forward(req) : nil
     else
       # Parse request
       case req.request_method
