@@ -308,6 +308,14 @@ rescue => e
   lex(e, 'Forking failed')
 end
 
+# Execute a shell command
+def shell(command, output: false)
+  command += ' > /dev/null 2>&1' if !output
+  `#{command}`
+rescue => e
+  lex(e, "Failed to execute shell command: #{command}")
+end
+
 def release_connection
   #ActiveRecord::Base.connection_pool.release_connection
   ActiveRecord::Base.connection.disconnect!

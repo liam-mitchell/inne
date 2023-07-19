@@ -1189,7 +1189,7 @@ end
 def send_trace(event)
   assert_permissions(event, ['ntracer'])
   raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
-  wait_msg = event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
+  wait_msg = event.send_message("Queued...") if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
     wait_msg.delete if !wait_msg.nil?
     level = parse_level_or_episode(event.content, mappack: true)
@@ -1224,23 +1224,38 @@ def send_splits(event)
     ep_scores = Demo.decode(scores[rank].demo.demo, true).map(&:size)
     ep_splits = splits_from_scores(ep_scores, start: 0, factor: 1, offset: 0)
   elsif FEATURE_NTRACE
-    # Export input files
-    File.binwrite('inputs_episode', scores[rank].demo.demo)
-    ep.levels.each_with_index{ |l, i|
-      map = !l.is_a?(Map) ? MappackLevel.find(l.id) : l
-      File.binwrite("map_data_#{i}", map.dump_level)
-    }
-    system "python3 #{PATH_NTRACE}"
+    file = nil
+    valid = valid = [false] * 5
+    ep_splits = []
+    ep_scores = []
 
-    # Read output files
-    file = File.binread('output.txt') rescue nil
-    raise "ntrace failed." if file.nil?
-    valid = file.scan(/True|False/).map{ |b| b == 'True' }
-    ep_splits = file.split(/True|False/)[1..-1].map{ |d|
-      round_score(d.strip.to_i.to_f / 60.0)
-    }
-    ep_scores = scores_from_splits(ep_splits, offset: 90.0)
-    FileUtils.rm(['inputs_episode', *Dir.glob('map_data_*'), 'output.txt'])
+    # Execute ntrace in mutex
+    wait_msg = event.send_message("Queued...") if $mutex[:ntrace].locked?
+    $mutex[:ntrace].synchronize do
+      wait_msg.delete if !wait_msg.nil?
+
+      # Export input files
+      File.binwrite('inputs_episode', scores[rank].demo.demo)
+      ep.levels.each_with_index{ |l, i|
+        map = !l.is_a?(Map) ? MappackLevel.find(l.id) : l
+        File.binwrite("map_data_#{i}", map.dump_level)
+      }
+      shell("python3 #{PATH_NTRACE}")
+
+      # Read output files
+      file = File.binread('output.txt') rescue nil
+      if !file.nil?
+        valid = file.scan(/True|False/).map{ |b| b == 'True' }
+        ep_splits = file.split(/True|False/)[1..-1].map{ |d|
+          round_score(d.strip.to_i.to_f / 60.0)
+        }
+        ep_scores = scores_from_splits(ep_splits, offset: 90.0)
+        FileUtils.rm(['output.txt'])
+      end
+
+      # Cleanup
+      FileUtils.rm(['inputs_episode', *Dir.glob('map_data_*')])
+    end
   end
 
   # Calculate IL splits
@@ -1254,7 +1269,9 @@ def send_splits(event)
   lvl_scores = ep.levels.map{ |l| l.leaderboard(board)[rank][scoref] / factor }
 
   # Calculate differences
-  full = !ntrace || FEATURE_NTRACE
+  full = (!ntrace || FEATURE_NTRACE) && !file.nil?
+
+  event << "ntrace failed." if file.nil?
 
   if full
     errors = valid.count(false)

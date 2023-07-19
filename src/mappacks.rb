@@ -882,11 +882,11 @@ module Map
       File.binwrite("inputs_#{i}", demo)
     }
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    `python3 #{PATH_NTRACE}`
+    shell("python3 #{PATH_NTRACE}")
 
     # Read output files
     file = File.binread('output.txt') rescue nil
-    raise "ntrace failed." if file.nil?
+    raise "ntrace failed, please contact the botmaster for details." if file.nil?
     valid = file.scan(/True|False/).map{ |b| b == 'True' }
     coords = file.split(/True|False/)[1..-1].map{ |d|
       d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
