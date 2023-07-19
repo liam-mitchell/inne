@@ -227,12 +227,12 @@ def get_data(uri_proc, data_proc, err, *vargs, fast: false)
     response = Net::HTTP.get_response(uri_proc.call(GlobalProperty.get_last_steam_id, *vargs))
   end
   return nil if response.body == INVALID_RESP
-  raise "502 Bad Gateway" if response.code.to_i == 502
+  raise "502 Bad Gateway" if LOG_DOWNLOAD_ERRORS && response.code.to_i == 502
   GlobalProperty.activate_last_steam_id
   data_proc.call(response.body)
 rescue => e
   if (attempts += 1) < RETRIES
-    err("#{err}: #{e}")
+    err("#{err}: #{e}") if LOG_DOWNLOAD_ERRORS
     sleep(0.25)
     retry
   else

@@ -679,7 +679,7 @@ module Map
               antialiasing: false
             ) if sizes[i] >= f + 2
           }
-          image.save("frames/#{'%4d' % f}.png", :fast_rgb) if anim
+          image.save("frames/#{'%04d' % f}.png", :fast_rgb) if anim
         end
         bench(:step, 'Routes    ') if BENCH_IMAGES
       end
