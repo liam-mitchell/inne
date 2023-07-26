@@ -1,33 +1,85 @@
-# IMPORTANT NOTE: To set up the bot for the first time:
-#
-# 1) Set up the following environment variable:
-# 1.1) DISCORD_TOKEN - This is Discord's application token / secret for your bot.
-# 2) Set up the following 2 environment variables (optional):
-# 2.1) TWITCH_SECRET - This is your Twitch app's secret, if you want to be able to
-#                      use the Twitch functionality. Otherwise, disable the
-#                      variable UPDATE_TWITCH in constants.rb.
-# 2.2) DISCORD_TOKEN_TEST - Same as DISCORD_TOKEN, but for a secondary development
-#                           bot. If you don't care about this, never enable the
-#                           variable TEST in constants.rb.
-# 3)  Configure the "outte" environment of the config file in ./db/config.yml,
-#     or create a new one and rename the DATABASE variable in constants.rb.
-# 4)  Configure the "outte_test" environment of the config file (optional).
-# 5)  Create, migrate and seed a database named "inne". Make sure to use MySQL 5.7
-#     with utf8mb4 encoding and collation. Alternatively, contact whoever is taking
-#     care of the bot for a copy of the database (see Contact).
-# 6)  Install Ruby 2.6 to maximize compatibility, then run the Bundler to
-#     obtain the correct version of all gems (libraries), I recommend using rbenv.
-#     In particular, ensure you have Rails 5.1.x and Discordrb >= 3.4.2.
-# 7)  Make sure you edit and save the source files in UTF8.
-# 8)  You might want to look into 'constants.rb' and configure some variables,
-#     in particular, the BOTMASTER_ID, SERVER_ID or CHANNEL_ID. For testing,
-#     also look into TEST, DO_NOTHING, and DO_EVERYTHING.
-# 9)  Other dependencies:
-#     - Python 3 for the tracing capabilities. To disable, toggle FEATURE_NTRACE.
-#     - FFmpeg for animations. To disable, toggle FEATURE_ANIMATE.
-# 10) Make sure the working directory is the bot's root directory when you run it.
-#
-# Contact: Eddy @ https://discord.gg/nplusplus
+################################################################################
+#                                                                              #
+#                      READ THE FOLLOWING INSTRUCTIONS                         #
+#                   TO SET UP THE BOT FOR THE FIRST TIME                       #
+#                                                                              #
+# ////// Dependencies and pre-requirements:                                    #
+#                                                                              #
+#   - MySQL 5.7 (NOT 8.0+). Use utf8mb4 for both encoding and collation,       #
+#     either server- wide or at least for outte's database. I recommend to use #
+#     the my.cnf configuration file provided in ./util/my.cnf                  #
+#                                                                              #
+#   - Ruby 2.7, to maximize compatibility. If you have a more recent version   #
+#     you want to maintain, I recommend to install rbenv and use it to manage  #
+#     multiple simultaneous Ruby versions in your environment.                 #
+#                                                                              #
+#     To ensure you have the latest versions of all the gems (libraries)       #
+#     required by outte, install the bundler gem and then run "bundle install" #
+#                                                                              #
+# ////// Optional dependencies:                                                #
+#                                                                              #
+#   - Python 3 for the replay tracing capabilities. To disable it, toggle the  #
+#     FEATURE_NTRACE variable off in src/constants.rb                          #
+#                                                                              #
+# ////// Setting up the bot:                                                   #
+#                                                                              #
+# 0)  Create a Discord bot associated to your account, you may follow any      #
+#     standard guide for this. Typically, a moderator will have to authorize   #
+#     your bot into the server.                                                #
+#                                                                              #
+#     Optionally, but recommended, create another bot for development. You can #
+#     use this one in a custom server or via DMs, without interferring with    #
+#     the production bot.                                                      #
+#                                                                              #
+# 1)  Set up the following environment variables:                              #
+#         DISCORD_CLIENT - Discord's application client ID for your bot.       #
+#         DISCORD_TOKEN  - Discord's application token / secret for your bot.  #
+#                                                                              #
+#     Optionally, set up the following environment variables:                  #
+#                                                                              #
+#     If you want Twitch integration, to fetch new N++-related streams:        #
+#         TWITCH_CLIENT - Client ID for your Twitch app.                       #
+#         TWITCH_SECRET - Secret for your Twitch app.                          #
+#     Alternatively, toggle the UPDATE_TWITCH off.                             #
+#                                                                              #
+#     If you have a secondary bot for development:                             #
+#         DISCORD_CLIENT_TEST - Same as DISCORD_CLIENT but for your test bot.  #
+#         DISCORD_TOKEN_TEST  - Same as DISCORD_TOKEN but for your test bot.   #
+#     Alternatively, never toggle the TEST constant on.                        #
+#                                                                              #
+# 2)  Configure the database environment in ./db/config.yml, by either:        #
+#       - Setting up the "outte" environment, or                               #
+#       - Creating a new one, and renaming the DATABASE constant.              #     
+#     If you don't need to change anything, the default outte environment      #
+#     provided in that file should work well.                                  #
+#                                                                              #
+# 3)  Set up the database, by either:                                          #
+#       - Creating a database named "inne", running all the migrations, and    #
+#         seeding the data. Then, the first time the bot is run, userlevels    #
+#         and scores will be downloaded.                                       #
+#       - Asking for a current copy of the database. This is simpler, as it    #
+#         skips many delicate aspects about setting and configuring the        #
+#         database properly (see Contact).                                     #
+#                                                                              #
+# 4)  Configure additional settings in src/constants.rb. For example:          #
+#         BOTMASTER_ID  - Your Discord user ID.                                #
+#         SERVER_ID     - N++'s Discord server ID.                             #
+#         CHANNEL_ID    - #highscores channel ID in N++'s server.              #
+#         TEST          - Toggles between production and development bots.     #
+#         DO_NOTHING    - Don't execute any threads (e.g. score update).       #
+#         DO_EVERYTHING - Execute all threads.                                 #
+#                                                                              #
+# ////// Other notes:                                                          #
+#                                                                              #
+# - Edit and save the source files in UTF8.                                    #
+# - Always run outte from the root directory, NOT from the src directory or    #
+#   any other one.                                                             #
+#                                                                              #
+# ////// Contact:                                                              #
+#                                                                              #
+# Eddy @ https://discord.gg/nplusplus                                          #
+#                                                                              #
+################################################################################
 
 # We use some gems directly from Github repositories. This is supported by Bundler
 # but not by RubyGems directly. The next two lines makes these gems available / visible.
