@@ -1,4 +1,5 @@
-# Library of general functions useful throughout the program
+# This file compiles a library of general functions that are useful throughout
+# the entire program
 
 require 'active_record'
 require 'damerau-levenshtein'

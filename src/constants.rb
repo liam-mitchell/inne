@@ -1,3 +1,11 @@
+# This file contains most of the variables that configure the behaviour of many
+# features and aspects of the bot.
+#
+# When first setting up the bot it may be necessary, or at least recommended,
+# to configure a few of these (e.g., BOTMASTER_ID, SERVER_ID, CHANNEL_ID,
+# DATABASE...). Several others are prone to changing during the development
+# process as well (TEST, BENCHMARK, DO_NOTHING, DO_EVERYTHING...).
+
 # <--------------------------------------------------------------------------->
 # <------                   DEVELOPMENT VARIABLES                       ------>
 # <--------------------------------------------------------------------------->

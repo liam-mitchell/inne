@@ -1,3 +1,14 @@
+# This file contains all the userlevel-specific functionality, both internally
+# (downloading and parsing, performing rankings, etc), as well as externally
+# (interacting with users in the server). Thus, it essentially represents the
+# equivalent of both models.rb and messages.rb for userlevel functionality.
+#
+# There's significant duplication of code between this file and said files, which
+# stems from the fact that it was originally made as independent as possible
+# to prevent messing up Metanet functionality. Therefore, an interesting (but very
+# time consuming) project for the future could be to integrate this file into
+# the ones above, as it was done for mappacks from the beginning more recently.
+
 require 'time'
 require 'zlib'
 

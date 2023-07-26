@@ -1,5 +1,10 @@
-# This file contains the custom Modules and Classes used in the program
-# Including the modifications to 3rd party stuff (monkey patches)
+# This file handles most of the internal logic of the main functions of outte
+# (performing rankings, downloading scores, analyzing replays...).
+# The actual output and communication is handled in messages.rb.
+#
+# This file also contains the main custom Modules and Classes used in the program
+# (e.g. Highscoreable, Downloadable, Level, Episode, Story, Archive, Demo...).
+# Including the modifications to 3rd party stuff (monkey patches).
 
 require 'active_record'
 require 'json'

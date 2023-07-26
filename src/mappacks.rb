@@ -1,3 +1,10 @@
+# This file contains the generic Map module, that encapsulates a lot of the
+# properties of an N++ map (map data format, screenshot generation, etc).
+#
+# Then, it includes all the classes related to mappacks (levels, episodes, stories,
+# demos, etc), as well as the functions that handle the CLE server (Custom
+# Leaderboard Engine).
+
 #require 'chunky_png'
 require 'oily_png'    # C wrapper for ChunkyPNG
 require 'digest'

@@ -1,3 +1,12 @@
+# This file handles outte's usage of Discord's interactions.
+# These can either be:
+#   - Application commands
+#   - Message components:
+#       * Buttons
+#       * Select menus
+#       * Text inputs
+# Currently, only buttons and select menus are being used.
+
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'messages.rb'

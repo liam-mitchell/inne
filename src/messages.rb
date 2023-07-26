@@ -1,3 +1,7 @@
+# This file handles all the direct communication of outte with the server, i.e.,
+# the responses to all commands sent via Discord pings or DMs. See the "respond"
+# method at the end to start understand the flow.
+
 require 'ascii_charts'
 require 'gruff'
 require 'zip'

@@ -1,3 +1,7 @@
+# This file contains the functions that handle a lot of the specific I/O,
+# like parsing (player names, level names...) and formatting (level names,
+# sending files...)
+
 require 'active_support/core_ext/integer/inflections' # ordinalize
 require_relative 'constants.rb'
 require_relative 'utils.rb'
