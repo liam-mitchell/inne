@@ -214,7 +214,7 @@ module Map
     Log.clear
     maps
   rescue => e
-    err("Error parsing Metanet map file '#{fn}' for '#{pack}': #{e}")
+    lex(e, "Error parsing Metanet map file '#{fn}' for '#{pack}'")
     nil
   end
 

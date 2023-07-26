@@ -74,6 +74,10 @@ Eddy's TODO list for inne:
 - Across-mappacks rankings and stuff
 - TASes in outte, perhaps add to CLE too (scores around mine?)
 
+\\ ------------------------ mappacker -----------------------
+
+- For nprofile handling, rather than packing a fresh savefile, pack a preconfigured one (level submission on, numberwang...)
+
 \\ ------------------------ ntrace ------------------------
 
 - Option to change color of plot line with time (let's say, loop through rainbow as many times as specified, or once), to aid readability for long runs with many crosses.
@@ -93,9 +97,7 @@ Eddy's TODO list for inne:
 \\ ------------------------ Userlevels ------------------------
 
 - We need to update all maps regularly, for the ++'s, etc.
-- Periodically unify userlevel authors who've changed usernames, by setting it to the most recent one
 - Userlevel of the day (filter by levels with at least n scores and at least a certain delta of scores to prevent impossible and maxed levels)
-- Unify names: Authors who have changed username, group by author id and change all names to the most recent one. BUT keep old names in the alias table.
 - Add Metanet levels to the db.
 
 Less priority:
@@ -112,15 +114,9 @@ Less priority:
 - Browse user dependant categories
 - Browse other (made up but interesting) categories
 - Download maps (plural), like, all maps by an author or something.
-- Add a command to the browse/search function, that formats level names with underscores instead of spaces, so that they can be readily copied and pasted to N++.
 - Upload maps to accounts (need to figure out request by using proxy first)
 - Map editor with slots for each user
 - Comparison function (like for Metanet scores). Be able to filter maps by author, name, etc.
-
-Database:
-
-- Change format of stored dates to be UNIX time, or something consistent.
-- Make option to switch between an online search to N++ server, and an offline search in the local database. Make local default, since it faster, but have a parameter to switch to online mode.
 
 Others:
 - Add the possibility of making secondary orders (to break ties).

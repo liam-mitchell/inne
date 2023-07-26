@@ -1277,8 +1277,7 @@ def send_splits(event)
     errors = valid.count(false)
     if errors > 0
       wrong = valid.each_with_index.map{ |v, i| !v ? i.to_s : nil }.compact.to_sentence
-      word = "level#{errors > 1 ? 's' : ''}"
-      event << "Warning: Couldn't calculate episode splits (error in #{word} #{wrong})."
+      event << "Warning: Couldn't calculate episode splits (error in #{'level'.pluralize(errors)} #{wrong})."
       full = false
     end
 

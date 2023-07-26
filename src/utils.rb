@@ -272,7 +272,8 @@ def forward(req)
     http.request(new_req)
   }
   res.code.to_i != 200 ? nil : res.body
-rescue
+rescue => e
+  lex(e, 'Failed to forward request to Metanet')
   nil
 end
 
@@ -311,7 +312,7 @@ end
 # Execute a shell command
 def shell(command, output: false)
   command += ' > /dev/null 2>&1' if !output
-  `#{command}`
+  system(command)
 rescue => e
   lex(e, "Failed to execute shell command: #{command}")
 end

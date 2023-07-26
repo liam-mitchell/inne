@@ -32,8 +32,7 @@ def parse_page(msg, offset = 0, reset = false, components = nil)
     }
   }
   reset ? 1 : (page || msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + offset.to_i
-rescue => e
-  err(e)
+rescue
   1
 end
 

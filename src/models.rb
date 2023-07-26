@@ -924,7 +924,7 @@ module Highscoreable
     new_id += type[:slots] * mappack.id if self.is_a?(MappackHighscoreable)
     self.class.find(new_id)
   rescue => e
-    err('Failed to navigate highscoreable')
+    lex(e, 'Failed to navigate highscoreable')
     self
   end
 
@@ -2485,8 +2485,8 @@ module Twitch extend self
         return JSON.parse(res.body)['id'].to_i
       end
     end
-  rescue
-    err("TWITCH: Game ID request method failed.")
+  rescue => e
+    lex(e, 'TWITCH: Game ID request method failed.')
     sleep(5)
     retry
   end
@@ -2611,7 +2611,7 @@ module Sock extend self
     log("Started #{name} server")
     @@servers[name].start
   rescue => e
-    err("Failed to start #{name} server: #{e}")
+    lex(e, "Failed to start #{name} server")
   end
 
   # Stops server, needs to be summoned from another thread
@@ -2619,7 +2619,7 @@ module Sock extend self
     @@servers[name].shutdown
     log("Stopped #{name} server")
   rescue => e
-    err("Failed to stop #{name} server: #{e}")
+    lex(e, "Failed to stop #{name} server")
   end
 end
 
@@ -2648,7 +2648,7 @@ module Cuse extend self
       res.body = response
     end
   rescue => e
-    err("CUSE socket failed: #{e}")
+    lex(e, 'CUSE socket failed')
   end
 end
 
@@ -2711,6 +2711,6 @@ module Cle extend self
       res.body = response
     end
   rescue => e
-    err("CLE socket failed: #{e}")
+    lex(e, 'CLE socket failed')
   end
 end

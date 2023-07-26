@@ -29,10 +29,8 @@
 #
 # Contact: Eddy @ https://discord.gg/nplusplus
 
-# We use some gems directly from Github repositories (in particular, Discordrb,
-# so that we can use the latest features, not present in the outdated RubyGems
-# version). This is supported by Bundler but not by RubyGems directly. The next
-# two lines makes these gems available / visible.
+# We use some gems directly from Github repositories. This is supported by Bundler
+# but not by RubyGems directly. The next two lines makes these gems available / visible.
 require 'rubygems'
 require 'bundler/setup'
 
@@ -60,8 +58,6 @@ require_relative 'messages.rb'
 require_relative 'userlevels.rb'
 require_relative 'mappacks.rb'
 require_relative 'threads.rb'
-
-# TODO: Use log_exception for all exceptions in all files
 
 def monkey_patch
   MonkeyPatches.apply

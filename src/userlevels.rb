@@ -59,6 +59,10 @@ class UserlevelAuthor < ActiveRecord::Base
       matches = p.pluck(:id, :name).map{ |id, name| "#{"%6d" % id} - #{name}" }.join("\n")
       raise "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
     end
+  rescue RuntimeError
+    raise
+  rescue
+    nil
   end
 
   # Add an A.K.A. to the author (old name)
@@ -74,10 +78,6 @@ class UserlevelAuthor < ActiveRecord::Base
     self.update(name: str)
     aka(str, !time.nil? ? time : Time.now.strftime(DATE_FORMAT_MYSQL))
   end
-rescue RuntimeError
-  raise
-rescue
-  nil
 end
 
 class UserlevelAka < ActiveRecord::Base
@@ -361,7 +361,7 @@ class Userlevel < ActiveRecord::Base
     end
     result.compact
   rescue => e
-    err(e)
+    lex(e, 'Error updating userlevels')
     nil
   end
 
@@ -417,7 +417,7 @@ class Userlevel < ActiveRecord::Base
     end
     return true
   rescue => e
-    print(e)
+    lex(e, 'Error updating userlevel tabs')
     return false
   end
 
@@ -851,7 +851,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
 rescue RuntimeError
   raise
 rescue => e
-  lex(e, "Browsing userlevels")
+  lex(e, "Error browsing userlevels")
   err_str = "An error happened, try again, if it keeps failing, contact the botmeister."
   if !socket.nil?
     err("Socketing of userlevel query failed.")
