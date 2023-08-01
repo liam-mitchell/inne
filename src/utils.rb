@@ -679,6 +679,94 @@ def remove_command(msg)
   msg.sub(/^!\w+\s*/i, '').strip
 end
 
+def create_svg(
+    filename: 'graph.svg',
+    title:    'Plot',
+    x_name:   'X',
+    y_name:   'Y',
+    x_res:    1920,
+    y_res:    1080,
+    data:     [[]],
+    names:    [],
+    labels:   [],
+    fmt:      '%d'
+  )
+  titles = title.split("\n")
+  # There are more options available:
+  # https://github.com/lumean/svg-graph2/blob/master/lib/SVG/Graph/Graph.rb
+  options = {
+    # Geometry
+    width:                      x_res,
+    height:                     y_res,
+    stack:                      :side,  # The stack option is valid for Bar graphs only
+
+    # Title
+    show_graph_title:           true,
+    graph_title:                titles[0],
+    show_graph_subtitle:        titles.size > 1,
+    graph_subtitle:             titles[1],
+
+    # Axis
+    show_x_title:               true,
+    x_title:                    x_name,
+    x_title_location:           :middle,
+    show_y_title:               true,
+    y_title:                    y_name,
+    y_title_location:           :end,
+    y_title_text_direction:     :bt, # :bt, :tb
+
+    # Legend
+    key:                        true,
+    key_width:                  nil,
+    key_position:               :right, # :bottom, :right
+
+    # X labels
+    fields:                     labels,
+    show_x_labels:              true,
+    stagger_x_labels:           false,
+    rotate_x_labels:            false,
+    step_x_labels:              1,
+    step_include_first_x_label: true,
+    show_x_guidelines:          false,
+
+    # Y labels
+    show_y_labels:              true,
+    rotate_y_labels:            false,
+    stagger_y_labels:           false,
+    scale_integers:             false,
+    show_y_guidelines:          true,
+
+    # Fonts
+    font_size:                  12,
+    title_font_size:            16,
+    subtitle_font_size:         14,
+    x_label_font_size:          12,
+    y_label_font_size:          12,
+    x_title_font_size:          14,
+    y_title_font_size:          14,
+    key_font_size:              10,
+    key_box_size:               12,
+    key_spacing:                5,
+
+    # Other
+    number_format:              fmt,
+    scale_divisions:            (data.map(&:max).max.to_f / 6).round,
+    scale_integers:             true,
+    no_css:                     false,
+    bar_gap:                    false,
+    show_data_values:           false,
+
+    # Line/Plot specific
+    area_fill:                  true,
+    show_data_points:           false
+  }
+  g = SVG::Graph::Line.new(options)
+  data.each_with_index{ |plot, i|
+    g.add_data({data: plot, title: names[i].to_s})
+  }
+  File.open(filename, 'w'){ |f| f.write(g.burn_svg_only) }
+end
+
 # Computes the name of a highscoreable based on the ID and type, e.g.:
 # Type = 0, ID = 2637 ---> SU-C-09-02
 # The complexity of this function lies in:
@@ -689,7 +777,7 @@ end
 #      actually split in multiple files, with the corresponding bits of
 #      X row staggered at the end of each one.
 # NOTE: Some invalid IDs will return valid names rather than nil, e.g., if
-# type is story and ID = 120, it will return "!-00", a non-existing story.
+# type is Story and ID = 120, it will return "!-00", a non-existing story.
 # This is a consequence of the algorithm, but it's harmless if only correct
 # IDs are inputted.
 def compute_name(id, type)

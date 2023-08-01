@@ -5,10 +5,10 @@ require 'win32/registry'
 require 'zip'
 
 # Mappack-specific constants
-MAPPACK = 'Redux'
-AUTHOR  = 'WheatyTruffles & DarkStuff'
-NAME    = 'rdx'
-FILES   = ['S', 'Scodes']
+MAPPACK = 'Classic'
+AUTHOR  = 'NateyPooPoo'
+NAME    = 'cla'
+FILES   = ['SI']
 
 # General constants
 TEST      = false

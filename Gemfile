@@ -10,10 +10,12 @@ source 'https://rubygems.org' do
   gem 'unicode-emoji'
 
   group :imaging do
+    gem 'rmagick'
     gem 'gruff'
     gem 'chunky_png'
     gem 'oily_png', github: 'edelkas/oily_png', branch: 'dev'
     gem 'matplotlib'
+    gem 'svg-graph'
   end
 
   group :debug, :test do

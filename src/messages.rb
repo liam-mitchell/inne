@@ -3,7 +3,8 @@
 # method at the end to start understand the flow.
 
 require 'ascii_charts'
-require 'gruff'
+require 'rmagick'
+require 'svggraph'
 require 'zip'
 
 require_relative 'constants.rb'
@@ -1948,8 +1949,102 @@ def send_mappack_info(event)
   event << "Set mappack `#{mappack.code}` #{flags}."
 end
 
-def send_userlevel_csv(event)
+def send_ul_csv(event)
   send_file(event, Userlevel.dump_csv, 'userlevels.csv')
+end
+
+def send_ul_plot_day(event)
+  counts = Userlevel.group('date(date)').count
+  dates = (counts.keys.first .. counts.keys.last).to_a
+
+  total_counts = dates.map{ |date| counts[date].to_i }
+  dalton_counts = Userlevel.where(author_id: 234533).group('date(date)').count
+  dalton_counts = dates.map{ |date| dalton_counts[date].to_i }
+
+  labels = dates.map{ |date|
+    [1, 7].include?(date.month) && date.day == 1 ? date.strftime("%b '%y") : ''
+  }
+
+  create_svg(
+    filename: 'userlevels_by_day.svg',
+    title:    "Userlevels by day\n (Total: #{total_counts.sum} userlevels in #{total_counts.size} days)",
+    x_name:   'Date',
+    y_name:   'Count',
+    x_res:    3000,
+    y_res:    500,
+    data:     [dalton_counts, total_counts],
+    names:    ['Dalton', 'Total'],
+    labels:   labels,
+    fmt:      '%d'
+  )
+end
+
+def send_ul_plot_month(event)
+  counts = Userlevel.group('year(date)', 'month(date)').count
+  first_year  = counts.keys.first[0]
+  last_year   = counts.keys.last[0]
+  first_month = counts.keys.first[1]
+  last_month  = counts.keys.last[1]
+
+  total_counts = (first_year .. last_year).map{ |year|
+    month1 = year == first_year ? first_month : 1
+    month2 = year == last_year ? last_month : 12
+    (month1 .. month2).map{ |month|
+      counts[[year, month]].to_i
+    }
+  }.flatten
+
+  dalton_counts = Userlevel.where(author_id: 234533).group('year(date)', 'month(date)').count
+  dalton_counts = (first_year .. last_year).map{ |year|
+    month1 = year == first_year ? first_month : 1
+    month2 = year == last_year ? last_month : 12
+    (month1 .. month2).map{ |month|
+      dalton_counts[[year, month]].to_i
+    }
+  }.flatten
+
+  labels = (first_year .. last_year).map{ |year|
+    month1 = year == first_year ? first_month : 1
+    month2 = year == last_year ? last_month : 12
+    (month1 .. month2).map{ |month|
+      case month
+      when 1
+        "Jan '#{year % 100}"
+      when 7
+        "Jul '#{year % 100}"
+      else
+        ''
+      end
+    }
+  }.flatten
+
+  create_svg(
+    filename: 'userlevels_by_month.svg',
+    title:    "Userlevels by month\n (Total: #{total_counts.sum} userlevels in #{total_counts.size} months)",
+    x_name:   'Date',
+    y_name:   'Count',
+    x_res:    1920,
+    y_res:    500,
+    data:     [dalton_counts, total_counts],
+    names:    ['Dalton', 'Total'],
+    labels:   labels,
+    fmt:      '%d'
+  )
+
+  #Magick::ImageList.new('userlevels_by_month.svg').write('userlevels_by_month.png')
+end
+
+def send_ul_plot(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  case flags[:period]
+  when 'month'
+    send_ul_plot_month(event)
+  else
+    send_ul_plot_day(event)
+  end
+rescue => e
+  lex(e, 'Failed to generate userlevel plot')
 end
 
 def send_gold_check(event)
@@ -2008,7 +2103,8 @@ def respond_special(event)
   send_mappack_seed(event)       if cmd == 'mappack_seed'
   send_mappack_patch(event)      if cmd == 'mappack_patch'
   send_mappack_info(event)       if cmd == 'mappack_info'
-  send_userlevel_csv(event)      if cmd == 'userlevel_csv'
+  send_ul_csv(event)             if cmd == 'userlevel_csv'
+  send_ul_plot(event)            if cmd == 'userlevel_plot'
   send_log_config(event)         if cmd == 'log'
   send_meminfo(event)            if cmd == 'meminfo'
   send_restart(event)            if cmd == 'restart'
