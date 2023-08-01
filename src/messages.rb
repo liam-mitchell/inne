@@ -32,6 +32,7 @@ def send_list(event, file = true, missing = false, third = false)
   ties    = parse_ties(msg)
   tied    = parse_tied(msg)
   sing    = (missing ? -1 : 1) * parse_singular(msg)
+  raise "Speedrun mode isn't available for Metanet levels yet." if board == 'sr' && !mappack
 
   # The range must make sense
   if !range[2]
@@ -123,7 +124,8 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   mappack = parse_mappack(msg)
   board = parse_board(msg, 'hs')
 
-  raise "#{format_board(board)} rankings aren't available yet" if ['gm', 'dual'].include?(board)
+  raise "Speedrun mode isn't available for Metanet levels yet." if board == 'sr' && !mappack
+  raise "#{format_board(board)} rankings aren't available yet." if ['gm', 'dual'].include?(board)
 
   # The range must make sense
   if !range[2]

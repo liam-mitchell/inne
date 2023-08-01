@@ -3,8 +3,8 @@
 #
 # When first setting up the bot it may be necessary, or at least recommended,
 # to configure a few of these (e.g., BOTMASTER_ID, SERVER_ID, CHANNEL_ID,
-# DATABASE...). Several others are prone to changing during the development
-# process as well (TEST, BENCHMARK, DO_NOTHING, DO_EVERYTHING...).
+# DATABASE...). Several others are useful to change during development as well
+# (TEST, BENCHMARK, DO_NOTHING, DO_EVERYTHING...).
 
 # <--------------------------------------------------------------------------->
 # <------                   DEVELOPMENT VARIABLES                       ------>
@@ -44,7 +44,7 @@ RETRIES        = 50      # Redownload attempts for boards / demos
 ATTEMPT_LIMIT  = 5       # Redownload attempts in general (bigger files)
 INVALID_RESP   = '-1337' # N++'s server response when Steam ID is inactive
 
-FAST_MANUAL = true # Only use a subset of Steam IDs for manual queries, for speed
+FAST_MANUAL = true # Only use active Steam IDs for manual queries, for speed
 FAST_PERIOD = 7    # Days old until a Steam ID is marked as inactive
 
 UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)

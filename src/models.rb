@@ -1208,8 +1208,8 @@ class Score < ActiveRecord::Base
     type   = fix_type(type, [:avg_lead, :maxed, :maxable].include?(ranking))
     type   = [type].flatten.map{ |t| "Mappack#{t.to_s}".constantize } if !mappack.nil?
     level  = 2
-    level  = 1 if !mappack.nil? || [:maxed, :maxable].include?(ranking)
-    level  = 0 if [:tied_rank, :avg_lead, :singular].include?(ranking)
+    level  = 1 if mappack || [:maxed, :maxable].include?(ranking)
+    level  = 0 if [:tied_rank, :avg_lead, :singular].include?(ranking) || mappack && ranking == :score && board == 'sr'
     scores = filter(level, nil, type, tabs, a, b, ties, cool, star, mappack, board)
     scores = scores.where.not(player: players) if !mappack.nil? && !players.empty?
 
