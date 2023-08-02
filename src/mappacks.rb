@@ -1422,21 +1422,20 @@ class MappackScore < ActiveRecord::Base
     sid = query[id_field].to_i
     h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
     if h.nil?
-      if CLE_FORWARD
-        res = forward(req)
-        if sid >= MIN_ID && !res.nil?
-          Thread.new do
-            Userlevel.find_by(id: sid).update_scores(fast: true)
-          rescue
-            nil
-          ensure
-            release_connection
-          end
-        end
-        return res
+      # If highscoreable not found, and forwarding is disabled, return nil
+      if !CLE_FORWARD
+        warn("Score submitted by #{name}: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
+        return
       end
-      warn("Score submitted by #{name}: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
-      return
+
+      # If highscoreable not found, but forwarding is enabled, forward to Metanet
+      # Also, try to update the corresponding Metanet scores in outte (in parallel)
+      res = forward(req)
+      _thread do
+        klass = sid >= MIN_ID ? Userlevel : type[:name].constantize
+        klass.find_by(id: sid).update_scores(fast: true)
+      end if !res.nil?
+      return res
     end
 
     # Parse demos and compute new scores

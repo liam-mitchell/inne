@@ -202,8 +202,8 @@ def dbg   (msg, **kwargs) Log.write(msg, :debug, kwargs) end
 def lin   (msg, **kwargs) Log.write(msg, :in,    kwargs) end
 def lout  (msg, **kwargs) Log.write(msg, :out,   kwargs) end
 def fatal (msg, **kwargs) Log.write(msg, :fatal, kwargs) end
-def lex (e, msg = '', **kwargs)    Log.exception(e, msg) end
-def ld  (msg)                      Log.discord(msg)      end
+def lex   (e, msg = '', **kwargs) Log.exception(e, msg)  end
+def ld    (msg)                   Log.discord(msg)       end
 
 # Make a request to N++'s server.
 # Since we need to use an open Steam ID, the function goes through all
@@ -308,6 +308,22 @@ rescue RuntimeError
   raise
 rescue => e
   lex(e, 'Forking failed')
+end
+
+# Light wrapper to execute code block in thread
+# Release db connection at the end if specified, also rescue errors
+def _thread(release = false)
+  Thread.new do
+    yield
+  rescue => e
+    lex(e, 'Error in thread')
+    nil
+  ensure
+    release_connection if release
+  end
+rescue => e
+  lex(e, 'Threading failed')
+  nil
 end
 
 # Execute a shell command
