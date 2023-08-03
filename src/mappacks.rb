@@ -1271,8 +1271,8 @@ module MappackHighscoreable
   # be submitted if the map is changed.
   def verify_replay(ninja_check, score)
     score = (1000.0 * score / 60.0).round.to_s
-    _hash = hash
-    _hash.nil? ? true : Digest::SHA1.digest(_hash + score) == ninja_check
+    h = hash
+    h.nil? ? true : Digest::SHA1.digest(h + score) == ninja_check
   end
 end
 
@@ -1357,6 +1357,17 @@ class MappackStory < ActiveRecord::Base
   has_many :mappack_scores, as: :highscoreable
   belongs_to :mappack
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  # Computes the story's hash, which the game uses for integrity verifications
+  def hash
+    hashes = episodes.map{ |e| e.levels.map(&:hash) }.flatten.compact
+    return nil if hashes.size < 25
+    work = 0.chr * 20
+    25.times.each{ |i|
+      work = Digest::SHA1.digest(work + hashes[i])
+    }
+    work
+  end
 
   # Header of a story demo:
   #   4B - Magic number (0xff3800ce)
