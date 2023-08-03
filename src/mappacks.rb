@@ -1298,12 +1298,12 @@ class MappackLevel < ActiveRecord::Base
   # Dump demo header for communications with N++
   def demo_header(framecount)
     # Precompute some values
-    f = mode == 1 ? 1 : 0
-    framecount /= (f + 1)
-    size = framecount * (f + 1) + 26 + 4 * (f + 1)
+    n = mode == 1 ? 2 : 1
+    framecount /= n
+    size = framecount * n + 26 + 4 * n
 
     # Build header
-    header = [0].pack('C')                  # Type
+    header = [0].pack('C')                  # Type (0 lvl, 1 lvl in ep, 2 lvl in sty)
     header << [size].pack('L<')             # Data length
     header << [1].pack('L<')                # Replay version
     header << [framecount].pack('L<')       # Data size in bytes
@@ -1311,7 +1311,7 @@ class MappackLevel < ActiveRecord::Base
     header << [mode].pack('L<')             # Mode (0-2)
     header << [0].pack('L<')                # ?
     header << (mode == 1 ? "\x03" : "\x01") # Ninja mask (1,3)
-    header << [-1, -1].pack("l<#{f + 1}")   # ?
+    header << [-1, -1].pack("l<#{n}")   # ?
 
     # Return
     header
@@ -1338,6 +1338,9 @@ class MappackEpisode < ActiveRecord::Base
     hashes.size < 5 ? nil : hashes.join
   end
 
+  # Header of an episode demo:
+  #   4B - Magic number (0xffc0038e)
+  #  20B - Block length for each level demo (5 * 4B)
   def demo_header(framecounts)
     header_size = 26 + 4 * (mode == 1 ? 2 : 1)
     replay = [MAGIC_EPISODE_VALUE].pack('L<')
@@ -1354,6 +1357,17 @@ class MappackStory < ActiveRecord::Base
   has_many :mappack_scores, as: :highscoreable
   belongs_to :mappack
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  # Header of a story demo:
+  #   4B - Magic number (0xff3800ce)
+  #   4B - Demo data block total size
+  # 100B - Block length for each level demo (25 * 4B)
+  def demo_header(framecounts)
+    header_size = 26 + 4 * (mode == 1 ? 2 : 1)
+    replay = [MAGIC_STORY_VALUE].pack('L<')
+    replay << [framecounts.sum + 25 * header_size].pack('L<')
+    replay << framecounts.map{ |f| f + header_size }.pack('L<25')
+  end
 end
 
 class MappackScore < ActiveRecord::Base
@@ -1769,11 +1783,18 @@ class MappackScore < ActiveRecord::Base
       replay = highscoreable.demo_header(demos[0].size) + demos[0]
     when 'Episode'
       replay = highscoreable.demo_header(demos.map(&:size))
-      replay << highscoreable.levels.each_with_index.map{ |l, i|
-        l.demo_header(demos[i].size) + demos[i]
-      }.join
+      highscoreable.levels.each_with_index.map{ |l, i|
+        replay << l.demo_header(demos[i].size)
+        replay << demos[i]
+      }
     when 'Story'
-      raise
+      replay = highscoreable.demo_header(demos.map(&:size))
+      highscoreable.episodes.each_with_index{ |e, j|
+        e.levels.each_with_index{ |l, i|
+          replay << l.demo_header(demos[5 * j + i].size)
+          replay << demos[5 * j + i]
+        }
+      }
     else
       raise
     end

@@ -2264,7 +2264,7 @@ end
 #   Rest - Demo data compressed with zlib                                      |
 #------------------------------------------------------------------------------#
 # LEVEL DEMO DATA FORMAT:                                                      |
-#     1B - Type           (0 lvl, 1 lvl in ep)                                 |
+#     1B - Type           (0 lvl, 1 lvl in ep, 2 lvl in sty)                   |
 #     4B - Data length                                                         |
 #     4B - Replay version (1)                                                  |
 #     4B - Frame count                                                         |
@@ -2537,11 +2537,14 @@ module Twitch extend self
   end
 
   def update_twitch_streams
+    # Update streams for each followed game
     GAME_IDS.each{ |game, id|
       new_streams = get_twitch_streams(game)
       $twitch_streams[game] = [] if !$twitch_streams.key?(game)
+
       # Reject blacklisted streams
       new_streams.reject!{ |s| TWITCH_BLACKLIST.include?(s['user_name']) }
+
       # Update values of already existing streams
       $twitch_streams[game].each{ |stream|
         new_stream = new_streams.select{ |s| s['user_id'] == stream['user_id'] }.first
@@ -2552,16 +2555,19 @@ module Twitch extend self
           stream['on'] = false
         end
       }
+
       # Add new streams
       new_streams.reject!{ |s|
         $twitch_streams[game].map{ |ss| ss['user_id'] }.include?(s['user_id'])
       }
       new_streams.each{ |stream| stream['on'] = true }
       $twitch_streams[game].push(*new_streams)
+
       # Delete obsolete streams
       $twitch_streams[game].reject!{ |stream|
         stream.key?('on') && !stream['on'] && stream.key?('posted') && (Time.now.to_i - stream['posted'] > TWITCH_COOLDOWN)
       }
+
       # Reorder streams
       $twitch_streams[game].sort_by!{ |s| -Time.parse(s['started_at']).to_i }
     }
@@ -2675,10 +2681,8 @@ module Cle extend self
     response = nil
 
     # Build response
-    
-    # Automatically forward requests for certain mappacks
-    # that do not have custom boards
     if ['rdx'].include?(mappack)
+      # Automatically forward requests for certain mappacks that lack custom boards
       response = CLE_FORWARD ? forward(req) : nil
     else
       # Parse request
@@ -2703,7 +2707,7 @@ module Cle extend self
           response = CLE_FORWARD ? forward(req) : nil
         end
       else
-        response = nil
+        response = CLE_FORWARD ? forward(req) : nil
       end
     end
 
