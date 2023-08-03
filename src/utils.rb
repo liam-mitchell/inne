@@ -496,6 +496,28 @@ def correct_time(time, frequency)
   time
 end
 
+def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
+  text_rows = rows.select{ |r| r.is_a?(Array) }
+  count = text_rows.map(&:size).max
+  rows.each{ |r| if r.is_a?(Array) then r << "" while r.size < count end }
+  widths = (0..count - 1).map{ |c| text_rows.map{ |r| (r[c].is_a?(Float) ? "%.3f" % r[c] : r[c].to_s).length }.max }
+  sep = widths.map{ |w| sep_i + sep_x * (w + 2) }.join + sep_i + "\n"
+  table = sep.dup
+  table << sep_y + " " * (((sep.size - 1) - header.size) / 2) + header + " " * ((sep.size - 1) - ((sep.size - 1) - header.size) / 2 - header.size - 2) + sep_y + "\n" + sep if !header.nil?
+  rows.each{ |r|
+    if r == :sep
+      table << sep
+    else
+      r.each_with_index{ |s, i|
+        table << sep_y + " " + (s.is_a?(Numeric) ? (s.is_a?(Integer) ? s : "%.3f" % s).to_s.rjust(widths[i], " ") : s.to_s.ljust(widths[i], " ")) + " "
+      }
+      table << sep_y + "\n"
+    end
+  }
+  table << sep
+  return table
+end
+
 # Function to pad (and possibly truncate) a string according to different
 # padding methods, determined by the constants defined at the start.
 # It's a general function, but with a boolean we specify if we're formatting

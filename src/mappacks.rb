@@ -1545,7 +1545,7 @@ class MappackScore < ActiveRecord::Base
       MappackDemo.create(id: id, demo: Demo.encode(demos))
 
       # Verify hs score integrity by checking calculated gold count
-      if !MappackScore.verify_gold(goldf)
+      if !MappackScore.verify_gold(goldf) && type[:name] != 'Story'
         str = "Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})"
         warn(str, discord: true)
       end
@@ -1723,7 +1723,7 @@ class MappackScore < ActiveRecord::Base
     # Score integrity checks
     new_score = (score * 60).round
     gold = MappackScore.gold_count(highscoreable.type, new_score, s.score_sr)
-    raise "That score is incompatible with the framecount" if !MappackScore.verify_gold(gold)
+    raise "That score is incompatible with the framecount" if !MappackScore.verify_gold(gold) && type[:name] != 'Story'
 
     # Change score
     s.update(score_hs: new_score, gold: gold.round)
@@ -1760,6 +1760,7 @@ class MappackScore < ActiveRecord::Base
   end
 
   # Verify if floating point gold count is close enough to an integer.
+  #
   # Context: Sometimes the hs score is incorrectly calculated by the game,
   # and we can use this as a test to find incorrect scores, if the calculated
   # gold count is not exactly an integer.
@@ -1771,8 +1772,15 @@ class MappackScore < ActiveRecord::Base
   # database, returning the scores failing the check.
   def self.gold_check
     scores = []
-    self.all.each{ |s| scores << s if !s.verify_gold }
-    scores
+    entries = self.where("highscoreable_type != 'MappackStory' and id > #{MIN_REPLAY_ID}")
+    count = entries.size
+
+    entries.each_with_index{ |s, i|
+      print("Checking gold in score #{i + 1} / #{count}...".ljust(80, ' ') + "\r")
+      scores << s if !s.verify_gold
+    }
+    
+    scores.sort_by{ |s| [s.highscoreable_type, s.highscoreable_id, s.player.name] }
   end
 
   def gold_count

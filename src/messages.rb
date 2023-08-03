@@ -1527,28 +1527,6 @@ else
   set_avatar(new_avatar)
 end
 
-def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
-  text_rows = rows.select{ |r| r.is_a?(Array) }
-  count = text_rows.map(&:size).max
-  rows.each{ |r| if r.is_a?(Array) then r << "" while r.size < count end }
-  widths = (0..count - 1).map{ |c| text_rows.map{ |r| (r[c].is_a?(Float) ? "%.3f" % r[c] : r[c].to_s).length }.max }
-  sep = widths.map{ |w| sep_i + sep_x * (w + 2) }.join + sep_i + "\n"
-  table = sep.dup
-  table << sep_y + " " * (((sep.size - 1) - header.size) / 2) + header + " " * ((sep.size - 1) - ((sep.size - 1) - header.size) / 2 - header.size - 2) + sep_y + "\n" + sep if !header.nil?
-  rows.each{ |r|
-    if r == :sep
-      table << sep
-    else
-      r.each_with_index{ |s, i|
-        table << sep_y + " " + (s.is_a?(Numeric) ? (s.is_a?(Integer) ? s : "%.3f" % s).to_s.rjust(widths[i], " ") : s.to_s.ljust(widths[i], " ")) + " "
-      }
-      table << sep_y + "\n"
-    end
-  }
-  table << sep
-  return table
-end
-
 def send_help2(event)
   cols = 3
 
@@ -2053,9 +2031,11 @@ def send_gold_check(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
   event << "List of potentially incorrect mappack scores:"
-  event << format_block(MappackScore.gold_check.map{ |s|
-    "#{s.id} by #{s.player.name} in #{s.highscoreable.name}"
-  }.join("\n"))
+  rows = []
+  MappackScore.gold_check.each{ |s|
+    rows << [s.highscoreable.name, s.player.name, s.id]
+  }
+  event << format_block(make_table(rows))
 end
 
 
@@ -2081,6 +2061,11 @@ end
 
 # Print outte and overall memory usage
 def send_meminfo(event)
+  if !$linux
+    event << "Sorry, this function requires a Linux system"
+    return
+  end
+
   mem = `ps -p #{Process.pid} -o rss=`.to_i / 1024.0
   total = meminfo['MemTotal']
   available = meminfo['MemAvailable']
@@ -2111,6 +2096,7 @@ def respond_special(event)
   send_meminfo(event)            if cmd == 'meminfo'
   send_restart(event)            if cmd == 'restart'
   send_test(event)               if cmd == 'test'
+  send_gold_check(event)         if cmd == 'gold_check'
 rescue RuntimeError => e
   event << e
 rescue => e
