@@ -49,8 +49,7 @@ Eddy's TODO list for inne:
   * Use framecount and gold fields from archives table, rather than computing it again
   * Implement for episodes and stories
 - "percent" for table
-- fix hc replays in db (I'm only saving the first 25, but deaths are included)
-- hc cleanliness and others
+- HC functions (cleanest...)
 - maybe modify function 'nav' from 'HighScore' module to allow for arbitrary offsets, and have some special sign to denote 'first' and 'last'
 - modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names, check LOG_SQL to minimize queries
 - add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
@@ -65,7 +64,6 @@ Eddy's TODO list for inne:
 - Send message if the command was not understood, i.e., if no function was executed, but not in DM's. We can do this by having a flag that each function sets to true when it's executed, and then check it at the end. We can also use this flag to prevent executing 2 functions on the same command, which means we could also control the flow by changing the order of the function calls at the bottom.
 - Migrate the scores table to using integer scores (in frames), like the others.
 - Delete the functions in threads.rb that are duplicated (send_channel_screenshot, send_channel_diff, the manual sending of scores for lotd...) and use a call to the normal ones (a new parameter might be required or something)
-- Code episode & story screenshots for mappack
 - Cleanliness for mappacks
 - Dual 0ths (both hs and sr 0ths), and dual ownages
 - Use get_process_mem to track outte's memory usage in a thread, and send warning to Discord when it gets too high (e.g., when over a certain threshold with respect to the total memory, which for portability, we could also get dynamically). Restart process when it gets over a certain threshold. Code this ourselves for Linux only, instead of using those gems actually.

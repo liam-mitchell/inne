@@ -394,10 +394,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   end
 
   # Add cleanliness if it's an episode
-  if h.is_a?(Episode)
-    clean = round_score(h.cleanliness[1])
-    res << "The cleanliness of this episode 0th is %.3f (%df)." % [clean, (60 * clean).round]
-  end
+  res << send_clean_one(event, true) if (h.is_a?(Episodish) || h.is_a?(Storyish)) && board != 'gm'
 
   # Send response or return it
   if ret
@@ -684,6 +681,43 @@ def send_cleanliness(event)
   tabs = tabs.empty? ? 'All ' : format_tabs(tabs)
   event << "#{tabs} #{clean ? 'cleanest' : 'dirtiest'} episodes #{format_time}:".squish
   event << format_block(list)
+end
+
+# Returns the cleanliness of a single episode or story 0th
+def send_clean_one(event, ret = false)
+  # Parse params
+  msg = event.content
+  h = parse_level_or_episode(msg, mappack: true)
+  raise "Cleanliness is an episode/story-specific function!" if h.is_a?(Levelish)
+  board = parse_board(msg, 'hs')
+  raise "Sorry, G-- cleanlinesses aren't available yet." if board == 'gm'
+  raise "Only highscore mode is available for Metanet levels for now." if !h.mappack? && board != 'hs'
+  rank = !ret ? parse_range(msg)[0] : 0
+
+  # Compute cleanliness
+  clean = h.cleanliness(rank, board)
+  clean_round = round_score(clean)
+  fmt = clean.is_a?(Integer) ? '%df' : '%.3f (%df)'
+  args = clean.is_a?(Integer) ? [clean_round] : [clean_round, (60 * clean_round).round]
+  res = "The cleanliness of #{h.name}'s #{format_board(board)} #{rank.ordinalize} is #{fmt % args}."
+
+  # Return immediately if we're using this function auxiliary
+  return res if ret
+
+  # Compute extra info for the dedicated function
+  event << res
+
+  clean_round = clean_round.to_f / 5
+  fmt = clean.is_a?(Integer) ? '%.1ff' : '%.3f (%.1ff)'
+  args = clean.is_a?(Integer) ? [clean_round] : [clean_round, 60 * clean_round]
+  event << "Average per-#{h.episode? ? 'level' : 'episode'} cleanliness of #{fmt % args}."
+
+  if h.story?
+    clean_round = clean_round.to_f / 5
+    fmt = clean.is_a?(Integer) ? '%.1ff' : '%.3f (%.1ff)'
+    args = clean.is_a?(Integer) ? [clean_round] : [clean_round, 60 * clean_round]
+    event << "Average per-level cleanliness of #{fmt % args}."
+  end
 end
 
 # Returns a list of episode ownages, i.e., episodes where the same player
@@ -2154,6 +2188,7 @@ def respond(event)
   return send_level_id(event)       if msg =~ /\blevel id\b/i
   return send_analysis(event)       if msg =~ /analysis/i
   return send_splits(event)         if msg =~ /\bsplits\b/i
+  return send_clean_one(event)      if msg =~ /cleanliness/i
   return identify(event)            if msg =~ /my name is/i
   return add_steam_id(event)        if msg =~ /my steam id is/i
   return add_display_name(event)    if msg =~ /my display name is/i
@@ -2176,8 +2211,8 @@ def respond(event)
   return thanks(event)              if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
   return dump(event)                if msg =~ /\bdump\b/i
 
+  # If we get to this point, no command was executed
   event << "Sorry, I didn't understand your command."
-
 rescue RuntimeError => e
   # Exceptions raised in here are user error, indicating that we couldn't
   # figure out what they were asking for, so send the error message out

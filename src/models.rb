@@ -765,6 +765,22 @@ module Highscoreable
     ret
   end
 
+  def mappack?
+    self.is_a?(MappackHighscoreable)
+  end
+
+  def level?
+    self.is_a?(Levelish)
+  end
+
+  def episode?
+    self.is_a?(Episodish)
+  end
+
+  def story?
+    self.is_a?(Storyish)
+  end
+
   # Arguments are unused, but they're necessary to be compatible with the corresponding
   # function in MappackHighscoreable
   def leaderboard(*args, **kwargs)
@@ -995,12 +1011,25 @@ module Episodish
     "#{name.remove('MET-')}"
   end
 
-  def cleanliness(rank = 0)
-    [
-      name,
-      Score.where(highscoreable: levels, rank: 0).sum(:score) - scores[rank].score - 360,
-      scores[rank].player.name
-    ]
+  def cleanliness(rank = 0, board = 'hs')
+    klass  = !mappack? ? Score : MappackScore
+    rfield = !mappack? ? 'rank' : "rank_#{board}"
+    sfield = !mappack? ? 'score' : "score_#{board}"
+    scale  = mappack? && board == 'hs' ? 60.0 : 1.0
+    offset = !mappack? || board == 'hs' ? 4 * 90.0 : 0.0
+
+    level_scores = klass.where(highscoreable: levels, rfield => 0).sum(sfield) rescue nil
+    episode_score = scores.find_by(rfield => rank)[sfield] rescue nil
+    raise "No #{rank.ordinalize} #{format_board(board)} score found in this leaderboard." if level_scores.nil? || episode_score.nil?
+    diff = (level_scores - episode_score).abs / scale - offset
+    diff = diff.to_i if mappack? && board != 'hs'
+
+    diff
+  rescue RuntimeError
+    raise
+  rescue => e
+    lex(e, "Failed to compute cleanliness of episode #{self.name}")
+    nil
   end
 
   def ownage
@@ -1030,6 +1059,7 @@ class Episode < ActiveRecord::Base
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
   has_many :levels
+  belongs_to :story
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   def self.cleanliness(tabs, rank = 0)
@@ -1096,6 +1126,31 @@ module Storyish
   def format_name
     "#{name.remove('MET-')}"
   end
+
+  def levels
+    episodes.map{ |e| e.levels }.flatten
+  end
+
+  def cleanliness(rank = 0, board = 'hs')
+    klass  = !mappack? ? Score : MappackScore
+    rfield = !mappack? ? 'rank' : "rank_#{board}"
+    sfield = !mappack? ? 'score' : "score_#{board}"
+    scale  = mappack? && board == 'hs' ? 60.0 : 1.0
+    offset = !mappack? || board == 'hs' ? 24 * 90.0 : 0.0
+
+    level_scores = klass.where(highscoreable: levels, rfield => 0).sum(sfield) rescue nil
+    story_score = scores.find_by(rfield => rank)[sfield] rescue nil
+    raise "No #{rank.ordinalize} #{format_board(board)} score found in this leaderboard." if level_scores.nil? || story_score.nil?
+    diff = (level_scores - story_score).abs / scale - offset
+    diff = diff.to_i if mappack? && board != 'hs'
+
+    diff
+  rescue RuntimeError
+    raise
+  rescue => e
+    lex(e, "Failed to compute cleanliness of episode #{self.name}")
+    nil
+  end
 end
 
 class Story < ActiveRecord::Base
@@ -1104,6 +1159,7 @@ class Story < ActiveRecord::Base
   include Storyish
   has_many :scores, ->{ order(:rank) }, as: :highscoreable
   has_many :videos, as: :highscoreable
+  has_many :episodes
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 end
 

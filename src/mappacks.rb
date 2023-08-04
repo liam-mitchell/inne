@@ -1777,7 +1777,7 @@ class MappackScore < ActiveRecord::Base
     count = entries.size
 
     entries.each_with_index{ |s, i|
-      print("Checking gold in score #{i + 1} / #{count}...".ljust(80, ' ') + "\r")
+      dbg("Checking gold in mappack score #{i + 1} / #{count}...", newline: false, pad: true)
       scores << s if !s.verify_gold
     }
 
