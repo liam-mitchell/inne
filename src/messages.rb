@@ -1910,13 +1910,7 @@ def send_mappack_patch(event)
   highscoreable = parse_level_or_episode(msg, mappack: true) if !id
   player = parse_player('for ' + flags[:p], nil, false, true, true) if !id
   score = parse_score(flags[:s])
-  MappackScore.patch_score(id, highscoreable, player, score)
-  if id.nil?
-    event << "Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}."
-  else
-    s = MappackScore.find(id)
-    event << "Patched #{s.player.name}'s score (#{s.id}) in #{s.highscoreable.name} to #{"%.3f" % score}."
-  end
+  event << MappackScore.patch_score(id, highscoreable, player, score)
 end
 
 def send_mappack_info(event)
@@ -2032,8 +2026,11 @@ def send_gold_check(event)
   flags = parse_flags(msg)
   event << "List of potentially incorrect mappack scores:"
   rows = []
+  rows << ['Level', 'Player', 'ID', 'Current', 'Alive']
+  rows << :sep
   MappackScore.gold_check.each{ |s|
-    rows << [s.highscoreable.name, s.player.name, s.id]
+    alive = s.rank_hs.nil? ? (s.rank_sr.nil? ? 'None' : 'SR') : (s.rank_sr.nil? ? 'HS' : 'Both')
+    rows << [s.highscoreable.name, s.player.name, s.id, s.score_hs / 60.0, alive]
   }
   event << format_block(make_table(rows))
 end

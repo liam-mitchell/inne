@@ -1726,6 +1726,7 @@ class MappackScore < ActiveRecord::Base
     raise "That score is incompatible with the framecount" if !MappackScore.verify_gold(gold) && type[:name] != 'Story'
 
     # Change score
+    old_score = s.score_hs.to_f / 60.0
     s.update(score_hs: new_score, gold: gold.round)
 
     # Update player's ranks
@@ -1735,7 +1736,7 @@ class MappackScore < ActiveRecord::Base
 
     # Update global ranks
     highscoreable.update_ranks('hs')
-    succ("Patched #{player.name}'s score in #{highscoreable.name} to #{"%.3f" % score}")
+    succ("Patched #{player.name}'s score (#{s.id}) in #{highscoreable.name} from #{"%.3f" % old_score} to #{"%.3f" % score}")
   rescue => e
     lex(e, 'Failed to patch score')
     nil
@@ -1779,7 +1780,7 @@ class MappackScore < ActiveRecord::Base
       print("Checking gold in score #{i + 1} / #{count}...".ljust(80, ' ') + "\r")
       scores << s if !s.verify_gold
     }
-    
+
     scores.sort_by{ |s| [s.highscoreable_type, s.highscoreable_id, s.player.name] }
   end
 
