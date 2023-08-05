@@ -47,9 +47,8 @@ Eddy's TODO list for inne:
 - Histograms of userlevels played by ID (perhaps also chart anything, e.g. 0ths, top10s, parse_range)
 - Analysis:
   * Use framecount and gold fields from archives table, rather than computing it again
-  * Implement for episodes and stories
+  * Implement for episodes and stories and userlevels and mappacks
 - "percent" for table
-- HC functions (cleanest...)
 - maybe modify function 'nav' from 'HighScore' module to allow for arbitrary offsets, and have some special sign to denote 'first' and 'last'
 - modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names, check LOG_SQL to minimize queries
 - add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
@@ -61,7 +60,6 @@ Eddy's TODO list for inne:
 - Have all people tied in rankings have the same rank, with hyphens. Show slightly over 20 if tied at the bottom, up to another limit, like 25.
 - In order to sort ties, rather than alphabetical, use chronological. For simplicity, use date of most recent 0th, rather than the whole history.
 - Fix random userlevel function, the new send_userlevel_individual approach broke it.
-- Send message if the command was not understood, i.e., if no function was executed, but not in DM's. We can do this by having a flag that each function sets to true when it's executed, and then check it at the end. We can also use this flag to prevent executing 2 functions on the same command, which means we could also control the flow by changing the order of the function calls at the bottom.
 - Migrate the scores table to using integer scores (in frames), like the others.
 - Delete the functions in threads.rb that are duplicated (send_channel_screenshot, send_channel_diff, the manual sending of scores for lotd...) and use a call to the normal ones (a new parameter might be required or something)
 - Cleanliness for mappacks
@@ -72,6 +70,7 @@ Eddy's TODO list for inne:
 - Across-mappacks rankings and stuff
 - TASes in outte, perhaps add to CLE too (scores around mine?)
 - Migrate Metanet hs scores to integer frames rather than float seconds (both scores and archives)
+- String distance for player/author names, and maybe even outte commands
 
 \\ ------------------------ mappacker -----------------------
 
@@ -92,14 +91,15 @@ Eddy's TODO list for inne:
 - Upload zipped nprofile and perform stats (e.g. graphs with svg-graph)
 - Allow multiple nprofiles to perform cumulative stats (e.g. attempts or times)
 
+\\ ------------------------ HC ------------------------
+
+- Maxed and maxable
+
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.
 - Create a custom palette that best fits the image.
 - Dithering.
-
-\\ ------------------------ Current ------------------------
-- Improve help (add command list, add help menu for each command).
 
 \\ ------------------------ Userlevels ------------------------
 
