@@ -6,14 +6,14 @@
 # ////// Dependencies and pre-requirements:                                    #
 #                                                                              #
 #   - MySQL 5.7 (NOT 8.0+). Use utf8mb4 for both encoding and collation,       #
-#     either server- wide or at least for outte's database. I recommend to use #
+#     either server-wide or at least for outte's database. I recommend to use  #
 #     the my.cnf configuration file provided in ./util/my.cnf                  #
 #                                                                              #
 #   - Ruby 2.7, to maximize compatibility. If you have a more recent version   #
 #     you want to maintain, I recommend to install rbenv and use it to manage  #
 #     multiple simultaneous Ruby versions in your environment.                 #
 #                                                                              #
-#     To ensure you have the latest versions of all the gems (libraries)       #
+#     To ensure you have the correct version of all the gems (libraries)       #
 #     required by outte, install the bundler gem and then run "bundle install" #
 #                                                                              #
 # ////// Optional dependencies:                                                #
@@ -32,20 +32,24 @@
 #     the production bot.                                                      #
 #                                                                              #
 # 1)  Set up the following environment variables:                              #
-#         DISCORD_CLIENT - Discord's application client ID for your bot.       #
-#         DISCORD_TOKEN  - Discord's application token / secret for your bot.  #
+#         * DISCORD_CLIENT : Discord's application client ID for your bot.     #
+#         * DISCORD_TOKEN  : Discord's application secret for your bot.        #
 #                                                                              #
 #     Optionally, set up the following environment variables:                  #
 #                                                                              #
 #     If you want Twitch integration, to fetch new N++-related streams:        #
-#         TWITCH_CLIENT - Client ID for your Twitch app.                       #
-#         TWITCH_SECRET - Secret for your Twitch app.                          #
+#         * TWITCH_CLIENT : Client ID for your Twitch app.                     #
+#         * TWITCH_SECRET : Secret for your Twitch app.                        #
 #     Alternatively, toggle the UPDATE_TWITCH off.                             #
 #                                                                              #
 #     If you have a secondary bot for development:                             #
-#         DISCORD_CLIENT_TEST - Same as DISCORD_CLIENT but for your test bot.  #
-#         DISCORD_TOKEN_TEST  - Same as DISCORD_TOKEN but for your test bot.   #
+#         * DISCORD_CLIENT_TEST : Same as DISCORD_CLIENT for your test bot.    #
+#         * DISCORD_TOKEN_TEST  : Same as DISCORD_TOKEN for your test bot.     #
 #     Alternatively, never toggle the TEST constant on.                        #
+#                                                                              #
+#     If you want the security hash integrity checks for score submission:     #
+#         * NPP_HASH : Secret password used by N++, contact Eddy for it.       #
+#     Alternatively, toggle INTEGRITY_CHECKS off.                              #
 #                                                                              #
 # 2)  Configure the database environment in ./db/config.yml, by either:        #
 #       - Setting up the "outte" environment, or                               #
