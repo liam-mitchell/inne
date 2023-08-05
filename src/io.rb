@@ -76,9 +76,9 @@ def parse_type(msg, type = nil, multiple = false, initial = false, default = nil
 
   # If it's not correct, then parse message
   ret = []
-  multiple ? ret << Level   : (return Level)   if !!msg[/level/i] || !!msg[/lotd/i]
-  multiple ? ret << Episode : (return Episode) if !!msg[/episode/i] || !!msg[/eotw/i]
-  multiple ? ret << Story   : (return Story)   if !!msg[/\bstory\b/i] || !!msg[/\bstories\b/i] || !!msg[/\bcolumn/i] || !!msg[/hard\s*core/i] || !!msg[/\bhc\b/i] || !!msg[/cotm/i]
+  multiple ? ret << Level   : (return Level)   if !!msg[/\blevels?\b/i] || !!msg[/lotd/i]
+  multiple ? ret << Episode : (return Episode) if !!msg[/\bepisodes?\b/i] || !!msg[/eotw/i]
+  multiple ? ret << Story   : (return Story)   if !!msg[/\bstory\b/i] || !!msg[/\bstories\b/i] || !!msg[/\bcolumn?\b/i] || !!msg[/\bhard\s*core\b/i] || !!msg[/\bhc\b/i] || !!msg[/cotm/i]
 
   if multiple
     # If still empty (and initial), push default types
@@ -444,7 +444,7 @@ end
 # Parse a mappack from a message, we try 4 methods:
 # 1) The first word of the message, by mappack name
 # 2) A quoted term, by name
-# 3) At the using, using "for ...", by name
+# 3) At the end, using "for ...", by name
 # 4) Anywhere, using the 3 letter mappack code
 # The second parameter specifies the behaviour when the mappack is not found
 def parse_mappack(msg, rais = false)

@@ -71,6 +71,7 @@ Eddy's TODO list for inne:
 - Package outte as a gem
 - Across-mappacks rankings and stuff
 - TASes in outte, perhaps add to CLE too (scores around mine?)
+- Migrate Metanet hs scores to integer frames rather than float seconds (both scores and archives)
 
 \\ ------------------------ mappacker -----------------------
 
@@ -84,6 +85,13 @@ Eddy's TODO list for inne:
 - Try using Python itself, rather than Ruby's wrapper, to see if it's quicker
 - Try optimizing it in C altogether
 - Animate
+
+\\ ------------------------ nprofile ------------------------
+
+- Create an nprofile module / class to handle different functionality
+- Upload zipped nprofile and perform stats (e.g. graphs with svg-graph)
+- Allow multiple nprofiles to perform cumulative stats (e.g. attempts or times)
+
 
 \\ ------------------------ Art ------------------------
 - Use different objects for different colors.

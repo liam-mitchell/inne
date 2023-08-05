@@ -445,7 +445,7 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
   date = dates[new_index] || 0
 
   # Format response
-  str = "Navigating high scores for #{scores.format_name}:\n"
+  str = "Navigating highscores for #{scores.format_name}:\n"
   str += format_block(Archive.format_scores(Archive.scores(scores, date), Archive.zeroths(scores, date))) rescue ""
   str += "*Warning: Navigating scores does not update them.*"
 
@@ -571,7 +571,7 @@ def send_stats(event)
   maxes   = [Level, Episode, Story].map{ |t| find_max(:rank, t, tabs) }
   maxes   = "Max:       %4d  %4d    %4d   %4d" % maxes.unshift(maxes[0] + maxes[1])
   tabs    = tabs.empty? ? "" : " in the #{format_tabs(tabs)} #{tabs.length == 1 ? 'tab' : 'tabs'}"
-  msg1    = "Player high score counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}\n#{maxes}"
+  msg1    = "Player highscore counts for #{player.print_name}#{tabs}:\n```        Overall Level Episode Column\n\t#{totals}\n#{overall}\n#{maxes}"
   msg2    = "#{histogram}```"
 
   # Send response (careful, it can go over the char limit)
@@ -667,20 +667,45 @@ end
 # episode 0th and the sum of the level 0ths
 def send_cleanliness(event)
   # Parse message parameters
-  msg   = event.content
-  tabs  = parse_tabs(msg)
-  clean = !!msg[/cleanest/i]
-
+  msg     = event.content
+  type    = parse_type(msg, nil, false, false, 'episode')
+  tabs    = parse_tabs(msg)
+  rank    = parse_range(msg)[0]
+  board   = parse_board(msg, 'hs')
+  mappack = parse_mappack(msg)
+  full    = parse_full(msg)
+  clean   = !!msg[/cleanest/i]
+  raise "Cleanliness is only available for episodes or stories." if type == Level
+  raise "Cleanliness is only supported for highscore or speedrun mode." if !['hs', 'sr'].include?(board)
+  raise "Metanet only supports highscore mode for now." if mappack.nil? && board != 'hs'
+  
   # Retrieve episodes and cleanliness
-  list = Episode.cleanliness(tabs).sort_by{ |e| (clean ? e[1] : -e[1]) }.take(NUM_ENTRIES)
+  list = Highscoreable.cleanliness(type, tabs, rank, mappack, board)
+                      .sort_by{ |e| (clean ? e[1] : -e[1]) }
+  list = list.take(NUM_ENTRIES) if !full
+  size = list.size
+  fmt  = list[0][1].is_a?(Integer) ? 'd' : '.3f'
   pad1 = list.map{ |e| e[0].length }.max
-  pad2 = list.map{ |e| e[1].to_i.to_s.length + 4 }.max
-  list = list.map{ |e| "#{"%#{pad1}s" % e[0]} - #{"%#{pad2}.3f" % e[1]} - #{e[2]}" }.join("\n")
+  pad2 = list.map{ |e| e[1].to_i.to_s.length + (fmt == 'd' ? 0 : 4) }.max
+  list = list.map{ |e| "#{"%#{pad1}s" % e[0]} - #{"%#{pad2}#{fmt}" % e[1]} - #{e[2]}" }.join("\n")
 
   # Format response
-  tabs = tabs.empty? ? 'All ' : format_tabs(tabs)
-  event << "#{tabs} #{clean ? 'cleanest' : 'dirtiest'} episodes #{format_time}:".squish
-  event << format_block(list)
+  code    = mappack ? "_#{mappack.code}" : ''
+  file    = "#{clean}_#{board}#{code}_#{format_type(type)}.txt"
+  tabs    = tabs.empty? ? 'All ' : format_tabs(tabs)
+  clean   = clean ? 'cleanest' : 'dirtiest'
+  board   = format_board(board)
+  mappack = format_mappack(mappack)
+  header  = "#{tabs} #{clean} #{board} episodes #{mappack} #{format_time}:".squish
+
+  # Send response
+  event << header
+  size > NUM_ENTRIES ? send_file(event, list, file) : event << format_block(list)
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Messages: Error computing cleanlinesses')
+  event << 'Error computing cleanlinesses.'
 end
 
 # Returns the cleanliness of a single episode or story 0th
@@ -691,7 +716,7 @@ def send_clean_one(event, ret = false)
   raise "Cleanliness is an episode/story-specific function!" if h.is_a?(Levelish)
   board = parse_board(msg, 'hs')
   raise "Sorry, G-- cleanlinesses aren't available yet." if board == 'gm'
-  raise "Only highscore mode is available for Metanet levels for now." if !h.mappack? && board != 'hs'
+  raise "Only highscore mode is available for Metanet levels for now." if !h.is_mappack? && board != 'hs'
   rank = !ret ? parse_range(msg)[0] : 0
 
   # Compute cleanliness
@@ -710,9 +735,9 @@ def send_clean_one(event, ret = false)
   clean_round = clean_round.to_f / 5
   fmt = clean.is_a?(Integer) ? '%.1ff' : '%.3f (%.1ff)'
   args = clean.is_a?(Integer) ? [clean_round] : [clean_round, 60 * clean_round]
-  event << "Average per-#{h.episode? ? 'level' : 'episode'} cleanliness of #{fmt % args}."
+  event << "Average per-#{h.is_episode? ? 'level' : 'episode'} cleanliness of #{fmt % args}."
 
-  if h.story?
+  if h.is_story?
     clean_round = clean_round.to_f / 5
     fmt = clean.is_a?(Integer) ? '%.1ff' : '%.3f (%.1ff)'
     args = clean.is_a?(Integer) ? [clean_round] : [clean_round, 60 * clean_round]
@@ -1519,6 +1544,12 @@ def add_display_name(event)
     user.player.update(display_name: name)
     event << "Great, from now on #{user.playername} will show up as #{name}."
   end
+rescue RuntimeError
+  raise
+rescue => e
+  err = 'Error changing display name'
+  lex(e, err)
+  event << err
 end
 
 def set_default_palette(event)

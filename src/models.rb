@@ -765,19 +765,60 @@ module Highscoreable
     ret
   end
 
-  def mappack?
+  # Returns episodes or stories sorted by cleanliness
+  def self.cleanliness(type, tabs, rank = 0, mappack = nil, board = 'hs')
+    # Integrity checks
+    raise "Attempted to compute cleanliness of level" if type.include?(Levelish)
+    raise "Attempted to compute non-hs/sr cleanliness" if !['hs', 'sr'].include?(board)
+
+    # Setup params
+    type   = type.to_s
+    table  = type.downcase.pluralize
+    table  = table.prepend('mappack_') if mappack
+    count  = type == 'Episode' ? 5 : 25
+    type   = type.prepend('Mappack') if mappack
+    rfield = !mappack ? 'rank' : "rank_#{board}"
+    sfield = !mappack ? 'score' : "score_#{board}"
+    sfield += " / 60" if mappack && board == 'hs'
+    offset = board == 'hs' ? 90 * (count - 1) : 0
+
+    # Begin queries
+    bench(:start) if BENCHMARK
+    query = !mappack ? Score : MappackScore.where(mappack: mappack)
+    query = !tabs.empty? ? query.where(tab: tabs) : query
+
+    # Fetch level 0th sums
+    lvls = query.where(highscoreable_type: mappack ? 'MappackLevel' : 'Level', rfield => 0)
+                .joins("INNER JOIN #{table} ON #{table}.id = highscoreable_id DIV #{count}")
+                .group("highscoreable_id DIV #{count}")
+                .sum(sfield)
+
+    # Fetch episode/story 0th scores and compute cleanliness
+    ret = query.where(highscoreable_type: type, rfield => rank)
+               .joins("INNER JOIN #{table} ON #{table}.id = highscoreable_id")
+               .joins('INNER JOIN players ON players.id = player_id')
+               .pluck("#{table}.id", "#{table}.name", sfield, 'IF(display_name IS NULL, players.name, display_name)')
+               .map{ |id, e, s, p| [e, round_score((lvls[id] - s).abs - offset), p] }
+    bench(:step) if BENCHMARK
+    ret
+  rescue => e
+    lex(e, 'Failed to compute cleanlinesses')
+    nil
+  end
+
+  def is_mappack?
     self.is_a?(MappackHighscoreable)
   end
 
-  def level?
+  def is_level?
     self.is_a?(Levelish)
   end
 
-  def episode?
+  def is_episode?
     self.is_a?(Episodish)
   end
 
-  def story?
+  def is_story?
     self.is_a?(Storyish)
   end
 
@@ -974,6 +1015,10 @@ module Levelish
     self.is_a?(Level) ? MappackLevel.find_by(id: id) : self
   end
 
+  def story
+    self.episode.story
+  end
+
   def format_name
     "#{longname} (#{name.remove('MET-')})"
   end
@@ -1002,6 +1047,7 @@ end
 
 # Implemented by Episode and MappackEpisode
 module Episodish
+
   # Return the Map object (containing map data), if it exists
   def map
     self.is_a?(Episode) ? MappackEpisode.find_by(id: id) : self
@@ -1012,17 +1058,17 @@ module Episodish
   end
 
   def cleanliness(rank = 0, board = 'hs')
-    klass  = !mappack? ? Score : MappackScore
-    rfield = !mappack? ? 'rank' : "rank_#{board}"
-    sfield = !mappack? ? 'score' : "score_#{board}"
-    scale  = mappack? && board == 'hs' ? 60.0 : 1.0
-    offset = !mappack? || board == 'hs' ? 4 * 90.0 : 0.0
+    klass  = !is_mappack? ? Score : MappackScore
+    rfield = !is_mappack? ? 'rank' : "rank_#{board}"
+    sfield = !is_mappack? ? 'score' : "score_#{board}"
+    scale  = is_mappack? && board == 'hs' ? 60.0 : 1.0
+    offset = !is_mappack? || board == 'hs' ? 4 * 90.0 : 0.0
 
     level_scores = klass.where(highscoreable: levels, rfield => 0).sum(sfield) rescue nil
     episode_score = scores.find_by(rfield => rank)[sfield] rescue nil
     raise "No #{rank.ordinalize} #{format_board(board)} score found in this leaderboard." if level_scores.nil? || episode_score.nil?
     diff = (level_scores - episode_score).abs / scale - offset
-    diff = diff.to_i if mappack? && board != 'hs'
+    diff = diff.to_i if is_mappack? && board != 'hs'
 
     diff
   rescue RuntimeError
@@ -1061,26 +1107,6 @@ class Episode < ActiveRecord::Base
   has_many :levels
   belongs_to :story
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
-
-  def self.cleanliness(tabs, rank = 0)
-    bench(:start) if BENCHMARK
-    query = !tabs.empty? ? Score.where(tab: tabs) : Score
-    # retrieve level 0th sums
-    lvls = query.where(highscoreable_type: 'Level', rank: 0)
-                .joins('INNER JOIN levels ON levels.id = scores.highscoreable_id')
-                .group('levels.episode_id')
-                .sum(:score)
-    # retrieve episode names
-    epis = self.pluck(:id, :name).to_h
-    # retrieve episode 0th scores
-    ret = query.where(highscoreable_type: 'Episode', rank: 0)
-               .joins('INNER JOIN episodes ON episodes.id = scores.highscoreable_id')
-               .joins('INNER JOIN players ON players.id = scores.player_id')
-               .pluck('episodes.id', 'scores.score', 'players.name')
-               .map{ |e, s, n| [epis[e], round_score(lvls[e] - s - 360), n] }
-    bench(:step) if BENCHMARK
-    ret
-  end
 
   def self.ownages(tabs)
     bench(:start) if BENCHMARK
@@ -1132,17 +1158,17 @@ module Storyish
   end
 
   def cleanliness(rank = 0, board = 'hs')
-    klass  = !mappack? ? Score : MappackScore
-    rfield = !mappack? ? 'rank' : "rank_#{board}"
-    sfield = !mappack? ? 'score' : "score_#{board}"
-    scale  = mappack? && board == 'hs' ? 60.0 : 1.0
-    offset = !mappack? || board == 'hs' ? 24 * 90.0 : 0.0
+    klass  = !is_mappack? ? Score : MappackScore
+    rfield = !is_mappack? ? 'rank' : "rank_#{board}"
+    sfield = !is_mappack? ? 'score' : "score_#{board}"
+    scale  = is_mappack? && board == 'hs' ? 60.0 : 1.0
+    offset = !is_mappack? || board == 'hs' ? 24 * 90.0 : 0.0
 
     level_scores = klass.where(highscoreable: levels, rfield => 0).sum(sfield) rescue nil
     story_score = scores.find_by(rfield => rank)[sfield] rescue nil
     raise "No #{rank.ordinalize} #{format_board(board)} score found in this leaderboard." if level_scores.nil? || story_score.nil?
     diff = (level_scores - story_score).abs / scale - offset
-    diff = diff.to_i if mappack? && board != 'hs'
+    diff = diff.to_i if is_mappack? && board != 'hs'
 
     diff
   rescue RuntimeError

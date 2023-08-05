@@ -707,22 +707,22 @@ end
 # Start all the tasks in this file in independent threads
 def start_threads
   $threads = []
-  $threads << Thread.new { monitor_memory }            if $linux
-  $threads << Thread.new { Cuse::on }                  if SOCKET && CUSE_SOCKET && !DO_NOTHING
-  $threads << Thread.new { Cle::on }                   if SOCKET && CLE_SOCKET && !DO_NOTHING
-  $threads << Thread.new { update_status }             if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-  $threads << Thread.new { update_twitch }             if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
-  $threads << Thread.new { start_high_scores }         if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_demos }               if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_level_of_the_day }    # No checks here because they're done individually there
-  $threads << Thread.new { start_userlevel_scores }    if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { update_all_userlevels }     if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { monitor_memory            } if $linux
+  $threads << Thread.new { Cuse::on                  } if SOCKET && CUSE_SOCKET && !DO_NOTHING
+  $threads << Thread.new { Cle::on                   } if SOCKET && CLE_SOCKET && !DO_NOTHING
+  $threads << Thread.new { update_status             } if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
+  $threads << Thread.new { update_twitch             } if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
+  $threads << Thread.new { start_high_scores         } if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_demos               } if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_level_of_the_day    } # No checks here because they're done individually there
+  $threads << Thread.new { start_userlevel_scores    } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { update_all_userlevels     } if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_userlevel_tabs }      if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_report }              if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_userlevel_report }    if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { potato }                    if POTATO && !DO_NOTHING
-  $threads << Thread.new { sleep }
+  $threads << Thread.new { start_userlevel_tabs      } if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_report              } if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_userlevel_report    } if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { potato                    } if POTATO && !DO_NOTHING
+  $threads << Thread.new { sleep                     }
 end
 
 def block_threads
