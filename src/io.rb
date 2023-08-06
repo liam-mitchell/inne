@@ -137,7 +137,7 @@ def parse_player_explicit(name, playerClass = Player)
   player = playerClass.where.not(metanet_id: nil).find_by(name: name) rescue nil
   player = Player.joins('INNER JOIN player_aliases ON players.id = player_aliases.player_id')
                  .where(["player_aliases.alias = ?", name])
-                 .take rescue nil if player.nil?
+                 .take rescue nil if player.nil? && playerClass == Player
   raise "#{name} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad..." if player.nil?
   player
 end
@@ -253,7 +253,7 @@ def parse_videos(msg)
   videos = videos.where(challenge_code: code) unless code.nil?
 
   raise "That level doesn't have any videos!" if highscoreable.videos.empty?
-  raise "I couldn't find any videos matching that request! Are you looking for one of these videos?\n```#{highscoreable.videos.map(&:format_description).join("\n")}```" if videos.empty?
+  raise "I couldn't find any videos matching that request! Are you looking for one of these videos?\n#{format_block(highscoreable.videos.map(&:format_description).join("\n"))}" if videos.empty?
   return videos
 end
 
@@ -370,7 +370,7 @@ def parse_level_or_episode(msg, partial: false, array: false, mappack: false)
     end
   end
 
-  raise "I couldn't find any level, episode or story by the name `#{str}` :(" if ret.nil? || ret.is_a?(Array) && ret[1].empty?
+  raise "I couldn't find any level, episode or story by the name #{verbatim(str)}." if ret.nil? || ret.is_a?(Array) && ret[1].empty?
   ret = ["Single match found for #{name}", [ret]] if !ret.is_a?(Array) && array
   ret
 rescue RuntimeError
@@ -396,7 +396,7 @@ def search_level(msg)
         list = Level.all.pluck(:name, :longname)
         matches = string_distance_list_mixed(name, list)
         ret = [
-          "No matches found for `#{name}`. Did you mean...",
+          "No matches found for #{verbatim(name)}. Did you mean...",
           matches.map{ |m| Level.find_by(name: m[0]) }
         ]
     end
@@ -694,11 +694,20 @@ end
 
 # Parse a userlevel from a message by looking for a title or an ID, as well as
 # an author or author ID, optionally.
-def parse_userlevel(msg)
+def parse_userlevel(msg, userlevel = nil)
   # --- PARSE message elements
 
   title, author, msg = parse_title_and_author(msg, true)
   author = UserlevelAuthor.parse(author)
+  if userlevel
+    return {
+      query:  userlevel,
+      msg:    '',
+      count:  1,
+      title:  userlevel.title.to_s,
+      author: userlevel.author.name.to_s
+    }
+  end
 
   # --- FETCH userlevel(s)
   empty = {
@@ -766,7 +775,7 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
         ret[:palette] = matches.first 
         return ret
       end
-      raise "Multiple matches found for palette `#{ret[:palette]}`#{matches.size > 10 ? " (#{matches.size} matches, showing 10)" : ''}:\n#{format_block(matches.take(10).join("\n"))}" if matches.size > 0
+      raise "Multiple matches found for palette #{verbatim(ret[:palette])}#{matches.size > 10 ? " (#{matches.size} matches, showing 10)" : ''}:\n#{format_block(matches.take(10).join("\n"))}" if matches.size > 0
 
       # Look for approximate matches
       matches = string_distance_list_mixed(ret[:palette].downcase, themes.each_with_index.to_a.map(&:reverse)).map(&:last)
@@ -774,11 +783,11 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
         ret[:palette] = matches.first
         return ret
       end
-      raise "No matches found for palette `#{ret[:palette]}`. Did you mean...\n#{format_block(matches.join("\n"))}" if matches.size > 0
+      raise "No matches found for palette #{verbatim(ret[:palette])}. Did you mean...\n#{format_block(matches.join("\n"))}" if matches.size > 0
 
       # No matches whatsoever
-      raise "No good matches for palette `#{ret[:palette]}` found." if !fallback
-      err = "No good matches for palette `#{ret[:palette]}` found, using `#{Userlevel::DEFAULT_PALETTE}`."
+      raise "No good matches for palette #{verbatim(ret[:palette])} found." if !fallback
+      err = "No good matches for palette #{verbatim(ret[:palette])} found, using default instead."
       pal = ''
     end
   end
@@ -993,7 +1002,7 @@ def format_type(type, empty = false)
 end
 
 def format_mappack(mappack)
-  !mappack.nil? ? "for `#{mappack.name}` mappack" : ''
+  !mappack.nil? ? "for #{verbatim(mappack.name)} mappack" : ''
 end
 
 def format_ties(ties)
@@ -1082,10 +1091,16 @@ def format_level_matches(event, msg, page, initial, matches, func)
   end
 end
 
+# Header of outte messages
+def format_header(header, close: ':', upcase: true)
+  header.squish!
+  header[0] = header[0].upcase if upcase
+  header += close
+end
+
 def tmp_filename(name)
   File.join(Dir.tmpdir, name)
 end
-
 
 def tmp_file(data, name = 'result.txt', binary: false, file: true)
   tmpfile = tmp_filename(name)

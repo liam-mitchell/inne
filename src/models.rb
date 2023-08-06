@@ -1500,6 +1500,23 @@ class Score < ActiveRecord::Base
     end
   end
 
+  def self.holders
+    bench(:start) if BENCHMARK
+    sql = %{
+      SELECT min, COUNT(min) FROM (
+        SELECT MIN(rank) AS min FROM scores GROUP BY player_id
+      ) AS t GROUP BY min;
+    }.gsub(/\s+/, ' ').strip
+    res = ActiveRecord::Base.connection.execute(sql).to_h
+    ranks = { 0 => res[0] }
+    (1..19).each{ |r| ranks[r] = ranks[r - 1] + res[r] }
+    bench(:step) if BENCHMARK
+    ranks
+  rescue => e
+    lex(e, 'Failed to compute unique holders')
+    nil
+  end
+
   def spread
     highscoreable.scores.find_by(rank: 0).score - score
   end
@@ -2670,7 +2687,7 @@ module Twitch extend self
   def post_stream(stream)
     game = GAME_IDS.invert[stream['game_id'].to_i]
     return if !game
-    $content_channel.send_message("#{ping(TWITCH_ROLE)} `#{stream['user_name']}` started streaming **#{game}**! `#{stream['title']}` <https://www.twitch.tv/#{stream['user_login']}>")
+    $content_channel.send_message("#{ping(TWITCH_ROLE)} #{verbatim(stream['user_name'])} started streaming **#{game}**! #{verbatim(stream['title'])} <https://www.twitch.tv/#{stream['user_login']}>")
     return if !$twitch_streams.key?(game)
     s = $twitch_streams[game].select{ |s| s['user_id'] ==  stream['user_id'] }.first
     s['posted'] = Time.now.to_i if !s.nil?

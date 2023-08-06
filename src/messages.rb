@@ -66,7 +66,10 @@ def send_list(event, file = true, missing = false, third = false)
   count    = list.count
 
   # Print count and possibly export list in file
-  event << "#{player.print_name} #{missing ? 'is missing' : 'has'} #{count} out of #{max} #{cool} #{tied} #{boardB} #{tabs} #{type} #{range}#{star} #{sing} scores #{ties} #{mappackB}".squish + '.'
+  header = "#{player.print_name} #{missing ? 'is missing' : 'has'} "
+  header << "#{count} out of #{max} #{cool} #{tied} #{boardB} #{tabs} #{type} "
+  header << "#{range}#{star} #{sing} scores #{ties} #{mappackB}"
+  event << format_header(header, close: '.')
   if file
     list = list.map{ |s| high ? s : format_list_score(s, !mappack.nil? ? board : nil) }.join("\n")
     if count <= 20
@@ -214,13 +217,13 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   max     = format_max(max, rtype == 'average_rank' || board == 'sr' && rtype == 'score')
   mappack = format_mappack(mappack)
   board   = !mappack.nil? ? format_board(board) : ''
-  play    = !play.empty? ? ' without ' + play.map{ |p| "`#{p.print_name}`" }.to_sentence  : ''
-  header  = "#{full} #{cool} #{maxed} #{maxable} #{board} #{tabs} #{typeB} #{range}#{star} #{rtypeB} #{mappack} #{max} #{play} #{format_time}:".squish
-  header[0] = header[0].upcase
-  header  = "Rankings - #{header}".squish
+  play    = !play.empty? ? ' without ' + play.map{ |p| "#{verbatim(p.print_name)}" }.to_sentence : ''
+  header  = "#{full} #{cool} #{maxed} #{maxable} #{board} #{tabs} #{typeB}"
+  header << " #{range}#{star} #{rtypeB} #{mappack} #{max} #{play} #{format_time}"
+  header  = "Rankings - #{format_header(header)}"
   # --- Rankings
   if rank.empty?
-    rank = '```These boards are empty!```'
+    rank = format_block('These boards are empty!')
   else
     rank = rank[pag[:offset]...pag[:offset] + pagesize] if full.empty? || nav
     pad1 = rank.map{ |r| r[1].to_i.to_s.length }.max
@@ -292,7 +295,7 @@ def send_tally(event)
   range = format_range(range[0], range[1])
 
   # Send response
-  event << "#{tabs} #{type} #{cool} #{range}#{star} scores #{ties} tally #{format_time}:".squish
+  event << format_header("#{tabs} #{type} #{cool} #{range}#{star} scores #{ties} tally #{format_time}")
   !list || count <= 20 ? event << format_block(block) : send_file(event, block, 'tally.txt')
 end
 
@@ -482,7 +485,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   raise "Failed to generate screenshot!" if screenshot.nil?
     
   # Send response
-  str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette `#{hash[:palette]}`:"
+  str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette #{verbatim(hash[:palette])}:"
   file = screenshot
   return [file, str] if ret
   if nav
@@ -640,22 +643,15 @@ def send_maxable(event, maxed = false)
   }.join("\n")
 
   # Format response
-  type   = format_type(type).downcase
-  tabs   = tabs.empty? ? 'All' : format_tabs(tabs)
+  type   = format_type(type).downcase.pluralize
+  tabs   = format_tabs(tabs)
   player = player.nil? ? '' : 'without ' + player.print_name
   if maxed
-    footer = "There's a total of #{count} potentially maxed #{type.pluralize}."
-    event << "#{tabs} potentially maxed #{type.pluralize} #{format_time} #{player}".squish + ":"
-    if count <= 20
-      event << format_block(ties) + footer
-    else
-      send_file(event, ties, "maxed-#{type.pluralize}.txt", false)
-      event << footer
-    end
+    event << format_header("There are #{count} #{tabs} potentially maxed #{type} #{format_time} #{player}")
   else
-    event << "#{tabs} #{type.pluralize} with the most ties for 0th #{format_time} #{player}".squish + ":"
-    event << format_block(ties)
+    event << format_header("#{tabs} #{type} with the most ties for 0th #{format_time} #{player}")
   end
+  count <= NUM_ENTRIES ? event << format_block(ties) : send_file(event, ties, "maxed-#{tabs}-#{type}.txt")
 end
 
 # Returns a list of maxed levels/episodes, i.e., with 20 ties for 0th
@@ -1109,7 +1105,7 @@ def send_diff(event)
   since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
 
   diff = current.format_difference(old_scores)
-  event << "Score changes on #{current.format_name} since #{since}:\n```#{diff}```"
+  event << "Score changes on #{current.format_name} since #{since}:\n#{format_block(diff)}"
 end
 
 # Auxiliar function used by the demo analysis method
@@ -1384,8 +1380,8 @@ def update_ntrace(event)
 
   # Fetch attached file and perform integrity checks
   files = event.message.attachments.select{ |a| a.filename == 'ntrace.py' }
-  raise "File `ntrace.py` not found in the attachments" if files.size == 0
-  raise "Too many `ntrace.py` files found in the attachments" if files.size > 1
+  raise "File #{verbatim('ntrace.py')} not found in the attachments" if files.size == 0
+  raise "Too many #{verbatim('ntrace.py')} files found in the attachments" if files.size > 1
   file = files.first
   raise "The ntrace file provided is too big" if file.size > 1024 ** 2
   res = Net::HTTP.get(URI(file.url))
@@ -1558,7 +1554,7 @@ def set_default_palette(event)
   raise "You need to specify a palette name." if palette.nil?
   palette = parse_palette(event, pal: palette, fallback: false)[:palette]
   user = User.find_or_create_by(username: event.user.name).update(palette: palette)
-  event << "Great, from now on your default screenshot palette will be `#{palette}`."
+  event << "Great, from now on your default screenshot palette will be #{verbatim(palette)}."
 rescue RuntimeError
   raise
 rescue => e
@@ -1647,7 +1643,7 @@ def send_help2(event)
   row = commands[0..col_s - 1]
   (1..cols - 1).each{ |i| row.zip(commands[i * col_s .. (i + 1) * col_s - 1]) }
   rows = row.flatten.compact.each_slice(cols).to_a
-  event << "```#{make_table(rows, "COMMAND LIST")}```"
+  event << format_block(make_table(rows, "COMMAND LIST"))
   
 end
 
@@ -1750,22 +1746,19 @@ def send_videos(event)
   if default.length == 1
     # Send immediately, so the video link shows above the additional videos
     event.send_message(default[0].url)
-    event << "\nI have some challenge videos for this level as well! You can ask for them by being more specific about challenges and authors, by saying '<challenge> video for <level>' or 'video for <level> by <author>':\n```#{descriptions}```"
+    event << "\nI have some challenge videos for this level as well! You can ask for them by being more specific about challenges and authors, by saying '<challenge> video for <level>' or 'video for <level> by <author>':\n#{format_block(descriptions)}"
     return
   end
 
-  event << "You're going to have to be more specific! I know about the following videos for this level:\n```#{descriptions}```"
+  event << "You're going to have to be more specific! I know about the following videos for this level:\n#{format_block(descriptions)}"
 end
 
 def send_unique_holders(event)
-  ranks = [0] * 20
-  Player.all.each { |p|
-    rank = p.scores.map(&:rank).min
-    next if rank.nil?
-    (rank..19).each{ |r| ranks[r] += 1 }
-  }
-  ranks = ranks.each_with_index.map{ |r, i| "#{"%-2d" % i} - #{"%-3d" % r}" }.join("\n")
-  event << "Number of unique highscore holders by rank at #{Time.now.to_s}\n```#{ranks}```"
+  ranks = Score.holders
+  ranks = ranks.map{ |r, c| "#{"%02d" % r} - #{"%3d" % c}" }.join("\n")
+  event << "Number of unique highscore holders by rank at #{Time.now.to_s}\n#{format_block(ranks)}"
+rescue => e
+  lex(e, 'Failed to compute unique holders')
 end
 
 # TODO: Implement a way to query next pages if there are more than 20 streams.
@@ -1984,8 +1977,8 @@ def send_mappack_info(event)
   mappack = parse_mappack(flags[:mappack], true)
   mappack.set_info(flags[:name], flags[:author], flags[:date])
   flags.delete(:mappack)
-  flags = flags.map{ |k, v| "#{k} to `#{v}`" unless v.nil? }.compact.to_sentence
-  event << "Set mappack `#{mappack.code}` #{flags}."
+  flags = flags.map{ |k, v| "#{k} to #{verbatim(v)}" unless v.nil? }.compact.to_sentence
+  event << "Set mappack #{verbatim(mappack.code)} #{flags}."
 end
 
 def send_ul_csv(event)

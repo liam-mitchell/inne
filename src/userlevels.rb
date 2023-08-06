@@ -707,6 +707,7 @@ end
 def format_userlevels(maps, page)
   return "" if maps.size == 0
   maps = Userlevel::serial(maps)
+
   # Calculate required column padding
   max_padding = {n: 6, id: 6, title: 30, author: 16, date: 16, favs: 4 }
   min_padding = {n: 1, id: 2, title:  5, author:  6, date: 16, favs: 2 }
@@ -839,8 +840,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # message, so it needs to have a format compatible with the regex we use to
   # parse commands. I know, genius implementation.
   output = "Browsing #{USERLEVEL_TABS[cat][:name]}#{mode == -1 ? '' : ' ' + MODES[mode]} maps"
-  output += " by `#{author.name[0...64]}`" if !author.nil?
-  output += " for `#{search[0...64]}`" if !search.empty?
+  output += " by #{verbatim(author.name[0...64])}" if !author.nil?
+  output += " for #{verbatim(search[0...64])}" if !search.empty?
   output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}."
   output += format_userlevels(maps, pag[:page])
   output += count == 0 ? "\nNo results :shrug:" : "Total results: **#{count}**."
@@ -883,8 +884,8 @@ end
 #   3) If there are multiple matches, execute the browse function
 # We pass in the msg (instead of extracting it from the event)
 # because it might've been modified by the caller function already.
-def send_userlevel_individual(event, msg, &block)
-  map = parse_userlevel(msg)
+def send_userlevel_individual(event, msg, userlevel = nil, &block)
+  map = parse_userlevel(msg, userlevel)
   case map[:count]
   when 0
     event << map[:msg]
@@ -906,9 +907,11 @@ def send_userlevel_download(event)
   msg = clean_userlevel_message(event.content)
   msg = remove_word_first(msg, 'download')
   send_userlevel_individual(event, msg){ |map|
-    output = "Downloading userlevel `" + map[:query].title + "` with ID `" + map[:query].id.to_s
-    output += "` by `" + (map[:query].author.name.empty? ? " " : map[:query].author.name) + "` on " + Time.now.to_s + ".\n"
-    event << output
+    output = "Downloading userlevel #{verbatim(map[:query].title)} "
+    output += "with ID #{verbatim(map[:query].id.to_s)} "
+    output += "by #{verbatim(map[:query].author.name)} "
+    output += "on #{Time.now.to_s}"
+    event << format_header(output)
     send_file(event, map[:query].dump_level, map[:query].id.to_s, true)
   }
 end
@@ -920,10 +923,13 @@ def send_userlevel_screenshot(event, userlevel = nil)
   event.content.sub!(/\w*screenshot\w*/i, '')
   event.content.squish!
   h = parse_palette(event)
-  send_userlevel_individual(event, h[:msg]){ |map|
-    output = "#{h[:error]}Screenshot of userlevel `#{map[:query].title}` with ID `#{map[:query].id.to_s}"
-    output += "` by `#{map[:query].author.name.empty? ? " " : map[:query].author.name}` using palette `"
-    output += "#{h[:palette]}` on #{Time.now.to_s}.\n"
+  send_userlevel_individual(event, h[:msg], userlevel){ |map|
+    output = "#{h[:error]}"
+    output += "Screenshot for userlevel #{verbatim(map[:query].title)} "
+    output += "with ID #{verbatim(map[:query].id.to_s)} "
+    output += "by #{verbatim(map[:query].author.name)} "
+    output += "using palette #{verbatim(h[:palette])} "
+    output += " on #{Time.now.to_s}:"
     event << output
     send_file(event, map[:query].screenshot(h[:palette]), map[:query].id.to_s + ".png", true)
   }
@@ -933,9 +939,11 @@ def send_userlevel_scores(event)
   msg = clean_userlevel_message(event.content)
   msg = remove_word_first(msg, 'scores')
   send_userlevel_individual(event, msg){ |map|
-    output = "Scores of userlevel `" + map[:query].title + "` with ID `" + map[:query].id.to_s
-    output += "` by `" + (map[:query].author.name.empty? ? " " : map[:query].author.name) + "` on " + Time.now.to_s + ".\n"
-    event << output + "```" + map[:query].print_scores + "```"
+    output = "Scores for userlevel #{verbatim(map[:query].title)} "
+    output += "with ID #{verbatim(map[:query].id.to_s)} "
+    output += "by #{verbatim(map[:query].author.name)} "
+    output += "on #{Time.now.to_s}"
+    event << format_header(output) + format_block(map[:query].print_scores)
   }
 end
 
@@ -986,17 +994,17 @@ def send_userlevel_rankings(event)
   score_padding = top.map{ |r| r[1].to_i.to_s.length }.max
   name_padding  = top.map{ |r| r[0].name.length }.max
   format        = top[0][1].is_a?(Integer) ? "%#{score_padding}d" : "%#{score_padding + 4}.3f"
-  top           = "```" + top.each_with_index
-                  .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}" }
-                  .join("\n") + "```"
+  top           = format_block(top.each_with_index.map{ |p, i|
+                    "#{"%02d" % i}: #{format_string(p[0].name, name_padding)} - #{format % p[1]}"
+                  }.join("\n"))
   top.concat("Minimum number of scores required: #{Userlevel.find_min(global, nil, author_id)}") if msg =~ /average/i
 
   full   = format_full(full)
   global = format_global(global)
   ties   = format_ties(ties)
-  header = "Userlevel #{full} #{global} #{type} #{ties} rankings #{format_author(author)} #{format_max(max)} #{format_time}:".squish
+  header = "Userlevel #{full} #{global} #{type} #{ties} rankings #{format_author(author)} #{format_max(max)} #{format_time}"
   length = header.length + top.length
-  event << header
+  event << format_header(header)
   length < DISCORD_CHAR_LIMIT ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
 end
 
@@ -1056,7 +1064,9 @@ def send_userlevel_count(event)
   ties = format_ties(ties)
   tied = format_tied(tied)
   full = format_global(full)
-  event << "#{player.name} has #{count} out of #{max} #{full} #{tied} #{header} scores #{ties} #{format_author(author)}.".squish
+
+  header = "#{player.name} has #{count} out of #{max} #{full} #{tied} #{header} scores #{ties} #{format_author(author)}"
+  event << format_header(header, close: '.')
 end
 
 def send_userlevel_points(event)
@@ -1070,7 +1080,9 @@ def send_userlevel_points(event)
   points    = player.points(ties, full, nil, author_id)
   ties      = format_ties(ties)
   full      = format_global(full)
-  event << "#{player.name} has #{points} out of #{max} #{full} userlevel points #{ties} #{format_author(author)}.".squish
+
+  header = "#{player.name} has #{points} out of #{max} #{full} userlevel points #{ties} #{format_author(author)}"
+  event << format_header(header, close: '.')
 end
 
 def send_userlevel_avg_points(event)
@@ -1083,7 +1095,9 @@ def send_userlevel_avg_points(event)
   avg       = player.avg_points(ties, full, nil, author_id)
   ties      = format_ties(ties)
   full      = format_global(full)
-  event << "#{player.name} has #{"%.3f" % avg} average #{full} userlevel points #{ties} #{format_author(author)}.".squish
+
+  header = "#{player.name} has #{"%.3f" % avg} average #{full} userlevel points #{ties} #{format_author(author)}"
+  event << format_header(header, close: '.')
 end
 
 def send_userlevel_avg_rank(event)
@@ -1096,7 +1110,9 @@ def send_userlevel_avg_rank(event)
   avg       = 20 - player.avg_points(ties, full, nil, author_id)
   ties      = format_ties(ties)
   full      = format_global(full)
-  event << "#{player.name} has an average #{"%.3f" % avg} #{full} userlevel rank #{ties} #{format_author(author)}.".squish
+
+  header = "#{player.name} has an average #{"%.3f" % avg} #{full} userlevel rank #{ties} #{format_author(author)}"
+  event << format_header(header, close: '.')
 end
 
 def send_userlevel_total_score(event)
@@ -1108,7 +1124,9 @@ def send_userlevel_total_score(event)
   max       = Userlevel.find_max(:score, full, nil, author_id)
   score     = player.total_score(full, nil, author_id)
   full      = format_global(full)
-  event << "#{player.name}'s total #{full} userlevel score is #{"%.3f" % score} out of #{"%.3f" % max} #{format_author(author)}.".squish
+
+  header = "#{player.name}'s total #{full} userlevel score is #{"%.3f" % score} out of #{"%.3f" % max} #{format_author(author)}"
+  event << format_header(header, close: '.')
 end
 
 def send_userlevel_avg_lead(event)
@@ -1121,7 +1139,9 @@ def send_userlevel_avg_lead(event)
   avg       = player.avg_lead(ties, full, nil, author_id)
   ties      = format_ties(ties)
   full      = format_global(full)
-  event << "#{player.name} has an average #{"%.3f" % avg} #{full} userlevel 0th lead #{ties} #{format_author(author)}.".squish
+
+  header = "#{player.name} has an average #{"%.3f" % avg} #{full} userlevel 0th lead #{ties} #{format_author(author)}"
+  event << format_header(header, close: '.')
 end
 
 def send_userlevel_list(event)
@@ -1168,8 +1188,8 @@ def send_userlevel_stats(event)
   overall = "Totals:    %5d" % counts.reduce(0){ |sum, c| sum += c[1] }
 
   full = format_global(full)
-  event << "#{full.capitalize} userlevels highscoring stats for #{player.name} #{format_author(author)} #{format_time}:".squish
-  event << "```          Scores\n\t#{totals}\n#{overall}\n#{histogram}```"
+  event << format_header("#{full.capitalize} userlevels highscoring stats for #{player.name} #{format_author(author)} #{format_time}")
+  event << format_block("          Scores\n\t#{totals}\n#{overall}\n#{histogram}")
 end
 
 def send_userlevel_spreads(event)
@@ -1190,7 +1210,7 @@ def send_userlevel_spreads(event)
   spread = small ? "smallest" : "largest"
   rank   = (n == 1 ? "1st" : (n == 2 ? "2nd" : (n == 3 ? "3rd" : "#{n}th")))
   full   = format_global(full)
-  event << "#{full.capitalize} userlevels #{!player.nil? ? "owned by #{player.name}" : ""} with the #{spread} spread between 0th and #{rank}:".squish
+  event << format_header("#{full.capitalize} userlevels #{!player.nil? ? "owned by #{player.name}" : ""} with the #{spread} spread between 0th and #{rank}")
   event << format_block(spreads)
 end
 
@@ -1207,10 +1227,9 @@ def send_userlevel_maxed(event)
   player = player.nil? ? "" : " without " + player.name
   full   = format_global(full)
   block  = "    ID - Author - Player\n#{ties.join("\n")}"
-  str = "Potentially maxed #{full} userlevels (with all scores tied for 0th) #{format_time} #{player} #{format_author(author)}:".squish
-  count <= 20 ? str += "```#{block}```" : send_file(event, block, "maxed-userlevels.txt", false)
-  str += "There's a total of #{count} potentially maxed userlevels."
-  event << str
+  header = "There are #{count} potentially maxed #{full} userlevels #{format_time} #{player} #{format_author(author)}"
+  event << format_header(header)
+  count <= 20 ? event << format_block(block) : send_file(event, block, "maxed-userlevels.txt", false)
 end
 
 def send_userlevel_maxable(event)
@@ -1223,14 +1242,14 @@ def send_userlevel_maxable(event)
                        .select { |s| s[1] < s[2] }
                        .sort_by { |s| -s[1] }
   count = ties.count
-  ties  = ties.take(NUM_ENTRIES)
-               .map { |s| "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}" }
+  ties  = ties.take(NUM_ENTRIES).map { |s|
+    "#{"%6s" % s[0].id} - #{"%4d" % s[1]} - #{"%6d" % s[0].author_id} - #{format_string(s[3])}"
+  }
   player = player.nil? ? "" : " without " + player.name
   full   = format_global(full)
-  str  = "#{full.capitalize} userlevels with the most ties for 0th #{format_time} #{player} #{format_author(author)}:".squish
-  str += "```    ID - Ties - Author - Player\n#{ties.join("\n")}```"
-  str += "There's a total of #{count} maxable userlevels."
-  event << str
+  header = "All #{count} #{full} userlevels with the most ties for 0th #{format_time} #{player} #{format_author(author)}"
+  event << format_header(header)
+  event << format_block("    ID - Ties - Author - Player\n#{ties.join("\n")}")
 end
 
 def send_random_userlevel(event)
@@ -1247,8 +1266,8 @@ def send_random_userlevel(event)
   maps = maps.sample(amount)  
 
   if amount > 1
-    event << "Random selection of #{amount} #{mode} #{format_global(full)} userlevels #{!author.nil? ? "by #{author.name}" : ""}:".squish
-    event << format_userlevels(maps, 0)
+    event << format_header("Random selection of #{amount} #{mode} #{format_global(full)} userlevels #{!author.nil? ? "by #{author.name}" : ""}")
+    event << format_userlevels(maps, 1)
   else
     send_userlevel_screenshot(event, maps.first)
   end
@@ -1259,7 +1278,6 @@ def send_userlevel_mapping_summary(event)
   msg       = event.content
   author    = UserlevelAuthor.parse(parse_userlevel_both(msg))
   author_id = !author.nil? ? author.id : nil
-  full      = parse_global(msg)
   mode      = parse_mode(msg, false, true)
 
   # Fetch userlevels
@@ -1269,32 +1287,32 @@ def send_userlevel_mapping_summary(event)
   count = maps.count
 
   # Perform summary
-  event << "Userlevel mapping summary#{" for #{author.name}" if !author.nil?}:```"
-  event << "Maps:           #{count}"
+  header = "Userlevel mapping summary#{" for #{author.name}" if !author.nil?}"
+  stats = "Maps:           #{count}\n"
   if author.nil?
     authors  = maps.distinct.count(:author_id)
     prolific = maps.group(:author_id).order("count(id) desc").count(:id).first
     popular  = maps.group(:author_id).order("sum(favs) desc").sum(:favs).first
     refined  = maps.group(:author_id).order("avg(favs) desc").average(:favs).first
-    event << "Authors:        #{authors}"
-    event << "Maps / author:  #{"%.3f" % (count.to_f / authors)}"
-    event << "Most maps:      #{prolific.last} (#{Userlevel.find_by(author_id: prolific.first).author.name})"
-    event << "Most ++'s:      #{popular.last} (#{Userlevel.find_by(author_id: popular.first).author.name})"
-    event << "Most avg ++'s:  #{"%.3f" % refined.last} (#{Userlevel.find_by(author_id: refined.first).author.name})"
+    stats << "Authors:        #{authors}\n"
+    stats << "Maps / author:  #{"%.3f" % (count.to_f / authors)}\n"
+    stats << "Most maps:      #{prolific.last} (#{Userlevel.find_by(author_id: prolific.first).author.name})\n"
+    stats << "Most ++'s:      #{popular.last} (#{Userlevel.find_by(author_id: popular.first).author.name})\n"
+    stats << "Most avg ++'s:  #{"%.3f" % refined.last} (#{Userlevel.find_by(author_id: refined.first).author.name})\n"
   end
   if !maps.empty?
     first = maps.order(:id).first
-    event << "First map:      #{first.date.strftime(DATE_FORMAT_OUTTE)} (#{first.id})"
+    stats << "First map:      #{first.date.strftime(DATE_FORMAT_OUTTE)} (#{first.id})\n"
     last = maps.order(id: :desc).first
-    event << "Last map:       #{last.date.strftime(DATE_FORMAT_OUTTE)} (#{last.id})"
+    stats << "Last map:       #{last.date.strftime(DATE_FORMAT_OUTTE)} (#{last.id})\n"
     best = maps.order(favs: :desc).first
-    event << "Most ++'ed map: #{best.favs} (#{best.id})"
+    stats << "Most ++'ed map: #{best.favs} (#{best.id})\n"
     sum = maps.sum(:favs).to_i
-    event << "Total ++'s:     #{sum}"
+    stats << "Total ++'s:     #{sum}\n"
     avg = sum.to_f / count
-    event << "Avg. ++'s:      #{"%.3f" % avg}"
+    stats << "Avg. ++'s:      #{"%.3f" % avg}\n"
   end
-  event << "```"
+  event << format_header(header) + format_block(stats)
 end
 
 def send_userlevel_highscoring_summary(event)
@@ -1323,7 +1341,8 @@ def send_userlevel_highscoring_summary(event)
   count_s = scores.count
 
   # Perform summary
-  event << "#{format_global(full).capitalize} userlevel highscoring summary #{format_author(author)} #{"for #{player.name}" if !player.nil?}:".squish + "```"
+  header = "#{format_global(full).capitalize} userlevel highscoring summary #{format_author(author)} #{"for #{player.name}" if !player.nil?}"
+  stats = ""
   if player.nil?
     min = full ? MIN_G_SCORES : MIN_U_SCORES
     scorers   = scores.distinct.count(:player_id)
@@ -1338,35 +1357,35 @@ def send_userlevel_highscoring_summary(event)
     maxables  = Userlevel.ties(nil, false, full, true, nil, author_id)
     tls   = scores.where(rank: 0).sum(:score).to_f / 60.0
     tls_p = highscore.last.to_f / 60.0
-    event << "Scored maps:      #{count_a}"
-    event << "Unscored maps:    #{count - count_a}"
-    event << "Scores:           #{count_s}"
-    event << "Players:          #{scorers}"
-    event << "Scores / map:     #{"%.3f" % (count_s.to_f / count)}"
-    event << "Scores / player:  #{"%.3f" % (count_s.to_f / scorers)}"
-    event << "Total score:      #{"%.3f" % tls}"
-    event << "Avg. score:       #{"%.3f" % (tls / count_a)}"
-    event << "Maxable maps:     #{maxables}"
-    event << "Maxed maps:       #{maxes}"
-    event << "Most Top20s:      #{prolific1.last} (#{UserlevelPlayer.find(prolific1.first).name})"
-    event << "Most Top10s:      #{prolific2.last} (#{UserlevelPlayer.find(prolific2.first).name})"
-    event << "Most Top5s:       #{prolific3.last} (#{UserlevelPlayer.find(prolific3.first).name})"
-    event << "Most 0ths:        #{prolific4.last} (#{UserlevelPlayer.find(prolific4.first).name})"
-    event << "Most total score: #{"%.3f" % tls_p} (#{UserlevelPlayer.find(highscore.first).name})"
-    event << "Most points:      #{manypoint.last} (#{UserlevelPlayer.find(manypoint.first).name})"
-    event << "Best avg rank:    #{averarank.last} (#{UserlevelPlayer.find(averarank.first).name})" rescue nil
+    stats << "Scored maps:      #{count_a}\n"
+    stats << "Unscored maps:    #{count - count_a}\n"
+    stats << "Scores:           #{count_s}\n"
+    stats << "Players:          #{scorers}\n"
+    stats << "Scores / map:     #{"%.3f" % (count_s.to_f / count)}\n"
+    stats << "Scores / player:  #{"%.3f" % (count_s.to_f / scorers)}\n"
+    stats << "Total score:      #{"%.3f" % tls}\n"
+    stats << "Avg. score:       #{"%.3f" % (tls / count_a)}\n"
+    stats << "Maxable maps:     #{maxables}\n"
+    stats << "Maxed maps:       #{maxes}\n"
+    stats << "Most Top20s:      #{prolific1.last} (#{UserlevelPlayer.find(prolific1.first).name})\n"
+    stats << "Most Top10s:      #{prolific2.last} (#{UserlevelPlayer.find(prolific2.first).name})\n"
+    stats << "Most Top5s:       #{prolific3.last} (#{UserlevelPlayer.find(prolific3.first).name})\n"
+    stats << "Most 0ths:        #{prolific4.last} (#{UserlevelPlayer.find(prolific4.first).name})\n"
+    stats << "Most total score: #{"%.3f" % tls_p} (#{UserlevelPlayer.find(highscore.first).name})\n"
+    stats << "Most points:      #{manypoint.last} (#{UserlevelPlayer.find(manypoint.first).name})\n"
+    stats << "Best avg rank:    #{averarank.last} (#{UserlevelPlayer.find(averarank.first).name})\n" rescue nil
   else
     tls = scores.sum(:score).to_f / 60.0
-    event << "Total Top20s: #{count_s}"
-    event << "Total Top10s: #{scores.where("rank <= 9").count}"
-    event << "Total Top5s:  #{scores.where("rank <= 4").count}"
-    event << "Total 0ths:   #{scores.where("rank = 0").count}"
-    event << "Total score:  #{"%.3f" % tls}"
-    event << "Avg. score:   #{"%.3f" % (tls / count_s)}"
-    event << "Total points: #{scores.sum("20 - rank")}"
-    event << "Avg. rank:    #{"%.3f" % scores.average(:rank)}"
+    stats << "Total Top20s: #{count_s}\n"
+    stats << "Total Top10s: #{scores.where("rank <= 9").count}\n"
+    stats << "Total Top5s:  #{scores.where("rank <= 4").count}\n"
+    stats << "Total 0ths:   #{scores.where("rank = 0").count}\n"
+    stats << "Total score:  #{"%.3f" % tls}\n"
+    stats << "Avg. score:   #{"%.3f" % (tls / count_s)}\n"
+    stats << "Total points: #{scores.sum("20 - rank")}\n"
+    stats << "Avg. rank:    #{"%.3f" % scores.average(:rank)}\n"
   end
-  event << "```"
+  event << format_header(header) + format_block(stats)
 end
 
 def send_userlevel_summary(event)

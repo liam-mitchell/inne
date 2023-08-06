@@ -169,7 +169,7 @@ def send_report
              .join(" ")
   sep = "-" * (pad.sum + pad.size + 5)
 
-  $channel.send_message("**Weekly highscoring report**:```#{header}\n#{sep}\n#{changes}```")
+  $channel.send_message("**Weekly highscoring report**:#{format_block([header, sep, changes].join("\n"))}")
   if LOG_REPORT
     log_text = log.sort_by{ |name, scores| name }.map{ |name, scores|
       scores.map{ |s|
@@ -259,8 +259,8 @@ def send_userlevel_report
                     .join("\n")
 
   $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
-  $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n```#{zeroes}```")
-  $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n```#{points}```")
+  $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n#{format_block(zeroes)}")
+  $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n#{format_block(points)}")
 
   $active_tasks[:userlevel_report] = false
   succ("Userlevel highscoring report sent")
@@ -595,11 +595,11 @@ def send_channel_next(type)
   screenshot = Map.screenshot(file: true, h: current.map) rescue nil
   caption += "\nThere was a problem generating the screenshot!" if screenshot.nil?
   $channel.send(caption, false, nil, screenshot.nil? ? [] : [screenshot])
-  $channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n```#{current.format_scores}```")
+  $channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n#{format_block(current.format_scores)}")
   old_scores = GlobalProperty.get_saved_scores(type)
   if !OFFLINE_STRICT && !last.nil? && !old_scores.nil?
     diff = last.format_difference(old_scores)
-    $channel.send("Score changes on #{last.format_name} since #{since}:\n```#{diff}```")
+    $channel.send("Score changes on #{last.format_name} since #{since}:\n#{format_block(diff)}")
   else
     $channel.send("Strict offline mode activated, not sending score differences.")
   end

@@ -748,6 +748,7 @@ module Map
       n = [coords.size, MAX_TRACES].min
       color_idx = OBJECTS[0][:pal]
       colors = n.times.map{ |i| ChunkyPNG::Color.to_hex(PALETTE[color_idx + n - 1 - i, palette_idx]) }
+      Matplotlib.use('agg')
       mpl = Matplotlib::Pyplot
       mpl.ioff
 
@@ -792,7 +793,7 @@ module Map
       # Plot legend
       n.times.each{ |i|
         break if texts[i].nil?
-        name, score = texts[i].split('-').map(&:strip).map(&:to_s)
+        name, score = texts[i].match(/(.*)-(.*)/).captures.map(&:strip)
         dx = UNITS * COLUMNS / 4.0
         ddx = UNITS / 2
         bx = UNITS / 4
@@ -847,12 +848,14 @@ module Map
       mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
       image = File.binread(fn)
       bench(:step, 'Trace save ') if BENCH_IMAGES
-      image
 
-      # Perform cleanup (commented because we do this in a fork anyway)
-      #mpl.cla
-      #mpl.clf
-      #mpl.close('all')
+      # Perform cleanup
+      mpl.cla
+      mpl.clf
+      mpl.close('all')
+
+      # Return
+      image
     end
   end
 
@@ -904,7 +907,7 @@ module Map
     names = scores.map{ |s| s.player.print_name }
     wrong_names = names.each_with_index.select{ |_, i| !valid[i] }.map(&:first)
     event << error.strip if !error.empty?
-    event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel `#{level.name}`" : level.name} in palette `#{palette}`:"
+    event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel #{verbatim(level.name)}" : level.name} in palette #{verbatim(palette)}:"
     texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')

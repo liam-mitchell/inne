@@ -59,7 +59,6 @@ Eddy's TODO list for inne:
 - CKC rankings weighed by the number of cool kids in each board
 - Have all people tied in rankings have the same rank, with hyphens. Show slightly over 20 if tied at the bottom, up to another limit, like 25.
 - In order to sort ties, rather than alphabetical, use chronological. For simplicity, use date of most recent 0th, rather than the whole history.
-- Fix random userlevel function, the new send_userlevel_individual approach broke it.
 - Migrate the scores table to using integer scores (in frames), like the others.
 - Delete the functions in threads.rb that are duplicated (send_channel_screenshot, send_channel_diff, the manual sending of scores for lotd...) and use a call to the normal ones (a new parameter might be required or something)
 - Cleanliness for mappacks
@@ -187,13 +186,9 @@ Analysis:
 - Add some backstory, like what happens when outte is asked about inne (murder?)
 - Add some more easter eggs, like a command that shows (or links) eddysipw, or a very small chance that a drone in a screenshot is dronexd or the ninja has eyes (see gofish meme).
 
-Avatar:
-- Ensure the random avatar can't repeat when faceswapping. In order to do so, we could save the current filename of the avatar in the GlobalProperties table of the database, and reject the current one before sampling the files in the avatar folder.
-- Maybe also store the date of the avatar change to avoid the cooldown.
-
 \\ ------------------------ General ------------------------
 
-- Tie breaker for rankings: Average rank, instead of random.
+- Tie breaker for rankings: Average rank, instead of alphabetical (benchmark).
 - Add coop and race for some functions, like screenshots
 - Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
