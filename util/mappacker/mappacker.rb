@@ -5,10 +5,11 @@ require 'win32/registry'
 require 'zip'
 
 # Mappack-specific constants
-MAPPACK = 'Classic'
-AUTHOR  = 'NateyPooPoo'
-NAME    = 'cla'
-FILES   = ['SI']
+MAPPACK   = 'Classic'
+AUTHOR    = 'NateyPooPoo'
+SIGNATURE = AUTHOR.dup
+NAME      = 'cla'
+FILES     = ['SI']
 
 # General constants
 TEST      = false
@@ -17,6 +18,8 @@ PORT      = 8126
 PROXY     = '45.32.150.168'
 LOCAL     = '127.0.0.1'
 TARGET    = "#{TEST ? LOCAL : PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
+METANET   = "Metanet Software"
+BY        = SIGN[0...METANET.length].ljust(METANET.length, "\x00")
 DIALOG    = true
 PAD       = 32
 CONTROLS  = false
@@ -281,6 +284,7 @@ end
 
 def change_texts(install = true)
   print "┣━ Changing texts#{install ? '' : ' back'}... ".ljust(PAD, ' ')
+
   # Read file
   fn = File.join(find_npp_folder(false), 'NPP', 'loc.txt')
   file = File.binread(fn) rescue nil
@@ -298,6 +302,25 @@ rescue
   nil
 end
 
+def change_author(install = true)
+  print "┣━ Changing author#{install ? ' back' : ''}... ".ljust(PAD, ' ')
+
+  # Read main library file
+  fn = find_npp_library(false)
+  file = File.binread(fn)
+
+  # Change author name
+  res = install ? file.gsub!(METANET, BY) : file.gsub!(BY, METANET)
+
+  # Save file
+  File.binwrite(fn, file)
+  puts !res.nil? ? "OK" : 'NO'
+rescue RuntimeError => e
+  log_exception(e, '')
+rescue => e
+  log_exception(e, "Failed to patch N++ files#{info ? ' for info' : ''}.")
+end
+
 def install
   print "\n┏━━━ Installing '#{MAPPACK}' N++ mappack\n┃\n"
   patch
@@ -305,6 +328,7 @@ def install
   change_texts(true)
   change_controls(true) if CONTROLS
   change_nprofile(true) if NPROFILE
+  change_author(true)
   puts "┃\n┗━━━ Installed '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Installed '#{MAPPACK}' N++ mappack successfully!")
 end
@@ -316,6 +340,7 @@ def uninstall
   change_texts(false)
   change_controls(false) if CONTROLS
   change_nprofile(false) if NPROFILE
+  change_author(false)
   puts "┃\n┗━━━ Uninstalled '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Uninstalled '#{MAPPACK}' N++ mappack successfully!")
 end
