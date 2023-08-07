@@ -1981,6 +1981,10 @@ def send_mappack_info(event)
   event << "Set mappack #{verbatim(mappack.code)} #{flags}."
 end
 
+def send_mappack_digest(event)
+  Mappack.digest
+end
+
 def send_ul_csv(event)
   send_file(event, Userlevel.dump_csv, 'userlevels.csv')
 end
@@ -2145,6 +2149,7 @@ def respond_special(event)
   send_mappack_seed(event)       if cmd == 'mappack_seed'
   send_mappack_patch(event)      if cmd == 'mappack_patch'
   send_mappack_info(event)       if cmd == 'mappack_info'
+  send_mappack_digest(event)     if cmd == 'mappack_digest'
   send_ul_csv(event)             if cmd == 'userlevel_csv'
   send_ul_plot(event)            if cmd == 'userlevel_plot'
   send_log_config(event)         if cmd == 'log'

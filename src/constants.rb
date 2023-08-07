@@ -100,17 +100,18 @@ LOG_DOWNLOAD_ERRORS = false # Too spammy if no Steam IDs are active
 # <------                        PATH VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-DIR_DB          = './db'
-DIR_MIGRATION   = "#{DIR_DB}/migrate"
-CONFIG          = "#{DIR_DB}/config.yml"
-DIR_MAPPACKS    = "#{DIR_DB}/mappacks"
+DIR_DB            = './db'
+DIR_MIGRATION     = "#{DIR_DB}/migrate"
+CONFIG            = "#{DIR_DB}/config.yml"
+DIR_MAPPACKS      = "#{DIR_DB}/mappacks"
+PATH_MAPPACK_INFO = "#{DIR_MAPPACKS}/digest"
 
-DIR_IMAGES      = './images'
-PATH_AVATARS    = "#{DIR_IMAGES}/avatars"
-PATH_PALETTES   = "#{DIR_IMAGES}/palette.png"
-PATH_OBJECTS    = "#{DIR_IMAGES}/object_layers"
-PATH_TILES      = "#{DIR_IMAGES}/tile_layers"
-PATH_BORDER     = "#{DIR_IMAGES}/b.png"
+DIR_IMAGES    = './images'
+PATH_AVATARS  = "#{DIR_IMAGES}/avatars"
+PATH_PALETTES = "#{DIR_IMAGES}/palette.png"
+PATH_OBJECTS  = "#{DIR_IMAGES}/object_layers"
+PATH_TILES    = "#{DIR_IMAGES}/tile_layers"
+PATH_BORDER   = "#{DIR_IMAGES}/b.png"
 
 DIR_LOGS        = './logs'
 PATH_LOG_FILE   = "#{DIR_LOGS}/log_outte"

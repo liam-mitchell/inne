@@ -958,8 +958,6 @@ class Mappack < ActiveRecord::Base
   has_many :mappack_stories
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
-  # TODO: Add botmaster command to add remaining details to a mappack (title,
-  #       authors, etc)
   # Parse all mappacks in the mappack directory into the database
   # Only reads the newly added mappacks, unless 'update' is true
   def self.seed(update = false)
@@ -972,13 +970,28 @@ class Mappack < ActiveRecord::Base
       id, code = d.split('_')
       mappack = Mappack.find_by(code: code)
       if mappack.nil?
-        Mappack.create(id: id, code: code).read
+        Mappack.create(id: id, code: code, version: 1).read
       elsif update
         mappack.read
       end
     }
+
+    digest
   rescue => e
     lex(e, "Error seeding mappacks to database")
+  end
+
+  # Update the digest file, which summarizes mappack info into a file
+  # that can be queried via the internet, containing
+  # mappack_id mappack_code mappack_version
+  # for each mappack, one per line
+  def self.digest
+    dig = Mappack.all.order(:id).pluck(:id, :code, :version).map{ |m|
+      m.join(' ') + "\n"
+    }.join
+    File.write(PATH_MAPPACK_INFO, dig)
+  rescue => e
+    lex(e, 'Failed to generate mappack digest file')
   end
 
   # TODO: Parse challenge files, in a separate function with its own command,
