@@ -1,5 +1,6 @@
 require 'byebug'
 require 'fileutils'
+require 'net/http'
 #require 'tk'
 require 'win32/registry'
 require 'zip'
@@ -258,6 +259,46 @@ rescue => e
   log_exception(e, "Failed to swap nprofile.")
 end
 
+def change_levels_online(install)
+  puts "ONLINE"
+  res = Net::HTTP.get_response(URI.parse(
+    "https://raw.githubusercontent.com/edelkas/inne/master/db/mappacks/digest"
+  ))
+  return nil if res.code.to_i != 200 || res.body.empty?
+
+  list = res.body.split("\n").map{ |m|
+    fields = m.split(' ')
+    {
+      id:      fields[0].to_i,
+      code:    fields[1],
+      version: fields[2].to_i
+    }
+  }
+  mappack = list.find{ |m| m[:code] == (install ? NAME : 'met') }
+  return nil if mappack.nil?
+
+  FILES.map{ |f|
+    res = Net::HTTP.get_response(URI.parse(
+      "https://raw.githubusercontent.com/edelkas/inne/master/db/mappacks/#{"%03d" % [mappack[:id]]}_#{mappack[:code]}/#{f}.txt"
+    ))
+    return nil if res.code.to_i != 200 || res.body.empty?
+    [f, res.body]
+  }.to_h
+rescue
+  return nil
+end
+
+def change_levels_locally(install)
+  puts "LOCAL"
+  tmp = $0[/(.*)\//, 1]
+  FILES.map{ |f|
+    fn = install ? File.join(tmp, "#{f}.txt") : File.join(tmp, "#{f}_original.txt")
+    [f, File.binread(fn)]
+  }
+rescue
+  return nil
+end
+
 def change_levels(install = true)
   print "┣━ Swapping map files#{install ? '' : ' back'}... ".ljust(PAD, ' ')
   # Find folder
@@ -265,10 +306,11 @@ def change_levels(install = true)
   raise "N++ levels folder not found" if !Dir.exist?(folder)
   
   # Change files
-  tmp = $0[/(.*)\//, 1]
+  files = change_levels_online(install)
+  files = change_levels_locally(install) if files.nil?
+  raise "Couldn't inject levels" if files.nil?
   FILES.each{ |f|
-    fn = install ? File.join(tmp, "#{f}.txt") : File.join(tmp, "#{f}_original.txt")
-    FileUtils.cp_r(fn, File.join(folder, "#{f}.txt"), remove_destination: true)
+    File.write(File.join(folder, "#{f}.txt"), files[f])
   }
 
   puts "OK"

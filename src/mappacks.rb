@@ -970,7 +970,7 @@ class Mappack < ActiveRecord::Base
       id, code = d.split('_')
       mappack = Mappack.find_by(code: code)
       if mappack.nil?
-        Mappack.create(id: id, code: code, version: 1).read
+        Mappack.create(id: id.to_i, code: code, version: 1).read
       elsif update
         mappack.read
       end
@@ -1001,7 +1001,7 @@ class Mappack < ActiveRecord::Base
   def read
     # Check for mappack directory
     log("Parsing mappack '#{code}'...")
-    dir = File.join(DIR_MAPPACKS, "#{id}_#{code}")
+    dir = File.join(DIR_MAPPACKS, "#{"%03d" % [id]}_#{code}")
     if !Dir.exist?(dir)
       err("Directory for mappack '#{code}' not found, not reading")
       return
