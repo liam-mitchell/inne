@@ -1664,9 +1664,9 @@ class Player < ActiveRecord::Base
     res = forward(req)
     invalid = res.nil? || res == INVALID_RESP
     raise 'Invalid response' if invalid && !LOCAL_LOGIN
+    locally = false
 
-    # Parse response and register player in database
-    if !invalid
+    if !invalid  # Parse server response and register player in database
       json = JSON.parse(res)
       Player.find_or_create_by(metanet_id: json['user_id'].to_i).update(name: json['name'].to_s)
       user = User.find_or_create_by(steam_id: json['steam_id'].to_s)
@@ -1675,20 +1675,64 @@ class Player < ActiveRecord::Base
         last_active: Time.now
       )
       user.update(username: json['name'].to_s) if user.username.nil?
-    else
-      id = req.query['user_id'].to_i
-      player = Player.find_by(metanet_id: id) rescue nil
-      user = User.where.not(steam_id: nil).find_by(playername: player.name) rescue nil
-      raise "Couldn't login locally" if player.nil? || user.nil?
-      json = { 'user_id' => id, 'steam_id' => user.steam_id, 'name' => player.name }
+    else         # If no response was received, attempt to log in locally
+      locally = true
+
+      # Parse any param we can find
+      params = CGI.parse(req.request_uri.query)
+      ids = [
+        (req.query['user_id'].to_i rescue 0),
+        (params['user_id'][0].to_i rescue 0)
+      ].uniq
+      ids.reject!{ |id| id <= 0 || id >= 10000000 }
+      steamid = params['steam_id'][0].to_s rescue ''
+      raise "Couldn't login player locally (no params)" if ids.empty? && steamid.empty?
+
+      # Try to locate player in the database based on those params
+      player = nil
+      ids.each{ |id|
+        player = Player.find_by(metanet_id: id) rescue nil
+        break if !player.nil?
+      }
+      user = User.find_by(steam_id: steamid) rescue nil
+
+      # Initialize response
+      json = {}
+
+      # Fill in fields
+      json['steam_id'] = steamid
+      if player
+        json['user_id'] = player.metanet_id
+        json['name'] = player.name
+        
+        if user.nil? && !steamid.empty?
+          user = User.create_by(steam_id: steamid)
+          user.update(playername: player.name, last_active: Time.now)
+        end
+      else
+        id = 0
+        name = ''
+        if !ids.empty?
+          id = ids[0]
+          name = "Player #{ids[0]}"
+          Player.create_by(metanet_id: id, name: name)
+        end
+        json['user_id'] = id
+        json['name'] = name
+
+        if user.nil? && !steamid.empty?
+          user = User.create_by(steam_id: steamid)
+          user.update(playername: name, last_active: Time.now)
+        end
+      end
       res = json.to_json
     end
 
     # Return the same response
-    dbg("#{json['name'].to_s} (#{json['user_id']}) logged in to #{mappack.to_s.upcase}")
+    dbg("#{json['name'].to_s} (#{json['user_id']}) logged in#{locally ? ' locally' : ''} to #{mappack.to_s.upcase}")
     res
   rescue => e
-    err('Failed to proxy login request')
+    lex(e, 'Failed to proxy login request')
     return nil
   end
 

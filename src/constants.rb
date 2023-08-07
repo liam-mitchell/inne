@@ -302,7 +302,7 @@ QUERY_LIMIT_HARD = 500  # Maximum number of queried userlevels per page
 PWD              = ENV['NPP_HASH']
 CLE_FORWARD      = true            # Forward unrelated requests to Metanet
 INTEGRITY_CHECKS = false           # Verity replay security hashes
-LOCAL_LOGIN      = false           # Try to login user ourselves if Metanet fails
+LOCAL_LOGIN      = true            # Try to login user ourselves if Metanet fails
 
 # <--------------------------------------------------------------------------->
 # <------                       GAME VARIABLES                          ------>

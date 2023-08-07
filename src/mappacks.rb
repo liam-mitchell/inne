@@ -91,7 +91,7 @@ module Map
   ROWS    = 23
   COLUMNS = 42
   UNITS   = 24               # Game units per tile
-  DIM     = 44               # Pixels per tile
+  DIM     = 44               # Pixels per tile at 1080p
   PPC     = 11               # Pixels per coordinate (1/4th tile)
   PPU     = DIM.to_f / UNITS # Pixels per unit
   WIDTH   = DIM * (COLUMNS + 2)
@@ -1404,7 +1404,7 @@ class MappackScore < ActiveRecord::Base
   def self.add(code, query, req = nil)
     # Parse player ID
     uid = query['user_id'].to_i
-    if uid == 0 || uid == -1
+    if uid <= 0 || uid >= 10000000
       warn("Invalid player (ID #{uid}) submitted a score")
       return
     end

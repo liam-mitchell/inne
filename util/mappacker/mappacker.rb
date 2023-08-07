@@ -19,7 +19,7 @@ PROXY     = '45.32.150.168'
 LOCAL     = '127.0.0.1'
 TARGET    = "#{TEST ? LOCAL : PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
 METANET   = "Metanet Software"
-BY        = SIGN[0...METANET.length].ljust(METANET.length, "\x00")
+BY        = SIGNATURE[0...METANET.length].ljust(METANET.length, "\x00")
 DIALOG    = true
 PAD       = 32
 CONTROLS  = false
@@ -303,7 +303,7 @@ rescue
 end
 
 def change_author(install = true)
-  print "┣━ Changing author#{install ? ' back' : ''}... ".ljust(PAD, ' ')
+  print "┣━ Changing author#{!install ? ' back' : ''}... ".ljust(PAD, ' ')
 
   # Read main library file
   fn = find_npp_library(false)
