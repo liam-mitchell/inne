@@ -1,2 +1,2 @@
 :: ocra --no-autoload --no-enc --windows --dll ruby_builtin_dlls\libssp-0.dll --dll ruby_builtin_dlls\libgmp-10.dll mappacker.rb
-ocra --no-autoload --no-enc --console --icon logo.ico mappacker.rb C.txt C_original.txt C2.txt C2_original.txt
+ocra --no-autoload --no-enc --console --icon logo.ico mappacker.rb SI.txt SI_original.txt S.txt S_original.txt Scodes.txt Scodes_original.txt SS.txt SS_original.txt SScodes.txt SScodes_original.txt nprofile.zip

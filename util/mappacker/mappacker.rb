@@ -280,7 +280,7 @@ def change_levels_online(install)
     "https://raw.githubusercontent.com/edelkas/inne/master/db/mappacks/digest"
   ))
   if res.code.to_i != 200 || res.body.empty?
-    puts 'NO'
+    puts 'NO1'
     return nil
   end
 
@@ -295,7 +295,7 @@ def change_levels_online(install)
   }
   mappack = list.find{ |m| m[:code] == (install ? NAME : 'met') }
   if mappack.nil?
-    puts 'NO'
+    puts 'NO2'
     return nil
   end
 
@@ -305,7 +305,7 @@ def change_levels_online(install)
       "https://raw.githubusercontent.com/edelkas/inne/master/db/mappacks/#{"%03d" % [mappack[:id]]}_#{mappack[:code]}/#{f}.txt"
     ))
     if res.code.to_i != 200 || res.body.empty?
-      puts 'NO'
+      puts 'NO3'
       return nil
     end
     [f, res.body]
@@ -314,7 +314,7 @@ def change_levels_online(install)
   puts 'OK'
   $target = ($target.strip + mappack[:version].to_s).ljust(HOST.length, "\x00")
   files
-rescue
+rescue => e
   puts 'NO'
   return nil
 end
@@ -341,7 +341,8 @@ def change_levels(install = true)
   raise "N++ levels folder not found" if !Dir.exist?(folder)
   
   # Change files
-  files = change_levels_online(install)
+  files = nil
+  files = change_levels_online(install) if false #install
   files = change_levels_locally(install) if files.nil?
   raise "Couldn't inject levels" if files.nil?
   FILES.each{ |f|
