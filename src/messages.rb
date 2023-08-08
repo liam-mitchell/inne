@@ -623,13 +623,17 @@ end
 # Return list of levels/episodes sorted by number of ties for 0th (desc)
 def send_maxable(event, maxed = false)
   # Parse message parameters
-  msg    = event.content
-  player = parse_player(msg, nil, false, true, false)
-  type   = parse_type(msg) || Level
-  tabs   = parse_tabs(msg)
+  msg     = event.content
+  player  = parse_player(msg, nil, false, true, false)
+  type    = parse_type(msg) || Level
+  tabs    = parse_tabs(msg)
+  mappack = parse_mappack(msg)
+  board   = parse_board(msg, 'hs')
+  raise "Metanet maps only have highscore mode for now." if !mappack && board != 'hs'
+  raise "This function is only available for highscore and speedrun modes for now." if !['hs', 'sr'].include?(board)
 
   # Retrieve maxed/maxable scores
-  ties   = Highscoreable.ties(type, tabs, player.nil? ? nil : player.id, maxed)
+  ties   = Highscoreable.ties(type, tabs, player.nil? ? nil : player.id, maxed, false, mappack, board)
   ties   = ties.take(NUM_ENTRIES) if !maxed
   pad1   = ties.map{ |s| s[0].length }.max
   pad2   = ties.map{ |s| s[1].to_s.length }.max
@@ -643,15 +647,22 @@ def send_maxable(event, maxed = false)
   }.join("\n")
 
   # Format response
-  type   = format_type(type).downcase.pluralize
-  tabs   = format_tabs(tabs)
-  player = player.nil? ? '' : 'without ' + player.print_name
+  type    = format_type(type).downcase
+  tabs    = format_tabs(tabs)
+  mappack = format_mappack(mappack)
+  board   = format_board(board).pluralize
+  player  = player.nil? ? '' : 'without ' + player.print_name
   if maxed
-    event << format_header("There are #{count} #{tabs} potentially maxed #{type} #{format_time} #{player}")
+    event << format_header("There are #{count} #{tabs} potentially maxed #{type} #{board} #{mappack} #{format_time} #{player}")
   else
-    event << format_header("#{tabs} #{type} with the most ties for 0th #{format_time} #{player}")
+    event << format_header("#{tabs} #{type} #{board} with the most ties for 0th #{mappack} #{format_time} #{player}")
   end
   count <= NUM_ENTRIES ? event << format_block(ties) : send_file(event, ties, "maxed-#{tabs}-#{type}.txt")
+rescue RuntimeError
+  raise
+rescue => e
+  lex(e, 'Failed to send maxables / maxes')
+  raise "Failed to compute maxables / maxes."
 end
 
 # Returns a list of maxed levels/episodes, i.e., with 20 ties for 0th

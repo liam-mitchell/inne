@@ -725,44 +725,67 @@ module Highscoreable
   # @par player_id: Exclude levels where the player already has a score
   # @par maxed:     Sort differently depending on whether we're interested in maxed or maxable
   # @par rank:      Return rankings of people with most scores in maxed / maxable levels
-  def self.ties(type, tabs, player_id = nil, maxed = nil, rank = false)
+  def self.ties(type, tabs, player_id = nil, maxed = nil, rank = false, mappack = nil, board = 'hs')
     type = ensure_type(type)
     bench(:start) if BENCHMARK
-    # retrieve most tied for 0th levels
-    ret = Score.where(highscoreable_type: type.to_s, tied_rank: 0)
-    ret = ret.where(tab: tabs) if !tabs.empty?
-    ret = ret.group(:highscoreable_id)
-             .order(!maxed ? 'count(id) desc' : '', :highscoreable_id)
-             .having("count(id) >= #{MIN_TIES}")
+
+    # Prepare params
+    type = type.to_s
+    table = type.downcase.pluralize
+    type.prepend('Mappack') if mappack
+    table.prepend('mappack_') if mappack
+    rfield = !mappack ? 'rank' : "rank_#{board}"
+    trfield =!mappack ? 'tied_rank' : "tied_rank_#{board}"
+
+    # Retrieve highscoreables with more ties for 0th
+    klass = mappack ? MappackScore : Score
+    ret = !tabs.empty? ? klass.where(tab: tabs) : klass
+    ret = ret.where(mappack: mappack) if mappack
+    ret = ret.joins("INNER JOIN #{table} ON #{table}.id = highscoreable_id")
+             .where(highscoreable_type: type, trfield => 0)
+             .group(:highscoreable_id)
+             .order(!maxed ? 'count(highscoreable_id) desc' : '', :highscoreable_id)
+             .having("count(highscoreable_id) >= #{MIN_TIES}")
              .having(!player_id.nil? ? 'amount = 0' : '')
-             .pluck('highscoreable_id', 'count(id)', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
-             .map{ |s| s[0..1] }
+             .pluck('highscoreable_id', 'count(highscoreable_id)', 'name', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
+             .map{ |a, b, c| [a, [b, c]] }
              .to_h
-    # retrieve total score counts for each level (to compare against the tie count and determine maxes)
-    counts = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys)
+
+    # Retrieve score counts for each highscoreable
+    counts = klass.where(highscoreable_type: type, highscoreable_id: ret.keys)
                   .group(:highscoreable_id)
                   .order('count(id) desc')
                   .count(:id)
-    # filter
-    maxed ? ret.select!{ |id, c| c == counts[id] } : ret.select!{ |id, c| c < counts[id] } if !maxed.nil?
+
+    # Filter highscoreables
+    maxed ? ret.select!{ |id, arr| arr[0] == counts[id] } : ret.select!{ |id, arr| arr[0] < counts[id] } if !maxed.nil?
 
     if rank
+      # Return only IDs, for the rankings
       ret = ret.keys
     else
-      # retrieve player names owning the 0ths on said level
-      pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
-                    .joins("INNER JOIN players ON players.id = scores.player_id")
-                    .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
+      # Fetch player names owning the 0ths on said highscoreables
+      pnames = klass.where(highscoreable_type: type, highscoreable_id: ret.keys, rfield => 0)
+                    .joins("INNER JOIN players ON players.id = player_id")
+                    .pluck('highscoreable_id', 'name', 'display_name')
                     .map{ |a, b, c| [a, [b, c]] }
                     .to_h
-      # retrieve level names
-      lnames = type.where(id: ret.keys)
-                   .pluck(:id, :name)
-                   .to_h
-      ret = ret.map{ |id, c| [lnames[id], c, counts[id], pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+
+      # Format response
+      ret = ret.map{ |id, arr|
+        [
+          arr[1],
+          arr[0],
+          counts[id],
+          pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]
+        ]
+      }
     end
     bench(:step) if BENCHMARK
     ret
+  rescue => e
+    lex(e, 'Failed to compute maxables or maxes')
+
   end
 
   # Returns episodes or stories sorted by cleanliness
@@ -2821,7 +2844,6 @@ module Cle extend self
     # Parse request parameters
     mappack = req.path.split('/')[1][/\D+/i]
     query = req.path.split('/')[-1]
-    puts req.path
 
     # Build response
     response = nil
