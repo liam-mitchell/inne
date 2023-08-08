@@ -2819,11 +2819,12 @@ module Cle extend self
 
   def handle(req, res)
     # Parse request parameters
-    mappack = req.path.split('/')[1]
+    mappack = req.path.split('/')[1][/\D+/i]
     query = req.path.split('/')[-1]
-    response = nil
+    puts req.path
 
     # Build response
+    response = nil
     if ['rdx'].include?(mappack)
       # Automatically forward requests for certain mappacks that lack custom boards
       response = CLE_FORWARD ? forward(req) : nil

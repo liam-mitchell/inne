@@ -1411,7 +1411,6 @@ class MappackScore < ActiveRecord::Base
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # TODO: Add integrity checks and warnings in Demo.parse
-  # TODO: Implement HC stories
 
   # Verify, parse and save a submitted run, respond suitably
   def self.add(code, query, req = nil)
@@ -1472,7 +1471,7 @@ class MappackScore < ActiveRecord::Base
       # If highscoreable not found, but forwarding is enabled, forward to Metanet
       # Also, try to update the corresponding Metanet scores in outte (in parallel)
       res = forward(req)
-      _thread do
+      _thread(release: true) do
         klass = sid >= MIN_ID ? Userlevel : type[:name].constantize
         klass.find_by(id: sid).update_scores(fast: true)
       end if !res.nil?
@@ -1562,12 +1561,26 @@ class MappackScore < ActiveRecord::Base
 
       # Verify hs score integrity by checking calculated gold count
       if !MappackScore.verify_gold(goldf) && type[:name] != 'Story'
-        str = "Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})"
-        warn(str, discord: true)
+        _thread do
+          warn("Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})", discord: true)
+        end
       end
 
       # Warn if the score submitted failed the map data integrity checks
-      warn("Score submitted by #{name} to #{h.name} has invalid security hash", discord: true) if !legit
+      if !legit
+        _thread do
+          warn("Score submitted by #{name} to #{h.name} has invalid security hash", discord: true)
+        end
+      end
+
+      # Warn if mappack version is outdated
+      v1 = (req.path.split('/')[1][/\d+$/i] || 1).to_i
+      v2 = mappack.version
+      if v1 != v2
+        _thread do
+          warn("#{name} submitted a score to #{h.name} with an incorrect mappack version (#{v1} vs #{v2})", discord: true)
+        end
+      end
     end
 
     # Update ranks if necessary

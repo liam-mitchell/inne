@@ -312,7 +312,7 @@ end
 
 # Light wrapper to execute code block in thread
 # Release db connection at the end if specified, also rescue errors
-def _thread(release = false)
+def _thread(release: false)
   Thread.new do
     yield
   rescue => e
