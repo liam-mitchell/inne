@@ -6,11 +6,14 @@ require 'win32/registry'
 require 'zip'
 
 # Mappack-specific constants
-MAPPACK   = 'Classic'
-AUTHOR    = 'NateyPooPoo'
+MAPPACK   = 'Community Tab Project'
+AUTHOR    = 'CTP'
+NAME      = 'ctp'
+FILES     = ['SI', 'S', 'Scodes', 'SS', 'SScodes']
+
+SPLASH    = MAPPACK # "#{MAPPACK} by #{AUTHOR}"
 SIGNATURE = AUTHOR.dup
-NAME      = 'cla'
-FILES     = ['SI']
+TITLE     = MAPPACK # "#{MAPPACK} by #{AUTHOR}"
 
 # General constants
 TEST      = true
@@ -365,7 +368,7 @@ def change_texts(install = true)
   # Change texts
   change_text(file, 'HIGH_SCORE_PANEL_FRIEND_HIGHSCORES_LONG', install ? 'Speedrun Boards' : 'Friends Highscores')
   change_text(file, 'HIGH_SCORE_PANEL_FRIEND_HIGHSCORES_SHORT', install ? 'Speedrun' : 'Friends')
-  change_text(file, 'PLAYER_PRESS_ANY', install ? "#{MAPPACK} by #{AUTHOR}" : 'Press Any Key')
+  change_text(file, 'PLAYER_PRESS_ANY', install ? SPLASH : 'Press Any Key')
 
   # Save file
   File.binwrite(fn, file)
@@ -418,10 +421,10 @@ def uninstall
   dialog("N++ Mappack", "Uninstalled '#{MAPPACK}' N++ mappack successfully!")
 end
 
-str1 = " N++ MAPPACK INSTALLER "
-str2 = " '#{MAPPACK}' by #{AUTHOR} "
+str1 = "N++ MAPPACK INSTALLER"
+str2 = TITLE
 str3 = "Report technical issues to Eddy"
-size = [str1.size, str2.size, str3.size - 2].max
+size = [str1.size, str2.size, str3.size].max
 puts
 puts "╔#{'═' * size}╗"
 puts "║#{str1.center(size)}║"
