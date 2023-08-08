@@ -1,5 +1,5 @@
-require 'byebug'
-require 'fileutils'
+#require 'byebug'
+#require 'fileutils'
 require 'net/http'
 #require 'tk'
 require 'win32/registry'
@@ -16,7 +16,7 @@ SIGNATURE = AUTHOR.dup
 TITLE     = MAPPACK # "#{MAPPACK} by #{AUTHOR}"
 
 # General constants
-TEST      = true
+TEST      = false
 HOST      = 'https://dojo.nplusplus.ninja'
 PORT      = 8126
 PROXY     = '45.32.150.168'
@@ -324,10 +324,10 @@ def change_levels_locally(install)
 
   # Fetch mappack level files from temp folder
   tmp = $0[/(.*)\//, 1]
-  files= FILES.map{ |f|
+  files = FILES.map{ |f|
     fn = install ? File.join(tmp, "#{f}.txt") : File.join(tmp, "#{f}_original.txt")
     [f, File.binread(fn)]
-  }
+  }.to_h
   puts 'OK'
   files
 rescue

@@ -1994,6 +1994,7 @@ end
 
 def send_mappack_digest(event)
   Mappack.digest
+  event << "Updated the mappack digest, #{Mappack.all.count} mappacks found"
 end
 
 def send_ul_csv(event)
