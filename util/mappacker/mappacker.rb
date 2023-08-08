@@ -1,6 +1,6 @@
 #require 'byebug'
 #require 'fileutils'
-require 'net/http'
+#require 'net/http'
 #require 'tk'
 require 'win32/registry'
 require 'zip'

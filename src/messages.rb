@@ -2151,6 +2151,25 @@ def send_restart(event)
   restart('Manual')
 end
 
+def send_hash(event)
+  msg = remove_command(event.content)
+  h = parse_level_or_episode(msg, mappack: true)
+  raise "Map no found." if h.nil?
+  map_data = h.dump_level(hash: true)
+  raise "Map data for #{h.format_name} is null." if map_data.nil?
+  
+  to_hash = PWD + map_data[0xB8..-1]
+  bench(:start)
+  File.binwrite("util/#{HASH_INPUT_FN}", to_hash)
+  shell("./util/sha1")
+  hash_c = File.binread("util/#{HASH_OUTPUT_FN}")
+  bench(:step)
+  hash_ruby = Digest::SHA1.digest(to_hash)
+  bench(:step)
+
+  succ("The hashes are #{hash_c == hash_ruby ? 'equal' : 'different'}")
+end
+
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
@@ -2169,6 +2188,7 @@ def respond_special(event)
   send_restart(event)            if cmd == 'restart'
   send_test(event)               if cmd == 'test'
   send_gold_check(event)         if cmd == 'gold_check'
+  send_hash(event)               if cmd == 'hash'
 rescue RuntimeError => e
   event << e
 rescue => e
