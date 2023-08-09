@@ -1,30 +1,34 @@
 #require 'byebug'
 #require 'fileutils'
+#require 'net/http'
+#require 'tk'
 require 'win32/registry'
 require 'zip'
 
 # Mappack-specific constants
 MAPPACK   = 'Community Tab Project'
 AUTHOR    = 'CTP'
-NAME      = 'ctp'
-FILES     = ['SI', 'S', 'Scodes', 'SS', 'SScodes']
+NAME      = 'cla'
+FILES     = []#['SI', 'S', 'Scodes', 'SS', 'SScodes']
+
 SPLASH    = MAPPACK # "#{MAPPACK} by #{AUTHOR}"
-SIGN      = AUTHOR.dup
+SIGNATURE = AUTHOR.dup
 TITLE     = MAPPACK # "#{MAPPACK} by #{AUTHOR}"
 
 # General constants
-TEST      = false
+TEST      = true
 HOST      = 'https://dojo.nplusplus.ninja'
 PORT      = 8126
 PROXY     = '45.32.150.168'
 LOCAL     = '127.0.0.1'
-TARGET    = "#{TEST ? LOCAL : PROXY}:#{PORT}/#{NAME}".ljust(HOST.length, "\x00")
+TARGET    = "#{TEST ? LOCAL : PROXY}:#{PORT}/#{NAME}"
 METANET   = "Metanet Software"
-BY        = SIGN[0...METANET.length].ljust(METANET.length, "\x00")
+BY        = SIGNATURE[0...METANET.length].ljust(METANET.length, "\x00")
 DIALOG    = true
 PAD       = 32
 CONTROLS  = false
 NPROFILE  = true
+$target   = TARGET.ljust(HOST.length, "\x00")
 
 def dialog(title, text)
   print "\a"
@@ -141,7 +145,7 @@ def patch(depatch = false, info = false)
     if !offset_host.nil?
       return false
     elsif !offset_proxy.nil?
-      mappack = file[offset_proxy ... offset_proxy + HOST.size].split('/').last.strip
+      mappack = file[offset_proxy ... offset_proxy + HOST.size].split('/').last.strip[/\D+/i].to_s
       if mappack == NAME
         return true
       else
@@ -153,8 +157,17 @@ def patch(depatch = false, info = false)
   end
 
   # Patch library
-  raise "Failed to patch N++ files (incorrect target length)" if TARGET.length != HOST.length
-  file = depatch ? file.gsub!(TARGET, HOST) : file.gsub!(HOST, TARGET)
+  raise "Failed to patch N++ files (incorrect target length)" if $target.length != HOST.length
+  if !depatch
+    file = file.gsub!(HOST, $target)
+  else
+    offset = file.index(TARGET)
+    if offset.nil?
+      file = nil
+    else
+      file[offset ... offset + HOST.length] = HOST
+    end
+  end
   raise "Failed to patch N++ files (host/target not found). If you have another mappack installed, please uninstall it first." if file.nil?
   File.binwrite(fn, file)
 
@@ -259,20 +272,82 @@ rescue => e
   log_exception(e, "Failed to swap nprofile.")
 end
 
+def change_levels_online(install)
+  print "┣━ Downloading levels... ".ljust(PAD, ' ')
+
+  # Fetch mappack list from Github
+  res = Net::HTTP.get_response(URI.parse(
+    "https://raw.githubusercontent.com/edelkas/inne/master/db/mappacks/digest"
+  ))
+  if res.code.to_i != 200 || res.body.empty?
+    puts 'NO1'
+    return nil
+  end
+
+  # Parse mappack list and find this one
+  list = res.body.split("\n").map{ |m|
+    fields = m.split(' ')
+    {
+      id:      fields[0].to_i,
+      code:    fields[1],
+      version: fields[2].to_i
+    }
+  }
+  mappack = list.find{ |m| m[:code] == (install ? NAME : 'met') }
+  if mappack.nil?
+    puts 'NO2'
+    return nil
+  end
+
+  # Fetch mappack level files from Github
+  files = FILES.map{ |f|
+    res = Net::HTTP.get_response(URI.parse(
+      "https://raw.githubusercontent.com/edelkas/inne/master/db/mappacks/#{"%03d" % [mappack[:id]]}_#{mappack[:code]}/#{f}.txt"
+    ))
+    if res.code.to_i != 200 || res.body.empty?
+      puts 'NO3'
+      return nil
+    end
+    [f, res.body]
+  }.to_h
+
+  puts 'OK'
+  $target = ($target.strip + mappack[:version].to_s).ljust(HOST.length, "\x00")
+  files
+rescue => e
+  puts 'NO'
+  return nil
+end
+
+def change_levels_locally(install)
+  print "┣━ Swapping levels locally... ".ljust(PAD, ' ')
+
+  # Fetch mappack level files from temp folder
+  tmp = $0[/(.*)\//, 1]
+  files = FILES.map{ |f|
+    fn = install ? File.join(tmp, "#{f}.txt") : File.join(tmp, "#{f}_original.txt")
+    [f, File.binread(fn)]
+  }.to_h
+  puts 'OK'
+  files
+rescue
+  puts 'NO'
+  return nil
+end
+
 def change_levels(install = true)
-  print "┣━ Swapping map files#{install ? '' : ' back'}... ".ljust(PAD, ' ')
   # Find folder
   folder = File.join(find_npp_folder(false), 'NPP', 'Levels')
   raise "N++ levels folder not found" if !Dir.exist?(folder)
   
   # Change files
-  tmp = $0[/(.*)\//, 1]
+  files = nil
+  files = change_levels_online(install) if false #install
+  files = change_levels_locally(install) if files.nil?
+  raise "Couldn't inject levels" if files.nil?
   FILES.each{ |f|
-    fn = install ? File.join(tmp, "#{f}.txt") : File.join(tmp, "#{f}_original.txt")
-    FileUtils.cp_r(fn, File.join(folder, "#{f}.txt"), remove_destination: true)
+    File.write(File.join(folder, "#{f}.txt"), files[f])
   }
-
-  puts "OK"
 rescue RuntimeError => e
   log_exception(e, '')
 rescue => e
@@ -325,8 +400,8 @@ end
 
 def install
   print "\n┏━━━ Installing '#{MAPPACK}' N++ mappack\n┃\n"
-  patch
   change_levels(true)
+  patch
   change_texts(true)
   change_controls(true) if CONTROLS
   change_nprofile(true) if NPROFILE
@@ -337,8 +412,8 @@ end
 
 def uninstall
   print "\n┏━━━ Uninstalling '#{MAPPACK}' N++ mappack\n┃\n"
-  depatch
   change_levels(false)
+  depatch
   change_texts(false)
   change_controls(false) if CONTROLS
   change_nprofile(false) if NPROFILE
