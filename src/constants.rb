@@ -127,6 +127,7 @@ DIR_TEST        = './test'
 
 DIR_UTILS       = './util'
 PATH_NTRACE     = "#{DIR_UTILS}/ntrace.py"
+PATH_SHA1       = "#{DIR_UTILS}/sha1"
 
 # <--------------------------------------------------------------------------->
 # <------                      FEATURE VARIABLES                        ------>

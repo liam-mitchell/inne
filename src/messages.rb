@@ -2159,28 +2159,50 @@ def send_restart(event)
   restart('Manual')
 end
 
+# Compare Ruby and C SHA1 hashes for a specific level or score
 def send_hash(event)
   msg = remove_command(event.content)
-  h = parse_level_or_episode(msg, mappack: true)
+  flags = parse_flags(msg)
+
+  # Parse highscoreable
+  h = parse_level_or_episode(flags[:h], mappack: true)
   raise "Map no found." if h.nil?
   map_data = h.map.dump_level(hash: true)
   raise "Map data for #{h.format_name} is null." if map_data.nil?
-  
-  to_hash = PWD + map_data[0xB8..-1]
-  bench(:start)
-  File.binwrite("util/#{HASH_INPUT_FN}", to_hash)
-  code = shell("./util/sha1 ./util/#{HASH_INPUT_FN} ./util/#{HASH_OUTPUT_FN}")
-  raise "STB_SHA1 failed." if !code
-  hash_c = File.binread("util/#{HASH_OUTPUT_FN}")
-  bench(:step)
-  hash_ruby = Digest::SHA1.digest(to_hash)
-  bench(:step)
 
-  event << "The hashes are #{hash_c == hash_ruby ? 'equal' : 'different'}."
+  # Parse player, if provided
+  if flags[:p]
+    player = parse_player('for ' + flags[:p], '', false, true)
+    raise "Player #{flags[:p]} not found." if !player
+    score = h.leaderboard.find{ |s| s['name'] == player.name }
+    raise "No score by #{player.name} in #{h.name}." if !score
+    eq = MappackScore.find(score['id']).compare_hashes rescue nil
+    event << "The hashes are #{eq ? 'equal' : 'different'}."
+    return
+  end
+
+  # Parse score ID, if provided
+  if flags[:id]
+    score = MappackScore.find(flags[:id]) rescue nil 
+    raise "Mappack score with ID #{flags[:id]} not found." if !score
+    eq = score.compare_hashes
+    event << "The hashes are #{eq ? 'equal' : 'different'}."
+    return
+  end
+
+  # Compare hashes for all scores, or only for the map data
+  if flags.key?(:all)
+    eq = h.scores.map{ |s| s.compare_hashes }.count(false) == 0
+  else
+    eq = h.compare_hashes
+  end
+
+  event << "The hashes are #{eq ? 'equal' : 'different'}."
 end
 
+# Compare Ruby and C SHA1 hashes for all mappack levels and return list of differences
 def send_hashes(event)
-  levels = MappackLevel.all
+  levels = MappackLevel.where('mappack_id > 0')
   count = levels.count
   res = levels.each_with_index.select{ |l, i|
     dbg("Hashing level #{i} / #{count}...", newline: false, pad: true)
@@ -2210,7 +2232,7 @@ def respond_special(event)
   send_test(event)               if cmd == 'test'
   send_gold_check(event)         if cmd == 'gold_check'
   send_hash(event)               if cmd == 'hash'
-  send_hashes(event)               if cmd == 'hashes'
+  send_hashes(event)             if cmd == 'hashes'
 rescue RuntimeError => e
   event << e
 rescue => e

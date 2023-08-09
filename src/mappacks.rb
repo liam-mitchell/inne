@@ -1318,15 +1318,10 @@ class MappackLevel < ActiveRecord::Base
     return true if map_data.nil?
     to_hash = PWD + map_data[0xB8..-1]
 
-    # STB hash
-    File.binwrite("util/#{HASH_INPUT_FN}", to_hash)
-    code = shell("./util/sha1 ./util/#{HASH_INPUT_FN} ./util/#{HASH_OUTPUT_FN}")
-    return false if !code
-    hash_c = File.binread("util/#{HASH_OUTPUT_FN}")
-    FileUtils.rm(["./util/#{HASH_INPUT_FN}", "./util/#{HASH_OUTPUT_FN}"])
-    
-    # Ruby hash
-    hash_ruby = Digest::SHA1.digest(to_hash)
+    # Hash
+    hash_c = sha1(to_hash, c: true)
+    hash_ruby = sha1(to_hash, c: false)
+    return false if !hash_c || !hash_ruby
 
     return hash_c == hash_ruby
   end
@@ -1897,6 +1892,26 @@ class MappackScore < ActiveRecord::Base
   def wipe
     demo.destroy
     self.destroy
+  end
+
+  def compare_hashes
+    # Prepare map data to hash
+    map_data = highscoreable.dump_level(hash: true)
+    return true if map_data.nil?
+    to_hash = PWD + map_data[0xB8..-1]
+
+    # Hash 1
+    hash_c = sha1(to_hash, c: true)
+    hash_ruby = sha1(to_hash, c: false)
+    return false if !hash_c || !hash_ruby
+
+    # Hash 2
+    score = (1000.0 * score_hs.to_i / 60.0).round.to_s
+    hash_c = sha1(hash_c + score, c: true)
+    hash_ruby = sha1(hash_ruby + score, c: false)
+    return false if !hash_c || !hash_ruby
+
+    return hash_c == hash_ruby
   end
 
 end

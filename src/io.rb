@@ -108,7 +108,7 @@ end
 # Bad examples:
 #   nil   (transforms to [Level, Episode])
 #   Level (transforms to [Level])
-# 'single' means we return a singly type instead
+# 'single' means we return a single type instead
 def fix_type(type, single = false)
   if single
     ensure_type(type)
@@ -153,11 +153,18 @@ def parse_player_implicit(username, playerClass = Player)
   parse_player_explicit(user.player.name, playerClass)
 end
 
-# explicit: players will only be parsed if they appear explicitly, without inferring from their user, otherwise nil
-# enforce: a player MUST be supplied explicitly, otherwise exception
-# implicit: the player will be inferred from their user, without even parsing the comment
-# third: allow for 3rd person specification "is xela" rather than "for xela"
-def parse_player(msg, username, userlevel = false, explicit = false, enforce = false, implicit = false, third = false)
+# Fetch a Player or UserlevelPlayer from a text string.
+# Optionally may also infer the player from the username.
+# TODO: Change args to kwargs
+def parse_player(
+    msg,               # Text string to parse
+    username,          # Name of Discord user, to infer player name
+    userlevel = false, # Whether to search in for userlevel players or regular ones
+    explicit  = false, # Only parse explicit names, without inferring from username
+    enforce   = false, # Even more, raise exception if no explicit name found
+    implicit  = false, # The opposite, only infer from username
+    third     = false  # Allow 3rd person specification (e.g. "is xela" rather than "for xela")
+  )
   msg = msg.gsub(/"/, '')
   p = msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
   playerClass = userlevel ? UserlevelPlayer : Player
