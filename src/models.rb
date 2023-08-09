@@ -1007,7 +1007,7 @@ module Highscoreable
     end
 
     new_id += type[:slots] * mappack.id if self.is_a?(MappackHighscoreable)
-    self.class.find(new_id)
+    self.class.find(new_id) rescue self
   rescue => e
     lex(e, 'Failed to navigate highscoreable')
     self

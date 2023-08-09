@@ -112,12 +112,12 @@ void stb_sha1(unsigned char output[20], unsigned char *buffer, unsigned int len)
 }
 
 int main(int argc, char* argv[]){
-  if (argc < 2) {
+  if (argc < 3) {
     printf("Filenames not supplied.\n");
     exit(1);
   }
 
-  FILE *fp = fopen(argv[0], "rb");
+  FILE *fp = fopen(argv[1], "rb");
   if (fp == NULL) {
       printf("File to hash not found.\n");
       exit(1);
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]){
   stb_sha1(hash, buf, len);
 
   // Write to file
-  fp = fopen(argv[1], "wb");
+  fp = fopen(argv[2], "wb");
   fwrite(hash, 1, 20, fp);
   fclose(fp);
 

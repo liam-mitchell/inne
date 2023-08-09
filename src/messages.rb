@@ -2155,19 +2155,31 @@ def send_hash(event)
   msg = remove_command(event.content)
   h = parse_level_or_episode(msg, mappack: true)
   raise "Map no found." if h.nil?
-  map_data = h.dump_level(hash: true)
+  map_data = h.map.dump_level(hash: true)
   raise "Map data for #{h.format_name} is null." if map_data.nil?
   
   to_hash = PWD + map_data[0xB8..-1]
   bench(:start)
   File.binwrite("util/#{HASH_INPUT_FN}", to_hash)
-  shell("./util/sha1")
+  code = shell("./util/sha1 ./util/#{HASH_INPUT_FN} ./util/#{HASH_OUTPUT_FN}")
+  raise "STB_SHA1 failed." if !code
   hash_c = File.binread("util/#{HASH_OUTPUT_FN}")
   bench(:step)
   hash_ruby = Digest::SHA1.digest(to_hash)
   bench(:step)
 
-  succ("The hashes are #{hash_c == hash_ruby ? 'equal' : 'different'}")
+  event << "The hashes are #{hash_c == hash_ruby ? 'equal' : 'different'}."
+end
+
+def send_hashes(event)
+  levels = MappackLevel.all
+  count = levels.count
+  res = levels.each_with_index.select{ |l, i|
+    dbg("Hashing level #{i} / #{count}...", newline: false, pad: true)
+    !l.compare_hashes
+  }.map{ |map, i| map.name }
+  event << "There are #{res.size} levels with differing hashes:"
+  res.size <= 20 ? event << format_block(res.join("\n")) : send_file(event, res.join("\n"))
 end
 
 def respond_special(event)
@@ -2189,6 +2201,7 @@ def respond_special(event)
   send_test(event)               if cmd == 'test'
   send_gold_check(event)         if cmd == 'gold_check'
   send_hash(event)               if cmd == 'hash'
+  send_hashes(event)               if cmd == 'hashes'
 rescue RuntimeError => e
   event << e
 rescue => e
