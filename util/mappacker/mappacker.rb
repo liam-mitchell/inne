@@ -1,5 +1,5 @@
-#require 'byebug'
-#require 'fileutils'
+require 'byebug'
+require 'fileutils'
 require 'win32/registry'
 require 'zip'
 
@@ -78,6 +78,11 @@ end
 def find_documents_folder(output = true)
   # Find My Documents
   print "┣━ Finding documents folder... ".ljust(PAD, ' ') if output
+  if !$folder_docs.nil?
+    puts "OK" if output
+    return $folder_docs
+  end
+
   reg = Win32::Registry::HKEY_CURRENT_USER.open('Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders') rescue nil
   raise "Shell folders not found" if reg.nil?
   folder = reg['Personal'] rescue nil
@@ -88,6 +93,7 @@ def find_documents_folder(output = true)
   raise "N++ documents folder not found" if !Dir.exist?(dir)
 
   puts "OK" if output
+  $folder_docs = dir
   dir
 rescue RuntimeError => e
   log_exception(e, '')
@@ -96,9 +102,14 @@ rescue => e
 end
 
 def find_npp_folder(output = true)
+  print "┣━ Finding N++ folder... ".ljust(PAD, ' ') if output
+  if !$folder_npp.nil?
+    puts "OK" if output
+    return $folder_npp
+  end
+
   folder = nil
   folders = find_steam_folders(output)
-  print "┣━ Finding N++ folder... ".ljust(PAD, ' ') if output
   folders.each{ |f|
     path = File.join(f, 'steamapps', 'common', 'N++')
     folder = path if Dir.exist?(path)
@@ -106,6 +117,7 @@ def find_npp_folder(output = true)
   raise "N++ installation not found" if folder.nil?
   
   puts "OK" if output
+  $folder_npp = folder
   folder
 rescue RuntimeError => e
   log_exception(e, '')
@@ -359,6 +371,8 @@ puts "╚#{'═' * size}╝"
 puts str3
 puts
 print "Checking current state... "
+$folder_npp = nil
+$folder_docs = nil
 $installed = patch(false, true)
 puts $installed ? 'installed' : 'uninstalled'
 $installed ? uninstall : install
