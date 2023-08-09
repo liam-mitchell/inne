@@ -448,6 +448,8 @@ end
 # 4) Anywhere, using the 3 letter mappack code
 # The second parameter specifies the behaviour when the mappack is not found
 def parse_mappack(msg, rais = false)
+  (rais ? raise("Mappack not found") : (return nil)) if msg.strip.empty?
+
   mappack = Mappack.find_by(name: msg.strip[/\w+/i])
   return mappack if !mappack.nil?
 

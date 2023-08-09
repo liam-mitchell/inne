@@ -1969,7 +1969,15 @@ end
 
 def send_mappack_seed(event)
   Mappack.seed
-  event << "Seeded new mappacks"
+  event << "Seeded new mappacks, there're now #{Mappack.count}."
+end
+
+def send_mappack_read(event)
+  msg = remove_command(event.content)
+  mappack = parse_mappack(msg)
+  raise "Mappack not found." if mappack.nil?
+  mappack.read
+  event << "Read mappack #{verbatim(mappack.name)}."
 end
 
 def send_mappack_patch(event)
@@ -2193,6 +2201,7 @@ def respond_special(event)
   send_mappack_patch(event)      if cmd == 'mappack_patch'
   send_mappack_info(event)       if cmd == 'mappack_info'
   send_mappack_digest(event)     if cmd == 'mappack_digest'
+  send_mappack_read(event)       if cmd == 'mappack_read'
   send_ul_csv(event)             if cmd == 'userlevel_csv'
   send_ul_plot(event)            if cmd == 'userlevel_plot'
   send_log_config(event)         if cmd == 'log'
