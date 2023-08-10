@@ -483,17 +483,20 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   h = h.map if !h.is_a?(MappackHighscoreable)
   screenshot = Map.screenshot(hash[:palette], file: true, h: h)
   raise "Failed to generate screenshot!" if screenshot.nil?
+
+  # Determine if screenshot needs to be spoiled
+  spoiler = h.is_mappack? && h.mappack.code == 'ctp' && !(event.channel.type == 1 || event.channel.id == CHANNEL_CTP_SECRETS) ? true : false
     
   # Send response
   str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette #{verbatim(hash[:palette])}:"
   file = screenshot
-  return [file, str] if ret
+  return [file, str, spoiler] if ret
   if nav
     # Attachments can't be modified so we're stuck for now
     send_message_with_interactions(event, str, nil, false, [file])
   else
     event << str
-    event.attach_file(file)
+    event.attach_file(file, spoiler: spoiler)
   end
 end
 
@@ -512,7 +515,7 @@ def send_screenscores(event)
   if ss[0].nil?
     event.send_message(ss[1])
   else
-    event.send_file(ss[0], caption: ss[1])
+    event.send_file(ss[0], caption: ss[1], spoiler: ss[2])
   end
 
   # Wait a bit to prevent an order change, and send scores
@@ -538,7 +541,7 @@ def send_scoreshot(event)
   if ss[0].nil?
     event.send_message(ss[1])
   else
-    event.send_file(ss[0], caption: ss[1])
+    event.send_file(ss[0], caption: ss[1], spoiler: ss[2])
   end
 end
 
@@ -1079,6 +1082,11 @@ end
 # Return list of challenges for specified level, ordered and formatted as in the game
 # 'page' parameters controls button page navigation when there are many results
 def send_challenges(event, page: nil)
+  if event.channel.type != 1 && event.channel.id != CHANNEL_SECRETS
+    mention = mention_channel(id: CHANNEL_SECRETS)
+    raise "No asking for challenges outside of #{mention} or DMs!"
+  end
+
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)

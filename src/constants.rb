@@ -2,7 +2,7 @@
 # features and aspects of the bot.
 #
 # When first setting up the bot it may be necessary, or at least recommended,
-# to configure a few of these (e.g., BOTMASTER_ID, SERVER_ID, CHANNEL_ID,
+# to configure a few of these (e.g., BOTMASTER_ID, SERVER_ID, CHANNEL_HIGHSCORES,
 # DATABASE...). Several others are useful to change during development as well
 # (TEST, BENCHMARK, DO_NOTHING, DO_EVERYTHING...).
 
@@ -53,14 +53,16 @@ UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 # <------                     DISCORD VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-BOTMASTER_ID       = 204332624288677890 # User ID of the bot manager (Eddy)
-SERVER_ID          = 197765375503368192 # Discord server/guild ID (N++ Server)
-CHANNEL_ID         = 210778111594332181 # Discord main channel ID (#highscores)
-USERLEVELS_ID      = 221721273405800458 # ... (#mapping)
-NV2_ID             = 197774025844457472 # ... (#nv2)
-CONTENT_ID         = 197793786389200896 # ... (#content-creation)
-DISCORD_CHAR_LIMIT = 2000               # Message character limit
-DISCORD_FILE_LIMIT = 25 * 1000 ** 2
+BOTMASTER_ID        = 204332624288677890  # User ID of the bot manager (Eddy)
+SERVER_ID           = 197765375503368192  # Discord server/guild ID (N++ Server)
+CHANNEL_HIGHSCORES  = 210778111594332181  # #highscores
+CHANNEL_USERLEVELS  = 221721273405800458  # #userlevels
+CHANNEL_NV2         = 197774025844457472  # #nv2
+CHANNEL_CONTENT     = 197793786389200896  # #content-creation
+CHANNEL_SECRETS     = 217283494664077312  # #secrets
+CHANNEL_CTP_SECRETS = 1137794113475969034 # #ctp-secrets
+DISCORD_CHAR_LIMIT  = 2000                # Message character limit
+DISCORD_FILE_LIMIT  = 25 * 1000 ** 2      # Attachment size limit
 
 # Non-standard character widths in the monospaced font (for padding adjustments)
 WIDTH_EMOJI = 2

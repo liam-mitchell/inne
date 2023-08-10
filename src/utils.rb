@@ -511,6 +511,12 @@ def verbatim(str)
   "`#{str.gsub('`', '')}`"
 end
 
+def spoiler(str)
+  str = str.to_s
+  return "|| ||" if str.empty?
+  "||#{str.gsub('||', '')}||"
+end
+
 # This corrects a datetime in the database when it's out of
 # phase (e.g. after a long downtime of the bot).
 def correct_time(time, frequency)
@@ -959,21 +965,43 @@ rescue => e
   nil
 end
 
-# Find Discord server the bot is in, by name
-def find_server(name)
-  $bot.servers.find{ |id, s| s.name.downcase.include?(name.downcase) } rescue nil
+# Find Discord server the bot is in, by ID or name
+def find_server(id: nil, name: nil)
+  if id
+    $bot.servers[id]
+  elsif name
+    $bot.servers.values.find{ |s| s.name.downcase.include?(name.downcase) } 
+  else
+    nil
+  end
+rescue
+  nil
 end
 
-# Find Discord channel by name, server optional
-def find_channel(name, server = nil)
-  if server
-    find_server(server).channels.find{ |c| c.name.downcase.include?(name.downcase) } rescue nil
+def find_channel_in_server(id: nil, name: nil, server: nil)
+  return nil if server.nil?
+  if id
+    server.channels.find{ |c| c.id == id }
+  elsif name
+    server.channels.find{ |c| c.name.downcase.include?(name.downcase) }
   else
-    $bot.servers.each{ |id, s|
-      channel = s.channels.find{ |c| c.name.downcase.include?(name.downcase) }
+    nil
+  end
+rescue
+  nil
+end
+
+# Find Discord channel by ID or name, server optional
+def find_channel(id: nil, name: nil, server_id: nil, server_name: nil)
+  server = find_server(id: server_id, name: server_name)
+  if server
+    find_channel_in_server(id: id, name: name, server: server)
+  else
+    $bot.servers.each{ |_, s|
+      channel = find_channel_in_server(id: id, name: name, server: s)
       return channel if !channel.nil?
     }
-    return nil
+    nil
   end
 rescue
   nil
@@ -996,7 +1024,7 @@ end
 
 # React to a Discord msg (by ID) with an emoji (by Unicode or name)
 def react(channel, msg_id, emoji)
-  channel = find_channel(channel) rescue nil
+  channel = find_channel(name: channel) rescue nil
   raise 'Channel not found' if channel.nil?
   msg = channel.message(msg_id.to_i) rescue nil
   raise 'Message not found' if msg.nil?
@@ -1006,7 +1034,7 @@ def react(channel, msg_id, emoji)
 end
 
 def unreact(channel, msg_id, emoji = nil)
-  channel = find_channel(channel) rescue nil
+  channel = find_channel(name: channel) rescue nil
   raise 'Channel not found' if channel.nil?
   msg = channel.message(msg_id.to_i) rescue nil
   raise 'Message not found' if msg.nil?
@@ -1020,6 +1048,40 @@ def unreact(channel, msg_id, emoji = nil)
     raise 'Emoji not found' if emoji.nil?
     msg.delete_own_reaction(emoji)
   end
+end
+
+# Pings a role by name (returns ping string)
+def ping(rname)
+  server = TEST ? $bot.servers.values.first : $bot.servers[SERVER_ID]
+  if server.nil?
+    log("Server not found")
+    return ""
+  end
+
+  role = server.roles.select{ |r| r.name == rname }.first
+  if role != nil
+    if role.mentionable
+      return role.mention
+    else
+      log("Role #{rname} in server #{server.name} not mentionable")
+      return ""
+    end
+  else
+    log("Role #{rname} not found in server #{server.name}")
+    return ""
+  end
+rescue => e
+  lex(e, "Failed to ping role #{rname}")
+  ""
+end
+
+# Return the string that produces a clickable channel mention in Discord
+def mention_channel(name: nil, id: nil, server_name: nil, server_id: nil)
+  channel = find_channel(id: id, name: name, server_id: server_id, server_name: server_name)
+  return '' if channel.nil?
+  channel.mention
+rescue
+  ''
 end
 
 # DISTANCE BETWEEN STRINGS
@@ -1123,10 +1185,10 @@ def set_channels(event = nil)
     $content_channel = event.channel
   elsif !TEST
     channels = $bot.servers[SERVER_ID].channels
-    $channel         = channels.find{ |c| c.id == CHANNEL_ID }
-    $mapping_channel = channels.find{ |c| c.id == USERLEVELS_ID }
-    $nv2_channel     = channels.find{ |c| c.id == NV2_ID }
-    $content_channel = channels.find{ |c| c.id == CONTENT_ID }
+    $channel         = channels.find{ |c| c.id == CHANNEL_HIGHSCORES }
+    $mapping_channel = channels.find{ |c| c.id == CHANNEL_USERLEVELS }
+    $nv2_channel     = channels.find{ |c| c.id == CHANNEL_NV2 }
+    $content_channel = channels.find{ |c| c.id == CHANNEL_CONTENT }
   else
     return
   end

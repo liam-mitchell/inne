@@ -66,12 +66,12 @@
 #         database properly (see Contact).                                     #
 #                                                                              #
 # 4)  Configure additional settings in src/constants.rb. For example:          #
-#         BOTMASTER_ID  - Your Discord user ID.                                #
-#         SERVER_ID     - N++'s Discord server ID.                             #
-#         CHANNEL_ID    - #highscores channel ID in N++'s server.              #
-#         TEST          - Toggles between production and development bots.     #
-#         DO_NOTHING    - Don't execute any threads (e.g. score update).       #
-#         DO_EVERYTHING - Execute all threads.                                 #
+#         BOTMASTER_ID       - Your Discord user ID.                           #
+#         SERVER_ID          - N++'s Discord server ID.                        #
+#         CHANNEL_HIGHSCORES - #highscores channel ID in N++'s server.         #
+#         TEST               - Toggles between production and development bot. #
+#         DO_NOTHING         - Don't execute any threads (e.g. score update).  #
+#         DO_EVERYTHING      - Execute all threads.                            #
 #                                                                              #
 # ////// Other notes:                                                          #
 #                                                                              #

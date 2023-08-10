@@ -869,28 +869,6 @@ def parse_board(msg, dflt = nil, dual: false)
   board
 end
 
-# Pings a role by name (returns ping string)
-def ping(rname)
-  server = TEST ? $bot.servers.values.first : $bot.servers[SERVER_ID]
-  if server.nil?
-    log("server not found")
-    return ""
-  end
-
-  role = server.roles.select{ |r| r.name == rname }.first
-  if role != nil
-    if role.mentionable
-      return role.mention
-    else
-      log("role #{rname} in server #{server.name} not mentionable")
-      return ""
-    end
-  else
-    log("role #{rname} not found in server #{server.name}")
-    return ""
-  end
-end
-
 # Parse arguments and flags CLI-style:
 # Arg names must start with a dash and be alphanumeric (underscores allowed)
 # Arg values can be anything but dashes
