@@ -1044,7 +1044,7 @@ module Levelish
 
   def format_name
     str = "#{verbatim(longname)} (#{name.remove('MET-')})"
-    str += " by #{verbatim(author)}" if author
+    str += " by #{verbatim(author)}" rescue ''
     str
   end
 
