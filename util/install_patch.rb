@@ -1,3 +1,5 @@
+require 'rbconfig'
+
 TEST = true
 TARGET = "https://dojo.nplusplus.ninja"
 HOST_TEST = "127.0.0.1"
@@ -5,10 +7,10 @@ HOST = "45.32.150.168"
 
 def find_lib
   paths = {
-    'windows' => "",
+    'windows' => "C:/Program Files (x86)/Steam/steamapps/common/N++/npp.dll",
     'linux'   => "#{Dir.home}/.steam/steam/steamapps/common/N++/lib64/libnpp.so"
   }
-  sys = 'linux'
+  sys = RbConfig::CONFIG['host_os'] =~ /linux/i ? 'linux' : 'windows'
   paths[sys]
 end
 
