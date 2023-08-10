@@ -994,6 +994,12 @@ class Mappack < ActiveRecord::Base
     lex(e, 'Failed to generate mappack digest file')
   end
 
+  # Return the folder that contains this mappack's files
+  def folder
+    dir = File.join(DIR_MAPPACKS, "#{"%03d" % [id]}_#{code}")
+    Dir.exist?(dir) ? dir : nil
+  end
+
   # TODO: Parse challenge files, in a separate function with its own command,
   # which is also called from the general seed and read functions.
 
@@ -1001,8 +1007,8 @@ class Mappack < ActiveRecord::Base
   def read
     # Check for mappack directory
     log("Parsing mappack '#{code}'...")
-    dir = File.join(DIR_MAPPACKS, "#{"%03d" % [id]}_#{code}")
-    if !Dir.exist?(dir)
+    dir = folder
+    if !dir
       err("Directory for mappack '#{code}' not found, not reading")
       return
     end
@@ -1114,6 +1120,40 @@ class Mappack < ActiveRecord::Base
     end
   rescue => e
     lex(e, "Error reading mappack '#{code}'")
+  end
+
+  # Read the author list and write to the db
+  def read_authors
+    # Integrity checks
+    dir = folder
+    if !dir
+      err("Directory for mappack #{verbatim(code)} not found")
+      return
+    end
+    path = File.join(dir, FILENAME_MAPPACK_AUTHORS)
+    if !File.file?(path)
+      err("Authors file for mappack #{verbatim(code)} not found")
+      return
+    end
+
+    # Parse authors file
+    file = File.binread(path)
+    names = file.split("\n").map(&:strip)
+    maps = levels.order(:id)
+    if maps.size != names.size
+      err("Authors file for mappack #{verbatim(code)} has incorrect length (#{names.size} names vs #{maps.size} maps)")
+      return
+    end
+
+    # Write names
+    count = maps.size
+    maps.each_with_index{ |m, i|
+      dbg("Adding author #{i + 1} / #{count}...", pad: true, newline: false)
+      m.update(author: names[i])
+    }
+    Log.clear
+  rescue => e
+    lex(e, "Failed to read authors file for mappack #{verbatim(code)}")
   end
 
   # Check additional requirements for scores submitted to this mappack
