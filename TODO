@@ -74,6 +74,9 @@ Eddy's TODO list for inne:
 - Add "missing maxable" for "maxable for"
 - Add custom exception class, and use it for all the manual raises. That way we can distinguish them, otherwise sometimes we can put private stuff to the Discord if an internal error also raises a RuntimeError.
 - For screenshot generation, allow to compose images out of bounds by cropping them appropriately. Make a commit to oily_png, like the original author intended. 
+- Mappack savefile generation for a player based on the scores (unlocks, completions, gold badges, scores). Have a special command to do it on demand. Keep a new zipped nprofile for this purpose.
+- Add generic nprofile functionality (see above)
+- Can we track Youtube N++ streams like with Twitch? 
 
 \\ ------------------------ mappacker -----------------------
 

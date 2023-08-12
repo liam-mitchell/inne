@@ -1086,8 +1086,6 @@ rescue => e
   ''
 end
 
-def delete_msg(name: nil, id: nil, msg_id: nil)
-
 # DISTANCE BETWEEN STRINGS
 # * Find distance between two strings using the classic Damerau-Levenshtein
 # * Returns nil if the threshold is surpassed
