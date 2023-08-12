@@ -68,9 +68,12 @@ Eddy's TODO list for inne:
 - Across-mappacks rankings and stuff
 - TASes in outte, perhaps add to CLE too (scores around mine?)
 - Migrate Metanet hs scores to integer frames rather than float seconds (both scores and archives)
-- String distance for player/author names, and maybe even outte commands
+- String distance for player/author names (and also partial matching), and maybe even outte commands
 - Search by name for mappack levels, by also using the mappack code (e.g. cla score for birthday)
 - Add "my pack is ..." to default all requests to a specific mappack 
+- Add "missing maxable" for "maxable for"
+- Add custom exception class, and use it for all the manual raises. That way we can distinguish them, otherwise sometimes we can put private stuff to the Discord if an internal error also raises a RuntimeError.
+- For screenshot generation, allow to compose images out of bounds by cropping them appropriately. Make a commit to oily_png, like the original author intended. 
 
 \\ ------------------------ mappacker -----------------------
 

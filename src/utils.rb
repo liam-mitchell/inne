@@ -1,5 +1,6 @@
 # This file compiles a library of general functions that are useful throughout
-# the entire program
+# the entire program, like logging, proxying HTTP requests, forking/threading,
+# discord functionality, string distance, etc.
 
 require 'active_record'
 require 'damerau-levenshtein'
@@ -1080,9 +1081,12 @@ def mention_channel(name: nil, id: nil, server_name: nil, server_id: nil)
   channel = find_channel(id: id, name: name, server_id: server_id, server_name: server_name)
   return '' if channel.nil?
   channel.mention
-rescue
+rescue => e
+  lex(e, 'Failed to mention Discord channel')
   ''
 end
+
+def delete_msg(name: nil, id: nil, msg_id: nil)
 
 # DISTANCE BETWEEN STRINGS
 # * Find distance between two strings using the classic Damerau-Levenshtein

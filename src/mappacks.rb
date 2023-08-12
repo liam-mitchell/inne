@@ -1826,9 +1826,10 @@ class MappackScore < ActiveRecord::Base
     # Update global ranks
     highscoreable.update_ranks('hs')
     succ("Patched #{player.name}'s score (#{s.id}) in #{highscoreable.name} from #{"%.3f" % old_score} to #{"%.3f" % score}")
+  rescue RuntimeError
+    raise
   rescue => e
     lex(e, 'Failed to patch score')
-    nil
   end
 
   # Calculate gold count from hs and sr scores
