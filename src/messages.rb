@@ -2220,6 +2220,15 @@ def send_hashes(event)
   res.size <= 20 ? event << format_block(res.join("\n")) : send_file(event, res.join("\n"))
 end
 
+def send_nprofile_gen(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  raise "You need to provide a player" if !flags.key?(:p)
+  player = parse_player('for ' + flags[:p].to_s, '', false, true)
+  raise "Player not found" if player.nil?
+  nprofile = unzip(File.binread(File.join(DIR_UTILS, 'nprofile.zip')))
+end
+
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
@@ -2241,6 +2250,7 @@ def respond_special(event)
   send_gold_check(event)         if cmd == 'gold_check'
   send_hash(event)               if cmd == 'hash'
   send_hashes(event)             if cmd == 'hashes'
+  send_nprofile_gen(event)       if cmd == 'nprofile_gen'
 rescue RuntimeError => e
   event << e
 rescue => e

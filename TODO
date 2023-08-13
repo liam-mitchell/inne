@@ -77,6 +77,8 @@ Eddy's TODO list for inne:
 - Mappack savefile generation for a player based on the scores (unlocks, completions, gold badges, scores). Have a special command to do it on demand. Keep a new zipped nprofile for this purpose.
 - Add generic nprofile functionality (see above)
 - Can we track Youtube N++ streams like with Twitch? 
+- Ownages with ties (add "with ties"), also add to mappacks
+- Minimum scores to appear in mappack average rank rankings are 0, fix.
 
 \\ ------------------------ mappacker -----------------------
 

@@ -7,6 +7,7 @@ require 'damerau-levenshtein'
 require 'digest'
 require 'net/http'
 require 'unicode/emoji'
+require 'zip'
 
 require_relative 'constants.rb'
 require_relative 'models.rb'
@@ -421,6 +422,28 @@ def sha1(data, c: true)
 rescue => e
   lex(e, 'Failed to compute the SHA1 hash')
   nil
+end
+
+# Create a ZIP file. Provided data should be a Hash with the filenames
+# as keys and the file contents as values.
+def zip(data)
+  Zip::OutputStream.write_buffer{ |zip|
+    data.each{ |name, content|
+      zip.put_next_entry(name)
+      zip.write(content)
+    }
+  }.string
+end
+
+
+def unzip(data)
+  res = {}
+  Zip::File.open_buffer(data){ |zip|
+    zip.each{ |entry|
+      res[entry.name] = entry.get_input_stream.read
+    }
+  }
+  res
 end
 
 # Turn a little endian binary array into an integer
