@@ -2224,9 +2224,45 @@ def send_nprofile_gen(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
   raise "You need to provide a player" if !flags.key?(:p)
+  raise "You need to provide a mappack" if !flags.key?(:m)
   player = parse_player('for ' + flags[:p].to_s, '', false, true)
   raise "Player not found" if player.nil?
-  nprofile = unzip(File.binread(File.join(DIR_UTILS, 'nprofile.zip')))
+  mappack = parse_mappack(flags[:m])
+  raise "Mappack not found" if mappack.nil?
+  mid = mappack.id
+  nprofile = unzip(File.binread(File.join(DIR_UTILS, 'nprofile.zip')))['nprofile']
+  size = nprofile.size
+  MappackScore.where(player: player, mappack: mappack)
+              .where('rank_hs IS NOT NULL')
+              .order(highscoreable_id: :asc)
+              .pluck(:highscoreable_id, :highscoreable_type, :score_hs, :gold)
+              .each{ |id, type, score, gold|
+                type = type.remove('Mappack')
+                case type
+                when 'Level'
+                  offset = 0x80D320
+                when 'Episode'
+                  offset = 0x8F7920
+                when 'Story'
+                  offset = 0x926720
+                end
+                id = id - TYPES[type][:slots] * mid
+                o = offset + 48 * id
+                nprofile[o + 20] = "\x02".b
+                nprofile[o + 48 + 20] = "\x01".b
+                old_gold = nprofile[o + 24...o + 28].unpack('l<')[0]
+                nprofile[o + 24...o + 28] = [gold].pack('l<') if gold > old_gold
+                score = (1000.0 * score.to_i / 60.0).round
+                old_score = nprofile[o + 36...o + 40].unpack('l<')[0]
+                nprofile[o + 36...o + 40] = [score].pack('l<') if score > old_score
+              }
+  raise "Size mismatch after nprofile patch" if nprofile.size != size
+  File.binwrite("#{sanitize_filename(player.name)}_nprofile", nprofile)
+  event << "#{mappack.code.upcase} nprofile for #{player.name} was generated"
+rescue => e
+  lex(e, 'Failed to generate nprofile')
+  byebug
+  nil
 end
 
 def respond_special(event)
