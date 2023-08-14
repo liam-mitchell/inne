@@ -571,15 +571,15 @@ def send_channel_next(type, ctp = false)
 
   # Get old and new levels/episodes/stories
   last = GlobalProperty.get_current(type, ctp)
-  current = GlobalProperty.get_next(type)
-  GlobalProperty.set_current(type, current)
+  current = GlobalProperty.get_next(type, ctp)
+  GlobalProperty.set_current(type, current, ctp)
   if current.nil?
-    err("No more #{type.to_s.downcase.pluralize}")
+    err("No more #{ctp ? 'CTP ' : ''}#{type.to_s.downcase.pluralize}")
     return false
   end
 
   # Update scores, if need be
-  if !OFFLINE_STRICT && UPDATE_SCORES_ON_LOTD
+  if !OFFLINE_STRICT && UPDATE_SCORES_ON_LOTD && !ctp
     last.update_scores if !last.nil?
     current.update_scores
   end
@@ -590,21 +590,21 @@ def send_channel_next(type, ctp = false)
   time = (type == Level ? "today" : (type == Episode ? "this week" : "this month"))
   since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
   typename = type != Story ? type.to_s.downcase : "column"
-  caption = "#{prefix} for a new #{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
+  caption = "#{prefix} for a new #{ctp ? 'CTP ' : ''}#{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
 
-  # Send screenshot and scores, and optionally, differences
+  # Send screenshot and scores
   screenshot = Map.screenshot(file: true, h: current.map) rescue nil
   caption += "\nThere was a problem generating the screenshot!" if screenshot.nil?
   channel.send(caption, false, nil, screenshot.nil? ? [] : [screenshot])
-  channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n#{format_block(current.format_scores)}")
-  old_scores = GlobalProperty.get_saved_scores(type)
-  if !OFFLINE_STRICT && !last.nil? && !old_scores.nil?
-    diff = last.format_difference(old_scores)
-    channel.send("Score changes on #{last.format_name} since #{since}:\n#{format_block(diff)}")
-  else
-    channel.send("Strict offline mode activated, not sending score differences.")
+  channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n#{format_block(current.format_scores(mode: 'dual'))}")
+
+  # Send differences, if available
+  old_scores = GlobalProperty.get_saved_scores(type, ctp)
+  if (!OFFLINE_STRICT || ctp) && !last.nil? && !old_scores.nil?
+    diff = last.format_difference(old_scores) rescue nil
+    channel.send("Score changes on #{last.format_name} since #{since}:\n#{format_block(diff)}") if !diff.nil? && !diff.strip.empty?
   end
-  GlobalProperty.set_saved_scores(type, current)
+  GlobalProperty.set_saved_scores(type, current, ctp)
 
   return true
 end
@@ -616,7 +616,7 @@ def start_level_of_the_day(ctp = false)
     episode_day = false
     story_day = false
 
-    # Test lotd
+    # Test lotd/eotw/cotm immediately
     if TEST && (ctp ? TEST_CTP_LOTD : TEST_LOTD)
       sleep(WAIT) while !send_channel_next(Level, ctp)
       sleep(WAIT) while !send_channel_next(Episode, ctp)
@@ -624,42 +624,53 @@ def start_level_of_the_day(ctp = false)
       return
     end
 
-    # Fetch next update time, and wait until lotd time
-    next_level_update = correct_time(GlobalProperty.get_next_update(Level), LEVEL_UPDATE_FREQUENCY)
-    next_episode_update = correct_time(GlobalProperty.get_next_update(Episode), EPISODE_UPDATE_FREQUENCY)
-    GlobalProperty.set_next_update(Level, next_level_update)
-    GlobalProperty.set_next_update(Episode, next_episode_update)
+    # Update lotd update time (every day)
+    next_level_update = correct_time(GlobalProperty.get_next_update(Level, ctp), LEVEL_UPDATE_FREQUENCY)
+    GlobalProperty.set_next_update(Level, next_level_update, ctp)
+
+    # Update eotw update time (every week)
+    next_episode_update = correct_time(GlobalProperty.get_next_update(Episode, ctp), EPISODE_UPDATE_FREQUENCY)
+    GlobalProperty.set_next_update(Episode, next_episode_update, ctp)
+
+    # Update cotm update time (1st of each month)
+    next_story_update = GlobalProperty.get_next_update(Story, ctp)
+    next_story_update_new = next_story_update
+    month = next_story_update_new.month
+    next_story_update_new += LEVEL_UPDATE_FREQUENCY while next_story_update_new.month == month
+    GlobalProperty.set_next_update(Story, next_story_update_new, ctp)
+
+    # Wait until post time
     delay = next_level_update - Time.now
     sleep(delay) unless delay < 0
-
     $active_tasks[:lotd] = true
-    if (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING
-      log("Starting level of the day...")
-      send_channel_next(Level)
-      succ("Sent next level, next update at #{GlobalProperty.get_next_update(Level).to_s}")
+    log("Starting #{ctp ? 'CTP ' : ''}level of the day...")
+
+    # Post lotd, if enabled
+    if ((ctp ? UPDATE_CTP_LEVEL : UPDATE_LEVEL) || DO_EVERYTHING) && !DO_NOTHING
+      sleep(WAIT) while !send_channel_next(Level, ctp)
+      succ("Sent #{ctp ? 'CTP ' : ''}level of the day")
     end
 
-    if (UPDATE_EPISODE || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
+    # Post eotw, if enabled
+    if ((ctp ? UPDATE_CTP_EPISODE : UPDATE_EPISODE) || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
       sleep(5)
-      send_channel_next(Episode)
+      sleep(WAIT) while !send_channel_next(Episode, ctp)
       episode_day = true
-      succ("Sent next episode, next update at #{GlobalProperty.get_next_update(Episode).to_s}")
+      succ("Sent #{ctp ? 'CTP ' : ''}episode of the week")
     end
 
-    if (UPDATE_STORY || DO_EVERYTHING) && !DO_NOTHING && GlobalProperty.get_next_update(Story) < Time.now
-      # we add days until we get to the first day of the next month
-      next_story_update = GlobalProperty.get_next_update(Story)
-      month = next_story_update.month
-      next_story_update += LEVEL_UPDATE_FREQUENCY while next_story_update.month == month
-      GlobalProperty.set_next_update(Story, next_story_update)
+    # Post cotm, if enabled
+    if ((ctp ? UPDATE_CTP_STORY : UPDATE_STORY) || DO_EVERYTHING) && !DO_NOTHING && next_story_update < Time.now
       sleep(5)
-      send_channel_next(Story)
+      sleep(WAIT) while !send_channel_next(Story, ctp)
       story_day = true
-      succ("Sent next story, next update at #{GlobalProperty.get_next_update(Story).to_s}")
+      succ("Sent #{ctp ? 'CTP ' : ''}story of the month")
     end
 
-    if !episode_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_reminder end
-    if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
+    # Post reminders and finish
+    cond = ((ctp ? UPDATE_CTP_LEVEL : UPDATE_LEVEL) || DO_EVERYTHING) && !DO_NOTHING
+    send_channel_reminder       if !episode_day && cond
+    send_channel_story_reminder if !story_day   && cond
     $active_tasks[:lotd] = false
   end
 rescue => e

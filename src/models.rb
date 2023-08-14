@@ -867,41 +867,40 @@ module Highscoreable
     end
   end
 
-  def format_scores_mode(mode = 'hs', np: 0, sp: 0, ranks: 20.times.to_a, full: false, cools: true, stars: true)
+  def format_scores_board(board = 'hs', np: 0, sp: 0, ranks: 20.times.to_a, full: false, cools: true, stars: true)
     mappack = self.is_a?(MappackHighscoreable)
     userlevel = self.is_a?(Userlevel)
-    hs = mode == 'hs'
-    gm = mode == 'gm'
+    hs = board == 'hs'
 
     # Reload scores, otherwise sometimes recent changes aren't in memory
     scores.reload
-    boards = leaderboard(mode, aliases: true, truncate: full ? 0 : 20).each_with_index.select{ |_, r|
+    boards = leaderboard(board, aliases: true, truncate: full ? 0 : 20).each_with_index.select{ |_, r|
       full ? true : ranks.include?(r)
     }.sort_by{ |_, r| full ? r : ranks.index(r) }
 
     # Calculate padding
     name_padding = np > 0 ? np : boards.map{ |s, _| s['name'].to_s.length }.max
-    field = !mappack ? 'score' : "score_#{mode}"
+    field = !mappack ? 'score' : "score_#{board}"
     score_padding = sp > 0 ? sp : boards.map{ |s, _|
       mappack && hs || userlevel ? s[field] / 60.0 : s[field]
     }.max.to_i.to_s.length + (!mappack || hs ? 4 : 0)
 
     # Print scores
     boards.map{ |s, r|
-      Scorish.format(name_padding, score_padding, cools: cools, stars: stars, mode: mode, t_rank: r, mappack: mappack, userlevel: userlevel, h: s)
+      Scorish.format(name_padding, score_padding, cools: cools, stars: stars, mode: board, t_rank: r, mappack: mappack, userlevel: userlevel, h: s)
     }
   end
 
   def format_scores(np: 0, sp: 0, mode: 'hs', ranks: 20.times.to_a, join: true, full: false, cools: true, stars: true)
     if !self.is_a?(MappackHighscoreable) || mode != 'dual'
-      ret = format_scores_mode(mode, np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
+      ret = format_scores_board(mode, np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
       ret = ret.join("\n") if join
       return ret
     end
-    board_hs = format_scores_mode('hs', np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
-    board_sr = format_scores_mode('sr', np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
-    length_hs = board_hs.first.length
-    length_sr = board_sr.first.length
+    board_hs = format_scores_board('hs', np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
+    board_sr = format_scores_board('sr', np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
+    length_hs = board_hs.first.length rescue 0
+    length_sr = board_sr.first.length rescue 0
     size = [board_hs.size, board_sr.size].max
     board_hs = board_hs.ljust(size, ' ' * length_hs)
     board_sr = board_sr.ljust(size, ' ' * length_sr)
@@ -913,26 +912,26 @@ module Highscoreable
 
   def difference(old)
     scores.map do |score|
-      oldscore = old.find { |o| o['player_id'] == score.player_id }
-      change = nil
-
-      if oldscore
-        change = {rank: oldscore['rank'] - score.rank, score: score.score - oldscore['score']}
-      end
-
-      {score: score, change: change}
+      oldscore = old.find{ |o| o['player_id'] == score.player_id }
+      change = {
+        rank:  oldscore['rank'] - score.rank,
+        score: score.score - oldscore['score']
+      } if oldscore
+      { score: score, change: change }
     end
   end
 
+  # TODO: Compute name padding using display names
+  # TODO: Don't print diff if there are no diffs
   def format_difference(old)
-    diffs = difference(old)
+    difffs = difference(old)
 
-    name_padding = scores.map{ |s| s.player.name.length }.max
-    score_padding = scores.map{ |s| s.score.to_i }.max.to_s.length + 4
-    rank_padding = diffs.map{ |d| d[:change] }.compact.map{ |d| d[:rank].to_i }.max.to_s.length
-    change_padding = diffs.map{ |d| d[:change] }.compact.map{ |d| d[:score].to_i }.max.to_s.length + 4
+    name_padding   = scores.map{ |s| s.player.name.length }.max
+    score_padding  = scores.map{ |s| s.score.to_i         }.max.to_s.length + 4
+    rank_padding   = difffs.map{ |d| d[:change] }.compact.map{ |c| c[:rank].to_i  }.max.to_s.length
+    change_padding = difffs.map{ |d| d[:change] }.compact.map{ |c| c[:score].to_i }.max.to_s.length + 4
 
-    difference(old).map { |o|
+    difffs.map{ |o|
       c = o[:change]
       diff = c ? "#{"++-"[c[:rank] <=> 0]}#{"%#{rank_padding}d" % [c[:rank].abs]}, +#{"%#{change_padding}.3f" % [c[:score]]}" : "new"
       "#{o[:score].format(name_padding, score_padding, false)} (#{diff})"
@@ -2088,40 +2087,53 @@ class GlobalProperty < ActiveRecord::Base
   end
   
   # Set (change) current lotd/eotw/cotm
-  def self.set_current(type, curr)
-    self.find_or_create_by(key: "current_#{type.to_s.downcase}").update(value: curr.name)
+  def self.set_current(type, curr, ctp = false)
+    key = "current_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}"
+    self.find_or_create_by(key: key).update(value: curr.name)
   end
   
   # Select a new lotd/eotw/cotm at random, and mark the current one as done
   # When all have been done, clear the marks to be able to start over
-  def self.get_next(type)
-    query = type.where(completed: nil)
-    type.update_all(completed: nil) if query.count <= 0
-    ret = type.where(completed: nil).sample
+  def self.get_next(type, ctp = false)
+    klass = ctp ? type.mappack : type
+    query = ctp ? klass.where(mappack_id: 1, tab: 0) : klass
+    query.update_all(completed: nil) if query.where(completed: nil).count <= 0
+    ret = query.where(completed: nil).sample
     ret.update(completed: true)
     ret
   end
   
   # Get datetime for the next update of some property (e.g. new lotd, new
   # database score update, etc)
-  def self.get_next_update(type)
-    Time.parse(self.find_by(key: "next_#{type.to_s.downcase}_update").value)
+  def self.get_next_update(type, ctp = false)
+    key = "next_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_update"
+    Time.parse(self.find_by(key: key).value)
   end
   
   # Set datetime for the next update of some property
-  def self.set_next_update(type, time)
-    self.find_or_create_by(key: "next_#{type.to_s.downcase}_update").update(value: time.to_s)
+  def self.set_next_update(type, time, ctp = false)
+    key = "next_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_update"
+    self.find_or_create_by(key: key).update(value: time.to_s)
   end
   
   # Get the old saved scores for lotd/eotw/cotm (to compare against current scores)
-  def self.get_saved_scores(type)
-    JSON.parse(self.find_by(key: "saved_#{type.to_s.downcase}_scores").value)
+  def self.get_saved_scores(type, ctp = false)
+    key = "saved_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_scores"
+    JSON.parse(self.find_by(key: key).value)
   end
   
   # Save the current lotd/eotw/cotm scores (to see changes later)
-  def self.set_saved_scores(type, curr)
-    self.find_or_create_by(key: "saved_#{type.to_s.downcase}_scores")
-      .update(value: curr.scores.to_json(include: {player: {only: :name}}))
+  def self.set_saved_scores(type, curr, ctp = false)
+    key = "saved_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_scores"
+    scores = curr.scores
+    scores = scores.where("rank_hs IS NOT NULL OR rank_sr IS NOT NULL") if ctp
+    fields = [:player_id]
+    if ctp
+      fields << [:rank_hs, :score_hs, :rank_sr, :score_sr]
+    else
+      fields << [:rank, :score]
+    end
+    self.find_or_create_by(key: key).update(value: scores.to_json(only: fields.flatten))
   end
 
   # Get the currently active Steam ID to latch onto
