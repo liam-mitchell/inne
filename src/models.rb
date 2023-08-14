@@ -1065,6 +1065,10 @@ class Level < ActiveRecord::Base
   belongs_to :episode
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
+  def self.mappack
+    MappackLevel
+  end
+
   def add_alias(a)
     LevelAlias.find_or_create_by(level: self, alias: a)
   end
@@ -1132,6 +1136,10 @@ class Episode < ActiveRecord::Base
   has_many :levels
   belongs_to :story
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  def self.mappack
+    MappackEpisode
+  end
 
   def self.ownages(tabs)
     bench(:start) if BENCHMARK
@@ -1212,6 +1220,10 @@ class Story < ActiveRecord::Base
   has_many :videos, as: :highscoreable
   has_many :episodes
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  def self.mappack
+    MappackStory
+  end
 end
 
 # Implemented by Score and MappackScore
@@ -2069,8 +2081,10 @@ end
 
 class GlobalProperty < ActiveRecord::Base
   # Get current lotd/eotw/cotm
-  def self.get_current(type)
-    type.find_by(name: self.find_by(key: "current_#{type.to_s.downcase}").value)
+  def self.get_current(type, ctp = false)
+    klass = ctp ? type.mappack : type
+    key = "current_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}"
+    klass.find_by(name: self.find_by(key: key).value)
   end
   
   # Set (change) current lotd/eotw/cotm
@@ -2123,7 +2137,7 @@ class GlobalProperty < ActiveRecord::Base
   # Select a new Steam ID to set (we do it in order, so that we can loop the list)
   # If 'fast', we only try the recently active Steam IDs
   def self.update_last_steam_id(fast = false)
-    current   = (User.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
+    current = (User.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
     query = User.where.not(steam_id: nil)
     query = query.where(active: true) if fast
     next_user = (query.where('id > ?', current).first || query.first) rescue nil

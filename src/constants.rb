@@ -21,6 +21,7 @@ BYEBUG         = false # Breakpoint right after loading the bot
 # Test specific features
 TEST_REPORT    = false # Produces the report immediately once
 TEST_LOTD      = false # Posts lotd immediately once
+TEST_CTP_LOTD  = false # Posts CTP lotd immediately once
 BENCH_IMAGES   = false # Benchmark image manipulation steps
 
 # Internal
@@ -53,16 +54,17 @@ UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 # <------                     DISCORD VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-BOTMASTER_ID        = 204332624288677890  # User ID of the bot manager (Eddy)
-SERVER_ID           = 197765375503368192  # Discord server/guild ID (N++ Server)
-CHANNEL_HIGHSCORES  = 210778111594332181  # #highscores
-CHANNEL_USERLEVELS  = 221721273405800458  # #userlevels
-CHANNEL_NV2         = 197774025844457472  # #nv2
-CHANNEL_CONTENT     = 197793786389200896  # #content-creation
-CHANNEL_SECRETS     = 217283494664077312  # #secrets
-CHANNEL_CTP_SECRETS = 1137794113475969034 # #ctp-secrets
-DISCORD_CHAR_LIMIT  = 2000                # Message character limit
-DISCORD_FILE_LIMIT  = 25 * 1000 ** 2      # Attachment size limit
+BOTMASTER_ID           = 204332624288677890  # User ID of the bot manager (Eddy)
+SERVER_ID              = 197765375503368192  # Discord server/guild ID (N++ Server)
+CHANNEL_HIGHSCORES     = 210778111594332181  # #highscores
+CHANNEL_USERLEVELS     = 221721273405800458  # #userlevels
+CHANNEL_NV2            = 197774025844457472  # #nv2
+CHANNEL_CONTENT        = 197793786389200896  # #content-creation
+CHANNEL_SECRETS        = 217283494664077312  # #secrets
+CHANNEL_CTP_HIGHSCORES = 1137794057205198848 # #ctp-highscores
+CHANNEL_CTP_SECRETS    = 1137794113475969034 # #ctp-secrets
+DISCORD_CHAR_LIMIT     = 2000                # Message character limit
+DISCORD_FILE_LIMIT     = 25 * 1000 ** 2      # Attachment size limit
 
 # Non-standard character widths in the monospaced font (for padding adjustments)
 WIDTH_EMOJI = 2
@@ -233,20 +235,23 @@ FRUITS         = [                  # Emojis for the potato joke
 # <--------------------------------------------------------------------------->
 
 # Individual flags for each thread / task
-UPDATE_STATUS     = false # Thread to regularly update the bot's status
-UPDATE_TWITCH     = false # Thread to regularly look up N related Twitch streams
-UPDATE_SCORES     = false # Thread to regularly download Metanet's scores
-UPDATE_HISTORY    = false # Thread to regularly update highscoring histories
-UPDATE_DEMOS      = false # Thread to regularly download missing Metanet demos
-UPDATE_LEVEL      = false # Thread to regularly publish level of the day
-UPDATE_EPISODE    = false # Thread to regularly publish episode of the week
-UPDATE_STORY      = false # Thread to regularly publish column of the month
-UPDATE_USERLEVELS = false # Thread to regularly download newest userlevel scores
-UPDATE_USER_GLOB  = false # Thread to continuously (but slowly) download all userlevel scores
-UPDATE_USER_HIST  = false # Thread to regularly update userlevel highscoring histories
-UPDATE_USER_TABS  = false # Thread to regularly update userlevel tabs (best, featured, top, hardest)
-REPORT_METANET    = false # Thread to regularly post Metanet's highscoring report
-REPORT_USERLEVELS = false # Thread to regularly post userlevels' highscoring report
+UPDATE_STATUS      = false # Thread to regularly update the bot's status
+UPDATE_TWITCH      = false # Thread to regularly look up N related Twitch streams
+UPDATE_SCORES      = false # Thread to regularly download Metanet's scores
+UPDATE_HISTORY     = false # Thread to regularly update highscoring histories
+UPDATE_DEMOS       = false # Thread to regularly download missing Metanet demos
+UPDATE_LEVEL       = false # Thread to regularly publish level of the day
+UPDATE_EPISODE     = false # Thread to regularly publish episode of the week
+UPDATE_STORY       = false # Thread to regularly publish column of the month
+UPDATE_CTP_LEVEL   = false # Thread to regularly publish CTP level of the day
+UPDATE_CTP_EPISODE = false # Thread to regularly publish CTP episode of the week
+UPDATE_CTP_STORY   = false # Thread to regularly publish CTP column of the month
+UPDATE_USERLEVELS  = false # Thread to regularly download newest userlevel scores
+UPDATE_USER_GLOB   = false # Thread to continuously (but slowly) download all userlevel scores
+UPDATE_USER_HIST   = false # Thread to regularly update userlevel highscoring histories
+UPDATE_USER_TABS   = false # Thread to regularly update userlevel tabs (best, featured, top, hardest)
+REPORT_METANET     = false # Thread to regularly post Metanet's highscoring report
+REPORT_USERLEVELS  = false # Thread to regularly post userlevels' highscoring report
 
 # Update frequencies for each task, in seconds
 STATUS_UPDATE_FREQUENCY     =             5 * 60
@@ -257,6 +262,9 @@ DEMO_UPDATE_FREQUENCY       =       24 * 60 * 60
 LEVEL_UPDATE_FREQUENCY      =       24 * 60 * 60
 EPISODE_UPDATE_FREQUENCY    =   7 * 24 * 60 * 60
 STORY_UPDATE_FREQUENCY      =  30 * 24 * 60 * 60 # Not used (published 1st of each month)
+CTP_LEVEL_FREQUENCY         =       24 * 60 * 60
+CTP_EPISODE_FREQUENCY       =   7 * 24 * 60 * 60
+CTP_STORY_FREQUENCY         =  30 * 24 * 60 * 60 # Not used (published 1st of each month)
 REPORT_UPDATE_FREQUENCY     =       24 * 60 * 60
 REPORT_UPDATE_SIZE          =   7 * 24 * 60 * 60
 SUMMARY_UPDATE_SIZE         =   1 * 24 * 60 * 60

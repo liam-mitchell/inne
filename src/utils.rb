@@ -231,7 +231,7 @@ def get_data(uri_proc, data_proc, err, *vargs, fast: false)
     response = Net::HTTP.get_response(uri_proc.call(GlobalProperty.get_last_steam_id, *vargs))
   end
   return nil if response.body == INVALID_RESP
-  raise "502 Bad Gateway" if LOG_DOWNLOAD_ERRORS && response.code.to_i == 502
+  raise "502 Bad Gateway" if response.code.to_i == 502
   GlobalProperty.activate_last_steam_id
   data_proc.call(response.body)
 rescue => e
@@ -1208,12 +1208,14 @@ def set_channels(event = nil)
     $mapping_channel = event.channel
     $nv2_channel     = event.channel
     $content_channel = event.channel
+    $ctp_channel     = event.channel
   elsif !TEST
     channels = $bot.servers[SERVER_ID].channels
     $channel         = channels.find{ |c| c.id == CHANNEL_HIGHSCORES }
     $mapping_channel = channels.find{ |c| c.id == CHANNEL_USERLEVELS }
     $nv2_channel     = channels.find{ |c| c.id == CHANNEL_NV2 }
     $content_channel = channels.find{ |c| c.id == CHANNEL_CONTENT }
+    $ctp_channel     = channels.find{ |c| c.id == CHANNEL_CTP_HIGHSCORES }
   else
     return
   end
@@ -1222,6 +1224,7 @@ def set_channels(event = nil)
   log("Mapping channel: #{$mapping_channel.name}") if !$mapping_channel.nil?
   log("Nv2 channel:     #{$nv2_channel.name}")     if !$nv2_channel.nil?
   log("Content channel: #{$content_channel.name}") if !$content_channel.nil?
+  log("CTP channel:     #{$ctp_channel.name}")     if !$ctp_channel.nil?
 end
 
 def leave_unknown_servers

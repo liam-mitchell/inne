@@ -2232,9 +2232,9 @@ def send_nprofile_gen(event)
   mid = mappack.id
   nprofile = unzip(File.binread(File.join(DIR_UTILS, 'nprofile.zip')))['nprofile']
   size = nprofile.size
+  # TODO: Add gold to episodes
   MappackScore.where(player: player, mappack: mappack)
-              .where('rank_hs IS NOT NULL')
-              .order(highscoreable_id: :asc)
+              .order(highscoreable_id: :asc, gold: :asc)
               .pluck(:highscoreable_id, :highscoreable_type, :score_hs, :gold)
               .each{ |id, type, score, gold|
                 type = type.remove('Mappack')
@@ -2261,7 +2261,6 @@ def send_nprofile_gen(event)
   event << "#{mappack.code.upcase} nprofile for #{player.name} was generated"
 rescue => e
   lex(e, 'Failed to generate nprofile')
-  byebug
   nil
 end
 

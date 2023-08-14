@@ -561,15 +561,16 @@ end
 
 # Publish the lotd/eotw/cotm
 # This function also updates the scores of said board, and of the new one
-def send_channel_next(type)
-  log("Sending next #{type.to_s.downcase}...")
-  if $channel.nil?
-    err("Not connected to a channel, not sending level of the day")
+def send_channel_next(type, ctp = false)
+  # Check if the channel is available
+  channel = (ctp ? $ctp_channel : $channel)
+  if channel.nil?
+    err("#{ctp ? 'CTP h' : 'H'}ighscoring channel not found, not sending level of the day")
     return false
   end
 
   # Get old and new levels/episodes/stories
-  last = GlobalProperty.get_current(type)
+  last = GlobalProperty.get_current(type, ctp)
   current = GlobalProperty.get_next(type)
   GlobalProperty.set_current(type, current)
   if current.nil?
@@ -594,14 +595,14 @@ def send_channel_next(type)
   # Send screenshot and scores, and optionally, differences
   screenshot = Map.screenshot(file: true, h: current.map) rescue nil
   caption += "\nThere was a problem generating the screenshot!" if screenshot.nil?
-  $channel.send(caption, false, nil, screenshot.nil? ? [] : [screenshot])
-  $channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n#{format_block(current.format_scores)}")
+  channel.send(caption, false, nil, screenshot.nil? ? [] : [screenshot])
+  channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n#{format_block(current.format_scores)}")
   old_scores = GlobalProperty.get_saved_scores(type)
   if !OFFLINE_STRICT && !last.nil? && !old_scores.nil?
     diff = last.format_difference(old_scores)
-    $channel.send("Score changes on #{last.format_name} since #{since}:\n#{format_block(diff)}")
+    channel.send("Score changes on #{last.format_name} since #{since}:\n#{format_block(diff)}")
   else
-    $channel.send("Strict offline mode activated, not sending score differences.")
+    channel.send("Strict offline mode activated, not sending score differences.")
   end
   GlobalProperty.set_saved_scores(type, current)
 
@@ -609,17 +610,21 @@ def send_channel_next(type)
 end
 
 # Driver for the function above (takes care of timing, db update, etc)
-def start_level_of_the_day
-  episode_day = false
-  story_day = false
+def start_level_of_the_day(ctp = false)
   while true
     sleep(WAIT)
-    if TEST && TEST_LOTD
-      next if !send_channel_next(Level)
-      send_channel_next(Episode)
-      send_channel_next(Story)
+    episode_day = false
+    story_day = false
+
+    # Test lotd
+    if TEST && (ctp ? TEST_CTP_LOTD : TEST_LOTD)
+      sleep(WAIT) while !send_channel_next(Level, ctp)
+      sleep(WAIT) while !send_channel_next(Episode, ctp)
+      sleep(WAIT) while !send_channel_next(Story, ctp)
       return
     end
+
+    # Fetch next update time, and wait until lotd time
     next_level_update = correct_time(GlobalProperty.get_next_update(Level), LEVEL_UPDATE_FREQUENCY)
     next_episode_update = correct_time(GlobalProperty.get_next_update(Episode), EPISODE_UPDATE_FREQUENCY)
     GlobalProperty.set_next_update(Level, next_level_update)
@@ -655,8 +660,6 @@ def start_level_of_the_day
 
     if !episode_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_reminder end
     if !story_day && (UPDATE_LEVEL || DO_EVERYTHING) && !DO_NOTHING then send_channel_story_reminder end
-    episode_day = false
-    story_day = false
     $active_tasks[:lotd] = false
   end
 rescue => e
@@ -707,22 +710,23 @@ end
 # Start all the tasks in this file in independent threads
 def start_threads
   $threads = []
-  $threads << Thread.new { monitor_memory            } if $linux
-  $threads << Thread.new { Cuse::on                  } if SOCKET && CUSE_SOCKET && !DO_NOTHING
-  $threads << Thread.new { Cle::on                   } if SOCKET && CLE_SOCKET && !DO_NOTHING
-  $threads << Thread.new { update_status             } if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-  $threads << Thread.new { update_twitch             } if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
-  $threads << Thread.new { start_high_scores         } if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_demos               } if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_level_of_the_day    } # No checks here because they're done individually there
-  $threads << Thread.new { start_userlevel_scores    } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { update_all_userlevels     } if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_userlevel_histories } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_userlevel_tabs      } if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_report              } if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_userlevel_report    } if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { potato                    } if POTATO && !DO_NOTHING
-  $threads << Thread.new { sleep                     }
+  $threads << Thread.new { monitor_memory                } if $linux
+  $threads << Thread.new { Cuse::on                      } if SOCKET && CUSE_SOCKET && !DO_NOTHING
+  $threads << Thread.new { Cle::on                       } if SOCKET && CLE_SOCKET && !DO_NOTHING
+  $threads << Thread.new { update_status                 } if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
+  $threads << Thread.new { update_twitch                 } if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
+  $threads << Thread.new { start_high_scores             } if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_demos                   } if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_level_of_the_day(true)  } # No checks here because they're done individually there
+  $threads << Thread.new { start_level_of_the_day(false) } # No checks here because they're done individually there
+  $threads << Thread.new { start_userlevel_scores        } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { update_all_userlevels         } if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_userlevel_histories     } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_userlevel_tabs          } if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_report                  } if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { start_userlevel_report        } if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+  $threads << Thread.new { potato                        } if POTATO && !DO_NOTHING
+  $threads << Thread.new { sleep                         }
 end
 
 def block_threads
