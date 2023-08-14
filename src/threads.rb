@@ -633,6 +633,7 @@ def start_level_of_the_day(ctp = false)
     GlobalProperty.set_next_update(Episode, next_episode_update, ctp)
 
     # Update cotm update time (1st of each month)
+    # TODO: Compare against current month
     next_story_update = GlobalProperty.get_next_update(Story, ctp)
     next_story_update_new = next_story_update
     month = next_story_update_new.month

@@ -2083,7 +2083,9 @@ class GlobalProperty < ActiveRecord::Base
   def self.get_current(type, ctp = false)
     klass = ctp ? type.mappack : type
     key = "current_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}"
-    klass.find_by(name: self.find_by(key: key).value)
+    name = self.find_by(key: key).value rescue nil
+    return nil if name.nil?
+    klass.find_by(name: name)
   end
   
   # Set (change) current lotd/eotw/cotm

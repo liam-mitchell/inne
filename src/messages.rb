@@ -1117,6 +1117,7 @@ end
 
 # Auxiliar function called during lotd/eotw/cotm
 # Can also be called on demand by the botmaster
+# TODO: Add CTP diff
 def send_diff(event)
   type = parse_type(event.content) || Level
   current = GlobalProperty.get_current(type)
@@ -1699,37 +1700,34 @@ def send_help(event)
   event << "If the command is related to a specific player, you can specify it by ending your message with 'for <username>'. Otherwise, I'll use the one you specified earlier."
 end
 
-def send_lotd_info(event)
-  level = GlobalProperty.get_current(Level)
-  next_level = GlobalProperty.get_next_update(Level) - Time.now
-  next_level_hours = (next_level / (60 * 60)).to_i
-  next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
+# Send info about current and next lotd/eotw/cotm
+def send_lotd(event, type = Level)
+  # Parse params
+  type = Level if ![Level, Episode, Story].include?(type)
+  ctp = !!event.content[/ctp/i]
+  period = type == Level ? 'day' : (type == Episode ? 'week' : 'month')
 
-  event << "The current level of the day is #{level.format_name}."
-  event << "I'll post a new level of the day in #{next_level_hours} hours and #{next_level_minutes} minutes."
-  event.attach_file(send_screenshot(event, level, true)[0])
-end
+  # Fetch lotd and time
+  curr_h = GlobalProperty.get_current(type, ctp)
+  next_h = GlobalProperty.get_next_update(type, ctp) - Time.now
 
-def send_eotw_info(event)
-  episode = GlobalProperty.get_current(Episode)
-  next_episode = GlobalProperty.get_next_update(Episode) - Time.now
-  next_episode_days = (next_episode / (24 * 60 * 60)).to_i
-  next_episode_hours = (next_episode / (60 * 60)).to_i - (next_episode / (24 * 60 * 60)).to_i * 24
-
-  event << "The current episode of the week is #{episode.format_name}."
-  event << "I'll post a new episode of the week in #{next_episode_days} days and #{next_episode_hours} hours."
-  event.attach_file(send_screenshot(event, episode, true)[0])
-end
-
-def send_cotm_info(event)
-  story = GlobalProperty.get_current(Story)
-  next_story = GlobalProperty.get_next_update(Story) - Time.now
-  next_story_days = (next_story / (24 * 60 * 60)).to_i
-  next_story_hours = (next_story / (60 * 60)).to_i - (next_story / (24 * 60 * 60)).to_i * 24
-
-  event << "The current column of the month is #{story.format_name}."
-  event << "I'll post a new column of the month in #{next_story_days} days and #{next_story_hours} hours."
-  event.attach_file(send_screenshot(event, story, true)[0])
+  # Compute times
+  if type == Level
+    time1 = "#{(next_h / (60 * 60)).to_i} hours"
+    time2 = "#{(next_h / 60).to_i - (next_h / (60 * 60)).to_i * 60} minutes"
+  else
+    time1 = "#{(next_h / (24 * 60 * 60)).to_i} days"
+    time2 = "#{(next_h / (60 * 60)).to_i - (next_h / (24 * 60 * 60)).to_i * 24} hours"
+  end
+  
+  # Send messages
+  if !curr_h.nil?
+    event << "The current #{ctp ? 'CTP ' : ''}#{type.to_s.downcase} of the #{period} is #{curr_h.format_name}."
+    event.attach_file(send_screenshot(event, curr_h, true)[0])
+  else
+    event << "There is no current #{ctp ? 'CTP ' : ''}#{type.to_s.downcase} of the #{period}."
+  end
+  event << "I'll post a new #{ctp ? 'CTP ' : ''}#{type.to_s.downcase} of the #{period} in #{time1} and #{time2}."
 end
 
 def dump(event)
@@ -2322,9 +2320,18 @@ def respond(event)
   return send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
   return send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
   return send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
-  return send_lotd_info(event)      if msg =~ /\A\s*lotd\s*\Z/i
-  return send_eotw_info(event)      if msg =~ /\A\s*eotw\s*\Z/i
-  return send_cotm_info(event)      if msg =~ /\A\s*cotm\s*\Z/i
+  return send_analysis(event)       if msg =~ /analysis/i
+  return send_level_name(event)     if msg =~ /\blevel name\b/i
+  return send_level_id(event)       if msg =~ /\blevel id\b/i
+  return send_videos(event)         if msg =~ /\bvideo\b/i
+  return send_challenges(event)     if msg =~ /\bchallenges\b/i
+  return add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
+  return send_download(event)       if msg =~ /\bdownload\b/i
+  return send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
+  return send_trace(event)          if msg =~ /\btrace\b/i
+  return send_lotd(event, Level)    if msg =~ /lotd/i
+  return send_lotd(event, Episode)  if msg =~ /eotw/i
+  return send_lotd(event, Story)    if msg =~ /cotm/i
   return send_table(event)          if msg =~ /\btable\b/i
   return send_average_points(event) if msg =~ /\bpoints/i && msg =~ /average/i
   return send_points(event)         if msg =~ /\bpoints/i
@@ -2342,27 +2349,18 @@ def respond(event)
   return send_list(event)           if msg =~ /\blist\b/i
   return send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i
   return send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i
-  return send_level_name(event)     if msg =~ /\blevel name\b/i
-  return send_level_id(event)       if msg =~ /\blevel id\b/i
-  return send_analysis(event)       if msg =~ /analysis/i
   return send_splits(event)         if msg =~ /\bsplits\b/i
   return send_clean_one(event)      if msg =~ /cleanliness/i
   return identify(event)            if msg =~ /my name is/i
   return add_steam_id(event)        if msg =~ /my steam id is/i
   return add_display_name(event)    if msg =~ /my display name is/i
   return set_default_palette(event) if msg =~ /my palette is/i
-  return send_videos(event)         if msg =~ /\bvideo\b/i
-  return send_challenges(event)     if msg =~ /\bchallenges\b/i
   return send_unique_holders(event) if msg =~ /\bunique holders\b/i
   return send_twitch(event)         if msg =~ /\btwitch\b/i
   return add_role(event)            if msg =~ /\badd\s*role\b/i
   return send_aliases(event)        if msg =~ /\baliases\b/i
-  return add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
   return send_dmmc(event)           if msg =~ /\bdmmcize\b/i
   return sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
-  return send_download(event)       if msg =~ /\bdownload\b/i
-  return send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
-  return send_trace(event)          if msg =~ /\btrace\b/i
   return update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
   return faceswap(event)            if msg =~ /faceswap/i
   return hello(event)               if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
