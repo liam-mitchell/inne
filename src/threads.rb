@@ -585,12 +585,12 @@ def send_channel_next(type, ctp = false)
   end
 
   # Format caption
-  prefix = (type == Level ? "Time" : "It's also time")
-  duration = (type == Level ? "day" : (type == Episode ? "week" : "month"))
-  time = (type == Level ? "today" : (type == Episode ? "this week" : "this month"))
-  since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
-  typename = type != Story ? type.to_s.downcase : "column"
-  caption = "#{prefix} for a new #{ctp ? 'CTP ' : ''}#{typename} of the #{duration}! The #{typename} for #{time} is #{current.format_name}."
+  prefix = type == Level ? 'Time'  : "It's also time"
+  type_n = type == Level ? 'level' : type == Episode ? 'episode' : 'column'
+  period = type == Level ? 'day'   : type == Episode ? 'week'    : 'month'
+  time   = type == Level ? 'today' : "this #{period}"
+  caption = "#{prefix} for a new #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}!"
+  caption << " The #{type_n} for #{time} is #{current.format_name}."
 
   # Send screenshot and scores
   screenshot = Map.screenshot(file: true, h: current.map) rescue nil
@@ -600,9 +600,16 @@ def send_channel_next(type, ctp = false)
 
   # Send differences, if available
   old_scores = GlobalProperty.get_saved_scores(type, ctp)
-  if (!OFFLINE_STRICT || ctp) && !last.nil? && !old_scores.nil?
-    diff = last.format_difference(old_scores) rescue nil
-    channel.send("Score changes on #{last.format_name} since #{since}:\n#{format_block(diff)}") if !diff.nil? && !diff.strip.empty?
+  if last.nil? || old_scores.nil?
+    channel.send("There was no previous #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}.")
+  elsif !OFFLINE_STRICT || ctp
+    diff = last.format_difference(old_scores, 'dual') rescue nil
+    since = type == Level ? 'yesterday' : "last #{period}"
+    if diff.strip.empty?
+      channel.send("There were no Top20 changes on #{since}'s #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}, #{last.format_name}.")
+    else
+      channel.send("Top20 changes on #{since}'s #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}, #{last.format_name}:\n#{format_block(diff)}") if !diff.nil?
+    end
   end
   GlobalProperty.set_saved_scores(type, current, ctp)
 

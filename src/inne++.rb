@@ -40,7 +40,7 @@
 #     If you want Twitch integration, to fetch new N++-related streams:        #
 #         * TWITCH_CLIENT : Client ID for your Twitch app.                     #
 #         * TWITCH_SECRET : Secret for your Twitch app.                        #
-#     Alternatively, toggle the UPDATE_TWITCH off.                             #
+#     Alternatively, toggle the UPDATE_TWITCH constant off.                    #
 #                                                                              #
 #     If you have a secondary bot for development:                             #
 #         * DISCORD_CLIENT_TEST : Same as DISCORD_CLIENT for your test bot.    #
@@ -85,8 +85,9 @@
 #                                                                              #
 ################################################################################
 
-# We use some gems directly from Github repositories. This is supported by Bundler
-# but not by RubyGems directly. The next two lines makes these gems available / visible.
+# We use some gems directly from Github repositories. This is supported by
+# Bundler but not by RubyGems directly. The next two lines makes these gems
+# available / visible.
 require 'rubygems'
 require 'bundler/setup'
 
@@ -104,7 +105,7 @@ require 'yaml'
 require 'zlib'
 
 # Import all other source files
-# (each source file still imports all the ones it needs, to keep track)
+# (each source file still imports all the other ones it needs, to keep track)
 require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'io.rb'
@@ -115,6 +116,9 @@ require_relative 'userlevels.rb'
 require_relative 'mappacks.rb'
 require_relative 'threads.rb'
 
+# We monkey patch a few core classes (Enumerable, Array, boolean classes...)
+# and several of the gems (ActiveRecord, Discordrb, Webrick...)
+# See the MonkeyPatch module in models.rb for the details
 def monkey_patch
   MonkeyPatches.apply
   log("Applied monkey patches")
@@ -123,7 +127,10 @@ rescue => e
   exit
 end
 
+# Initialize the global variables used by the bot
+# Also set some environment variables and ensure some folders are created
 def initialize_vars
+  # Initialize global variables
   $config          = nil
   $channel         = nil
   $mapping_channel = nil
@@ -141,14 +148,20 @@ def initialize_vars
   $memory_warned_c = false
   $linux           = RbConfig::CONFIG['host_os'] =~ /linux/i
   $mutex           = { ntrace: Mutex.new }
+
+  # Set environment variables
   ENV['DISCORDRB_NONACL'] = '1' # Prevent libsodium warning message
+
+  # Create additional needed folders
   [DIR_LOGS].each{ |d| Dir.mkdir(d) unless Dir.exist?(d) }
+
   log("Initialized global variables")
 rescue => e
   fatal("Failed to initialize global variables: #{e}")
   exit
 end
 
+# Parse the database configuration file, as well as some environment variables
 def load_config
   $config = YAML.load_file(CONFIG)[DATABASE]
   $config['discord_client'] = (TEST ? ENV['DISCORD_CLIENT_TEST'] : ENV['DISCORD_CLIENT']).to_i
@@ -161,6 +174,7 @@ rescue => e
   exit
 end
 
+# Connect to the database
 def connect_db
   ActiveRecord::Base.establish_connection($config)
   log("Connected to database")
@@ -169,6 +183,7 @@ rescue => e
   exit
 end
 
+# Disconnect from the database
 def disconnect_db
   ActiveRecord::Base.connection_handler.clear_active_connections!
   ActiveRecord::Base.connection.disconnect!
@@ -179,6 +194,7 @@ rescue => e
   exit
 end
 
+# Create and configure the bot
 def create_bot
   $bot = Discordrb::Bot.new(
     token:     $config['discord_secret'],
@@ -213,6 +229,7 @@ end
 # a db connection from the pool or remember to disconnect at the end to prevent
 # zombie connections.
 def setup_bot
+  # Respond to DMs
   $bot.private_message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     remove_mentions!(event.content)
@@ -225,6 +242,7 @@ def setup_bot
     release_connection
   end
 
+  # Respond to pings
   $bot.mention do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     remove_mentions!(event.content)
@@ -234,6 +252,7 @@ def setup_bot
     release_connection
   end
 
+  # Parse all messages, and optionally respond
   $bot.message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     remove_mentions!(event.content)
@@ -251,6 +270,7 @@ def setup_bot
     release_connection
   end
 
+  # Respond to button interactions
   $bot.button do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_button(event)
@@ -258,18 +278,21 @@ def setup_bot
     release_connection
   end
 
+  # Respond to select menu interactions
   $bot.select_menu do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_menu(event)
   ensure
     release_connection
   end
+
   log("Configured bot")
 rescue => e
   fatal("Failed to configure bot: #{e}")
   exit
 end
 
+# Start running the bot, and set up an interrupt trigger to shut it down 
 def run_bot
   $bot.run(true)
   trap("INT") { shutdown }
@@ -280,6 +303,7 @@ rescue => e
   exit
 end
 
+# Stop running the bot
 def stop_bot
   $bot.stop
   log("Stopped bot")
@@ -288,6 +312,9 @@ rescue => e
   exit
 end
 
+# Routine to shutdown the program
+# Needs to be executed in a new thread, since this method will be called from within
+# a trap context (see run_bot)
 def shutdown
   log("Shutting down...")
   # We need to perform the shutdown in a new thread, because this method

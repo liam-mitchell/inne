@@ -1730,21 +1730,6 @@ def send_lotd(event, type = Level)
   event << "I'll post a new #{ctp ? 'CTP ' : ''}#{type.to_s.downcase} of the #{period} in #{time1} and #{time2}."
 end
 
-def dump(event)
-  assert_permissions(event)
-  lotd = GlobalProperty.get_current(Level).format_name unless GlobalProperty.get_current(Level).nil?
-  eotw = GlobalProperty.get_current(Episode).format_name unless GlobalProperty.get_current(Episode).nil?
-  cotm = GlobalProperty.get_current(Story).format_name unless GlobalProperty.get_current(Story).nil?
-  log("current level/episode/story: #{lotd.to_s}, #{eotw.to_s}, #{cotm.to_s}")
-  score = GlobalProperty.get_next_update('score')
-  lotd  = GlobalProperty.get_next_update(Level)
-  eotw  = GlobalProperty.get_next_update(Episode)
-  cotm  = GlobalProperty.get_next_update(Story)
-  log("next updates: scores #{score}, level #{lotd}, episode #{eotw}, story #{cotm}")
-
-  event << "I dumped some things to the log for you to look at."
-end
-
 def send_videos(event)
   videos = parse_videos(event.content)
 
@@ -2365,7 +2350,6 @@ def respond(event)
   return faceswap(event)            if msg =~ /faceswap/i
   return hello(event)               if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
   return thanks(event)              if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
-  return dump(event)                if msg =~ /\bdump\b/i
 
   # If we get to this point, no command was executed
   event << "Sorry, I didn't understand your command."

@@ -910,32 +910,80 @@ module Highscoreable
     ret
   end
 
-  def difference(old)
-    scores.map do |score|
-      oldscore = old.find{ |o| o['player_id'] == score.player_id }
+  def difference(old, board = 'hs')
+    rfield = is_mappack? ? "rank_#{board}" : 'rank'
+    sfield = is_mappack? ? "score_#{board}" : 'score'
+    scale  = is_mappack? && board == 'hs' ? 60.0 : 1
+    leaderboard(board, pluck: false).map do |score|
+      oldscore = old.find{ |o|
+        o['player_id'] == score.player_id && (is_mappack? ? !o[rfield].nil? : true)
+      }
       change = {
-        rank:  oldscore['rank'] - score.rank,
-        score: score.score - oldscore['score']
+        rank:  oldscore[rfield] - score[rfield],
+        score: (score[sfield] - oldscore[sfield]) / scale
       } if oldscore
       { score: score, change: change }
     end
   end
 
-  # TODO: Compute name padding using display names
-  # TODO: Don't print diff if there are no diffs
-  def format_difference(old)
-    difffs = difference(old)
+  # Format differences for a specific board (hs or sr)
+  def format_difference_board(old, board = 'hs', diff_score: true)
+    difffs = difference(old, board)
+    return [] if difffs.all?{ |d| !d[:change].nil? && d[:change][:score].abs < 0.01 && d[:change][:rank] == 0 }
 
-    name_padding   = scores.map{ |s| s.player.name.length }.max
-    score_padding  = scores.map{ |s| s.score.to_i         }.max.to_s.length + 4
-    rank_padding   = difffs.map{ |d| d[:change] }.compact.map{ |c| c[:rank].to_i  }.max.to_s.length
-    change_padding = difffs.map{ |d| d[:change] }.compact.map{ |c| c[:score].to_i }.max.to_s.length + 4
+    boards = leaderboard(board, pluck: false)
+    sfield = is_mappack? ? "score_#{board}" : 'score'
+    scale  = is_mappack? && board == 'hs' ? 60.0 : 1
+    offset = is_mappack? && board == 'sr' ? 0 : 4
 
-    difffs.map{ |o|
+    name_padding   = boards.map{ |s| s.player.print_name.length }.max
+    score_padding  = boards.map{ |s| (s[sfield] / scale).abs.to_i }.max.to_s.length + offset
+    rank_padding   = difffs.map{ |d| d[:change] }.compact.map{ |c| c[:rank].abs.to_i  }.max.to_s.length
+    change_padding = difffs.map{ |d| d[:change] }.compact.map{ |c| c[:score].abs.to_i }.max.to_s.length + offset
+
+    difffs.each_with_index.map{ |o, i|
       c = o[:change]
-      diff = c ? "#{"++-"[c[:rank] <=> 0]}#{"%#{rank_padding}d" % [c[:rank].abs]}, +#{"%#{change_padding}.3f" % [c[:score]]}" : "new"
-      "#{o[:score].format(name_padding, score_padding, false)} (#{diff})"
-    }.join("\n")
+      if c
+        if c[:score].abs < 0.01 && c[:rank] == 0
+          diff = '━'
+        else
+          rank = "━▲▼"[c[:rank] <=> 0]
+          rank += c[:rank] != 0 ? "%-#{rank_padding}d" % [c[:rank].abs] : ' ' * rank_padding
+          score = c[:score] > 0 ? '+' : '-'
+          fmt = c[:score].is_a?(Integer) ? 'd' : '.3f'
+          score += "%#{change_padding}#{fmt}" % [c[:score].abs]
+          diff = rank
+          if diff_score
+            diff += c[:score].abs > 0.01 ? ', ' + score : ' ' * (change_padding + 3)
+            diff = "(#{diff})"
+          end
+        end
+      else
+        diff = '❗' + ' ' * rank_padding
+        diff += ' ' * (change_padding + 5) if diff_score
+      end
+      "#{o[:score].format(name_padding, score_padding, false, board, i)} #{diff}"
+    }
+  rescue
+    []
+  end
+
+  def format_difference(old, board = 'hs')
+    if !is_mappack? || board != 'dual'
+      return format_difference_board(old, board).join("\n")
+    end
+
+    diffs_hs = format_difference_board(old, 'hs', diff_score: true)
+    diffs_sr = format_difference_board(old, 'sr', diff_score: true)
+    return '' if diffs_hs.empty? && diffs_sr.empty?
+    length_hs = diffs_hs.first.length rescue 0
+    length_sr = diffs_sr.first.length rescue 0
+    size = [diffs_hs.size, diffs_sr.size].max
+    diffs_hs = diffs_hs.ljust(size, ' ' * length_hs)
+    diffs_sr = diffs_sr.ljust(size, ' ' * length_sr)
+    header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4)
+    ret = [header, *diffs_hs.zip(diffs_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }]
+    ret.join("\n")
   end
 
   def find_coolness
@@ -1231,7 +1279,6 @@ module Scorish
   def self.format(name_padding = DEFAULT_PADDING, score_padding = 0, cools: true, stars: true, mode: 'hs', t_rank: nil, mappack: false, userlevel: false, h: {})
     mode = 'hs' if mode.nil?
     hs = mode == 'hs'
-    gm = mode == 'gm'
 
     # Compose each element
     t_star   = mappack || !stars ? '' : (h['star'] ? '*' : ' ')
