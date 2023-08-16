@@ -1631,7 +1631,7 @@ class MappackScore < ActiveRecord::Base
       if !legit
         begin
           BadHash.find_or_create_by(score_id: id).update(
-            hash: query['ninja_check'],
+            npp_hash: query['ninja_check'],
             score: score_hs_orig
           )
         rescue => e
@@ -2027,4 +2027,7 @@ class MappackScoresTweak < ActiveRecord::Base
   rescue
     nil
   end
+end
+
+class BadHash < ActiveRecord::Base
 end

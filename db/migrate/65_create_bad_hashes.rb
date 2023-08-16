@@ -5,7 +5,7 @@ class CreateBadHashes < ActiveRecord::Migration[5.1]
     create_table :bad_hashes, id: false do |t|
       t.integer :score_id, index: true
       t.integer :score
-      t.string :hash
+      t.string :npp_hash
     end
   end
 end

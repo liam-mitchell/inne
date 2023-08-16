@@ -2963,6 +2963,7 @@ module Cle extend self
       res.body = response
     end
   rescue => e
-    lex(e, 'CLE socket failed')
+    lex(e, "CLE socket failed to parse request for: #{req.path}")
+    nil
   end
 end
