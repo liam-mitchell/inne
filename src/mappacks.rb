@@ -866,16 +866,16 @@ module Map
     h = parse_palette(event)
     msg, palette, error = h[:msg], h[:palette], h[:error]
     level = self.is_a?(MappackHighscoreable) && mappack.id == 0 ? Level.find_by(id: id) : self
-    raise "Error finding level object" if level.nil?
+    raise OutteError.new "Error finding level object" if level.nil?
     mappack = level.is_a?(MappackHighscoreable)
     userlevel = level.is_a?(Userlevel)
     board = parse_board(msg, 'hs')
-    raise "Non-highscore modes (e.g. speedrun) are only available for mappacks" if !mappack && board != 'hs'
-    raise "Traces are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
+    raise OutteError.new "Non-highscore modes (e.g. speedrun) are only available for mappacks" if !mappack && board != 'hs'
+    raise OutteError.new "Traces are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
     leaderboard = level.leaderboard(board, pluck: false)
     ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
     scores = ranks.map{ |r| leaderboard[r] }.compact
-    raise "No scores found for this level" if scores.empty?
+    raise OutteError.new "No scores found for this level" if scores.empty?
     blank = !!msg[/\bblank\b/i]
     markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
@@ -896,7 +896,7 @@ module Map
 
     # Read output files
     file = File.binread('output.txt') rescue nil
-    raise "ntrace failed, please contact the botmaster for details." if file.nil?
+    raise OutteError.new "ntrace failed, please contact the botmaster for details." if file.nil?
     valid = file.scan(/True|False/).map{ |b| b == 'True' }
     coords = file.split(/True|False/)[1..-1].map{ |d|
       d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
@@ -913,10 +913,10 @@ module Map
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if animate
       trace = screenshot(palette, coords: coords, blank: blank, anim: true)
-      raise 'Failed to generate screenshot' if trace.nil?
+      raise OutteError.new 'Failed to generate screenshot' if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
-      raise 'Failed to generate screenshot' if screenshot.nil?
+      raise OutteError.new 'Failed to generate screenshot' if screenshot.nil?
       concurrent_edit(event, tmp_msg, 'Plotting routes...')
       trace = _trace(
         theme:   palette,
@@ -927,13 +927,13 @@ module Map
         texts:   !blank ? texts : []
       )
       screenshot.close
-      raise 'Failed to trace replays' if trace.nil?
+      raise OutteError.new 'Failed to trace replays' if trace.nil?
     end
     ext = animate ? 'mp4' : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
     tmp_msg.first.delete rescue nil
     log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES
-  rescue RuntimeError => e
+  rescue OutteError => e
     if !tmp_msg.first.nil?
       tmp_msg.first.edit(e)
     else
@@ -1796,23 +1796,23 @@ class MappackScore < ActiveRecord::Base
     # Find score
     if !id.nil? # If ID has been provided
       s = MappackScore.find_by(id: id)
-      raise "Mappack score of ID #{id} not found" if score.nil?
+      raise OutteError.new "Mappack score of ID #{id} not found" if score.nil?
       highscoreable = s.highscoreable
       player = s.player
       scores = MappackScore.where(highscoreable: highscoreable, player: player)
-      raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
+      raise OutteError.new "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
     else # If highscoreable and player have been provided
-      raise "#{highscoreable.name} does not belong to a mappack" if !highscoreable.is_a?(MappackHighscoreable)
+      raise OutteError.new "#{highscoreable.name} does not belong to a mappack" if !highscoreable.is_a?(MappackHighscoreable)
       scores = self.where(highscoreable: highscoreable, player: player)
-      raise "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
+      raise OutteError.new "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
       s = scores.where.not(rank_hs: nil).first
-      raise "#{player.name}'s leaderboard score in #{highscoreable.name} not found" if s.nil?
+      raise OutteError.new "#{player.name}'s leaderboard score in #{highscoreable.name} not found" if s.nil?
     end
 
     # Score integrity checks
     new_score = (score * 60).round
     gold = MappackScore.gold_count(highscoreable.type, new_score, s.score_sr)
-    raise "That score is incompatible with the framecount" if !MappackScore.verify_gold(gold) && type[:name] != 'Story'
+    raise OutteError.new "That score is incompatible with the framecount" if !MappackScore.verify_gold(gold) && !highscoreable.type.include?('Story')
 
     # Change score
     old_score = s.score_hs.to_f / 60.0
@@ -1826,7 +1826,7 @@ class MappackScore < ActiveRecord::Base
     # Update global ranks
     highscoreable.update_ranks('hs')
     succ("Patched #{player.name}'s score (#{s.id}) in #{highscoreable.name} from #{"%.3f" % old_score} to #{"%.3f" % score}")
-  rescue RuntimeError
+  rescue OutteError
     raise
   rescue => e
     lex(e, 'Failed to patch score')
@@ -1861,15 +1861,16 @@ class MappackScore < ActiveRecord::Base
 
   # Perform the gold check (see the 2 methods above) for every score in the
   # database, returning the scores failing the check.
-  def self.gold_check
+  def self.gold_check(id = MIN_REPLAY_ID)
     scores = []
-    entries = self.where("highscoreable_type != 'MappackStory' and id > #{MIN_REPLAY_ID}")
+    entries = self.where("highscoreable_type != 'MappackStory' and id > #{id}")
     count = entries.size
 
     entries.each_with_index{ |s, i|
       dbg("Checking gold in mappack score #{i + 1} / #{count}...", newline: false, pad: true)
       scores << s if !s.verify_gold
     }
+    Log.clear
 
     scores.sort_by{ |s| [s.highscoreable_type, s.highscoreable_id, s.player.name] }
   end

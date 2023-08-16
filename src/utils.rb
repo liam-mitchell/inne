@@ -182,6 +182,7 @@ module Log
   def self.exception(e, msg = '', **kwargs)
     write("#{msg}: #{e}", :error, kwargs)
     write(e.backtrace.join("\n"), :debug) if LOG_BACKTRACES
+    msg
   end
 
   # Send DM to botmaster
@@ -207,6 +208,16 @@ def lout  (msg, **kwargs) Log.write(msg, :out,   kwargs) end
 def fatal (msg, **kwargs) Log.write(msg, :fatal, kwargs) end
 def lex   (e, msg = '', **kwargs) Log.exception(e, msg)  end
 def ld    (msg)                   Log.discord(msg)       end
+
+# Custom exception class. Importantly, these exception messages are posted
+# to Discord, in response to a command not working or being understood.
+# Therefore, it's important to always use user-friendly messages that do not
+# leak private data.
+class OutteError < StandardError
+  def initialize(msg = 'Unknown outte error')
+    super
+  end
+end
 
 # Make a request to N++'s server.
 # Since we need to use an open Steam ID, the function goes through all
@@ -307,7 +318,7 @@ def _fork
   Process.wait(pid)
   raise 'Child failed' if result.empty?
   Marshal.load(result)
-rescue RuntimeError
+rescue OutteError
   raise
 rescue => e
   lex(e, 'Forking failed')
@@ -963,9 +974,9 @@ def assert_permissions(event, roles = [])
   permissions = roles.map{ |role| check_permission(event, role) }
   granted = permissions.map{ |p| p[:granted] }.count(true) > 0
   error = "Sorry, only #{permissions.map{ |p| p[:allowed] }.flatten.to_sentence} are allowed to execute this command."
-  raise error if !granted
+  raise OutteError.new error if !granted
 rescue
-  raise "Permission check failed"
+  raise OutteError.new "Permission check failed"
 end
 
 def clean_userlevel_message(msg)
@@ -1049,19 +1060,19 @@ end
 # React to a Discord msg (by ID) with an emoji (by Unicode or name)
 def react(channel, msg_id, emoji)
   channel = find_channel(name: channel) rescue nil
-  raise 'Channel not found' if channel.nil?
+  raise OutteError.new 'Channel not found' if channel.nil?
   msg = channel.message(msg_id.to_i) rescue nil
-  raise 'Message not found' if msg.nil?
+  raise OutteError.new 'Message not found' if msg.nil?
   emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
-  raise 'Emoji not found' if emoji.nil?
+  raise OutteError.new 'Emoji not found' if emoji.nil?
   msg.react(emoji)
 end
 
 def unreact(channel, msg_id, emoji = nil)
   channel = find_channel(name: channel) rescue nil
-  raise 'Channel not found' if channel.nil?
+  raise OutteError.new 'Channel not found' if channel.nil?
   msg = channel.message(msg_id.to_i) rescue nil
-  raise 'Message not found' if msg.nil?
+  raise OutteError.new 'Message not found' if msg.nil?
   if emoji.nil?
     msg.my_reactions.each{ |r|
       emoji = r.name.ascii_only? ? find_emoji(r.name, channel.server) : r.name
@@ -1069,7 +1080,7 @@ def unreact(channel, msg_id, emoji = nil)
     }
   else
     emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
-    raise 'Emoji not found' if emoji.nil?
+    raise OutteError.new 'Emoji not found' if emoji.nil?
     msg.delete_own_reaction(emoji)
   end
 end

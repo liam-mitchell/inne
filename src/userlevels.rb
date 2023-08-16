@@ -43,34 +43,34 @@ class UserlevelAuthor < ActiveRecord::Base
   def self.parse(term, aliases = true)
     if term.is_a?(Integer)
       p = self.find(term) rescue nil
-      raise "Userlevel author with ID #{verbatim(term)} not found." if p.nil?
+      raise OutteError.new "Userlevel author with ID #{verbatim(term)} not found." if p.nil?
       return p
     end
-    raise "Couldn't parse userlevel author." if !term.is_a?(String)
+    raise OutteError.new "Couldn't parse userlevel author." if !term.is_a?(String)
     return nil if term.empty?
     p = self.where_like('name', term[0...16])
     case p.count
     when 0
-      raise "No author found by the name #{verbatim(term)}." if !aliases
+      raise OutteError.new "No author found by the name #{verbatim(term)}." if !aliases
       p = UserlevelAka.where_like('name', term[0...16]).map(&:author).uniq
       case p.count
       when 0
-        raise "No author found by the name (current or old) #{verbatim(term)}."
+        raise OutteError.new "No author found by the name (current or old) #{verbatim(term)}."
       when 1
         return p.first
       else
-        raise "Too many author matches! (#{p.count}). Please refine author name." if p.count > 20
+        raise OutteError.new "Too many author matches! (#{p.count}). Please refine author name." if p.count > 20
         matches = p.map{ |a| "#{"%6d" % a.id} - #{a.name}" }.join("\n")
-        raise "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
+        raise OutteError.new "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
       end
     when 1
       return p.first
     else
-      raise "Too many author matches! (#{p.count}). Please refine author name." if p.count > 20
+      raise OutteError.new "Too many author matches! (#{p.count}). Please refine author name." if p.count > 20
       matches = p.pluck(:id, :name).map{ |id, name| "#{"%6d" % id} - #{name}" }.join("\n")
-      raise "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
+      raise OutteError.new "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
     end
-  rescue RuntimeError
+  rescue OutteError
     raise
   rescue
     nil
@@ -131,8 +131,8 @@ class UserlevelScore < ActiveRecord::Base
       -> (data) { data },
       "Error downloading userlevel #{id} replay #{replay_id}"
     )
-    raise "Error downloading userlevel replay" if replay.nil?
-    raise "Selected replay seems to be missing" if replay.empty?
+    raise OutteError.new "Error downloading userlevel replay" if replay.nil?
+    raise OutteError.new "Selected replay seems to be missing" if replay.empty?
     Demo.parse(replay[16..-1], 'Level')
   end
 end
@@ -396,8 +396,8 @@ class Userlevel < ActiveRecord::Base
   # (see self.parse for documentation of this format)
   # TODO: Add more integrity checks (category...)
   def self.dump_query(maps, cat, mode)
-    raise "Some of the queried userlevels have an incorrect game mode." if !maps.index{ |m| MODES.invert[m.mode] != mode }.nil?
-    raise "Too many queried userlevels." if maps.size > QUERY_LIMIT_HARD
+    raise OutteError.new "Some of the queried userlevels have an incorrect game mode." if !maps.index{ |m| MODES.invert[m.mode] != mode }.nil?
+    raise OutteError.new "Too many queried userlevels." if maps.size > QUERY_LIMIT_HARD
     header  = query_header(maps.size, cat, mode)
     headers = maps.map{ |m| m.dump_header }.join
     data    = maps.map{ |m| m.dump_data }.join
@@ -860,7 +860,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     edit:  !initial,
     int:   !(initial && count == 0)
   )
-rescue RuntimeError
+rescue OutteError
   raise
 rescue => e
   lex(e, "Error browsing userlevels")
@@ -897,7 +897,7 @@ def send_userlevel_individual(event, msg, userlevel = nil, &block)
     sleep(0.250) # Prevent rate limiting
     send_userlevel_browse(event, query: map)
   end
-rescue RuntimeError
+rescue OutteError
   raise
 rescue => e
   lex(e, 'Failed to execute individual userlevel function')
@@ -1198,7 +1198,7 @@ def send_userlevel_spreads(event)
   player = parse_player(msg, nil, true, true, false)
   small  = !!(msg =~ /smallest/)
   full   = parse_global(msg)
-  raise "I can't show you the spread between 0th and 0th..." if n == 0
+  raise OutteError.new "I can't show you the spread between 0th and 0th..." if n == 0
 
   spreads  = Userlevel.spreads(n, small, player.nil? ? nil : player.id, full)
   namepad  = spreads.map{ |s| s[0].length }.max
@@ -1399,7 +1399,7 @@ end
 
 def send_userlevel_trace(event)
   assert_permissions(event, ['ntracer'])
-  raise "Sorry, tracing is disabled." if !FEATURE_NTRACE
+  raise OutteError.new "Sorry, tracing is disabled." if !FEATURE_NTRACE
   wait_msg = event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
     wait_msg.delete if !wait_msg.nil?

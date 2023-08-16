@@ -791,7 +791,7 @@ module Highscoreable
   # Returns episodes or stories sorted by cleanliness
   def self.cleanliness(type, tabs, rank = 0, mappack = nil, board = 'hs')
     # Integrity checks
-    raise "Attempted to compute cleanliness of level" if type.include?(Levelish)
+    raise OutteError.new "Attempted to compute cleanliness of level" if type.include?(Levelish)
     raise "Attempted to compute non-hs/sr cleanliness" if !['hs', 'sr'].include?(board)
 
     # Setup params
@@ -1147,7 +1147,7 @@ module Episodish
     diff = diff.to_i if is_mappack? && board != 'hs'
 
     diff
-  rescue RuntimeError
+  rescue OutteError
     raise
   rescue => e
     lex(e, "Failed to compute cleanliness of episode #{self.name}")
@@ -1251,7 +1251,7 @@ module Storyish
     diff = diff.to_i if is_mappack? && board != 'hs'
 
     diff
-  rescue RuntimeError
+  rescue OutteError
     raise
   rescue => e
     lex(e, "Failed to compute cleanliness of episode #{self.name}")
@@ -1374,7 +1374,7 @@ class Score < ActiveRecord::Base
     type   = [type].flatten.map{ |t| "Mappack#{t.to_s}".constantize } if !mappack.nil?
     level  = 2
     level  = 1 if mappack || [:maxed, :maxable].include?(ranking)
-    level  = 0 if [:tied_rank, :avg_lead, :singular].include?(ranking) || mappack && ranking == :score && board == 'sr'
+    level  = 0 if [:tied_rank, :avg_lead, :singular, :score].include?(ranking)
     scores = filter(level, nil, type, tabs, a, b, ties, cool, star, mappack, board)
     scores = scores.where.not(player: players) if !mappack.nil? && !players.empty?
 
@@ -1746,7 +1746,7 @@ class Player < ActiveRecord::Base
     # Forward request to Metanet
     res = forward(req)
     invalid = res.nil? || res == INVALID_RESP
-    raise 'Invalid response' if invalid && !LOCAL_LOGIN
+    raise OutteError.new 'Invalid response' if invalid && !LOCAL_LOGIN
     locally = false
 
     if !invalid  # Parse server response and register player in database
@@ -1769,7 +1769,7 @@ class Player < ActiveRecord::Base
       ].uniq
       ids.reject!{ |id| id <= 0 || id >= 10000000 }
       steamid = params['steam_id'][0].to_s rescue ''
-      raise "Couldn't login player locally (no params)" if ids.empty? && steamid.empty?
+      raise OutteError.new "Couldn't login player locally (no params)" if ids.empty? && steamid.empty?
 
       # Try to locate player in the database based on those params
       player = nil
