@@ -203,7 +203,8 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     'tied_top1',
     'singular_top1',
     'plural_top1',
-    'average_top1_lead'
+    'average_top1_lead',
+    'score'
   ].include?(rtype)
   full    = format_full(full)
   cool    = format_cool(cool)

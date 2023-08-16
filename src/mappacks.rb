@@ -1816,6 +1816,7 @@ class MappackScore < ActiveRecord::Base
 
     # Change score
     old_score = s.score_hs.to_f / 60.0
+    raise OutteError.new "#{player.name}'s score (#{s.id}) in #{highscoreable.name} is already #{"%.3f" % old_score}" if s.score_hs == new_score
     s.update(score_hs: new_score, gold: gold.round)
 
     # Update player's ranks
