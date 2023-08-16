@@ -1626,8 +1626,18 @@ class MappackScore < ActiveRecord::Base
         end
       end
 
-      # Warn if the score submitted failed the map data integrity checks
+      # Warn if the score submitted failed the map data integrity checks, and save it
+      # to analyze it later (and possibly polish the hash algorithm)
       if !legit
+        begin
+          BadHash.find_or_create_by(score_id: id).update(
+            hash: query['ninja_check'],
+            score: score_hs_orig
+          )
+        rescue => e
+          lex(e, 'Failed to save bad hash')
+          nil
+        end
         _thread do
           warn("Score submitted by #{name} to #{h.name} has invalid security hash", discord: true)
         end
