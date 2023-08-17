@@ -1630,7 +1630,7 @@ class MappackScore < ActiveRecord::Base
       # to analyze it later (and possibly polish the hash algorithm)
       if !legit
         begin
-          BadHash.find_or_create_by(score_id: id).update(
+          BadHash.find_or_create_by(id: id).update(
             npp_hash: query['ninja_check'],
             score: score_hs_orig
           )

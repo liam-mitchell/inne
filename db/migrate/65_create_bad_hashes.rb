@@ -2,8 +2,7 @@
 # figure out a pattern
 class CreateBadHashes < ActiveRecord::Migration[5.1]
   def change
-    create_table :bad_hashes, id: false do |t|
-      t.integer :score_id, index: true
+    create_table :bad_hashes do |t|
       t.integer :score
       t.string :npp_hash
     end
