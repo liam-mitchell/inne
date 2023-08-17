@@ -4,7 +4,7 @@ class CreateBadHashes < ActiveRecord::Migration[5.1]
   def change
     create_table :bad_hashes do |t|
       t.integer :score
-      t.string :npp_hash
+      t.binary  :npp_hash, limit: 20
     end
   end
 end
