@@ -281,6 +281,8 @@ end
 # as an array.
 # If 'mappack' is true, then we allow to search in mappack highscoreables.
 def parse_level_or_episode(msg, partial: false, array: false, mappack: false)
+  raise OutteError.new "Couldn't find the level, episode or story you were looking for :(" if msg.to_s.empty?
+
   level       = msg[LEVEL_PATTERN]
   level_d     = msg.match(LEVEL_PATTERN_D)
   level_m     = msg[LEVEL_PATTERN_M]
@@ -860,6 +862,7 @@ end
 # Parse type of leaderboard (highscore, speedrun, dual, ...)
 # Second parameter determines the default
 def parse_board(msg, dflt = nil, dual: false)
+  return dflt if msg.to_s.empty?
   board = nil
   board = 'dual' if !!msg[/\bdual\b/i] && dual
   board = 'hs'   if !!msg[/\bhs\b/i] || !!msg[/\bhigh\s*score\b/i]

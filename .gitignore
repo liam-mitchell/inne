@@ -10,6 +10,7 @@ Gemfile.lock
 \#*
 \.\#*
 \logs
+\util\hash_*
 missing*
 scores*
 /.bundle

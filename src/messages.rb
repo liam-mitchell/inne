@@ -1982,6 +1982,18 @@ def send_mappack_patch(event)
   event << MappackScore.patch_score(id, highscoreable, player, score)
 end
 
+def send_mappack_ranks(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  h = parse_level_or_episode(flags[:h], mappack: true)
+  board = parse_board(flags[:b])
+  raise OutteError.new "Only the hs/sr ranks can be updated" if !['hs', 'sr', nil].include?(board)
+  h.update_ranks('hs') if board == 'hs' || board.nil?
+  h.update_ranks('sr') if board == 'sr' || board.nil?
+  board = "hs & sr" if board.nil?
+  event << "Updated #{board} ranks for #{h.name}"
+end
+
 def send_mappack_info(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
@@ -2260,6 +2272,7 @@ def respond_special(event)
   send_mappack_info(event)       if cmd == 'mappack_info'
   send_mappack_digest(event)     if cmd == 'mappack_digest'
   send_mappack_read(event)       if cmd == 'mappack_read'
+  send_mappack_ranks(event)      if cmd == 'mappack_ranks'
   send_ul_csv(event)             if cmd == 'userlevel_csv'
   send_ul_plot(event)            if cmd == 'userlevel_plot'
   send_log_config(event)         if cmd == 'log'

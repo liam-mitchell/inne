@@ -2029,5 +2029,11 @@ class MappackScoresTweak < ActiveRecord::Base
   end
 end
 
+# A table to store all the calculated integrity hashes that do not match the
+# submitted one. This could mean one of two things:
+# 1) The score has been submitted with a different level, or has been cheated.
+#    Either way, it needs to be checked.
+# 2) Our SHA1 algo doesn't match the one used by N++, so we want to polish that.
+#    This is currently happening sometimes.
 class BadHash < ActiveRecord::Base
 end
