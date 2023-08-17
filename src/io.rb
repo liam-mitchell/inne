@@ -382,8 +382,6 @@ def parse_level_or_episode(msg, partial: false, array: false, mappack: false)
   raise OutteError.new "I couldn't find any level, episode or story by the name #{verbatim(str)}." if ret.nil? || ret.is_a?(Array) && ret[1].empty?
   ret = ["Single match found for #{name}", [ret]] if !ret.is_a?(Array) && array
   ret
-rescue OutteError
-  raise
 rescue => e
   lex(e, 'Failed to parse highscoreable')
   nil
@@ -811,8 +809,6 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
 
   err += "\n" if !err.empty?
   { msg: msg, palette: pal, error: err }
-rescue OutteError
-  raise
 rescue => e
   lex(e, 'Failed to parse palette')
 end

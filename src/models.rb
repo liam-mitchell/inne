@@ -1147,8 +1147,6 @@ module Episodish
     diff = diff.to_i if is_mappack? && board != 'hs'
 
     diff
-  rescue OutteError
-    raise
   rescue => e
     lex(e, "Failed to compute cleanliness of episode #{self.name}")
     nil
@@ -1251,8 +1249,6 @@ module Storyish
     diff = diff.to_i if is_mappack? && board != 'hs'
 
     diff
-  rescue OutteError
-    raise
   rescue => e
     lex(e, "Failed to compute cleanliness of episode #{self.name}")
     nil

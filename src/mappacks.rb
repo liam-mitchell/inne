@@ -1837,8 +1837,6 @@ class MappackScore < ActiveRecord::Base
     # Update global ranks
     highscoreable.update_ranks('hs')
     succ("Patched #{player.name}'s score (#{s.id}) in #{highscoreable.name} from #{"%.3f" % old_score} to #{"%.3f" % score}")
-  rescue OutteError
-    raise
   rescue => e
     lex(e, 'Failed to patch score')
   end
@@ -1917,8 +1915,6 @@ class MappackScore < ActiveRecord::Base
           replay << demos[5 * j + i]
         }
       }
-    else
-      raise
     end
     
     replay
@@ -2004,11 +2000,17 @@ class MappackScoresTweak < ActiveRecord::Base
       tw.update(tweak: 0, index: 0) # Initialize tweak
     else
       tw = self.find_by(player: player, episode: level.episode)
-      return nil if tw.nil? # Tweak should exist
+      if tw.nil? # Tweak should exist
+        warn("Tweak for #{player.name}'s #{level.episode.name} run should exit")
+        return nil
+      end
     end
 
     # Ensure tweak corresponds to the right level
-    return nil if tw.index != index
+    if tw.index != index
+      warn("Tweak for #{player.name}'s #{level.episode.name} has index #{tw.index}, should be #{index}")
+      return nil
+    end
 
     # Tweak if necessary
     if header[:id] == level.inner_id # Tweak
@@ -2024,7 +2026,8 @@ class MappackScoresTweak < ActiveRecord::Base
 
     # Tweaked succesfully
     return score
-  rescue
+  rescue => e
+    lex(e, 'Failed to tweak score')
     nil
   end
 end

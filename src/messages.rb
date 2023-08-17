@@ -78,10 +78,8 @@ def send_list(event, file = true, missing = false, third = false)
       send_file(event, list, "scores-#{player.sanitize_name}.txt", false)
     end
   end
-rescue OutteError
-  raise
 rescue => e
-  lex(e, 'Failed to send list of scores')
+  lex(e, "Error performing #{file ? 'list' : 'count'}.", event: event)
 end
 
 # Return list of players sorted by a number of different ranking types
@@ -254,10 +252,8 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     event << header
     length < DISCORD_CHAR_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
   end
-rescue OutteError
-  raise
 rescue => e
-  lex(e, 'Failed to perform the rankings')
+  lex(e, 'Failed to perform the rankings.', event: event)
   nil
 end
 
@@ -298,6 +294,8 @@ def send_tally(event)
   # Send response
   event << format_header("#{tabs} #{type} #{cool} #{range}#{star} scores #{ties} tally #{format_time}")
   !list || count <= 20 ? event << format_block(block) : send_file(event, block, 'tally.txt')
+rescue => e
+  lex(e, 'Error performing tally.', event: event)
 end
 
 # Return a player's total score (sum of scores) in specified tabs and type
@@ -315,6 +313,8 @@ def send_total_score(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
   event << "#{player.print_name}'s total #{tabs} #{type} score is #{"%.3f" % [score]} out of #{"%.3f" % max}.".squish
+rescue => e
+  lex(e, "Error calculating total score.", event: event)
 end
 
 # Return list of levels/episodes with largest/smallest score difference between
@@ -345,6 +345,8 @@ def send_spreads(event)
   player = !player.nil? ? "owned by #{player.print_name} " : ''
   event << "#{tabs} #{type} #{player} with the #{spread} spread between 0th and #{rank}:".squish
   event << format_block(spreads)
+rescue => e
+  lex(e, "Error performing spreads.", event: event)
 end
 
 # Send highscore leaderboard for a highscoreable.
@@ -415,10 +417,8 @@ def send_scores(event, map = nil, ret = false, page: nil)
       release_connection
     end
   end
-rescue OutteError
-  raise
 rescue => e
-  lex(e, 'Failed to send scores')
+  lex(e, "Error sending scores.", event: event)
 end
 
 # Navigating scores: Main differences:
@@ -458,6 +458,8 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
   interaction_add_level_navigation(view, scores.name.center(11, ' '))
   interaction_add_date_navigation(view, new_index + 1, dates.size, date, date == 0 ? " " * 11 : Time.at(date).strftime("%Y-%b-%d"))
   send_message_with_interactions(event, str, view, !initial)
+rescue => e
+  lex(e, "Error navigating scores.", event: event)
 end
 
 # Send a screenshot of a level/episode/story
@@ -499,6 +501,8 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
     event << str
     event.attach_file(file, spoiler: spoiler)
   end
+rescue => e
+  lex(e, "Error sending screenshot.", event: event)
 end
 
 # One command to return a screenshot and then the scores,
@@ -522,6 +526,8 @@ def send_screenscores(event)
   # Wait a bit to prevent an order change, and send scores
   sleep(0.05)
   event.send_message(s)
+rescue => e
+  lex(e, "Error sending screenshot or scores.", event: event)
 end
 
 # Same, but sending the scores first and the screenshot second
@@ -544,6 +550,8 @@ def send_scoreshot(event)
   else
     event.send_file(ss[0], caption: ss[1], spoiler: ss[2])
   end
+rescue => e
+  lex(e, "Error sending screenshot or scores.", event: event)
 end
 
 # Returns rank distribution of a player's scores, in both table and histogram form
@@ -589,6 +597,8 @@ def send_stats(event)
     event.send_message(msg1 + "```")
     event.send_message("```" + msg2)
   end
+rescue => e
+  lex(e, "Error computing stats.", event: event)
 end
 
 # Returns community's overal total and average scores
@@ -622,6 +632,8 @@ def send_community(event)
   str << "Average difference:        #{"%#{pad}.3f" % [difference/episodes[1]]}\n"
   event << "Community's total #{format_tabs(tabs)} scores #{format_time}:\n".squish
   event << format_block(str)
+rescue => e
+  lex(e, "Error computing community total scores.", event: event)
 end
 
 # Return list of levels/episodes sorted by number of ties for 0th (desc)
@@ -662,11 +674,8 @@ def send_maxable(event, maxed = false)
     event << format_header("#{tabs} #{type} #{board} with the most ties for 0th #{mappack} #{format_time} #{player}")
   end
   count <= NUM_ENTRIES ? event << format_block(ties) : send_file(event, ties, "maxed-#{tabs}-#{type}.txt")
-rescue OutteError
-  raise
 rescue => e
-  lex(e, 'Failed to send maxables / maxes')
-  raise OutteError.new "Failed to compute maxables / maxes."
+  lex(e, "Error computing maxables / maxes.", event: event)
 end
 
 # Returns a list of maxed levels/episodes, i.e., with 20 ties for 0th
@@ -712,11 +721,8 @@ def send_cleanliness(event)
   # Send response
   event << header
   size > NUM_ENTRIES ? send_file(event, list, file) : event << format_block(list)
-rescue OutteError
-  raise
 rescue => e
-  lex(e, 'Messages: Error computing cleanlinesses')
-  event << 'Error computing cleanlinesses.'
+  lex(e, "Error computing cleanlinesses.", event: event)
 end
 
 # Returns the cleanliness of a single episode or story 0th
@@ -754,6 +760,8 @@ def send_clean_one(event, ret = false)
     args = clean.is_a?(Integer) ? [clean_round] : [clean_round, 60 * clean_round]
     event << "Average per-level cleanliness of #{fmt % args}."
   end
+rescue => e
+  lex(e, "Error computing cleanliness.", event: event)
 end
 
 # Returns a list of episode ownages, i.e., episodes where the same player
@@ -780,6 +788,8 @@ def send_ownages(event)
   event << "#{tabs_h} episode ownages #{format_max(find_max(:rank, Episode, tabs))} #{format_time}:".squish
   event << format_block(block) + "There're a total of #{count} #{tabs_f} episode ownages."
   send_file(event, list, 'ownages.txt') if count > 20
+rescue => e
+  lex(e, "Error computing ownages.", event: event)
 end
 
 # Return list of a player's most improvable scores, filtered by type and tab
@@ -809,6 +819,8 @@ def send_suggestions(event)
   ties  = format_ties(ties)
   event << "Most improvable #{cool} #{star} #{tabs} #{type} #{range} scores #{ties} for #{player.print_name}:".squish
   event << format_block(list)
+rescue => e
+  lex(e, "Error getting worst scores.", event: event)
 end
 
 # Return level ID for a specified level name
@@ -828,6 +840,8 @@ def send_level_id(event, page: nil)
   # Single match, send ID if it's a level
   raise OutteError.new "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.longname} is level #{level.name}."
+rescue => e
+  lex(e, "Error getting ID.", event: event)
 end
 
 # Return level name for a specified level ID
@@ -835,6 +849,8 @@ def send_level_name(event)
   level = parse_level_or_episode(event.content.gsub(/level/, ""))
   raise OutteError.new "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.name} is called #{level.longname}."
+rescue => e
+  lex(e, "Error getting name.", event: event)
 end
 
 # Return a player's point count
@@ -866,18 +882,24 @@ def send_points(event, avg = false, rank = false)
   else
     event << "#{player.print_name} has #{points} out of #{max} #{tabs} #{type} points.".squish
   end
+rescue => e
+  lex(e, "Error computing points.", event: event)
 end
 
 # Return a player's average point count
 # (i.e., total points divided by the number of scores, measures score quality)
 def send_average_points(event)
   send_points(event, true)
+rescue => e
+  lex(e, "Error computing average points.", event: event)
 end
 
 # Return a player's average rank across all their scores, ideal quality measure
 # It's actually just 20 - average points
 def send_average_rank(event)
   send_points(event, true, true)
+rescue => e
+  lex(e, "Error computing average rank.", event: event)
 end
 
 # Return a player's average 0th lead across all their 0ths
@@ -895,6 +917,8 @@ def send_average_lead(event)
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
   event << "#{player.print_name} has an average #{type} #{tabs} lead of #{"%.3f" % [average]}.".squish
+rescue => e
+  lex(e, "Error computing average lead.", event: event)
 end
 
 # Return a table containing a certain measure (e.g. top20 count, points, etc)
@@ -1001,6 +1025,8 @@ def send_table(event)
   player = global ? "" : "#{player.format_name.strip}'s "
   event << "#{player} #{global ? header.capitalize : header} #{format_time}:".squish
   event << format_block(make_table(rows))
+rescue => e
+  lex(e, "Error crafting table.", event: event)
 end
 
 # Return score comparison between 2 players. Lists 5 categories:
@@ -1055,6 +1081,8 @@ def send_comparison(event)
   # Send response
   event << header + format_block(table)
   send_file(event, list, "comparison-#{p1.sanitize_name}-#{p2.sanitize_name}.txt")
+rescue => e
+  lex(e, "Error performing comparison.", event: event)
 end
 
 # Return a list of random highscoreables
@@ -1078,6 +1106,8 @@ def send_random(event)
     map = maps.sample
     send_screenshot(event, map)
   end
+rescue => e
+  lex(e, "Error getting random sample.", event: event)
 end
 
 # Return list of challenges for specified level, ordered and formatted as in the game
@@ -1103,6 +1133,8 @@ def send_challenges(event, page: nil)
   raise OutteError.new "#{lvl.class.to_s.pluralize.capitalize} don't have challenges!" if lvl.class != Level
   raise OutteError.new "#{lvl.tab.to_s} levels don't have challenges!" if ["SI", "SL"].include?(lvl.tab.to_s)
   event << "Challenges for #{lvl.longname} (#{lvl.name}):\n#{format_block(lvl.format_challenges)}"
+rescue => e
+  lex(e, "Error getting challenges.", event: event)
 end
 
 # Return list of matches for specific level name query
@@ -1114,6 +1146,8 @@ def send_query(event, page: nil)
   msg     = fetch_message(event, initial)
   lvl     = parse_level_or_episode(msg, partial: true, array: true)
   format_level_matches(event, msg, page, initial, lvl, 'search')
+rescue => e
+  lex(e, "Error performing query.", event: event)
 end
 
 # Auxiliar function called during lotd/eotw/cotm
@@ -1127,6 +1161,8 @@ def send_diff(event)
 
   diff = current.format_difference(old_scores)
   event << "Score changes on #{current.format_name} since #{since}:\n#{format_block(diff)}"
+rescue => e
+  lex(e, "Error finding differences.", event: event)
 end
 
 # Auxiliar function used by the demo analysis method
@@ -1244,6 +1280,8 @@ def send_analysis(event)
   # Send response
   event << result
   send_file(event, table_result, "analysis-#{scores.name}.txt")
+rescue => e
+  lex(e, "Error performing demo analysis.", event: event)
 end
 
 def send_demo_download(event)
@@ -1253,6 +1291,8 @@ def send_demo_download(event)
   score  = h.scores[rank]
   event << "Downloading #{score.player.name}'s #{rank.ordinalize} score in #{h.name} (#{"%.3f" % [score.score]}):"
   send_file(event, score.demo.demo, "#{h.name}_#{rank.ordinalize}_replay", true)
+rescue => e
+  lex(e, "Error downloading demo.", event: event)
 end
 
 def send_download(event, page: nil)
@@ -1265,6 +1305,8 @@ def send_download(event, page: nil)
   h = MappackLevel.find_by(id: h.id) if !h.is_a?(MappackLevel)
   event << "Downloading #{h.format_name}:"
   send_file(event, h.dump_level, h.name, true)
+rescue => e
+  lex(e, "Error preparing downloading.", event: event)
 end
 
 # Use SimVYo's tool to trace the replay of a run based on the map data and
@@ -1281,6 +1323,8 @@ def send_trace(event)
     raise OutteError.new "Level data not found" if map.nil?
     map.trace(event)
   end
+rescue => e
+  lex(e, "Error performing trace.", event: event)
 end
 
 # Return an episode's partial level scores and splits using 2 methods:
@@ -1387,10 +1431,8 @@ def send_splits(event)
   event << "#{rank.ordinalize} #{format_board(board)} splits for episode #{ep.name}:"
   event << "(Episode splits aren't available because ntrace is disabled)." if ntrace && !FEATURE_NTRACE
   event << format_block(make_table(rows))
-rescue OutteError
-  raise
 rescue => e
-  lex(e, 'Failed to calculate episode splits')
+  lex(e, "Error calculating splits.", event: event)
 end
 
 # Command to allow SimVYo to dynamically update his ntrace tool by sending the
@@ -1421,10 +1463,8 @@ def update_ntrace(event)
   event << format_block(versions)
 
   Thread.new { ld("#{event.user.name} updated ntrace:\n#{format_block(versions)}") }
-rescue OutteError
-  raise
 rescue => e
-  lex(e, 'Failed to update ntrace file')
+  lex(e, "Error updating ntrace.", event: event)
 end
 
 # Sends a PNG graph plotting the evolution of player's scores (e.g. top20 count,
@@ -1540,6 +1580,8 @@ def identify(event)
   user.save
 
   event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
+rescue => e
+  lex(e, "Error identifying.", event: event)
 end
 
 def add_steam_id(event)
@@ -1547,6 +1589,8 @@ def add_steam_id(event)
   id = parse_steam_id(msg)
   User.find_by(username: event.user.name).update(steam_id: id) if !User.find_by(username: event.user.name).nil? && User.find_by(steam_id: id).nil?
   event << "Thanks! From now on I'll try to use your Steam ID to retrieve scores when I need to."
+rescue => e
+  lex(e, "Error adding Steam ID.", event: event)
 end
 
 def add_display_name(event)
@@ -1561,12 +1605,8 @@ def add_display_name(event)
     user.player.update(display_name: name) unless user.player.nil?
     event << "Great, from now on #{user.playername} will show up as #{name}."
   end
-rescue OutteError
-  raise
 rescue => e
-  err = 'Error changing display name'
-  lex(e, err)
-  event << err
+  lex(e, "Error changing display name.", event: event)
 end
 
 def set_default_palette(event)
@@ -1576,17 +1616,16 @@ def set_default_palette(event)
   palette = parse_palette(event, pal: palette, fallback: false)[:palette]
   user = User.find_or_create_by(username: event.user.name).update(palette: palette)
   event << "Great, from now on your default screenshot palette will be #{verbatim(palette)}."
-rescue OutteError
-  raise
 rescue => e
-  event << "Failed to set default palette!"
-  lex(e, 'Failed to set default palette')
+  lex(e, "Error setting default palette.", event: event)
 end
 
 def hello(event)
-  $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
+  $bot.update_status(BOT_STATUS, BOT_ACTIVITY, nil, 0, false, 0)
   event << "Hi!"
   set_channels(event) if $channel.nil?
+rescue => e
+  lex(e, "Error during hello sequence.")
 end
 
 def thanks(event)
@@ -1699,6 +1738,8 @@ def send_help(event)
   event << "In any of these commands, if you see '<level>', replace that with either a level/episode ID (eg. SI-A-00-00) or a level name (eg. supercomplexity)"
   event << "If you see '<tab>', you can replace that with any combination of SI/intro, S/N++, SU/ultimate, SL/legacy, ?/secret, and !/ultimate secret, or you can leave it off for overall totals."
   event << "If the command is related to a specific player, you can specify it by ending your message with 'for <username>'. Otherwise, I'll use the one you specified earlier."
+rescue => e
+  lex(e, "Error sending help.", event: event)
 end
 
 # Send info about current and next lotd/eotw/cotm
@@ -1729,6 +1770,8 @@ def send_lotd(event, type = Level)
     event << "There is no current #{ctp ? 'CTP ' : ''}#{type.to_s.downcase} of the #{period}."
   end
   event << "I'll post a new #{ctp ? 'CTP ' : ''}#{type.to_s.downcase} of the #{period} in #{time1} and #{time2}."
+rescue => e
+  lex(e, "Error sending lotd/eotw/cotm info.", event: event)
 end
 
 def send_videos(event)
@@ -1754,6 +1797,8 @@ def send_videos(event)
   end
 
   event << "You're going to have to be more specific! I know about the following videos for this level:\n#{format_block(descriptions)}"
+rescue => e
+  lex(e, "Error sending videos.", event: event)
 end
 
 def send_unique_holders(event)
@@ -1761,7 +1806,7 @@ def send_unique_holders(event)
   ranks = ranks.map{ |r, c| "#{"%02d" % r} - #{"%3d" % c}" }.join("\n")
   event << "Number of unique highscore holders by rank at #{Time.now.to_s}\n#{format_block(ranks)}"
 rescue => e
-  lex(e, 'Failed to compute unique holders')
+  lex(e, "Error computing unique holders.", event: event)
 end
 
 # TODO: Implement a way to query next pages if there are more than 20 streams.
@@ -1784,6 +1829,8 @@ def send_twitch(event)
     }
     event << str if !str.empty?
   end
+rescue => e
+  lex(e, "Error getting current Twitch N++ streams.", event: event)
 end
 
 # Add role to player (internal, for permission system, not related to Discord roles)
@@ -1799,6 +1846,8 @@ def add_role(event)
 
   Role.add(user, role)
   event << "Added role \"#{role}\" to #{user.username}."
+rescue => e
+  lex(e, "Error adding role.", event: event)
 end
 
 # Add custom player / level alias.
@@ -1817,6 +1866,8 @@ def add_alias(event)
   entry = type == 'level' ? parse_level_or_episode(msg) : parse_player(msg, event.user.name)
   entry.add_alias(aka)
   event << "Added alias \"#{aka}\" to #{type} #{entry.name}."
+rescue => e
+  lex(e, "Error adding alias.", event: event)
 end
 
 # Send custom player / level aliases.
@@ -1838,7 +1889,7 @@ def send_aliases(event, page: nil, type: nil)
     klass2 = :player
     name   = "`#{klass2.to_s.pluralize}`.`name`"
   else
-    raise
+    raise OutteError.new "Incorrect alias type (should be `player` or `level`)"
   end
 
   # COMPUTE
@@ -1860,8 +1911,8 @@ def send_aliases(event, page: nil, type: nil)
   interaction_add_button_navigation(view, pag[:page], pag[:pages])
   interaction_add_select_menu_alias_type(view, type)
   send_message_with_interactions(event, output, view, !initial)
-rescue
-  event << 'Error fetching aliases.'
+rescue => e
+  lex(e, "Error fetching aliases.", event: event)
 end
 
 # Function to autogenerate screenshots of the userlevels for the dMMc contest
@@ -1890,6 +1941,8 @@ def send_dmmc(event)
   zip = zip_buffer.string
   response.delete
   send_file(event, zip, 'dmmc.zip', true)
+rescue => e
+  lex(e, "Error fetching dMMc maps.", event: event)
 end
 
 # Clean database (remove cheated archives, duplicates, orphaned demos, etc)
@@ -1903,6 +1956,8 @@ def sanitize_archives(event)
   end
   event << "Sanitized database:"
   counts.each{ |name, msg| event << "* #{msg}" }
+rescue => e
+  lex(e, "Error sanitizing archives.", event: event)
 end
 
 def potato
@@ -1951,17 +2006,23 @@ def send_reaction(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
   react(flags[:c], flags[:m], flags[:r])
+rescue => e
+  lex(e, "Error sending reaction.", event: event)
 end
 
 def send_unreaction(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
   unreact(flags[:c], flags[:m], flags[:r])
+rescue => e
+  lex(e, "Error removing reaction.", event: event)
 end
 
 def send_mappack_seed(event)
   Mappack.seed
   event << "Seeded new mappacks, there're now #{Mappack.count}."
+rescue => e
+  lex(e, "Error seeding new mappacks.", event: event)
 end
 
 def send_mappack_read(event)
@@ -1970,6 +2031,8 @@ def send_mappack_read(event)
   raise OutteError.new "Mappack not found." if mappack.nil?
   mappack.read
   event << "Read mappack #{verbatim(mappack.name)}."
+rescue => e
+  lex(e, "Error reading mappack.", event: event)
 end
 
 def send_mappack_patch(event)
@@ -1980,6 +2043,8 @@ def send_mappack_patch(event)
   player = parse_player('for ' + flags[:p], nil, false, true, true) if !id
   score = parse_score(flags[:s])
   event << MappackScore.patch_score(id, highscoreable, player, score)
+rescue => e
+  lex(e, "Error patching mappack score.", event: event)
 end
 
 def send_mappack_ranks(event)
@@ -1992,6 +2057,8 @@ def send_mappack_ranks(event)
   h.update_ranks('sr') if board == 'sr' || board.nil?
   board = "hs & sr" if board.nil?
   event << "Updated #{board} ranks for #{h.name}"
+rescue => e
+  lex(e, "Error updating ranks.", event: event)
 end
 
 def send_mappack_info(event)
@@ -2002,15 +2069,21 @@ def send_mappack_info(event)
   flags.delete(:mappack)
   flags = flags.map{ |k, v| "#{k} to #{verbatim(v)}" unless v.nil? }.compact.to_sentence
   event << "Set mappack #{verbatim(mappack.code)} #{flags}."
+rescue => e
+  lex(e, "Error setting mappack's info.", event: event)
 end
 
 def send_mappack_digest(event)
   Mappack.digest
   event << "Updated the mappack digest, #{Mappack.all.count} mappacks found"
+rescue => e
+  lex(e, "Error updating the mappack digest.", event: event)
 end
 
 def send_ul_csv(event)
   send_file(event, Userlevel.dump_csv, 'userlevels.csv')
+rescue => e
+  lex(e, "Error preparing userlevel CSV.", event: event)
 end
 
 def send_ul_plot_day(event)
@@ -2104,7 +2177,7 @@ def send_ul_plot(event)
     send_ul_plot_day(event)
   end
 rescue => e
-  lex(e, 'Failed to generate userlevel plot')
+  lex(e, "Error generating userlevel plot.", event: event)
 end
 
 def send_gold_check(event)
@@ -2119,6 +2192,8 @@ def send_gold_check(event)
     rows << [s.highscoreable.name, s.player.name[0..15], s.id, s.score_hs / 60.0, alive]
   }
   rows.size > 22 ? send_file(event, make_table(rows), 'gold_check.txt') : event << format_block(make_table(rows))
+rescue => e
+  lex(e, "Error performing gold check.", event: event)
 end
 
 
@@ -2140,6 +2215,8 @@ def send_log_config(event)
     end
     event << str if !str.empty?
   }
+rescue => e
+  lex(e, "Error changing the log config.", event: event)
 end
 
 # Print outte and overall memory usage
@@ -2157,10 +2234,14 @@ def send_meminfo(event)
   str =  "system: #{"%4d MB" % available} of #{"%4d MB" % total} (#{"%5.2f%%" % [100 * available / total]}) available\n"
   str << "outte:  #{"%4d MB" % mem} of #{"%4d MB" % used} (#{"%5.2f%%" % [100 * mem / used]}) used"
   event << "Memory usage:\n#{format_block(str)}"
+rescue => e
+  lex(e, "Error getting memory info.", event: event)
 end
 
 def send_restart(event)
   restart('Manual')
+rescue => e
+  lex(e, "Error restarting outte.", event: event)
 end
 
 # Compare Ruby and C SHA1 hashes for a specific level or score
@@ -2202,6 +2283,8 @@ def send_hash(event)
   end
 
   event << "The hashes are #{eq ? 'equal' : 'different'}."
+rescue => e
+  lex(e, "Error comparing hashes.", event: event)
 end
 
 # Compare Ruby and C SHA1 hashes for all mappack levels and return list of differences
@@ -2214,6 +2297,8 @@ def send_hashes(event)
   }.map{ |map, i| map.name }
   event << "There are #{res.size} levels with differing hashes:"
   res.size <= 20 ? event << format_block(res.join("\n")) : send_file(event, res.join("\n"))
+rescue => e
+  lex(e, "Error getting hash discrepancies.", event: event)
 end
 
 def send_nprofile_gen(event)
@@ -2256,8 +2341,7 @@ def send_nprofile_gen(event)
   File.binwrite("#{sanitize_filename(player.name)}_nprofile", nprofile)
   event << "#{mappack.code.upcase} nprofile for #{player.name} was generated"
 rescue => e
-  lex(e, 'Failed to generate nprofile')
-  nil
+  lex(e, "Error generating nprofile.", event: event)
 end
 
 def respond_special(event)
@@ -2286,7 +2370,7 @@ def respond_special(event)
 rescue OutteError => e
   event << e
 rescue => e
-  lex(e, 'Failed to handle special message')
+  lex(e, "Failed to handle special message.", event: event)
 end
 
 def respond(event)
@@ -2313,12 +2397,12 @@ def respond(event)
   # level names which would accidentally trigger them
   #
   # Note that the order of these methods matters. Therefore, we put the more
-  # specific ones (e.g. lotd, or sending scores) at the top.
+  # specific ones (e.g. sending scores) at the top.
   return send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   return send_screenshot(event)     if msg =~ /screenshot/i
   return send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
   return send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
-  return send_scores(event)         if msg =~ /scores/i && msg !~ /scoreshot/i && msg !~ /screenscores/i && msg !~ /shotscores/i && msg !~ /scorescreen/i && !!msg[NAME_PATTERN, 2]
+  return send_scores(event)         if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
   return send_analysis(event)       if msg =~ /analysis/i
   return send_level_name(event)     if msg =~ /\blevel name\b/i
   return send_level_id(event)       if msg =~ /\blevel id\b/i
@@ -2372,4 +2456,6 @@ rescue OutteError => e
   # figure out what they were asking for, so send the error message out
   # to the channel
   event << e
+rescue => e
+  lex(e, "Error parsing message.", event: event)
 end

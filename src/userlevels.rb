@@ -70,8 +70,6 @@ class UserlevelAuthor < ActiveRecord::Base
       matches = p.pluck(:id, :name).map{ |id, name| "#{"%6d" % id} - #{name}" }.join("\n")
       raise OutteError.new "Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}"
     end
-  rescue OutteError
-    raise
   rescue
     nil
   end
@@ -860,19 +858,11 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     edit:  !initial,
     int:   !(initial && count == 0)
   )
-rescue OutteError
-  raise
 rescue => e
-  lex(e, "Error browsing userlevels")
-  err_str = "An error happened, try again, if it keeps failing, contact the botmeister."
   if !socket.nil?
-    err("Socketing of userlevel query failed.")
+    lex(e, 'Socketing of userlevel query failed.')
   else
-    if initial
-      event << err_str
-    else
-      event.channel.send_message(err_str)
-    end
+    lex(e, 'Error browsing userlevels.', event: event)
   end
 end
 
@@ -897,10 +887,6 @@ def send_userlevel_individual(event, msg, userlevel = nil, &block)
     sleep(0.250) # Prevent rate limiting
     send_userlevel_browse(event, query: map)
   end
-rescue OutteError
-  raise
-rescue => e
-  lex(e, 'Failed to execute individual userlevel function')
 end
 
 def send_userlevel_download(event)
@@ -914,6 +900,8 @@ def send_userlevel_download(event)
     event << format_header(output)
     send_file(event, map[:query].dump_level, map[:query].id.to_s, true)
   }
+rescue => e
+  lex(e, 'Error fetching userlevel download.', event: event)
 end
 
 # We can pass the actual level instead of parsing it from the message
@@ -933,6 +921,8 @@ def send_userlevel_screenshot(event, userlevel = nil)
     event << output
     send_file(event, map[:query].screenshot(h[:palette]), map[:query].id.to_s + ".png", true)
   }
+rescue => e
+  lex(e, 'Error sending userlevel screenshot.', event: event)
 end
 
 def send_userlevel_scores(event)
@@ -945,6 +935,8 @@ def send_userlevel_scores(event)
     output += "on #{Time.now.to_s}"
     event << format_header(output) + format_block(map[:query].print_scores)
   }
+rescue => e
+  lex(e, 'Error sending userlevel scores.', event: event)
 end
 
 def send_userlevel_rankings(event)
@@ -1006,6 +998,8 @@ def send_userlevel_rankings(event)
   length = header.length + top.length
   event << format_header(header)
   length < DISCORD_CHAR_LIMIT ? event << top : send_file(event, top[3..-4], "userlevel-rankings.txt", false)
+rescue => e
+  lex(e, 'Error performing userlevel rankings.', event: event)
 end
 
 def send_userlevel_count(event)
@@ -1067,6 +1061,8 @@ def send_userlevel_count(event)
 
   header = "#{player.name} has #{count} out of #{max} #{full} #{tied} #{header} scores #{ties} #{format_author(author)}"
   event << format_header(header, close: '.')
+rescue => e
+  lex(e, 'Error getting userlevel highscore count.', event: event)
 end
 
 def send_userlevel_points(event)
@@ -1083,6 +1079,8 @@ def send_userlevel_points(event)
 
   header = "#{player.name} has #{points} out of #{max} #{full} userlevel points #{ties} #{format_author(author)}"
   event << format_header(header, close: '.')
+rescue => e
+  lex(e, 'Error computing userlevel points.', event: event)
 end
 
 def send_userlevel_avg_points(event)
@@ -1098,6 +1096,8 @@ def send_userlevel_avg_points(event)
 
   header = "#{player.name} has #{"%.3f" % avg} average #{full} userlevel points #{ties} #{format_author(author)}"
   event << format_header(header, close: '.')
+rescue => e
+  lex(e, 'Error computing userlevel average points.', event: event)
 end
 
 def send_userlevel_avg_rank(event)
@@ -1113,6 +1113,8 @@ def send_userlevel_avg_rank(event)
 
   header = "#{player.name} has an average #{"%.3f" % avg} #{full} userlevel rank #{ties} #{format_author(author)}"
   event << format_header(header, close: '.')
+rescue => e
+  lex(e, 'Error computing userlevel average rank.', event: event)
 end
 
 def send_userlevel_total_score(event)
@@ -1127,6 +1129,8 @@ def send_userlevel_total_score(event)
 
   header = "#{player.name}'s total #{full} userlevel score is #{"%.3f" % score} out of #{"%.3f" % max} #{format_author(author)}"
   event << format_header(header, close: '.')
+rescue => e
+  lex(e, 'Error computing userlevel total score.', event: event)
 end
 
 def send_userlevel_avg_lead(event)
@@ -1142,6 +1146,8 @@ def send_userlevel_avg_lead(event)
 
   header = "#{player.name} has an average #{"%.3f" % avg} #{full} userlevel 0th lead #{ties} #{format_author(author)}"
   event << format_header(header, close: '.')
+rescue => e
+  lex(e, 'Error computing userlevel average lead.', event: event)
 end
 
 def send_userlevel_list(event)
@@ -1165,6 +1171,8 @@ def send_userlevel_list(event)
     }.join("\n")
   }.join("\n")
   send_file(event, res, "#{full ? "global-" : ""}userlevel-scores-#{player.name}.txt")
+rescue => e
+  lex(e, 'Error getting userlevel highscore list.', event: event)
 end
 
 def send_userlevel_stats(event)
@@ -1190,6 +1198,8 @@ def send_userlevel_stats(event)
   full = format_global(full)
   event << format_header("#{full.capitalize} userlevels highscoring stats for #{player.name} #{format_author(author)} #{format_time}")
   event << format_block("          Scores\n\t#{totals}\n#{overall}\n#{histogram}")
+rescue => e
+  lex(e, 'Error computing userlevel stats.', event: event)
 end
 
 def send_userlevel_spreads(event)
@@ -1212,6 +1222,8 @@ def send_userlevel_spreads(event)
   full   = format_global(full)
   event << format_header("#{full.capitalize} userlevels #{!player.nil? ? "owned by #{player.name}" : ""} with the #{spread} spread between 0th and #{rank}")
   event << format_block(spreads)
+rescue => e
+  lex(e, 'Error computing userlevel spreads.', event: event)
 end
 
 def send_userlevel_maxed(event)
@@ -1230,6 +1242,8 @@ def send_userlevel_maxed(event)
   header = "There are #{count} potentially maxed #{full} userlevels #{format_time} #{player} #{format_author(author)}"
   event << format_header(header)
   count <= 20 ? event << format_block(block) : send_file(event, block, "maxed-userlevels.txt", false)
+rescue => e
+  lex(e, 'Error computing userlevel maxes.', event: event)
 end
 
 def send_userlevel_maxable(event)
@@ -1250,6 +1264,8 @@ def send_userlevel_maxable(event)
   header = "All #{count} #{full} userlevels with the most ties for 0th #{format_time} #{player} #{format_author(author)}"
   event << format_header(header)
   event << format_block("    ID - Ties - Author - Player\n#{ties.join("\n")}")
+rescue => e
+  lex(e, 'Error computing userlevel maxables.', event: event)
 end
 
 def send_random_userlevel(event)
@@ -1271,6 +1287,8 @@ def send_random_userlevel(event)
   else
     send_userlevel_screenshot(event, maps.first)
   end
+rescue => e
+  lex(e, 'Error fetching random userlevel.', event: event)
 end
 
 def send_userlevel_mapping_summary(event)
@@ -1395,6 +1413,8 @@ def send_userlevel_summary(event)
   both        = !(mapping || highscoring)
   send_userlevel_mapping_summary(event)     if mapping     || both
   send_userlevel_highscoring_summary(event) if highscoring || both
+rescue => e
+  lex(e, 'Error performing userlevel summary.', event: event)
 end
 
 def send_userlevel_trace(event)
@@ -1410,6 +1430,8 @@ def send_userlevel_trace(event)
       map[:query].trace(event)
     }
   end
+rescue => e
+  lex(e, 'Error performing userlevel trace.', event: event)
 end
 
 def send_userlevel_times(event)
@@ -1430,6 +1452,8 @@ def send_userlevel_times(event)
   next_level_hours = (next_level / (60 * 60)).to_i
   next_level_minutes = (next_level / 60).to_i - (next_level / (60 * 60)).to_i * 60
   event << "* I'll update the userlevel tabs (e.g. hardest) in #{next_level_hours} hours and #{next_level_minutes} minutes."
+rescue => e
+  lex(e, 'Error fetching userlevel update times.', event: event)
 end
 
 def respond_userlevels(event)

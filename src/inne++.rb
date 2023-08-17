@@ -238,6 +238,8 @@ def setup_bot
     str = special ? 'Special ' : ''
     str = "#{str}DM by #{event.user.name}: #{event.content}"
     special ? succ(str) : msg(str)
+  rescue => e
+    lex(e, 'Failed to handle Discord DM')
   ensure
     release_connection
   end
@@ -248,6 +250,8 @@ def setup_bot
     remove_mentions!(event.content)
     respond(event)
     msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
+  rescue => e
+    lex(e, 'Failed to handle Discord ping')
   ensure
     release_connection
   end
@@ -266,6 +270,8 @@ def setup_bot
       respond_special(event)
       succ("Special command: #{event.content}")
     end
+  rescue => e
+    lex(e, 'Failed to handle Discord message')
   ensure
     release_connection
   end
@@ -274,6 +280,8 @@ def setup_bot
   $bot.button do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_button(event)
+  rescue => e
+    lex(e, 'Failed to handle Discord button interaction')
   ensure
     release_connection
   end
@@ -282,6 +290,8 @@ def setup_bot
   $bot.select_menu do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_menu(event)
+  rescue => e
+    lex(e, 'Failed to handle Discord select menu interaction')
   ensure
     release_connection
   end

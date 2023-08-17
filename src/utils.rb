@@ -109,20 +109,21 @@ module Log
     fancy:   nil,   # Use rich logs (color, bold, etc)
     console: true,  # Log to the console
     file:    true,  # Log to the log file
-    discord: false  # Log to the botmaster's DMs in Discord
+    discord: false, # Log to the botmaster's DMs in Discord
+    event:   nil    # Log to the Discord's channel, if any
   )
     # Return if we don't need to log anything
     mode = :info if !MODES.key?(mode)
     log_to_console = LOG_TO_CONSOLE && console && @modes.include?(mode)
     log_to_file    = LOG_TO_FILE    && file    && @modes_file.include?(mode)
     log_to_discord = LOG_TO_DISCORD && discord
-    return text if !log_to_console && !log_to_file && !log_to_discord
+    return text if !log_to_console && !log_to_file && !log_to_discord && !event
 
     # Determine parameters
     fancy = @fancy if ![true, false].include?(fancy)
     fancy = false if !LOG_FANCY
     stream = STDOUT
-    stream = STDERR if [:warn, :error, :fatal].include?(mode)
+    stream = STDERR if [:fatal, :error, :warn].include?(mode)
     m = MODES[mode] || MODES[:info]
 
     # Message prefixes (timestamp, symbol, source app)
@@ -173,14 +174,19 @@ module Log
 
     # Log to Discord DMs, if specified
     discord(text) if log_to_discord
+    event.is_a?(Discordrb::Events::Respondable) ? event << text : event.channel.send_message(text) if event
 
     # Return original text
     text
+  rescue => e
+    puts "Failed to log text: #{e.message}"
+    puts e.backtrace.join("\n") if LOG_BACKTRACES
   end
 
   # Handle exceptions
   def self.exception(e, msg = '', **kwargs)
-    write("#{msg}: #{e}", :error, kwargs)
+    write(msg, :error, kwargs)
+    write(e.message, :error)
     write(e.backtrace.join("\n"), :debug) if LOG_BACKTRACES
     msg
   end
@@ -197,23 +203,26 @@ module Log
 end
 
 # Shortcuts for different logging methods
-def log   (msg, **kwargs) Log.write(msg, :info,  kwargs) end
-def warn  (msg, **kwargs) Log.write(msg, :warn,  kwargs) end
-def err   (msg, **kwargs) Log.write(msg, :error, kwargs) end
-def msg   (msg, **kwargs) Log.write(msg, :msg,   kwargs) end
-def succ  (msg, **kwargs) Log.write(msg, :good,  kwargs) end
-def dbg   (msg, **kwargs) Log.write(msg, :debug, kwargs) end
-def lin   (msg, **kwargs) Log.write(msg, :in,    kwargs) end
-def lout  (msg, **kwargs) Log.write(msg, :out,   kwargs) end
-def fatal (msg, **kwargs) Log.write(msg, :fatal, kwargs) end
-def lex   (e, msg = '', **kwargs) Log.exception(e, msg)  end
-def ld    (msg)                   Log.discord(msg)       end
+def log   (msg, **kwargs)    Log.write(msg, :info,  kwargs) end
+def warn  (msg, **kwargs)    Log.write(msg, :warn,  kwargs) end
+def err   (msg, **kwargs)    Log.write(msg, :error, kwargs) end
+def msg   (msg, **kwargs)    Log.write(msg, :msg,   kwargs) end
+def succ  (msg, **kwargs)    Log.write(msg, :good,  kwargs) end
+def dbg   (msg, **kwargs)    Log.write(msg, :debug, kwargs) end
+def lin   (msg, **kwargs)    Log.write(msg, :in,    kwargs) end
+def lout  (msg, **kwargs)    Log.write(msg, :out,   kwargs) end
+def fatal (msg, **kwargs)    Log.write(msg, :fatal, kwargs) end
+def lex   (e, msg, **kwargs) Log.exception(e, msg, kwargs)  end
+def ld    (msg)              Log.discord(msg, kwargs)       end
 
 # Custom exception class. Importantly, these exception messages are posted
 # to Discord, in response to a command not working or being understood.
 # Therefore, it's important to always use user-friendly messages that do not
 # leak private data.
-class OutteError < StandardError
+#
+# Note: We inherit from Exception, rather than StandardError, because that
+# way they will go past "rescue" and into Discord
+class OutteError < Exception
   def initialize(msg = 'Unknown outte error')
     super
   end
@@ -318,8 +327,6 @@ def _fork
   Process.wait(pid)
   raise 'Child failed' if result.empty?
   Marshal.load(result)
-rescue OutteError
-  raise
 rescue => e
   lex(e, 'Forking failed')
 end

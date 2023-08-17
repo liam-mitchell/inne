@@ -54,6 +54,7 @@ UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 # <------                     DISCORD VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
+# IDs
 BOTMASTER_ID           = 204332624288677890  # User ID of the bot manager (Eddy)
 SERVER_ID              = 197765375503368192  # Discord server/guild ID (N++ Server)
 CHANNEL_HIGHSCORES     = 210778111594332181  # #highscores
@@ -63,6 +64,8 @@ CHANNEL_CONTENT        = 197793786389200896  # #content-creation
 CHANNEL_SECRETS        = 217283494664077312  # #secrets
 CHANNEL_CTP_HIGHSCORES = 1137794057205198848 # #ctp-highscores
 CHANNEL_CTP_SECRETS    = 1137794113475969034 # #ctp-secrets
+
+# Limits
 DISCORD_CHAR_LIMIT     = 2000                # Message character limit
 DISCORD_FILE_LIMIT     = 25 * 1000 ** 2      # Attachment size limit
 
@@ -76,6 +79,10 @@ SERVER_WHITELIST = [
   SERVER_ID,          # N++
   535635802386857995  # Test server
 ]
+
+# Others
+BOT_STATUS   = 'online'
+BOT_ACTIVITY = "inne's evil cousin"
 
 # <--------------------------------------------------------------------------->
 # <------                     LOGGING VARIABLES                         ------>
