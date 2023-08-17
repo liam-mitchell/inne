@@ -551,22 +551,33 @@ end
 ############ LOTD FUNCTIONS ############
 
 # Daily reminders for eotw and cotm
-def send_channel_reminder
-  $channel.send_message("Also, remember that the current episode of the week is #{GlobalProperty.get_current(Episode).format_name}.")
+def send_channel_episode_reminder(ctp = false)
+  channel = ctp ? $ctp_channel : $channel
+  eotw = GlobalProperty.get_current(Episode, ctp)
+  return if eotw.nil?
+  channel.send_message("Also, remember that the current #{ctp ? 'CTP ' : ''}episode of the week is #{eotw.format_name}.")
+rescue => e
+  lex(e, 'Failed to send eotw reminder')
 end
 
-def send_channel_story_reminder
-  $channel.send_message("Also, remember that the current column of the month is #{GlobalProperty.get_current(Story).format_name}.")
+def send_channel_story_reminder(ctp = false)
+  channel = ctp ? $ctp_channel : $channel
+  cotm = GlobalProperty.get_current(Story, ctp)
+  return if cotm.nil?
+  channel.send_message("Also, remember that the current #{ctp ? 'CTP ' : ''}column of the month is #{cotm.format_name}.")
+rescue => e
+  lex(e, 'Failed to send cotm reminder')
 end
 
 # Publish the lotd/eotw/cotm
 # This function also updates the scores of said board, and of the new one
 def send_channel_next(type, ctp = false)
   # Check if the channel is available
-  channel = (ctp ? $ctp_channel : $channel)
-  if channel.nil?
+  channel = ctp ? $ctp_channel : $channel
+  while channel.nil?
     err("#{ctp ? 'CTP h' : 'H'}ighscoring channel not found, not sending level of the day")
-    return false
+    sleep(WAIT)
+    channel = ctp ? $ctp_channel : $channel
   end
 
   # Get old and new levels/episodes/stories
@@ -596,20 +607,17 @@ def send_channel_next(type, ctp = false)
   screenshot = Map.screenshot(file: true, h: current.map) rescue nil
   caption += "\nThere was a problem generating the screenshot!" if screenshot.nil?
   channel.send(caption, false, nil, screenshot.nil? ? [] : [screenshot])
+  sleep(0.25)
   channel.send("Current #{OFFLINE_STRICT ? "(cached) " : ""}high scores:\n#{format_block(current.format_scores(mode: 'dual'))}")
+  sleep(0.25)
 
   # Send differences, if available
   old_scores = GlobalProperty.get_saved_scores(type, ctp)
   if last.nil? || old_scores.nil?
     channel.send("There was no previous #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}.")
   elsif !OFFLINE_STRICT || ctp
-    diff = last.format_difference(old_scores, 'dual') rescue nil
-    since = type == Level ? 'yesterday' : "last #{period}"
-    if diff.strip.empty?
-      channel.send("There were no Top20 changes on #{since}'s #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}, #{last.format_name}.")
-    else
-      channel.send("Top20 changes on #{since}'s #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}, #{last.format_name}:\n#{format_block(diff)}") if !diff.nil?
-    end
+    diff = last.format_difference(old_scores, 'dual')
+    channel.send(last.format_difference_header(diff))
   end
   GlobalProperty.set_saved_scores(type, current, ctp)
 
@@ -625,9 +633,11 @@ def start_level_of_the_day(ctp = false)
 
     # Test lotd/eotw/cotm immediately
     if TEST && (ctp ? TEST_CTP_LOTD : TEST_LOTD)
-      sleep(WAIT) while !send_channel_next(Level, ctp)
-      sleep(WAIT) while !send_channel_next(Episode, ctp)
-      sleep(WAIT) while !send_channel_next(Story, ctp)
+      send_channel_next(Level, ctp)
+      send_channel_next(Episode, ctp)
+      send_channel_next(Story, ctp)
+      send_channel_episode_reminder(ctp)
+      send_channel_story_reminder(ctp)
       return
     end
 
@@ -655,30 +665,37 @@ def start_level_of_the_day(ctp = false)
 
     # Post lotd, if enabled
     if ((ctp ? UPDATE_CTP_LEVEL : UPDATE_LEVEL) || DO_EVERYTHING) && !DO_NOTHING
-      sleep(WAIT) while !send_channel_next(Level, ctp)
+      send_channel_next(Level, ctp)
       succ("Sent #{ctp ? 'CTP ' : ''}level of the day")
     end
 
     # Post eotw, if enabled
     if ((ctp ? UPDATE_CTP_EPISODE : UPDATE_EPISODE) || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
-      sleep(5)
-      sleep(WAIT) while !send_channel_next(Episode, ctp)
-      episode_day = true
+      sleep(0.25)
+      send_channel_next(Episode, ctp)
       succ("Sent #{ctp ? 'CTP ' : ''}episode of the week")
+      episode_day = true
     end
 
     # Post cotm, if enabled
     if ((ctp ? UPDATE_CTP_STORY : UPDATE_STORY) || DO_EVERYTHING) && !DO_NOTHING && next_story_update < Time.now
-      sleep(5)
-      sleep(WAIT) while !send_channel_next(Story, ctp)
-      story_day = true
+      sleep(0.25)
+      send_channel_next(Story, ctp)
       succ("Sent #{ctp ? 'CTP ' : ''}story of the month")
+      story_day = true
     end
 
     # Post reminders and finish
     cond = ((ctp ? UPDATE_CTP_LEVEL : UPDATE_LEVEL) || DO_EVERYTHING) && !DO_NOTHING
-    send_channel_reminder       if !episode_day && cond
-    send_channel_story_reminder if !story_day   && cond
+    if !episode_day && cond
+      sleep(0.25)
+      send_channel_episode_reminder(ctp)
+    end
+    if !story_day && cond
+      sleep(0.25)
+      send_channel_story_reminder(ctp)
+    end
+    
     $active_tasks[:lotd] = false
   end
 rescue => e

@@ -439,7 +439,7 @@ class Userlevel < ActiveRecord::Base
 
   def self.browse(qt = 10, page = 0, mode = 0, update = false)
     levels = get_levels(qt, page, mode)
-    parse(levels, update)
+    parse(levels, update) unless levels.nil?
   end
 
   # Produces the SQL order string, used when fetching maps from the db

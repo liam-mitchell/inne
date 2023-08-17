@@ -1150,17 +1150,19 @@ rescue => e
   lex(e, "Error performing query.", event: event)
 end
 
-# Auxiliar function called during lotd/eotw/cotm
-# Can also be called on demand by the botmaster
-# TODO: Add CTP diff
+# Sends the Top20 changes for the current lotd/eotw/cotm
 def send_diff(event)
-  type = parse_type(event.content) || Level
-  current = GlobalProperty.get_current(type)
-  old_scores = GlobalProperty.get_saved_scores(type)
-  since = (type == Level ? "yesterday" : (type == Episode ? "last week" : "last month"))
-
-  diff = current.format_difference(old_scores)
-  event << "Score changes on #{current.format_name} since #{since}:\n#{format_block(diff)}"
+  msg = event.content
+  ctp = !!msg[/ctp/i]
+  type = parse_type(msg) || Level
+  current = GlobalProperty.get_current(type, ctp)
+  old_scores = GlobalProperty.get_saved_scores(type, ctp)
+  period = type == Level ? 'day'   : type == Episode ? 'week'    : 'month'
+  type   = type == Level ? 'level' : type == Episode ? 'episode' : 'column'
+  raise OutteError.new "There is no current #{ctp ? 'CTP' : ''} #{type} of the #{period}.".squish if current.nil?
+  raise OutteError.new "The old scores for the current #{ctp ? 'CTP' : ''} #{type} of the #{period} we not saved :S".squish if old_scores.nil?
+  diff = current.format_difference(old_scores, 'dual')
+  event << current.format_difference_header(diff)
 rescue => e
   lex(e, "Error finding differences.", event: event)
 end

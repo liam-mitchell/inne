@@ -926,7 +926,7 @@ module Highscoreable
     end
   end
 
-  # Format differences for a specific board (hs or sr)
+  # Format Top20 changes between the current boards and 'old' for a single board (e.g. hs / sr)
   def format_difference_board(old, board = 'hs', diff_score: true)
     difffs = difference(old, board)
     return [] if difffs.all?{ |d| !d[:change].nil? && d[:change][:score].abs < 0.01 && d[:change][:rank] == 0 }
@@ -946,6 +946,8 @@ module Highscoreable
       if c
         if c[:score].abs < 0.01 && c[:rank] == 0
           diff = '━'
+          diff += ' ' * rank_padding
+          diff += ' ' * (change_padding + 2) if diff_score
         else
           rank = "━▲▼"[c[:rank] <=> 0]
           rank += c[:rank] != 0 ? "%-#{rank_padding}d" % [c[:rank].abs] : ' ' * rank_padding
@@ -954,13 +956,12 @@ module Highscoreable
           score += "%#{change_padding}#{fmt}" % [c[:score].abs]
           diff = rank
           if diff_score
-            diff += c[:score].abs > 0.01 ? ', ' + score : ' ' * (change_padding + 3)
-            diff = "(#{diff})"
+            diff += c[:score].abs > 0.01 ? ' ' + score : ' ' * (change_padding + 2)
           end
         end
       else
         diff = '❗' + ' ' * rank_padding
-        diff += ' ' * (change_padding + 5) if diff_score
+        diff += ' ' * (change_padding + 2) if diff_score
       end
       "#{o[:score].format(name_padding, score_padding, false, board, i)} #{diff}"
     }
@@ -968,13 +969,14 @@ module Highscoreable
     []
   end
 
+  # Format Top20 changes between the current boards and 'old'
   def format_difference(old, board = 'hs')
     if !is_mappack? || board != 'dual'
       return format_difference_board(old, board).join("\n")
     end
 
-    diffs_hs = format_difference_board(old, 'hs', diff_score: true)
-    diffs_sr = format_difference_board(old, 'sr', diff_score: true)
+    diffs_hs = format_difference_board(old, 'hs', diff_score: false)
+    diffs_sr = format_difference_board(old, 'sr', diff_score: false)
     return '' if diffs_hs.empty? && diffs_sr.empty?
     length_hs = diffs_hs.first.length rescue 0
     length_sr = diffs_sr.first.length rescue 0
@@ -984,6 +986,24 @@ module Highscoreable
     header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4)
     ret = [header, *diffs_hs.zip(diffs_sr).map{ |hs, sr| hs.sub(':', ' │') + ' │ ' + sr[4..-1] }]
     ret.join("\n")
+  rescue
+    nil
+  end
+
+  # Format the header for the Top20 changes
+  def format_difference_header(diff)
+    period = is_level? ? 'day' : is_episode? ? 'week' : 'month'
+    since = is_level? ? 'today' : is_episode? ? 'this week' : 'this month'
+    type = is_story? ? 'column' : self.class.to_s.downcase.remove('mappack')
+    mappack = is_mappack? ? self.mappack.code.upcase : ''
+
+    if diff.nil?
+      "Failed to calculate top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}.".squish
+    elsif diff.strip.empty?
+      "There have been no top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}.".squish
+    else
+      "Top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}:".squish + format_block(diff)
+    end
   end
 
   def find_coolness
