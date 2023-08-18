@@ -493,12 +493,16 @@ def sanitize_filename(s)
   s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
 end
 
+# Normalize the name (ID) of a highscoreable, by:
+# 1) Adding missing dashes
+# 2) Adding padding 0's
+# 3) Capitalizing all letters
 def normalize_name(name)
+  return name.to_s if !name.is_a?(String) && !name.is_a?(MatchData)
+  name = name.captures.compact.join('-') if name.is_a?(MatchData)
   name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
-end
-
-def redash_name(matches)
-  !!matches ? matches.captures.compact.join('-') : nil
+rescue
+  name.to_s
 end
 
 # Verifies if an arbitrary floating point can be a valid score

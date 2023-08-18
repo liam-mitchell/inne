@@ -164,19 +164,38 @@ MONKEY_PATCH_CHUNKYPNG     = true # Enable ChunkyPNG monkey patches (optional)
 # <------                       FORMAT VARIABLES                        ------>
 # <--------------------------------------------------------------------------->
 
-# Input
-LEVEL_PATTERN       = /[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[?!]-[ABCDEX]-[0-9][0-9]?/i
+# Highscoreable ID patterns
+LEVEL_PATTERN       = /([SCR][ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?)|([?!]-[ABCDEX]-[0-9][0-9]?)/i
 LEVEL_PATTERN_D     = /([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
-LEVEL_PATTERN_M     = /[A-Z]{3}-[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?|[A-Z]{3}-[?!]-[ABCDEX]-[0-9][0-9]?/i
+LEVEL_PATTERN_M     = /([A-Z]{3}-[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?)|([A-Z]{3}-[?!]-[ABCDEX]-[0-9][0-9]?)/i
 LEVEL_PATTERN_M_D   = /([A-Z]{3})-?([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)-?([0-9][0-9]?)|([A-Z]{3})-?([?!])-?([ABCDEX])-?([0-9][0-9]?)/i
-EPISODE_PATTERN     = /[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?/i
+EPISODE_PATTERN     = /([SCR][ILU]?-[ABCDEX]-[0-9][0-9]?)/i
 EPISODE_PATTERN_D   = /([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
-EPISODE_PATTERN_M   = /[A-Z]{3}-[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?/i
+EPISODE_PATTERN_M   = /([A-Z]{3}-[SCR][ILU]?-[ABCDEX]-[0-9][0-9]?)/i
 EPISODE_PATTERN_M_D = /([A-Z]{3})-?([SCR][ILU]?)-?([ABCDEX])-?([0-9][0-9]?)/i
 STORY_PATTERN       = /([SCR][ILU]?)-?([0-9][0-9]?)/i
 STORY_PATTERN_M     = /([A-Z]{3})-?([SCR][ILU]?)-?([0-9][0-9]?)/i
-NAME_PATTERN        = /(for|of) (.*)[\.\?]?/i
-MAX_ENTRIES         = 20 # maximum number of entries on methods with user input, to avoid spam
+
+# Organize all possible highscoreable ID patterns into a hash
+# (note dashes are irrelevant for stories, as there can be no ambiguity) 
+ID_PATTERNS = {
+  Level => {
+    vanilla: { dashed: LEVEL_PATTERN,     dashless: LEVEL_PATTERN_D     },
+    mappack: { dashed: LEVEL_PATTERN_M,   dashless: LEVEL_PATTERN_M_D   },
+  },
+  Episode => {
+    vanilla: { dashed: EPISODE_PATTERN,   dashless: EPISODE_PATTERN_D   },
+    mappack: { dashed: EPISODE_PATTERN_M, dashless: EPISODE_PATTERN_M_D },
+  }
+  Story => {
+    vanilla: { dashed: STORY_PATTERN,     dashless: STORY_PATTERN       },
+    mappack: { dashed: STORY_PATTERN_M,   dashless: STORY_PATTERN_M     },
+  }
+}
+
+# Input
+NAME_PATTERN = /(for|of) (.*)[\.\?]?/i
+MAX_ENTRIES  = 20 # maximum number of entries on methods with user input, to avoid spam
 
 # Output
 NUM_ENTRIES     = 20   # number of entries to show on most methods
