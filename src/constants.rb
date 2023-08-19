@@ -179,15 +179,15 @@ STORY_PATTERN_M     = /([A-Z]{3})-?([SCR][ILU]?)-?([0-9][0-9]?)/i
 # Organize all possible highscoreable ID patterns into a hash
 # (note dashes are irrelevant for stories, as there can be no ambiguity) 
 ID_PATTERNS = {
-  Level => {
+  'Level' => {
     vanilla: { dashed: LEVEL_PATTERN,     dashless: LEVEL_PATTERN_D     },
     mappack: { dashed: LEVEL_PATTERN_M,   dashless: LEVEL_PATTERN_M_D   },
   },
-  Episode => {
+  'Episode' => {
     vanilla: { dashed: EPISODE_PATTERN,   dashless: EPISODE_PATTERN_D   },
     mappack: { dashed: EPISODE_PATTERN_M, dashless: EPISODE_PATTERN_M_D },
-  }
-  Story => {
+  },
+  'Story' => {
     vanilla: { dashed: STORY_PATTERN,     dashless: STORY_PATTERN       },
     mappack: { dashed: STORY_PATTERN_M,   dashless: STORY_PATTERN_M     },
   }

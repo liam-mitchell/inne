@@ -707,6 +707,7 @@ module Map
 
     bench(:step) if BENCHMARK
 
+    return nil if !res
     file ? tmp_file(res, "#{h.name}.#{anim ? 'mp4' : 'png'}", binary: true) : res
   rescue => e
     lex(e, "Failed to generate screenshot")

@@ -927,9 +927,11 @@ module Highscoreable
   end
 
   # Format Top20 changes between the current boards and 'old' for a single board (e.g. hs / sr)
-  def format_difference_board(old, board = 'hs', diff_score: true)
+  #   diff_score : Show score changes
+  #   empty      : Return an empty array if there are no differences
+  def format_difference_board(old, board = 'hs', diff_score: true, empty: true)
     difffs = difference(old, board)
-    return [] if difffs.all?{ |d| !d[:change].nil? && d[:change][:score].abs < 0.01 && d[:change][:rank] == 0 }
+    return [] if empty && difffs.all?{ |d| !d[:change].nil? && d[:change][:score].abs < 0.01 && d[:change][:rank] == 0 }
 
     boards = leaderboard(board, pluck: false)
     sfield = is_mappack? ? "score_#{board}" : 'score'
@@ -975,8 +977,8 @@ module Highscoreable
       return format_difference_board(old, board).join("\n")
     end
 
-    diffs_hs = format_difference_board(old, 'hs', diff_score: false)
-    diffs_sr = format_difference_board(old, 'sr', diff_score: false)
+    diffs_hs = format_difference_board(old, 'hs', diff_score: false, empty: false)
+    diffs_sr = format_difference_board(old, 'sr', diff_score: false, empty: false)
     return '' if diffs_hs.empty? && diffs_sr.empty?
     length_hs = diffs_hs.first.length rescue 0
     length_sr = diffs_sr.first.length rescue 0

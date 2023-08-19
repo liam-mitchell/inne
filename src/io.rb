@@ -282,7 +282,7 @@ def parse_h_by_id_once(
   # Parse selected pattern
   packing = mappack ? :mappack : :vanilla
   dashing = dashed ? :dashed : :dashless
-  pattern = ID_PATTERNS[type][packing][dashing]
+  pattern = ID_PATTERNS[type.to_s][packing][dashing]
 
   # Try to match pattern
   match = msg.match(pattern)

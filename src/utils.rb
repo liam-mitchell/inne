@@ -325,10 +325,11 @@ def _fork
   write.close
   result = read.read
   Process.wait(pid)
-  raise 'Child failed' if result.empty?
+  return nil if result.empty?
   Marshal.load(result)
 rescue => e
   lex(e, 'Forking failed')
+  nil
 end
 
 # Light wrapper to execute code block in thread
