@@ -290,9 +290,10 @@ def parse_h_by_id_once(
   type = type.mappack if mappack
   str = normalize_name(match)
   matches << str
-  type.find_by(name: str)
+  res = type.find_by(name: str)
+  res ? ["Single match found for #{match}", [res]] : ['', []]
 rescue
-  nil
+  ['', []]
 end
 
 # Parse a highscoreable based on the ID:
@@ -308,21 +309,21 @@ def parse_highscoreable_by_id(msg, mappack: false)
   matches = []
   
   # Mappack variants, if allowed
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: true)  if mappack && ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: true)  if mappack && ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: false) if mappack && ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: false) if mappack && ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: true, dashed: true)  if mappack && ret.nil?
+  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: true)  if mappack && ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: true)  if mappack && ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: false) if mappack && ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: false) if mappack && ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: true, dashed: true)  if mappack && ret[1].empty?
 
   # Vanilla variants
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: true)  if ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: false, dashed: true)  if ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: false) if ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: false, dashed: false) if ret.nil?
-  ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: false, dashed: true)  if ret.nil?
+  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: false, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: false, dashed: true)  if ret[1].empty?
 
   # If there were ID matches, but they didn't exist, raise
-  if !ret && matches.size > 0
+  if ret[1].empty? && matches.size > 0
     ids = matches.map{ |m| verbatim(m) }.to_sentence
     error = "There is no level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}"
     raise OutteError.new error
@@ -330,7 +331,7 @@ def parse_highscoreable_by_id(msg, mappack: false)
 
   ret
 rescue
-  nil
+  ['', []]
 end
 
 # Parse a highscoreable based on a "code" (e.g. lotd/eotw/cotm)
@@ -349,36 +350,63 @@ def parse_highscoreable_by_code(msg, mappack: false)
     raise OutteError.new "There is no current #{ctp ? 'CTP ' : ''}column of the month." if ret.nil?
   end
 
-  ret
+  ret ? ["Single match found", [ret]] : ['', []]
 rescue
-  nil
+  ['', []]
 end
 
 # Parse a highscoreable based on the name
 def parse_highscoreable_by_name(msg, mappack: true)
-  name = msg.split("\n")[0][NAME_PATTERN, 2] # Level name
+  name = msg.split("\n")[0][NAME_PATTERN, 2]
 
-  # Parse exact name
+  # Exact name match
+  ret = ['', Level.where_like('longname', name, partial: false).to_a]
+  ret[0] = "Single name match found for #{name}" if ret[1].size == 1
+  ret[0] = "Multiple name matches found for #{name}" if ret[1].size > 1
+  return ret if !ret[1].empty?
+
+  # Exact alias match
+  query = Level.joins("INNER JOIN level_aliases ON levels.id = level_id")
+  ret = ['', query.where_like('alias', name, partial: false).to_a]
+  ret[0] = "Single alias match found for #{name}" if ret[1].size == 1
+  ret[0] = "Multiple alias matches found for #{name}" if ret[1].size > 1
+  return ret if !ret[1].empty?
+
+  # Partial name match
+  ret = ['', Level.where_like('longname', name, partial: false).to_a]
+  ret[0] = "Single partial name match found for #{name}" if ret[1].size == 1
+  ret[0] = "Multiple partial name matches found for #{name}" if ret[1].size > 1
+  return ret if !ret[1].empty?
+
+  # Closest matches
+  list = Level.all.pluck(:name, :longname)
+  matches = string_distance_list_mixed(name, list)
   ret = [
-    "Multiple matches found for #{name}",
-    Level.where_like('longname', name, partial: false).to_a
+    "No matches found for #{verbatim(name)}. Did you mean...",
+    matches.map{ |m| Level.find_by(name: m[0]) }
   ]
-  ret = ret[1][0] if !partial || ret[1].size == 1
+  return ret if !ret[1].empty?
 
-  # Parse level alias
-  if ret.nil? || ret.is_a?(Array) && ret[1].empty?
-    ret = Level.joins("INNER JOIN level_aliases ON levels.id = level_aliases.level_id")
-              .find_by("UPPER(level_aliases.alias) = ?", name.upcase) 
-  end
-
-  # If specified, perform extra searches
-  if ret.nil? || ret.is_a?(Array) && ret[1].empty?
-    ret = search_level(msg) 
-    ret = ret[1][0] if !partial || ret[1].size == 1
-  end
+  ['', []]
+rescue
+  ['', []]
 end
 
+# TODO:
+# - Adapt parse_highscoreable_by_name for mappacks
+# - Use 'user' to transform vanilla IDs (and names?) to the mappack of the user's choice
+# - Add QueryResult class that handles keeping track of the results,
+#       formatting them, etc. Adjust functions and comments accordingly.
+# - Add a parameter that tells this function whether multiple results should be
+#   formatted automatically or the list/QueryResult should be returned instead
+# - Rename 'partial' to 'multiple'
+
 # Parse a highscoreable (Level, Episode, Story, or the corresponding Mappack ones)
+# Returns
+#   [String, Array<Level>]
+# if partial is enabled, with the array of results and a header, or
+#   Level || nil
+# if partial is disabled, with the single result, if it exists.
 def parse_highscoreable(
     msg,            # Message text to parse
     partial: false, # Perform partial and approximate matches as well
@@ -387,56 +415,29 @@ def parse_highscoreable(
     user:    nil    # User who sent query (for user-specific query preferences)
   )
   raise OutteError.new "Couldn't find the level, episode or story you were looking for :(" if msg.to_s.strip.empty?
-  ret = nil
+  ret = ['', []]
 
-  # 4) Finally parse other specific strings (lotd, eotw, cotm, level names).
-  # For the last step, a list with multiple matches might be returned instead.
-  # It will be returned in the format:
-  # [String, Array<Level>]
-  # Where the string is a message, because the origin of the list might differ
-
-  # TODO: Code parse_highscoreable_by_name, working for mappacks too
-  # TODO: Add partial and searches into parse_highscoreable_by_name
-  # TODO: Change all functions to return [String, Array<Level>], and only
-  #       change that back to Level at the end, if !partial...
+  # Search for highscoreable according to different criteria
   ret = parse_highscoreable_by_id(msg, mappack: mappack)
-  ret = parse_highscoreable_by_code(msg, mappack: mappack) if !ret
-  ret = parse_highscoreable_by_name(msg, mappack: mappack) if !ret
-  raise OutteError.new "Couldn't find the level, episode or story you were looking for :(" if !ret
+  ret = parse_highscoreable_by_code(msg, mappack: mappack) if ret[1].empty?
+  ret = parse_highscoreable_by_name(msg, mappack: mappack) if ret[1].empty?
 
-  ret = ["Single match found for #{name}", [ret]] if !ret.is_a?(Array) && array
+  # No results
+  if ret[1].empty?
+    if array
+      return ['No matches found', []]
+    else
+      raise OutteError.new "Couldn't find the level, episode or story you were looking for :("
+    end
+  end
+
+  # Transform to single result if necessary
+  ret = ret[1].first if !partial || !array && ret[1].size == 1
+  
   ret
 rescue => e
   lex(e, 'Failed to parse highscoreable')
   nil
-end
-
-# Completes previous function by adding extra level searching functionality
-# 1) First, look for partial matches (i.e. using wildcards at start and end)
-# 2) Then, minimize Damerau-Levenshtein string distance
-def search_level(msg)
-  name = msg[NAME_PATTERN, 2]
-  if name
-    # Partial matches
-    ret = [
-      "Multiple partial matches found for #{name}",
-      Level.where_like('longname', name).to_a
-    ]
-    # If no result, minimize string distance
-    if ret[1].empty?
-        list = Level.all.pluck(:name, :longname)
-        matches = string_distance_list_mixed(name, list)
-        ret = [
-          "No matches found for #{verbatim(name)}. Did you mean...",
-          matches.map{ |m| Level.find_by(name: m[0]) }
-        ]
-    end
-  else
-    ret = ["", []]
-  end
-  ret
-rescue
-  ["", []]
 end
 
 def parse_rank(msg)
