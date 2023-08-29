@@ -286,7 +286,7 @@ def parse_h_by_id_once(
 
   # Try to match pattern
   match = msg.match(pattern)
-  return nil if match.nil?
+  return ['', []] if match.nil?
   type = type.mappack if mappack
   str = normalize_name(match)
   matches << str
@@ -305,17 +305,27 @@ end
 #      level exists).
 # 3) Then parse columns (no ambiguity as they don't have row letter).
 def parse_highscoreable_by_id(msg, mappack: false)
-  ret = nil
-  matches = []
+  ret = ['', []]
   
   # Mappack variants, if allowed
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: true)  if mappack && ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: true)  if mappack && ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: false) if mappack && ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: false) if mappack && ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: true, dashed: true)  if mappack && ret[1].empty?
+  matches = []
+  if mappack
+    ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: true, dashed: true)  if ret[1].empty?
+
+    # If there were ID matches, but they didn't exist, raise
+    if ret[1].empty? && matches.size > 0
+      ids = matches.map{ |m| verbatim(m) }.to_sentence
+      error = "There is no level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}"
+      raise OutteError.new error
+    end
+  end
 
   # Vanilla variants
+  matches = []
   ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: true)  if ret[1].empty?
   ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: false, dashed: true)  if ret[1].empty?
   ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: false) if ret[1].empty?
@@ -373,7 +383,7 @@ def parse_highscoreable_by_name(msg, mappack: true)
   return ret if !ret[1].empty?
 
   # Partial name match
-  ret = ['', Level.where_like('longname', name, partial: false).to_a]
+  ret = ['', Level.where_like('longname', name, partial: true).to_a]
   ret[0] = "Single partial name match found for #{name}" if ret[1].size == 1
   ret[0] = "Multiple partial name matches found for #{name}" if ret[1].size > 1
   return ret if !ret[1].empty?
@@ -405,7 +415,7 @@ end
 # Returns
 #   [String, Array<Level>]
 # if partial is enabled, with the array of results and a header, or
-#   Level || nil
+#   Highscoreable || nil
 # if partial is disabled, with the single result, if it exists.
 def parse_highscoreable(
     msg,            # Message text to parse

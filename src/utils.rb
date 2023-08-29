@@ -494,6 +494,12 @@ def sanitize_filename(s)
   s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
 end
 
+# Sanitize a string so that it is safe within an SQL LIKE statement
+def sanitize_like(string, escape_character = "\\")
+  pattern = Regexp.union(escape_character, "%", "_")
+  string.gsub(pattern) { |x| [escape_character, x].join }
+end
+
 # Normalize the name (ID) of a highscoreable, by:
 # 1) Adding missing dashes
 # 2) Adding padding 0's

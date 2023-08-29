@@ -45,7 +45,7 @@ module MonkeyPatches
     ::ActiveRecord::QueryMethods.class_eval do
       def where_like(field, str, partial: true)
         return self if field.empty? || str.empty?
-        str = sanitize_sql_like(str.downcase)
+        str = sanitize_like(str.downcase)
         str = "%" + str + "%" if partial
         self.where("LOWER(#{field}) LIKE (?)", str)
       end
@@ -55,7 +55,7 @@ module MonkeyPatches
     ::ActiveRecord::Base.class_eval do
       def self.where_like(field, str, partial: true)
         return self if field.empty? || str.empty?
-        str = sanitize_sql_like(str.downcase)
+        str = sanitize_like(str.downcase)
         str = "%" + str + "%" if partial
         self.where("LOWER(#{field}) LIKE (?)", str)
       end
