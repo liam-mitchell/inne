@@ -793,7 +793,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   if query.nil?
     search, author, msg = parse_title_and_author(msg, false)
     search = unescape(search) if search.is_a?(String)
-    author = UserlevelAuthor.parse(unescape(author)) if author.is_a?(String)
+    author = unescape(author) if author.is_a?(String)
+    author = UserlevelAuthor.parse(author)
   else
     search = query[:title]
     author = UserlevelAuthor.parse(query[:author])

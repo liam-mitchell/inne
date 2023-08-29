@@ -33,7 +33,7 @@ module MonkeyPatches
     end
 
     # Add bool to int casting
-    ::TrueClass.class_eval do def to_i; 1 end end
+    ::TrueClass.class_eval  do def to_i; 1 end end
     ::FalseClass.class_eval do def to_i; 0 end end
   end
 
