@@ -2223,11 +2223,10 @@ def send_gold_check(event)
   id = [msg[/\d+/].to_i, MIN_REPLAY_ID].max
   event << "List of potentially incorrect mappack scores:"
   rows = []
-  rows << ['Level', 'Player', 'ID', 'Current', 'Alive']
+  rows << ['Level', 'Player', 'ID', 'Current', 'HS', 'SR']
   rows << :sep
   MappackScore.gold_check(id).each{ |s|
-    alive = s.rank_hs.nil? ? (s.rank_sr.nil? ? 'None' : 'SR') : (s.rank_sr.nil? ? 'HS' : 'Both')
-    rows << [s.highscoreable.name, s.player.name[0..15], s.id, s.score_hs / 60.0, alive]
+    rows << [s.highscoreable.name, s.player.name[0..15], s.id, s.score_hs / 60.0, s.rank_hs.to_s, s.rank_sr.to_s]
   }
   rows.size > 22 ? send_file(event, make_table(rows), 'gold_check.txt') : event << format_block(make_table(rows))
 rescue => e
