@@ -1,0 +1,94 @@
+###################
+GENERAL INFORMATION
+###################
+There are two modes that the tool can be run with. 
+The first one is the "trace" mode, which is used to generate the list of ninja coordinates for any
+replay of any level. Additionally, up to 4 replays can be called at once for the same level, which
+can help compare multiple routes.
+The second one is the "splits" mode, which is used to generate the list of the 5 splits for any
+episode replay of any episode.
+Which mode is used depends only of the input files sent to the tool, so it's very important that
+they are sent correctly.
+
+######
+INPUTS
+######
+Trace mode requirements:
+1)
+Between 1 and 4 replay files. The first one is named "inputs_0", and the next ones, if they exist,
+are named "inputs_1", "inputs_2", and "inputs_3", in that order. The number of input files sent is
+equal to the number of runs you want to compare. The inputs files must be trimmed and zlib
+compressed, the same way as files generated with the "download replay for <level>" outte command.
+2)
+One map data file named "map_data". The data must be regular and untrimmed and uncompressed.
+
+Splits mode requirements:
+1)
+One episode replay file named "inputs_episode". The format of the inputs is the same as generated
+with the "download replay for <episode>" outte command.
+2)
+Five regular map data files corresponding to each level of the episode in order, named "map_data_0"
+through "map_data_4".
+
+######
+OUTPUT
+######
+Trace mode:
+The output is written to a file named "output.txt". The first line is set to True if the replay is
+valid else False. For a replay to be considered valid, the ninja must touch an open exit door on
+the same frame that the replay ends. The subsequent lines are the ninja's x and y coordinates for
+every frame. If there are more than one replay being compared, the replays outputs are simply
+written one after the other. "output_example_trace" is an example of a trace output file for
+SI-A-00-00, comparing Natey's and VCM's runs.
+
+Splits mode:
+The output is written to a file named "output.txt". For each level in the episode, the first line
+is set to True if the replay is valid else False. The second line is the score split in frames. You
+have to divide by 60 if you want to get the score in seconds. Each level is written one after the
+other. "output_example_splits" is an example of a splits output file for SI-A-00 0th.
+
+##############
+OUTTE COMMANDS
+##############
+The following is suggestions only. Feel free to implement what you think works best.
+
+Trace mode:
+"trace for SI-A-00-00":
+Trace for the 0th replay on SI-A-00-00
+"trace for S-A-00-00 3 5 17"
+Trace comparing for the 3rd, 5th and 17th replay on S-A-00-00
+"trace for userlevel 69420"
+Trace for the 0th replay on userlevel with id 69420
+"trace for CLA-SI-A-00-00"
+Trace for 0th replay on SI-A-00-00 from mappack with id CLA
+"trace for SU-A-00-00 palette dorado"
+Trace for the 0th replay on SU-A-00-00. The plot image will have dorado palette.
+
+Splits mode:
+"splits for SI-A-00"
+Splits for the 0th replay on SI-A-00
+"splits for S-A-00 5th"
+Splits for the 5th replay on S-A-00
+Ok I know there's already a function named splits, but I think this one fits the name better.
+
+####################
+OUTTE OUTPUT DISPLAY
+####################
+Again, suggestions only.
+
+Trace mode:
+If all replays are valid:
+Plot all the replays onto an outte generated map screenshot. The first trace should take the colors
+of player 1, the second trace takes the colors of player 2, and so on. All official palettes should
+be supported, with vasquez as default.
+If one or more replays are invalid:
+Plot the replays anyway, but throw in an error message warning that the traces are likely
+incorrect. Tell which replay(s) are invalid.
+
+Splits mode:
+If all level replays are valid, make outte print the splits however you like. If one or more
+replays are invalid, do not post the splits. Print instead an error message telling which of the 
+runs are invalid.
+
+
+
