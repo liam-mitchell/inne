@@ -1885,6 +1885,10 @@ class MappackScore < ActiveRecord::Base
     scores.sort_by{ |s| [s.highscoreable_type, s.highscoreable_id, s.player.name] }
   end
 
+  def archive
+    self
+  end
+
   def gold_count
     self.class.gold_count(highscoreable.type, score_hs, score_sr)
   end
@@ -1974,6 +1978,10 @@ end
 class MappackDemo < ActiveRecord::Base
   alias_attribute :score, :mappack_score
   belongs_to :mappack_score, foreign_key: :id
+
+  def decode
+    Demo.decode(demo)
+  end
 end
 
 # N++ sometimes submits individual level scores incorrectly when submitting

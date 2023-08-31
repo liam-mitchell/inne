@@ -228,6 +228,11 @@ class OutteError < Exception
   end
 end
 
+# Raises an OutteError, which will be printed out to Discord
+def perror(msg)
+  raise OutteError.new msg
+end
+
 # Make a request to N++'s server.
 # Since we need to use an open Steam ID, the function goes through all
 # IDs until either an open is found (and stored), or the list ends and we fail.

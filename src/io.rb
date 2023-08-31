@@ -461,9 +461,9 @@ def parse_bottom_rank(msg)
 end
 
 def parse_ranks(msg, clamp = 20)
-  ranks = msg.scan(/(?<=\s|^|$)\d{1,2}(?=\s|^|$)/)
-             .map{ |r| r.to_i.clamp(0, clamp - 1) }
-             .uniq
+  ranks = msg.scan(/(?<=\s|^|$)\d{1,3}(?=\s|^|$)/).map(&:to_i)
+  ranks.map!{ |r| r.clamp(0, clamp - 1) } unless clamp == -1
+  ranks.uniq!
   ranks.empty? ? [0] : ranks
 end
 

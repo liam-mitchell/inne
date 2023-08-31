@@ -1191,49 +1191,57 @@ rescue => e
   lex(e, 'Error sending mappack list.')
 end
 
-# Auxiliar function used by the demo analysis method
-def do_analysis(scores, rank)
-  run      = scores.scores[rank]
-  return nil if run.nil?
-  analysis = run.demo.decode
-  {
-    'player'   => run.player.name,
-    'scores'   => scores.format_name,
-    'rank'     => "%02d" % rank,
-    'score'    => "%.3f" % run.score,
-    'analysis' => analysis,
-    'gold'     => "%.0f" % [(run.score + analysis.size.to_f / 60 - 90) / 2]
-  }
-end
-
 # Return the demo analysis of a level's replay
-def send_analysis(event)
+def send_analysis(event, page: nil)
   # Parse message parameters
-  msg    = event.content
-  ranks  = parse_ranks(msg)
-  scores = parse_highscoreable(msg)
-  raise OutteError.new "Episodes and columns can't be analyzed (yet)" if scores.is_a?(Episode) || scores.is_a?(Story)
+  initial = page.nil?
+  msg     = fetch_message(event, initial)
+  ranks   = parse_ranks(msg, -1)
+  board   = parse_board(msg, 'hs')
+  h       = parse_highscoreable(msg, partial: true, mappack: true)
 
-  # Perform demo analysis
-  analysis = ranks.map{ |rank| do_analysis(scores, rank) }.compact
-  length   = analysis.map{ |a| a['analysis'].size }.max
-  raise OutteError.new "Connection failed" if !length || length == 0
-  padding  = Math.log(length, 10).to_i + 1
-  head     = " " * padding + "|" + "LJR|" * analysis.size
-  sep      = "-" * head.size
+  # Multiple matches, send match list
+  if h.is_a?(Array)
+    format_level_matches(event, msg, page, initial, h, 'search')
+    return
+  end
+
+  # Integrity checks
+  perror("Episodes and columns can't be analyzed yet.") if h.is_a?(Episode) || h.is_a?(Story)
+  perror("Metanet levels only support highscore mode for now.") if !h.is_mappack? && board != 'hs'
+  perror("G-- mode is not supported yet.") if board == 'gm'
+
+  # Fetch runs
+  boards = h.leaderboard(board, truncate: 0, pluck: false).all
+  analysis = ranks.map{ |rank| [rank, (boards[rank].archive rescue nil)] }.to_h
+  missing = analysis.select{ |r, a| a.nil? }.keys
+  event << "Warning: #{'Run'.pluralize(missing.size)} with rank #{missing.to_sentence} not found." if !missing.empty?
+  analysis.reject!{ |r, a| a.nil? }
+  return if analysis.size == 0
+
+  # Get run elements
+  sfield = h.is_mappack? ? "score_#{board}" : 'score'
+  scale = board == 'hs' ? 60.0 : 1
+  analysis = analysis.map{ |rank, run|
+    {
+      'player' => run.player.name,
+      'rank'   => rank,
+      'score'  => run[sfield] / scale,
+      'inputs' => run.demo.decode,
+      'gold'   => run.gold
+    }
+  }
+  length = analysis.map{ |a| a['inputs'].size }.max
+  perror("The selected runs are empty.") if length == 0
 
   # We format the result in 3 different ways, only 2 are being used though.
   # Format 1 example:
   #   R.R.R.JR.JR...
   raw_result = analysis.map{ |a|
-    a['analysis'].map{ |b|
+    a['inputs'].map{ |b|
       [b % 2 == 1, b / 2 % 2 == 1, b / 4 % 2 == 1]
     }.map{ |f|
-      frame = ""
-      if f[2] then frame.concat("l") end
-      if f[0] then frame.concat("j") end
-      if f[1] then frame.concat("r") end
-      frame
+      (f[2] ? 'L' : '') + (f[1] ? 'R' : '') + (f[0] ? 'J' : '')
     }.join(".")
   }.join("\n\n")
 
@@ -1246,8 +1254,11 @@ def send_analysis(event)
   #   0004|^> |
   #   0005|^> |
   #   ...
+  padding = Math.log(length, 10).to_i + 1
+  head = " " * padding + "|" + "LJR|" * analysis.size
+  sep = "-" * head.size
   table_result = analysis.map{ |a|
-    table = a['analysis'].map{ |b|
+    table = a['inputs'].map{ |b|
       [
         b / 4 % 2 == 1 ? "<" : " ",
         b     % 2 == 1 ? "^" : " ",
@@ -1278,7 +1289,7 @@ def send_analysis(event)
     ['|',  'Left Right Jump']
   ]
   key_result = analysis.map{ |a|
-    a['analysis'].map{ |f|
+    a['inputs'].map{ |f|
       codes[f][0] || '?' rescue '?'
     }.join
      .scan(/.{,60}/)
@@ -1290,22 +1301,34 @@ def send_analysis(event)
 
   # Format response
   #   - Digest of runs' properties (length, score, gold collected, etc)
-  pad = analysis.map{ |a| a['player'].length }.max
+  sr = h.is_mappack? && board == 'sr'
+  gm = h.is_mappack? && board == 'gm'
+  fmt = analysis[0]['score'].is_a?(Integer) ? "%d" : "%.3f"
+  ppad = analysis.map{ |a| a['player'].length }.max
+  rpad = [analysis.map{ |a| a['rank'].to_s.length }.max, 2].max
+  spad = analysis.map{ |a| (fmt % a['score']).length }.max
+  fpad = analysis.map{ |a| a['inputs'].size }.max.to_s.length
+  gpad = analysis.map{ |a| a['gold'] }.max.to_s.length
   properties = format_block(
     analysis.map{ |a|
-      "#{a['rank']}: #{format_string(a['player'], pad)} - #{a['score']} [#{a['analysis'].size}f, #{a['gold']}g]"
+      rank_text = a['rank'].to_s.rjust(rpad, '0')
+      name_text = format_string(a['player'], ppad)
+      score_text = (fmt % a['score']).rjust(spad)
+      frame_text = a['inputs'].size.to_s.rjust(fpad) + 'f, ' unless sr
+      gold_text = a['gold'].to_s.rjust(gpad) + 'g' unless gm
+      "#{rank_text}: #{name_text} - #{score_text} [#{frame_text}#{gold_text}]"
     }.join("\n")
   )
   #  - Summary of symbols' meaning
   explanation = "[#{codes.map{ |code, meaning| "**#{Regexp.escape(code)}** #{meaning}" }.join(', ')}]"
   #  - Header of message, and final result (format 2 only used if short enough)
-  header = "Replay analysis for #{scores.format_name} #{format_time}.".squish
+  header = "Replay analysis for #{h.format_name} #{format_time}.".squish
   result = "#{header}\n#{properties}"
-  result += "#{explanation}#{format_block(key_result)}" unless analysis.sum{ |a| a['analysis'].size } > 1080
+  result += "#{explanation}#{format_block(key_result)}" unless analysis.sum{ |a| a['inputs'].size } > 1080
 
   # Send response
   event << result
-  send_file(event, table_result, "analysis-#{scores.name}.txt")
+  send_file(event, table_result, "analysis-#{h.name}.txt")
 rescue => e
   lex(e, "Error performing demo analysis.", event: event)
 end
