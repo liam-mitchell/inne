@@ -45,9 +45,7 @@ Eddy's TODO list for inne:
 - Userlevel tabs not working correctly? (dupped levels in top weekly, what about featured, etc)
 - Handle cheaters within database (rather than via hardcoding in source code), have botmaster function to add cheaters, etc
 - Histograms of userlevels played by ID (perhaps also chart anything, e.g. 0ths, top10s, parse_range)
-- Analysis:
-  * Use framecount and gold fields from archives table, rather than computing it again
-  * Implement for episodes and stories and userlevels and mappacks
+- Analysis: Implement for episodes and stories and userlevels and mappacks
 - "percent" for table
 - maybe modify function 'nav' from 'HighScore' module to allow for arbitrary offsets, and have some special sign to denote 'first' and 'last'
 - modify rankings in models.rb to return player names rather than player objects, do it efficiently by querying for players JOINS users to find potential display names, check LOG_SQL to minimize queries
@@ -80,6 +78,7 @@ Eddy's TODO list for inne:
 - Minimum scores to appear in mappack average rank rankings are 0, fix.
 - Create a class QueryResult for when we parse a highscoreable, that contains the array of results, the header of text, a function to format the result, etc. Perhaps do the same for parsing players and other things.
 - Optimize gold_check (single SQL query per type?), both memory-wise and time-wise
+- For mappacks, "maxed" could mean maxable for >=20 ties, and "maxable" restricted to <20 ties
 
 \\ ------------------------ mappacker -----------------------
 
@@ -162,16 +161,11 @@ Others:
 \\ ------------------------ Replays ------------------------
 
 - Generate attract files from Metanet level & userlevel replays, as a way to keep demos.
-- Implement demo analysis to attract files, which requires to find a way for the bot to download files uploaded by people.
-
-Analysis:
-
-- Prettify format (aligment).
-- Error checking before using Zlib, in case of erroneous download.
-- Don't break the whole function if one download failed: retry, or skip to the next one.
+- Implement demo analysis to attract files.
 - Compare inputs of two runs like github does, also maybe do this comparison by just specifying changes (*read below*)
 
 \\ ------------------------ History ------------------------
+
 -- Fix the doubling through code, by halving the older scores.
 -- Add the possibility of limiting the scope of graphs (upper bound of y axis), using an additional parameters to the user command (e.g. "intro history 100"). In this case, if some player doesn't even appear in the graph because he's above it, maybe delete him from the legend and add new players. This adds an aditional difficulty since it's not just changing the y axis, but also changing the players to be plotted. To do so, the maximum would have to be computed first, and then decide which players are to be plotted.
 -- Medium priority: Another solution for the above problem: Use logarithmic scale.

@@ -791,7 +791,7 @@ module Highscoreable
   # Returns episodes or stories sorted by cleanliness
   def self.cleanliness(type, tabs, rank = 0, mappack = nil, board = 'hs')
     # Integrity checks
-    raise OutteError.new "Attempted to compute cleanliness of level" if type.include?(Levelish)
+    raise "Attempted to compute cleanliness of level" if type.include?(Levelish)
     raise "Attempted to compute non-hs/sr cleanliness" if !['hs', 'sr'].include?(board)
 
     # Setup params
@@ -1105,6 +1105,14 @@ module Levelish
   # Return the Map object (containing map data), if it exists
   def map
     self.is_a?(Level) ? MappackLevel.find_by(id: id) : self
+  end
+
+  # Return the corresponding Level object of a MappackLevel
+  # 'null' determines whether to return nil or self if no equivalent exists
+  def vanilla(null = false)
+    return self if self.is_a?(Level) || self.is_a?(Userlevel)
+    level = Level.find_by(id: id)
+    return level ? level : null ? nil : self
   end
 
   def story
@@ -1764,7 +1772,7 @@ class Player < ActiveRecord::Base
     # Forward request to Metanet
     res = forward(req)
     invalid = res.nil? || res == INVALID_RESP
-    raise OutteError.new 'Invalid response' if invalid && !LOCAL_LOGIN
+    raise 'Invalid response' if invalid && !LOCAL_LOGIN
     locally = false
 
     if !invalid  # Parse server response and register player in database
@@ -1787,7 +1795,7 @@ class Player < ActiveRecord::Base
       ].uniq
       ids.reject!{ |id| id <= 0 || id >= 10000000 }
       steamid = params['steam_id'][0].to_s rescue ''
-      raise OutteError.new "Couldn't login player locally (no params)" if ids.empty? && steamid.empty?
+      raise "No parameters found" if ids.empty? && steamid.empty?
 
       # Try to locate player in the database based on those params
       player = nil
@@ -2235,6 +2243,14 @@ class GlobalProperty < ActiveRecord::Base
     period = FAST_PERIOD * 24 * 60 * 60
     User.where("unix_timestamp(last_active) >= #{Time.now.to_i - period}").update_all(active: true)
     User.where("unix_timestamp(last_active) < #{Time.now.to_i - period}").update_all(active: false)
+  end
+
+  def self.get_avatar
+    self.find_by(key: 'avatar').value
+  end
+  
+  def self.set_avatar(str)
+    self.find_by(key: 'avatar').update(value: str)
   end
 end
 
@@ -2697,8 +2713,8 @@ module Twitch extend self
   end
 
   def format_stream(s)
-    name  = to_ascii(s['user_name'].remove("\n").strip[0..14]).ljust(15, ' ')
-    title = to_ascii(s['title'].remove("\n").strip[0..34]).ljust(35, ' ')
+    name  = to_ascii(s['user_name']).strip[0...15].ljust(15, ' ')
+    title = to_ascii(s['title']).strip[0...35].ljust(35, ' ')
     time  = "#{length(s).to_i} mins ago".rjust(12, ' ')
     views = s['viewer_count'].to_s.rjust(5, ' ')
     "#{name} #{title} #{time} #{views}"
@@ -2847,12 +2863,15 @@ module Twitch extend self
   end
 
   def post_stream(stream)
+    return if $content_channel.nil?
     game = GAME_IDS.invert[stream['game_id'].to_i]
     return if !game
     $content_channel.send_message("#{ping(TWITCH_ROLE)} #{verbatim(stream['user_name'])} started streaming **#{game}**! #{verbatim(stream['title'])} <https://www.twitch.tv/#{stream['user_login']}>")
     return if !$twitch_streams.key?(game)
     s = $twitch_streams[game].select{ |s| s['user_id'] ==  stream['user_id'] }.first
     s['posted'] = Time.now.to_i if !s.nil?
+  rescue => e
+    lex(e, 'Failed to post new Twitch stream')
   end
 end
 

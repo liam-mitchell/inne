@@ -60,8 +60,8 @@ end
 # Parses a string looking for a score in the usual N++ 3-decimal floating point format
 def parse_score(str)
   score = str[/(\s|^)([1-9]\d*|0)(\.\d{1,3})?(\s|$)/]
-  raise OutteError.new "Couldn't find / understand the score" if score.nil?
-  raise OutteError.new "The score is incorrect" if !verify_score(score.to_f)
+  perror("Couldn't find / understand the score") if score.nil?
+  perror("The score is incorrect") if !verify_score(score.to_f)
   score.to_f
 end
 
@@ -131,6 +131,18 @@ def formalize_tab(tab)
   parse_tabs(tab)[0].to_s
 end
 
+# Normalize the name (ID) of a highscoreable, by:
+# 1) Adding missing dashes
+# 2) Adding padding 0's
+# 3) Capitalizing all letters
+def normalize_name(name)
+  return name.to_s if !name.is_a?(String) && !name.is_a?(MatchData)
+  name = name.captures.compact.join('-') if name.is_a?(MatchData)
+  name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
+rescue
+  name.to_s
+end
+
 # The following are 2 auxiliary functions for the next ones
 #   Parse a single player when a name has been provided
 def parse_player_explicit(name, playerClass = Player)
@@ -138,7 +150,7 @@ def parse_player_explicit(name, playerClass = Player)
   player = Player.joins('INNER JOIN player_aliases ON players.id = player_aliases.player_id')
                  .where(["player_aliases.alias = ?", name])
                  .take rescue nil if player.nil? && playerClass == Player
-  raise OutteError.new "#{name} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad..." if player.nil?
+  perror("#{name} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad...") if player.nil?
   player
 end
 
@@ -149,7 +161,7 @@ def parse_player_implicit(username, playerClass = Player)
   return player if !player.nil?
   # Check if user identified with another name
   user = User.find_by(username: username) rescue nil
-  raise OutteError.new "I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?" if user.nil? || user.player.nil?
+  perror("I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?") if user.nil? || user.player.nil?
   parse_player_explicit(user.player.name, playerClass)
 end
 
@@ -176,7 +188,7 @@ def parse_player(
     if p.nil?
       if explicit
         if enforce
-          raise OutteError.new "You need to specify a player for this function."
+          perror("You need to specify a player for this function.")
         else
           nil
         end
@@ -205,7 +217,7 @@ def parse_players(msg, username, userlevel = false)
     p1 = parse_player_explicit(p[0], playerClass)
     p2 = parse_player_explicit(p[1], playerClass)
   else
-    raise OutteError.new "Too many players! Please enter either 1 or 2."
+    perror("Too many players! Please enter either 1 or 2.")
   end
   [p1, p2]
 end
@@ -220,18 +232,18 @@ end
 # The username can include the tag after a hash
 def parse_discord_user(msg)
   user = msg[NAME_PATTERN, 2].downcase
-  raise OutteError.new "You need to provide a user." if user.nil?
+  perror("You need to provide a user.") if user.nil?
 
   parts = user.split('#')
   users = User.search(parts[0], !parts[1].nil? ? parts[1] : nil)
   case users.size
   when 0
-    raise OutteError.new "No user named #{user} found in the server."
+    perror("No user named #{user} found in the server.")
   when 1
     return users.first
   else
     list = users.map{ |u| u.username + '#' + u.tag }.join("\n")
-    raise OutteError.new "Multiple users named #{parts[0]} found, please include the numerical tag as well:\n#{format_block(list)}"
+    perror("Multiple users named #{parts[0]} found, please include the numerical tag as well:\n#{format_block(list)}")
   end
 end
 
@@ -259,15 +271,15 @@ def parse_videos(msg)
   videos = videos.where(challenge: challenge) unless challenge.nil?
   videos = videos.where(challenge_code: code) unless code.nil?
 
-  raise OutteError.new "That level doesn't have any videos!" if highscoreable.videos.empty?
-  raise OutteError.new "I couldn't find any videos matching that request! Are you looking for one of these videos?\n#{format_block(highscoreable.videos.map(&:format_description).join("\n"))}" if videos.empty?
+  perror("That level doesn't have any videos!") if highscoreable.videos.empty?
+  perror("I couldn't find any videos matching that request! Are you looking for one of these videos?\n#{format_block(highscoreable.videos.map(&:format_description).join("\n"))}") if videos.empty?
   return videos
 end
 
 def parse_steam_id(msg)
   id = msg[/is (.*)[\.\?]?/i, 1]
-  raise OutteError.new "I couldn't figure out what your Steam ID was! You need to send a message in the format 'my steam id is <id>'." if id.nil?
-  raise OutteError.new "Your Steam ID needs to be numerical! #{id} is not valid." if id !~ /\A\d+\Z/
+  perror("I couldn't figure out what your Steam ID was! You need to send a message in the format 'my steam id is <id>'.") if id.nil?
+  perror("Your Steam ID needs to be numerical! #{id} is not valid.") if id !~ /\A\d+\Z/
   return id
 end
 
@@ -319,8 +331,7 @@ def parse_highscoreable_by_id(msg, mappack: false)
     # If there were ID matches, but they didn't exist, raise
     if ret[1].empty? && matches.size > 0
       ids = matches.map{ |m| verbatim(m) }.to_sentence
-      error = "There is no level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}"
-      raise OutteError.new error
+      perror("There is no mappack level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}")
     end
   end
 
@@ -335,8 +346,7 @@ def parse_highscoreable_by_id(msg, mappack: false)
   # If there were ID matches, but they didn't exist, raise
   if ret[1].empty? && matches.size > 0
     ids = matches.map{ |m| verbatim(m) }.to_sentence
-    error = "There is no level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}"
-    raise OutteError.new error
+    perror("There is no level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}")
   end
 
   ret
@@ -351,13 +361,13 @@ def parse_highscoreable_by_code(msg, mappack: false)
 
   if !!msg[/(level of the day|lotd)/i]
     ret = GlobalProperty.get_current(Level, ctp)
-    raise OutteError.new "There is no current #{ctp ? 'CTP ' : ''}level of the day." if ret.nil?
+    perror("There is no current #{ctp ? 'CTP ' : ''}level of the day.") if ret.nil?
   elsif !!msg[/(episode of the week|eotw)/i]
     ret = GlobalProperty.get_current(Episode, ctp)
-    raise OutteError.new "There is no current #{ctp ? 'CTP ' : ''}episode of the week." if ret.nil?
+    perror("There is no current #{ctp ? 'CTP ' : ''}episode of the week.") if ret.nil?
   elsif !!msg[/(column of the month|cotm)/i]
     ret = GlobalProperty.get_current(Story, ctp)
-    raise OutteError.new "There is no current #{ctp ? 'CTP ' : ''}column of the month." if ret.nil?
+    perror("There is no current #{ctp ? 'CTP ' : ''}column of the month.") if ret.nil?
   end
 
   ret ? ["Single match found", [ret]] : ['', []]
@@ -366,7 +376,9 @@ rescue
 end
 
 # Parse a highscoreable based on the name
+# 'mappack' specifies whether searching for mappack highscoreables is allowed, not enforced
 def parse_highscoreable_by_name(msg, mappack: true)
+  code = parse_mappack(msg)
   name = msg.split("\n")[0][NAME_PATTERN, 2]
 
   # Exact name match
@@ -424,7 +436,7 @@ def parse_highscoreable(
     mappack: false, # Search mappack highscoreables as well
     user:    nil    # User who sent query (for user-specific query preferences)
   )
-  raise OutteError.new "Couldn't find the level, episode or story you were looking for :(" if msg.to_s.strip.empty?
+  perror("Couldn't find the level, episode or story you were looking for :(") if msg.to_s.strip.empty?
   ret = ['', []]
 
   # Search for highscoreable according to different criteria
@@ -437,7 +449,7 @@ def parse_highscoreable(
     if array
       return ['No matches found', []]
     else
-      raise OutteError.new "Couldn't find the level, episode or story you were looking for :("
+      perror("Couldn't find the level, episode or story you were looking for :(")
     end
   end
 
@@ -490,7 +502,7 @@ end
 # 4) Anywhere, using the 3 letter mappack code
 # The second parameter specifies the behaviour when the mappack is not found
 def parse_mappack(msg, rais = false)
-  (rais ? raise("Mappack not found") : (return nil)) if msg.strip.empty?
+  (rais ? perror("Mappack not found") : (return nil)) if msg.strip.empty?
 
   mappack = Mappack.find_by(name: msg.strip[/\w+/i])
   return mappack if !mappack.nil?
@@ -501,7 +513,7 @@ def parse_mappack(msg, rais = false)
   mappack = Mappack.where(code: msg.scan(/\b[A-Z]{3}\b/i)).first
   return mappack if !mappack.nil?
 
-  rais ? raise("Mappack not found") : nil
+  rais ? perror("Mappack not found") : nil
 end
 
 # We parse a complex variety of ranges here, from individual ranks, to tops,
@@ -819,7 +831,8 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
         ret[:palette] = matches.first 
         return ret
       end
-      raise OutteError.new "Multiple matches found for palette #{verbatim(ret[:palette])}#{matches.size > 10 ? " (#{matches.size} matches, showing 10)" : ''}:\n#{format_block(matches.take(10).join("\n"))}" if matches.size > 0
+      match_limit = 10
+      perror("Multiple matches found for palette #{verbatim(ret[:palette])}#{matches.size > match_limit ? " (#{matches.size} matches, showing #{match_limit})" : ''}:\n#{format_block(matches.take(match_limit).join("\n"))}") if matches.size > 0
 
       # Look for approximate matches
       matches = string_distance_list_mixed(ret[:palette].downcase, themes.each_with_index.to_a.map(&:reverse)).map(&:last)
@@ -827,10 +840,10 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
         ret[:palette] = matches.first
         return ret
       end
-      raise OutteError.new "No matches found for palette #{verbatim(ret[:palette])}. Did you mean...\n#{format_block(matches.join("\n"))}" if matches.size > 0
+      perror("No matches found for palette #{verbatim(ret[:palette])}. Did you mean...\n#{format_block(matches.join("\n"))}") if matches.size > 0
 
       # No matches whatsoever
-      raise OutteError.new "No good matches for palette #{verbatim(ret[:palette])} found." if !fallback
+      perror("No good matches for palette #{verbatim(ret[:palette])} found.") if !fallback
       err = "No good matches for palette #{verbatim(ret[:palette])} found, using default instead."
       pal = ''
     end
@@ -1061,11 +1074,6 @@ end
 def format_author(author)
   return '' if !author.is_a?(UserlevelAuthor)
   "on maps by #{verbatim(author.name)}"
-end
-
-def format_block(str)
-  str = " " if str.empty?
-  "```\n#{str}```"
 end
 
 def format_sentence(e)

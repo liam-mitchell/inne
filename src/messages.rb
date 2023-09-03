@@ -32,7 +32,7 @@ def send_list(event, file = true, missing = false, third = false)
   ties    = parse_ties(msg)
   tied    = parse_tied(msg)
   sing    = (missing ? -1 : 1) * parse_singular(msg)
-  raise OutteError.new "Speedrun mode isn't available for Metanet levels yet." if board == 'sr' && !mappack
+  perror("Speedrun mode isn't available for Metanet levels yet.") if board == 'sr' && !mappack
 
   # The range must make sense
   if !range[2]
@@ -125,8 +125,8 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   mappack = parse_mappack(msg)
   board = parse_board(msg, 'hs')
 
-  raise OutteError.new "Speedrun mode isn't available for Metanet levels yet." if board == 'sr' && !mappack
-  raise OutteError.new "#{format_board(board)} rankings aren't available yet." if ['gm', 'dual'].include?(board)
+  perror("Speedrun mode isn't available for Metanet levels yet.") if board == 'sr' && !mappack
+  perror("#{format_board(board)} rankings aren't available yet.") if ['gm', 'dual'].include?(board)
 
   # The range must make sense
   if !range[2]
@@ -327,7 +327,7 @@ def send_spreads(event)
   tabs   = parse_tabs(msg)
   player = parse_player(msg, nil, false, true, false)
   small  = !!(msg =~ /smallest/)
-  raise OutteError.new "I can't show you the spread between 0th and 0th..." if n == 0
+  perror("I can't show you the spread between 0th and 0th...") if n == 0
 
   # Retrieve and format spreads
   spreads  = Highscoreable.spreads(n, type, tabs, small, player.nil? ? nil : player.id)
@@ -366,7 +366,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   board   = parse_board(msg, 'hs', dual: true)
   board   = 'hs' if !mappack && board == 'dual'
   full    = parse_full(msg)
-  raise OutteError.new "Sorry, Metanet levels only support highscore mode for now." if !mappack && board != 'hs'
+  perror("Sorry, Metanet levels only support highscore mode for now.") if !mappack && board != 'hs'
   res     = ""
 
   # Navigating scores goes into a different method (see below this one)
@@ -485,7 +485,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   #scores = scores.nav(offset.to_i)
   h = h.map if !h.is_a?(MappackHighscoreable)
   screenshot = Map.screenshot(hash[:palette], file: true, h: h)
-  raise OutteError.new "Failed to generate screenshot!" if screenshot.nil?
+  perror("Failed to generate screenshot!") if screenshot.nil?
 
   # Determine if screenshot needs to be spoiled
   spoiler = h.is_mappack? && h.mappack.code == 'ctp' && !(event.channel.type == 1 || event.channel.id == CHANNEL_CTP_SECRETS) ? true : false
@@ -645,8 +645,8 @@ def send_maxable(event, maxed = false)
   tabs    = parse_tabs(msg)
   mappack = parse_mappack(msg)
   board   = parse_board(msg, 'hs')
-  raise OutteError.new "Metanet maps only have highscore mode for now." if !mappack && board != 'hs'
-  raise OutteError.new "This function is only available for highscore and speedrun modes for now." if !['hs', 'sr'].include?(board)
+  perror("Metanet maps only have highscore mode for now.") if !mappack && board != 'hs'
+  perror("This function is only available for highscore and speedrun modes for now.") if !['hs', 'sr'].include?(board)
 
   # Retrieve maxed/maxable scores
   ties   = Highscoreable.ties(type, tabs, player.nil? ? nil : player.id, maxed, false, mappack, board)
@@ -695,9 +695,9 @@ def send_cleanliness(event)
   mappack = parse_mappack(msg)
   full    = parse_full(msg)
   clean   = !!msg[/cleanest/i]
-  raise OutteError.new "Cleanliness is only available for episodes or stories." if type == Level
-  raise OutteError.new "Cleanliness is only supported for highscore or speedrun mode." if !['hs', 'sr'].include?(board)
-  raise OutteError.new "Metanet only supports highscore mode for now." if mappack.nil? && board != 'hs'
+  perror("Cleanliness is only available for episodes or stories.") if type == Level
+  perror("Cleanliness is only supported for highscore or speedrun mode.") if !['hs', 'sr'].include?(board)
+  perror("Metanet only supports highscore mode for now.") if mappack.nil? && board != 'hs'
   
   # Retrieve episodes and cleanliness
   list = Highscoreable.cleanliness(type, tabs, rank, mappack, board)
@@ -730,10 +730,10 @@ def send_clean_one(event, ret = false)
   # Parse params
   msg = event.content
   h = parse_highscoreable(msg, mappack: true)
-  raise OutteError.new "Cleanliness is an episode/story-specific function!" if h.is_a?(Levelish)
+  perror("Cleanliness is an episode/story-specific function!") if h.is_a?(Levelish)
   board = parse_board(msg, 'hs')
-  raise OutteError.new "Sorry, G-- cleanlinesses aren't available yet." if board == 'gm'
-  raise OutteError.new "Only highscore mode is available for Metanet levels for now." if !h.is_mappack? && board != 'hs'
+  perror("Sorry, G-- cleanlinesses aren't available yet.") if board == 'gm'
+  perror("Only highscore mode is available for Metanet levels for now.") if !h.is_mappack? && board != 'hs'
   rank = !ret ? parse_range(msg)[0] : 0
 
   # Compute cleanliness
@@ -838,7 +838,7 @@ def send_level_id(event, page: nil)
   end
 
   # Single match, send ID if it's a level
-  raise OutteError.new "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
+  perror("Episodes and stories don't have a name!") if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.longname} is level #{level.name}."
 rescue => e
   lex(e, "Error getting ID.", event: event)
@@ -847,7 +847,7 @@ end
 # Return level name for a specified level ID
 def send_level_name(event)
   level = parse_highscoreable(event.content.gsub(/level/, ""))
-  raise OutteError.new "Episodes and stories don't have a name!" if level.is_a?(Episode) || level.is_a?(Story)
+  perror("Episodes and stories don't have a name!") if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.name} is called #{level.longname}."
 rescue => e
   lex(e, "Error getting name.", event: event)
@@ -1115,7 +1115,7 @@ end
 def send_challenges(event, page: nil)
   if event.channel.type != 1 && event.channel.id != CHANNEL_SECRETS
     mention = mention_channel(id: CHANNEL_SECRETS)
-    raise OutteError.new "No asking for challenges outside of #{mention} or DMs!"
+    perror("No asking for challenges outside of #{mention} or DMs!")
   end
 
   # Parse message parameters
@@ -1130,8 +1130,8 @@ def send_challenges(event, page: nil)
   end
 
   # Single match, send challenge list if it's a non-secret level
-  raise OutteError.new "#{lvl.class.to_s.pluralize.capitalize} don't have challenges!" if lvl.class != Level
-  raise OutteError.new "#{lvl.tab.to_s} levels don't have challenges!" if ["SI", "SL"].include?(lvl.tab.to_s)
+  perror("#{lvl.class.to_s.pluralize.capitalize} don't have challenges!") if lvl.class != Level
+  perror("#{lvl.tab.to_s} levels don't have challenges!") if ["SI", "SL"].include?(lvl.tab.to_s)
   event << "Challenges for #{lvl.longname} (#{lvl.name}):\n#{format_block(lvl.format_challenges)}"
 rescue => e
   lex(e, "Error getting challenges.", event: event)
@@ -1159,8 +1159,8 @@ def send_diff(event)
   old_scores = GlobalProperty.get_saved_scores(type, ctp)
   period = type == Level ? 'day'   : type == Episode ? 'week'    : 'month'
   type   = type == Level ? 'level' : type == Episode ? 'episode' : 'column'
-  raise OutteError.new "There is no current #{ctp ? 'CTP' : ''} #{type} of the #{period}.".squish if current.nil?
-  raise OutteError.new "The old scores for the current #{ctp ? 'CTP' : ''} #{type} of the #{period} we not saved :S".squish if old_scores.nil?
+  perror("There is no current #{ctp ? 'CTP' : ''} #{type} of the #{period}.".squish) if current.nil?
+  perror("The old scores for the current #{ctp ? 'CTP' : ''} #{type} of the #{period} we not saved :S".squish) if old_scores.nil?
   diff = current.format_difference(old_scores, 'dual')
   event << current.format_difference_header(diff)
 rescue => e
@@ -1350,7 +1350,7 @@ def send_download(event, page: nil)
   h       = parse_highscoreable(msg, partial: true, mappack: true)
 
   return format_level_matches(event, msg, page, initial, h, 'download') if h.is_a?(Array)
-  raise OutteError.new "Only levels can be downloaded" if !h.is_a?(Levelish)
+  perror("Only levels can be downloaded") if !h.is_a?(Levelish)
   h = MappackLevel.find_by(id: h.id) if !h.is_a?(MappackLevel)
   event << "Downloading #{h.format_name}:"
   send_file(event, h.dump_level, h.name, true)
@@ -1362,14 +1362,14 @@ end
 # the demo data.
 def send_trace(event)
   assert_permissions(event, ['ntracer'])
-  raise OutteError.new "Sorry, tracing is disabled." if !FEATURE_NTRACE
+  perror("Sorry, tracing is disabled.") if !FEATURE_NTRACE
   wait_msg = event.send_message("Queued...") if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
     wait_msg.delete if !wait_msg.nil?
     level = parse_highscoreable(event.content, mappack: true)
-    raise OutteError.new "Episodes and columns can't be traced" if !level.is_a?(Levelish)
+    perror("Episodes and columns can't be traced") if !level.is_a?(Levelish)
     map = !level.is_a?(Map) ? MappackLevel.find_by(id: level.id) : level
-    raise OutteError.new "Level data not found" if map.nil?
+    perror("Level data not found") if map.nil?
     map.trace(event)
   end
 rescue => e
@@ -1385,11 +1385,11 @@ def send_splits(event)
   msg = event.content
   ep = parse_highscoreable(msg, mappack: true)
   ep = ep.episode if ep.is_a?(Levelish)
-  raise OutteError.new "Sorry, columns can't be analyzed yet." if ep.is_a?(Storyish)
+  perror("Sorry, columns can't be analyzed yet.") if ep.is_a?(Storyish)
   mappack = ep.is_a?(MappackHighscoreable)
   board = parse_board(msg, 'hs')
-  raise OutteError.new "Sorry, speedrun mode isn't available for Metanet levels yet." if !mappack && board == 'sr'
-  raise OutteError.new "Sorry, episode splits are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
+  perror("Sorry, speedrun mode isn't available for Metanet levels yet.") if !mappack && board == 'sr'
+  perror("Sorry, episode splits are only available for either highscore or speedrun mode") if !['hs', 'sr'].include?(board)
   scores = ep.leaderboard(board, pluck: false)
   rank = parse_range(msg)[0].clamp(0, scores.size - 1)
   ntrace = board == 'hs' # Requires ntrace
@@ -1492,12 +1492,12 @@ def update_ntrace(event)
 
   # Fetch attached file and perform integrity checks
   files = event.message.attachments.select{ |a| a.filename == 'ntrace.py' }
-  raise OutteError.new "File #{verbatim('ntrace.py')} not found in the attachments" if files.size == 0
-  raise OutteError.new "Too many #{verbatim('ntrace.py')} files found in the attachments" if files.size > 1
+  perror("File #{verbatim('ntrace.py')} not found in the attachments") if files.size == 0
+  perror("Too many #{verbatim('ntrace.py')} files found in the attachments") if files.size > 1
   file = files.first
-  raise OutteError.new "The ntrace file provided is too big" if file.size > 1024 ** 2
+  perror("The ntrace file provided is too big") if file.size > 1024 ** 2
   res = Net::HTTP.get(URI(file.url))
-  raise OutteError.new "The received ntrace file is corrupt" if res.size != file.size
+  perror("The received ntrace file is corrupt") if res.size != file.size
 
   # Update file
   old_date = File.mtime(PATH_NTRACE) rescue nil
@@ -1622,7 +1622,7 @@ def identify(event)
   user = event.user.name
   nick = msg[/my name is (.*)[\.]?$/i, 1]
 
-  raise OutteError.new "I couldn't figure out who you were! You have to send a message in the form 'my name is <username>.'" if nick.nil?
+  perror("I couldn't figure out who you were! You have to send a message in the form 'my name is <username>.'") if nick.nil?
 
   user = User.find_or_create_by(username: user)
   user.player = nick
@@ -1645,7 +1645,7 @@ end
 def add_display_name(event)
   msg  = event.content
   name = msg[/my display name is (.*)[\.]?$/i, 1]
-  raise OutteError.new "You need to specify some display name." if name.nil?
+  perror("You need to specify some display name.") if name.nil?
   user = User.find_by(username: event.user.name)
   if user.nil?
     event << "I don't know you, you first need to identify using 'my name is <player name>'."
@@ -1661,7 +1661,7 @@ end
 def set_default_palette(event)
   msg = event.content
   palette = msg[/my palette is (.*)[\.\s]*$/i, 1]
-  raise OutteError.new "You need to specify a palette name." if palette.nil?
+  perror("You need to specify a palette name.") if palette.nil?
   palette = parse_palette(event, pal: palette, fallback: false)[:palette]
   user = User.find_or_create_by(username: event.user.name).update(palette: palette)
   event << "Great, from now on your default screenshot palette will be #{verbatim(palette)}."
@@ -1672,9 +1672,9 @@ end
 def set_default_mappack(event)
   msg = event.content
   pack = msg[/my (?:map\s*)?pack is (.*)[\.\s]*$/i, 1]
-  raise OutteError.new "You need to specify a mappack." if pack.nil?
+  perror("You need to specify a mappack.") if pack.nil?
   mappack = parse_mappack(pack)
-  raise OutteError.new "Mappack not recognized." if mappack.nil?
+  perror("Mappack not recognized.") if mappack.nil?
   user = User.find_or_create_by(username: event.user.name).update(mappack_id: mappack.id)
   event << "Great, from now on your default mappack will be #{verbatim(mappack.name)}."
 rescue => e
@@ -1694,19 +1694,17 @@ def thanks(event)
 end
 
 def faceswap(event)
-  avatars    = Dir.entries(PATH_AVATARS).select{ |f| File.file?(File.join(PATH_AVATARS, f)) }
-  old_avatar = get_avatar
-  new_avatar = old_avatar
-  while new_avatar == old_avatar
-    new_avatar = avatars.sample
-  end
-  File::open(File.join(PATH_AVATARS, new_avatar)) do |f|
-    $bot.profile.avatar = f
-  end
+  old_avatar = GlobalProperty.get_avatar
+  avatars = Dir.entries(PATH_AVATARS)
+               .select{ |f| File.file?(File.join(PATH_AVATARS, f)) }
+               .reject{ |f| f == old_avatar}
+  perror("No new avatars available!") if avatars.empty?
+  new_avatar = avatars.sample
+  change_avatar(new_avatar)
 rescue
-  event << "Failed to change avatar, try again later. The avatar can only be changed 4 times every 10 minutes."
+  perror("Failed to change avatar.")
 else
-  set_avatar(new_avatar)
+  GlobalProperty.set_avatar(new_avatar)
 end
 
 def send_help2(event)
@@ -1903,7 +1901,7 @@ def add_role(event)
   user = parse_discord_user(msg)
 
   role = parse_term(msg)
-  raise OutteError.new "You need to provide a role in quotes." if role.nil?
+  perror("You need to provide a role in quotes.") if role.nil?
 
   Role.add(user, role)
   event << "Added role \"#{role}\" to #{user.username}."
@@ -1918,11 +1916,11 @@ def add_alias(event)
 
   msg = event.content
   aka = parse_term(msg)
-  raise OutteError.new "You need to provide an alias in quotes." if aka.nil?
+  perror("You need to provide an alias in quotes.") if aka.nil?
 
   msg.remove!(aka)
   type = !!msg[/\blevel\b/i] ? 'level' : (!!msg[/\bplayer\b/i] ? 'player' : nil)
-  raise OutteError.new "You need to provide an alias type: level, player." if type.nil?
+  perror("You need to provide an alias type: level, player.") if type.nil?
 
   entry = type == 'level' ? parse_highscoreable(msg) : parse_player(msg, event.user.name)
   entry.add_alias(aka)
@@ -1950,7 +1948,7 @@ def send_aliases(event, page: nil, type: nil)
     klass2 = :player
     name   = "`#{klass2.to_s.pluralize}`.`name`"
   else
-    raise OutteError.new "Incorrect alias type (should be `player` or `level`)"
+    perror("Incorrect alias type (should be #{verbatim('player')} or #{verbatim('level')})")
   end
 
   # COMPUTE
@@ -2089,7 +2087,7 @@ end
 def send_mappack_read(event)
   msg = remove_command(event.content)
   mappack = parse_mappack(msg)
-  raise OutteError.new "Mappack not found." if mappack.nil?
+  perror("Mappack not found.") if mappack.nil?
   mappack.read
   event << "Read mappack #{verbatim(mappack.name)}."
 rescue => e
@@ -2113,7 +2111,7 @@ def send_mappack_ranks(event)
   flags = parse_flags(msg)
   h = parse_highscoreable(flags[:h], mappack: true)
   board = parse_board(flags[:b])
-  raise OutteError.new "Only the hs/sr ranks can be updated" if !['hs', 'sr', nil].include?(board)
+  perror("Only the hs/sr ranks can be updated") if !['hs', 'sr', nil].include?(board)
   h.update_ranks('hs') if board == 'hs' || board.nil?
   h.update_ranks('sr') if board == 'sr' || board.nil?
   board = "hs & sr" if board.nil?
@@ -2311,16 +2309,16 @@ def send_hash(event)
 
   # Parse highscoreable
   h = parse_highscoreable(flags[:h], mappack: true)
-  raise OutteError.new "Map no found." if h.nil?
+  perror("Map no found.") if h.nil?
   map_data = h.map.dump_level(hash: true)
-  raise OutteError.new "Map data for #{h.format_name} is null." if map_data.nil?
+  perror("Map data for #{h.format_name} is null.") if map_data.nil?
 
   # Parse player, if provided
   if flags[:p]
     player = parse_player('for ' + flags[:p], '', false, true)
-    raise OutteError.new "Player #{flags[:p]} not found." if !player
+    perror("Player #{flags[:p]} not found.") if !player
     score = h.leaderboard.find{ |s| s['name'] == player.name }
-    raise OutteError.new "No score by #{player.name} in #{h.name}." if !score
+    perror("No score by #{player.name} in #{h.name}.") if !score
     eq = MappackScore.find(score['id']).compare_hashes rescue nil
     event << "The hashes are #{eq ? 'equal' : 'different'}."
     return
@@ -2329,7 +2327,7 @@ def send_hash(event)
   # Parse score ID, if provided
   if flags[:id]
     score = MappackScore.find(flags[:id]) rescue nil 
-    raise OutteError.new "Mappack score with ID #{flags[:id]} not found." if !score
+    perror("Mappack score with ID #{flags[:id]} not found.") if !score
     eq = score.compare_hashes
     event << "The hashes are #{eq ? 'equal' : 'different'}."
     return
@@ -2364,12 +2362,11 @@ end
 def send_nprofile_gen(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
-  raise OutteError.new "You need to provide a player" if !flags.key?(:p)
-  raise OutteError.new "You need to provide a mappack" if !flags.key?(:m)
+  perror("You need to provide a player") if !flags.key?(:p)
+  perror("You need to provide a mappack") if !flags.key?(:m)
   player = parse_player('for ' + flags[:p].to_s, '', false, true)
-  raise OutteError.new "Player not found" if player.nil?
-  mappack = parse_mappack(flags[:m])
-  raise OutteError.new "Mappack not found" if mappack.nil?
+  perror("Player not found") if player.nil?
+  mappack = parse_mappack(flags[:m], true)
   mid = mappack.id
   nprofile = unzip(File.binread(File.join(DIR_UTILS, 'nprofile.zip')))['nprofile']
   size = nprofile.size
@@ -2397,18 +2394,31 @@ def send_nprofile_gen(event)
                 old_score = nprofile[o + 36...o + 40].unpack('l<')[0]
                 nprofile[o + 36...o + 40] = [score].pack('l<') if score > old_score
               }
-  raise OutteError.new "Size mismatch after nprofile patch" if nprofile.size != size
+  perror("Size mismatch after nprofile patch") if nprofile.size != size
   File.binwrite("#{sanitize_filename(player.name)}_nprofile", nprofile)
   event << "#{mappack.code.upcase} nprofile for #{player.name} was generated"
 rescue => e
   lex(e, "Error generating nprofile.", event: event)
 end
 
+# Special commands can only be executed by the botmaster, and are intended to
+# manage the bot on the fly without having to restart it, or to print sensitive
+# information.
+#
+# The syntax is always the same: !commandname
+# It may optionally be followed by flags, which follow classic UNIX conventions
+# The syntax is more strict since that allows for more precision, and flexibility
+# is no longer required as it's not aimed at the general user base.
+#
+# Example:
+#   !react -c A -m B -r C
+#   Will react to the message with id B in channel with name A with emoji C
 def respond_special(event)
   assert_permissions(event)
   msg = event.content.strip
   cmd = msg[/^!(\w+)/i, 1]
   return if cmd.nil?
+  cmd.downcase!
   send_reaction(event)           if cmd == 'react'
   send_unreaction(event)         if cmd == 'unreact'
   send_mappack_seed(event)       if cmd == 'mappack_seed'
@@ -2428,8 +2438,11 @@ def respond_special(event)
   send_hashes(event)             if cmd == 'hashes'
   send_nprofile_gen(event)       if cmd == 'nprofile_gen'
 rescue OutteError => e
+  # These exceptions are user error, so send the message out to the channel.
   event << e
 rescue => e
+  # These exceptions are internal errors, so send warning to the channel and
+  # log full trace to the terminal/log file
   lex(e, "Failed to handle special message.", event: event)
 end
 
@@ -2453,11 +2466,11 @@ def respond(event)
     return send_help2(event)       if msg =~ /help2/i
   end
 
-  # For some methods we exclude a few problematic words that appear in some
-  # level names which would accidentally trigger them
-  #
-  # Note that the order of these methods matters. Therefore, we put the more
-  # specific ones (e.g. sending scores) at the top.
+  # A single message could trigger multiple commands. To prevent this, we return
+  # when the first command is triggered. Therefore, the ordering of these matters,
+  # so we sort them according to certain priorities.
+  #   For example, we put the ones that take level names first, since those may
+  # contain many other words that could accidentally trigger commands.
   return send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
   return send_screenshot(event)     if msg =~ /screenshot/i
   return send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
@@ -2514,10 +2527,10 @@ def respond(event)
   # If we get to this point, no command was executed
   event << "Sorry, I didn't understand your command."
 rescue OutteError => e
-  # Exceptions raised in here are user error, indicating that we couldn't
-  # figure out what they were asking for, so send the error message out
-  # to the channel
+  # These exceptions are user error, so send the message out to the channel.
   event << e
 rescue => e
+  # These exceptions are internal errors, so send warning to the channel and
+  # log full trace to the terminal/log file
   lex(e, "Error parsing message.", event: event)
 end

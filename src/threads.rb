@@ -37,10 +37,6 @@ end
 
 # Check for new Twitch streams, and send notices.
 def update_twitch
-  if $content_channel.nil?
-    err("Not connected to a channel, not sending twitch report")
-    raise
-  end
   if $twitch_token.nil?
     $twitch_token = Twitch::get_twitch_token
     Twitch::update_twitch_streams

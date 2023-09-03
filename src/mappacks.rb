@@ -867,16 +867,16 @@ module Map
     h = parse_palette(event)
     msg, palette, error = h[:msg], h[:palette], h[:error]
     level = self.is_a?(MappackHighscoreable) && mappack.id == 0 ? Level.find_by(id: id) : self
-    raise OutteError.new "Error finding level object" if level.nil?
+    perror("Error finding level object") if level.nil?
     mappack = level.is_a?(MappackHighscoreable)
     userlevel = level.is_a?(Userlevel)
     board = parse_board(msg, 'hs')
-    raise OutteError.new "Non-highscore modes (e.g. speedrun) are only available for mappacks" if !mappack && board != 'hs'
-    raise OutteError.new "Traces are only available for either highscore or speedrun mode" if !['hs', 'sr'].include?(board)
+    perror("Non-highscore modes (e.g. speedrun) are only available for mappacks") if !mappack && board != 'hs'
+    perror("Traces are only available for either highscore or speedrun mode") if !['hs', 'sr'].include?(board)
     leaderboard = level.leaderboard(board, pluck: false)
     ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
     scores = ranks.map{ |r| leaderboard[r] }.compact
-    raise OutteError.new "No scores found for this level" if scores.empty?
+    perror("No scores found for this level") if scores.empty?
     blank = !!msg[/\bblank\b/i]
     markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
@@ -897,7 +897,7 @@ module Map
 
     # Read output files
     file = File.binread('output.txt') rescue nil
-    raise OutteError.new "ntrace failed, please contact the botmaster for details." if file.nil?
+    perror("ntrace failed, please contact the botmaster for details.") if file.nil?
     valid = file.scan(/True|False/).map{ |b| b == 'True' }
     coords = file.split(/True|False/)[1..-1].map{ |d|
       d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
@@ -914,10 +914,10 @@ module Map
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if animate
       trace = screenshot(palette, coords: coords, blank: blank, anim: true)
-      raise OutteError.new 'Failed to generate screenshot' if trace.nil?
+      perror('Failed to generate screenshot') if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
-      raise OutteError.new 'Failed to generate screenshot' if screenshot.nil?
+      perror('Failed to generate screenshot') if screenshot.nil?
       concurrent_edit(event, tmp_msg, 'Plotting routes...')
       trace = _trace(
         theme:   palette,
@@ -928,13 +928,15 @@ module Map
         texts:   !blank ? texts : []
       )
       screenshot.close
-      raise OutteError.new 'Failed to trace replays' if trace.nil?
+      perror('Failed to trace replays') if trace.nil?
     end
     ext = animate ? 'mp4' : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
     tmp_msg.first.delete rescue nil
     log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES
   rescue OutteError => e
+    # TODO: See if we can refactor this to avoid having to reference OutteError
+    # directly and making this handling more elegant
     if !tmp_msg.first.nil?
       tmp_msg.first.edit(e)
     else
@@ -1807,27 +1809,27 @@ class MappackScore < ActiveRecord::Base
     # Find score
     if !id.nil? # If ID has been provided
       s = MappackScore.find_by(id: id)
-      raise OutteError.new "Mappack score of ID #{id} not found" if score.nil?
+      perror("Mappack score of ID #{id} not found") if score.nil?
       highscoreable = s.highscoreable
       player = s.player
       scores = MappackScore.where(highscoreable: highscoreable, player: player)
-      raise OutteError.new "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
+      perror("#{player.name} does not have a score in #{highscoreable.name}") if scores.empty?
     else # If highscoreable and player have been provided
-      raise OutteError.new "#{highscoreable.name} does not belong to a mappack" if !highscoreable.is_a?(MappackHighscoreable)
+      perror("#{highscoreable.name} does not belong to a mappack") if !highscoreable.is_a?(MappackHighscoreable)
       scores = self.where(highscoreable: highscoreable, player: player)
-      raise OutteError.new "#{player.name} does not have a score in #{highscoreable.name}" if scores.empty?
+      perror("#{player.name} does not have a score in #{highscoreable.name}") if scores.empty?
       s = scores.where.not(rank_hs: nil).first
-      raise OutteError.new "#{player.name}'s leaderboard score in #{highscoreable.name} not found" if s.nil?
+      perror("#{player.name}'s leaderboard score in #{highscoreable.name} not found") if s.nil?
     end
 
     # Score integrity checks
     new_score = (score * 60).round
     gold = MappackScore.gold_count(highscoreable.type, new_score, s.score_sr)
-    raise OutteError.new "That score is incompatible with the framecount" if !MappackScore.verify_gold(gold) && !highscoreable.type.include?('Story')
+    perror("That score is incompatible with the framecount") if !MappackScore.verify_gold(gold) && !highscoreable.type.include?('Story')
 
     # Change score
     old_score = s.score_hs.to_f / 60.0
-    raise OutteError.new "#{player.name}'s score (#{s.id}) in #{highscoreable.name} is already #{"%.3f" % old_score}" if s.score_hs == new_score
+    perror("#{player.name}'s score (#{s.id}) in #{highscoreable.name} is already #{'%.3f' % old_score}") if s.score_hs == new_score
     s.update(score_hs: new_score, gold: gold.round)
 
     # Update player's ranks
@@ -1837,7 +1839,7 @@ class MappackScore < ActiveRecord::Base
 
     # Update global ranks
     highscoreable.update_ranks('hs')
-    succ("Patched #{player.name}'s score (#{s.id}) in #{highscoreable.name} from #{"%.3f" % old_score} to #{"%.3f" % score}")
+    succ("Patched #{player.name}'s score (#{s.id}) in #{highscoreable.name} from #{'%.3f' % old_score} to #{'%.3f' % score}")
   rescue => e
     lex(e, 'Failed to patch score')
   end

@@ -1,6 +1,42 @@
-# This file compiles a library of general functions that are useful throughout
-# the entire program, like logging, proxying HTTP requests, forking/threading,
-# discord functionality, string distance, etc.
+# This file compiles a general library of diverse functions that can be useful
+# throughout the entire program:
+#
+#  1) Logging:
+#       A custom and configurable logging class, with different levels and modes,
+#       that can log timestamped text to the terminal, to a file, and to Discord.
+#  2) Exception handling:
+#       Defines a custom exception class, OutteError, which is printed to Discord
+#       whenever raised. Intended for user errors.
+#  3) Networking:
+#       Getting arbitrary data from N++'s server using Steam IDs, forwarding
+#       requests and acting as a middleman (used for CLE), etc.
+#  4) System operations:
+#       Forking, threading, inkoving the shell, getting memory information for
+#       maintenance, etc.
+#  5) Benchmarking:
+#       Functions to benchmark code, perform memory profiling, etc.
+#  6) String manipulation:
+#       Converting between formats (ASCII, UTF8, ...), string escaping/unescaping,
+#       string sanitization (for filenames, SQL, ...), string truncation/padding,
+#       string distance (Damerau-Levenshtein), etc.
+#  7) Binary manipulation:
+#       Basically packing and unpacking binary data into/from strings.
+#  8) Discord related:
+#       Finding Discord users, channels, servers, emojis, etc. Pinging users,
+#       reacting or unreacting to comments, mentioning channels... Formatting
+#       strings (as code blocks, spoilers, ...), etc.
+#  9) N++ specific:
+#       Stuff like sanitizing parameters for N++ functions, finding maximum values
+#       for rankings, calculating episode splits, or computing a highscoreable's
+#       name from its ID.
+# 10) Graphics:
+#       Generating SVG plots from a dataset.
+# 11) Bot management:
+#       Permission system for commands with custom roles, setting the bot's main
+#       channels, leaving blacklisted servers, restarting the bot, etc.
+# 12) Other:
+#       Random assortment of functions, like computing a SHA1 hash, zipping and
+#       unzipping files, making a text table, etc.
 
 require 'active_record'
 require 'damerau-levenshtein'
@@ -11,6 +47,10 @@ require 'zip'
 
 require_relative 'constants.rb'
 require_relative 'models.rb'
+
+# <---------------------------------------------------------------------------->
+# <------                           LOGGING                              ------>
+# <---------------------------------------------------------------------------->
 
 if LOG_SQL
   ActiveRecord::Base.logger = Logger.new(STDOUT)
@@ -215,6 +255,10 @@ def fatal (msg, **kwargs)    Log.write(msg, :fatal, kwargs) end
 def lex   (e, msg, **kwargs) Log.exception(e, msg, kwargs)  end
 def ld    (msg)              Log.discord(msg, kwargs)       end
 
+# <---------------------------------------------------------------------------->
+# <------                     EXCEPTION HANDLING                         ------>
+# <---------------------------------------------------------------------------->
+
 # Custom exception class. Importantly, these exception messages are posted
 # to Discord, in response to a command not working or being understood.
 # Therefore, it's important to always use user-friendly messages that do not
@@ -232,6 +276,10 @@ end
 def perror(msg)
   raise OutteError.new msg
 end
+
+# <---------------------------------------------------------------------------->
+# <------                          NETWORKING                            ------>
+# <---------------------------------------------------------------------------->
 
 # Make a request to N++'s server.
 # Since we need to use an open Steam ID, the function goes through all
@@ -306,6 +354,10 @@ rescue => e
   nil
 end
 
+# <---------------------------------------------------------------------------->
+# <------                       SYSTEM OPERATIONS                        ------>
+# <---------------------------------------------------------------------------->
+
 # Execute code block in another process
 #
 # Technical note: We disconnect from the db before forking and reconnect after,
@@ -361,10 +413,17 @@ rescue => e
   lex(e, "Failed to execute shell command: #{command}")
 end
 
-def release_connection
-  #ActiveRecord::Base.connection_pool.release_connection
-  ActiveRecord::Base.connection.disconnect!
+# Return system's memory info in MB as a hash (Linux only)
+def meminfo
+  File.read("/proc/meminfo").split("\n").map{ |f| f.split(':') }
+      .map{ |name, value| [name, value.to_i / 1024.0] }.to_h
+rescue
+  {}
 end
+
+# <---------------------------------------------------------------------------->
+# <------                         BENCHMARKING                           ------>
+# <---------------------------------------------------------------------------->
 
 # Wrapper to benchmark a piece of code
 def bench(action, msg = nil)
@@ -402,152 +461,19 @@ rescue => e
   lex(e, 'Failed to do memory profiling')
 end
 
-# Send or edit a Discord message in parallel
-# We actually send an array of messages, not only so that we can edit them all,
-# but mainly because that way we actually can edit the original message object.
-# (i.e. simulate pass-by-reference via encapsulation)
-def concurrent_edit(event, msgs, content)
-  Thread.new do
-    msgs.map!{ |msg|
-      msg.nil? ? event.send_message(content) : msg.edit(content)
-    }
-  rescue
-    msgs
-  end
-rescue
-  msgs
-end
+# <---------------------------------------------------------------------------->
+# <------                      STRING MANIPULATION                       ------>
+# <---------------------------------------------------------------------------->
 
-# Return system's memory info in MB as a hash (Linux only)
-def meminfo
-  File.read("/proc/meminfo").split("\n").map{ |f| f.split(':') }
-      .map{ |name, value| [name, value.to_i / 1024.0] }.to_h
-rescue
-  {}
-end
-
-# Compute the SHA1 hash. It uses Ruby's native version, unless 'c' is specified,
-# in which case it uses the external C util that implements STB's function.
-#
-# This is done, not for speed, but because the implementations differ, and
-# the STB one is the exact one used by N++, so it's the one we need to verify
-# the integrity of the hashes generated by the game.
-def sha1(data, c: true)
-  if c && $linux && File.file?(PATH_SHA1)
-    File.binwrite("util/#{HASH_INPUT_FN}", data)
-    code = shell("./util/sha1 ./util/#{HASH_INPUT_FN} ./util/#{HASH_OUTPUT_FN}")
-    return nil if !code
-    hash = File.binread("util/#{HASH_OUTPUT_FN}")
-    FileUtils.rm(["./util/#{HASH_INPUT_FN}", "./util/#{HASH_OUTPUT_FN}"])
-    hash
-  else
-    Digest::SHA1.digest(data)
-  end
-rescue => e
-  lex(e, 'Failed to compute the SHA1 hash')
-  nil
-end
-
-# Create a ZIP file. Provided data should be a Hash with the filenames
-# as keys and the file contents as values.
-def zip(data)
-  Zip::OutputStream.write_buffer{ |zip|
-    data.each{ |name, content|
-      zip.put_next_entry(name)
-      zip.write(content)
-    }
-  }.string
-end
-
-
-def unzip(data)
-  res = {}
-  Zip::File.open_buffer(data){ |zip|
-    zip.each{ |entry|
-      res[entry.name] = entry.get_input_stream.read
-    }
-  }
-  res
-end
-
-# Turn a little endian binary array into an integer
-# TODO: This is just a special case of_unpack, substitute
-def parse_int(bytes)
-  if bytes.is_a?(Array) then bytes = bytes.join end
-  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
-end
-
-def to_ascii(s)
-  s.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
-end
-
-# Escape problematic chars (e.g. quotes or backslashes)
-def escape(str)
-  str.dump[1..-2]
-end
-
-def unescape(str)
-  "\"#{str}\"".undump
-rescue
+# Convert a string to strict ASCII, replacing all invalid characters to underscores
+# Optionally, also remove non-printable characters
+def to_ascii(str, printable = true)
+  str = str.to_s
+  str = str.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
+  str = str.bytes.reject{ |b| b < 32 || b > 126 }.map(&:chr).join if printable
   str
-end
-
-# Ensure a string is filename-safe (printable ASCII only, minus Windows's
-# reserved characters)
-def sanitize_filename(s)
-  return '' if s.nil?
-  s.chars.map{ |c| c.ord < 32 || c.ord > 126 ? '' : ([34, 42, 47, 58, 60, 62, 63, 92, 124].include?(c.ord) ? '_' : c) }.join
-end
-
-# Sanitize a string so that it is safe within an SQL LIKE statement
-def sanitize_like(string, escape_character = "\\")
-  pattern = Regexp.union(escape_character, "%", "_")
-  string.gsub(pattern) { |x| [escape_character, x].join }
-end
-
-# Normalize the name (ID) of a highscoreable, by:
-# 1) Adding missing dashes
-# 2) Adding padding 0's
-# 3) Capitalizing all letters
-def normalize_name(name)
-  return name.to_s if !name.is_a?(String) && !name.is_a?(MatchData)
-  name = name.captures.compact.join('-') if name.is_a?(MatchData)
-  name.split('-').map { |s| s[/\A[0-9]\Z/].nil? ? s : "0#{s}" }.join('-').upcase
 rescue
-  name.to_s
-end
-
-# Verifies if an arbitrary floating point can be a valid score
-def verify_score(score)
-  decimal = (score * 60) % 1
-  [decimal, 1 - decimal].min < 0.03
-end
-
-# Convert an integer into a little endian binary string of 'size' bytes and back
-def _pack_raw(n, size)
-  n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
-    [b].pack('H*')[0]
-  }.join.force_encoding("ascii-8bit")
-end
-
-def _pack(n, arg)
-  if arg.is_a?(String)
-    [n].pack(arg)
-  else
-    _pack_raw(n, arg.to_i)
-  end
-rescue
-  _pack_raw(n, arg.to_i)
-end
-
-def _unpack(bytes, fmt = nil)
-  if bytes.is_a?(Array) then bytes = bytes.join end
-  if !bytes.is_a?(String) then bytes.to_s end
-  i = bytes.unpack(fmt)[0] if !fmt.nil?
-  i ||= bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
-rescue
-  if bytes.is_a?(Array) then bytes = bytes.join end
-  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+  str.to_s
 end
 
 def to_utf8(str)
@@ -563,46 +489,69 @@ def is_num(str)
   str.strip == str[/\d+/i]
 end
 
-def verbatim(str)
-  str = str.to_s
-  return "` `" if str.empty?
-  "`#{str.gsub('`', '')}`"
+# Escape problematic chars (e.g. quotes or backslashes)
+def escape(str)
+  str.dump[1..-2]
 end
 
-def spoiler(str)
-  str = str.to_s
-  return "|| ||" if str.empty?
-  "||#{str.gsub('||', '')}||"
+# Inverse of the function above
+def unescape(str)
+  "\"#{str}\"".undump
+rescue
+  str
 end
 
-# This corrects a datetime in the database when it's out of
-# phase (e.g. after a long downtime of the bot).
-def correct_time(time, frequency)
-  time -= frequency while time > Time.now
-  time += frequency while time < Time.now
-  time
+# Make a string safe for filenames, by:
+# - Leaving only printable ASCII characters
+# - Substituting Windows' reserved characters by an underscore
+def sanitize_filename(str)
+  reserved = "\"*/:<>?\\|"
+  to_ascii(str).tr(reserved, '')
 end
 
-def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
-  text_rows = rows.select{ |r| r.is_a?(Array) }
-  count = text_rows.map(&:size).max
-  rows.each{ |r| if r.is_a?(Array) then r << "" while r.size < count end }
-  widths = (0..count - 1).map{ |c| text_rows.map{ |r| (r[c].is_a?(Float) ? "%.3f" % r[c] : r[c].to_s).length }.max }
-  sep = widths.map{ |w| sep_i + sep_x * (w + 2) }.join + sep_i + "\n"
-  table = sep.dup
-  table << sep_y + " " * (((sep.size - 1) - header.size) / 2) + header + " " * ((sep.size - 1) - ((sep.size - 1) - header.size) / 2 - header.size - 2) + sep_y + "\n" + sep if !header.nil?
-  rows.each{ |r|
-    if r == :sep
-      table << sep
-    else
-      r.each_with_index{ |s, i|
-        table << sep_y + " " + (s.is_a?(Numeric) ? (s.is_a?(Integer) ? s : "%.3f" % s).to_s.rjust(widths[i], " ") : s.to_s.ljust(widths[i], " ")) + " "
-      }
-      table << sep_y + "\n"
-    end
-  }
-  table << sep
-  return table
+# Sanitize a string so that it is safe within an SQL LIKE statement
+def sanitize_like(string, escape_character = "\\")
+  pattern = Regexp.union(escape_character, "%", "_")
+  string.gsub(pattern) { |x| [escape_character, x].join }
+end
+
+def truncate_ellipsis(str, pad = DEFAULT_PADDING)
+  str if !str.is_a?(String) || !pad.is_a?(Integer) || pad < 0
+  str.length <= pad ? str : (pad > 3 ? str[0...pad - 3] + '...' : str[0...pad])
+end
+
+def pad_truncate_ellipsis(str, pad = DEFAULT_PADDING, max_pad = MAX_PAD_GEN)
+  truncate_ellipsis(format_string(str, pad, max_pad, false))
+end
+
+# Conditionally pluralize word
+# If 'pad' we pad string to longest between singular and plural, for alignment
+def cplural(word, n, pad = false)
+  sing = word
+  plur = word.pluralize
+  word = n == 1 ? sing : plur
+  pad  = [sing, plur].map(&:length).max
+  "%-#{pad}s" % word
+end
+
+def clean_userlevel_message(msg)
+  msg.sub(/(for|of)?\w*userlevel\w*/i, '').squish
+end
+
+# Removes the first instance of a substring and removes extra spaces
+def remove_word_first(msg, word)
+  msg.sub(/\w*#{word}\w*/i, '').squish
+end
+
+# Strip off the @outte++ mention, if present
+# IDs might have an exclamation mark
+def remove_mentions!(msg)
+  msg.gsub!(/<@!?[0-9]*>\s*/, '')
+end
+
+# Remove the command part of a special command
+def remove_command(msg)
+  msg.sub(/^!\w+\s*/i, '').strip
 end
 
 # Function to pad (and possibly truncate) a string according to different
@@ -636,15 +585,6 @@ def format_string(str, padding = DEFAULT_PADDING, max_pad = MAX_PADDING, leaderb
   "%-#{"%d" % [pad]}s" % [TRUNCATE_NAME ? str.slice(0, pad) : str]
 end
 
-def truncate_ellipsis(str, pad = DEFAULT_PADDING)
-  str if !str.is_a?(String) || !pad.is_a?(Integer) || pad < 0
-  str.length <= pad ? str : (pad > 3 ? str[0...pad - 3] + '...' : str[0...pad])
-end
-
-def pad_truncate_ellipsis(str, pad = DEFAULT_PADDING, max_pad = MAX_PAD_GEN)
-  truncate_ellipsis(format_string(str, pad, max_pad, false))
-end
-
 # Converts an array of strings into a regex string that matches any of them
 # with non-capturing groups (it can also take a string)
 def regexize_words(words)
@@ -656,6 +596,321 @@ def regexize_words(words)
 rescue
   ''
 end
+
+# DISTANCE BETWEEN STRINGS
+# * Find distance between two strings using the classic Damerau-Levenshtein
+# * Returns nil if the threshold is surpassed
+# * Read 'string_distance_list_mixed' for detailed docs
+def string_distance(word1, word2, max: 3, th: 3)
+  d = DamerauLevenshtein.distance(word1, word2, 1, max)
+  (d - [word1.length, word2.length].min).abs < th ? nil : d
+end
+
+# DISTANCE BETWEEN STRING AND PHRASE
+# Same as before, but compares a word with a phrase, but comparing word by word
+#   and taking the MINIMUM (for single-word matches, which is common)
+# Returns nil if the threshold is surpassed for EVERY word
+def string_distance_chunked(word, phrase, max: 3, th: 3)
+  phrase.split(/\W|_/i).reject{ |chunk| chunk.strip.empty? }.map{ |chunk|
+    string_distance(word, chunk, max: max, th: th)
+  }.compact.min
+end
+
+# DISTANCE BETWEEN WORD AND LIST
+# (read 'string_distance_list_mixed' for docs)
+def string_distance_list(word, list, max: 3, th: 3, chunked: false)
+  # Determine if IDs have been provided
+  ids = list[0].is_a?(Array)
+  # Sort and group by distance, rejecting invalids
+  list = list.each_with_index.map{ |n, i|
+                if chunked
+                  [string_distance_chunked(word, ids ? n[1] : n, max: max, th: th), n]
+                else
+                  [string_distance(word, ids ? n[1] : n, max: max, th: th), n]
+                end
+              }
+              .reject{ |d, n| d.nil? || d > max || (!th.nil? && (d - (ids ? n[1] : n).length).abs < th) }
+              .group_by{ |d, n| d }
+              .sort_by{ |g| g[0] }
+              .map{ |g| [g[0], g[1].map(&:last)] }
+              .to_h
+  # Complete the hash with the distance values that might not have appeared
+  # (this allows for more consistent use of the list, e.g., when zipping)
+  (0..max).each{ |i| list[i] = [] if !list.key?(i) }
+  list
+end
+
+# DISTANCE-MATCH A STRING IN A LIST
+#   --- Description ---
+# Sort list of strings based on a Damerau-Levenshtein-ish distance to a string.
+#
+# The list may be provided as:
+#   A list of strings
+#   A list of pairs, where the string is the second element
+# This is used when there may be duplicate strings that we don't want to
+# ditch, in which case the first element would be the ID that makes them
+# unique. Obviously, this is done with level and player names in mind, that
+# may have duplicates.
+#
+# The comparison between strings will be performed both normally and 'chunked',
+# which splits the strings in the list in words. These resulting lists are then
+# zipped (i.e. first distance 0, then chunked distance 0, the distance 1, etc.)
+#   --- Parameters ---
+# word       - String to match in the list
+# list       - List of strings / pairs to match in
+# min        - Minimum distance, all matches below this distance are keepies
+# max        - Maximum distance, all matches above this distance are ignored
+# th         - Threshold of maximum difference between the calculated distance
+#              and the string length to consider. The reason we do this is to
+#              ignore trivial results, eg, the distance between 'old' and 'new'
+#              is 3, not because the words are similar, but because they're only
+#              3 characters long
+# soft_limit - Limit of matches to show, assuming there aren't more keepies
+# hard_limit - Limit of matches to show, even if there are more keepies
+# Returns nil if the threshold is surpassed
+def string_distance_list_mixed(word, list, min: 1, max: 3, max2: 2, th: 3, soft_limit: 10, hard_limit: 20)
+  matches1 = string_distance_list(word, list, max: max,  th: th, chunked: false)
+  matches2 = string_distance_list(word, list, max: max2, th: th, chunked: true)
+  max = [max, max2].max
+  matches = (0..max).map{ |i| [i, ((matches1[i] || []) + (matches2[i] || [])).uniq(&:first)] }.to_h
+  keepies = matches.select{ |k, v| k <= min }.values.map(&:size).sum
+  to_take = [[keepies, soft_limit].max, hard_limit].min
+  matches.values.flatten(1).take(to_take)
+end
+
+# <---------------------------------------------------------------------------->
+# <------                      BINARY MANIPULATION                       ------>
+# <---------------------------------------------------------------------------->
+
+# Turn a little endian binary array into an integer
+# TODO: This is just a special case of_unpack, substitute
+def parse_int(bytes)
+  if bytes.is_a?(Array) then bytes = bytes.join end
+  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+end
+
+# Convert an integer into a little endian binary string of 'size' bytes and back
+def _pack_raw(n, size)
+  n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
+    [b].pack('H*')[0]
+  }.join.force_encoding("ascii-8bit")
+end
+
+def _pack(n, arg)
+  if arg.is_a?(String)
+    [n].pack(arg)
+  else
+    _pack_raw(n, arg.to_i)
+  end
+rescue
+  _pack_raw(n, arg.to_i)
+end
+
+def _unpack(bytes, fmt = nil)
+  if bytes.is_a?(Array) then bytes = bytes.join end
+  if !bytes.is_a?(String) then bytes.to_s end
+  i = bytes.unpack(fmt)[0] if !fmt.nil?
+  i ||= bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+rescue
+  if bytes.is_a?(Array) then bytes = bytes.join end
+  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
+end
+
+# Verifies if an arbitrary floating point can be a valid score
+def verify_score(score)
+  decimal = (score * 60) % 1
+  [decimal, 1 - decimal].min < 0.03
+end
+
+# <---------------------------------------------------------------------------->
+# <------                        DISCORD RELATED                         ------>
+# <---------------------------------------------------------------------------->
+
+# Find the botmaster's Discord user
+def botmaster
+  $bot.servers.each{ |id, server|
+    member = server.member(BOTMASTER_ID)
+    return member if !member.nil?
+  }
+  err("Couldn't find botmaster")
+  nil
+rescue => e
+  lex(e, "Error finding botmaster")
+  nil
+end
+
+# Find Discord server the bot is in, by ID or name
+def find_server(id: nil, name: nil)
+  if id
+    $bot.servers[id]
+  elsif name
+    $bot.servers.values.find{ |s| s.name.downcase.include?(name.downcase) } 
+  else
+    nil
+  end
+rescue
+  nil
+end
+
+def find_channel_in_server(id: nil, name: nil, server: nil)
+  return nil if server.nil?
+  if id
+    server.channels.find{ |c| c.id == id }
+  elsif name
+    server.channels.find{ |c| c.name.downcase.include?(name.downcase) }
+  else
+    nil
+  end
+rescue
+  nil
+end
+
+# Find Discord channel by ID or name, server optional
+def find_channel(id: nil, name: nil, server_id: nil, server_name: nil)
+  server = find_server(id: server_id, name: server_name)
+  if server
+    find_channel_in_server(id: id, name: name, server: server)
+  else
+    $bot.servers.each{ |_, s|
+      channel = find_channel_in_server(id: id, name: name, server: s)
+      return channel if !channel.nil?
+    }
+    nil
+  end
+rescue
+  nil
+end
+
+# Find emoji by ID or name
+def find_emoji(key, server = nil)
+  server = server || $bot.servers[SERVER_ID] || $bot.servers.first
+  return if server.nil?
+  if key.is_a?(Integer)
+    server.emojis[key]
+  elsif key.is_a?(String)
+    server.emojis.find{ |id, e| e.name.downcase.include?(key.downcase) }[1]
+  else
+    nil
+  end
+rescue
+  nil
+end
+
+# React to a Discord msg (by ID) with an emoji (by Unicode or name)
+def react(channel, msg_id, emoji)
+  channel = find_channel(name: channel) rescue nil
+  perror('Channel not found') if channel.nil?
+  msg = channel.message(msg_id.to_i) rescue nil
+  perror('Message not found') if msg.nil?
+  emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
+  perror('Emoji not found') if emoji.nil?
+  msg.react(emoji)
+end
+
+def unreact(channel, msg_id, emoji = nil)
+  channel = find_channel(name: channel) rescue nil
+  perror('Channel not found') if channel.nil?
+  msg = channel.message(msg_id.to_i) rescue nil
+  perror('Message not found') if msg.nil?
+  if emoji.nil?
+    msg.my_reactions.each{ |r|
+      emoji = r.name.ascii_only? ? find_emoji(r.name, channel.server) : r.name
+      msg.delete_own_reaction(emoji)
+    }
+  else
+    emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
+    perror('Emoji not found') if emoji.nil?
+    msg.delete_own_reaction(emoji)
+  end
+end
+
+# Pings a role by name (returns ping string)
+def ping(rname)
+  server = TEST ? $bot.servers.values.first : $bot.servers[SERVER_ID]
+  if server.nil?
+    log("Server not found")
+    return ""
+  end
+
+  role = server.roles.select{ |r| r.name == rname }.first
+  if role != nil
+    if role.mentionable
+      return role.mention
+    else
+      log("Role #{rname} in server #{server.name} not mentionable")
+      return ""
+    end
+  else
+    log("Role #{rname} not found in server #{server.name}")
+    return ""
+  end
+rescue => e
+  lex(e, "Failed to ping role #{rname}")
+  ""
+end
+
+# Return the string that produces a clickable channel mention in Discord
+def mention_channel(name: nil, id: nil, server_name: nil, server_id: nil)
+  channel = find_channel(id: id, name: name, server_id: server_id, server_name: server_name)
+  return '' if channel.nil?
+  channel.mention
+rescue => e
+  lex(e, 'Failed to mention Discord channel')
+  ''
+end
+
+# Format a string as a one-line block, which removes all special Markdown
+# formatting and just shows the raw text.
+# Current, this is done by enclosing the text within backticks.
+def verbatim(str)
+  str = str.to_s.tr('`', '')
+  str = ' ' if str.empty?
+  "`#{str}`"
+end
+
+# Format a string as a multi-line block.
+# Currently, this is done by enclosing the text within triple backticks.
+def format_block(str)
+  str = str.to_s.gsub('```', '')
+  str = ' ' if str.empty?
+  "```\n#{str}```"
+end
+
+# Format a string as a spoiler, by enclosing it within double vertical bars.
+def spoiler(str)
+  str = str.to_s
+  return "|| ||" if str.empty?
+  "||#{str.gsub('||', '')}||"
+end
+
+# Send or edit a Discord message in parallel
+# We actually send an array of messages, not only so that we can edit them all,
+# but mainly because that way we actually can edit the original message object.
+# (i.e. simulate pass-by-reference via encapsulation)
+def concurrent_edit(event, msgs, content)
+  Thread.new do
+    msgs.map!{ |msg|
+      msg.nil? ? event.send_message(content) : msg.edit(content)
+    }
+  rescue
+    msgs
+  end
+rescue
+  msgs
+end
+
+# Set the avatar to an image given the name
+def change_avatar(avatar)
+  File::open(File.join(PATH_AVATARS, avatar)) do |f|
+    $bot.profile.avatar = f
+  end
+rescue
+  perror("Too many changes! Wait and try again.")
+end
+
+# <---------------------------------------------------------------------------->
+# <------                         N++ SPECIFIC                           ------>
+# <---------------------------------------------------------------------------->
 
 # sometimes we need to make sure there's exactly one valid type
 def ensure_type(type)
@@ -766,43 +1021,81 @@ def scores_from_splits(splits, offset: 90.0)
   }
 end
 
-# weighed average
-def wavg(arr, w)
-  return -1 if arr.size != w.size
-  arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
+# Computes the name of a highscoreable based on the ID and type, e.g.:
+# Type = 0, ID = 2637 ---> SU-C-09-02
+# The complexity of this function lies in:
+#   1) The type itself (Level, Episode, Story) changes the computation.
+#   2) Only some tabs have X row.
+#   3) Only some tabs are secret.
+#   4) Lastly, and perhaps most importantly, some tabs in Coop and Race are
+#      actually split in multiple files, with the corresponding bits of
+#      X row staggered at the end of each one.
+# NOTE: Some invalid IDs will return valid names rather than nil, e.g., if
+# type is Story and ID = 120, it will return "!-00", a non-existing story.
+# This is a consequence of the algorithm, but it's harmless if only correct
+# IDs are inputted.
+def compute_name(id, type)
+  return nil if ![0, 1, 2].include?(type)
+  f = 5 ** type # scaling factor
+
+  # Fetch corresponding tab
+  tab = TABS_NEW.find{ |_, t| (t[:start]...t[:start] + t[:size]).include?(id * f) }
+  return nil if tab.nil?
+  tab = tab[1]
+
+  # Get stories out of the way
+  return "#{tab[:code]}-#{"%02d" % (id - tab[:start] / 25)}" if type == 2
+
+  # Compute offset in tab and file
+  tab_offset = id - tab[:start] / f
+  file_offset = tab_offset
+  file_count = tab[:files].values[0] / f
+  tab[:files].values.inject(0){ |sum, n|
+    if sum <= tab_offset
+      file_offset = tab_offset - sum
+      file_count = n / f
+    end
+    sum + n / f
+  }
+
+  # If it's a secret level tab, its numbering is episode-like
+  if type == 0 && tab[:secret]
+    type = 1
+    f = 5
+  end
+
+  # Compute episode and column offset in file
+  rows = tab[:x] ? 6 : 5
+  file_eps = file_count * f / 5
+  file_cols = file_eps / rows
+  episode_offset = file_offset * f / 5
+  if tab[:x] && episode_offset >= 5 * file_eps / 6
+    letter = 'X'
+    column_offset = episode_offset % file_cols
+  else
+    letter = ('A'..'E').to_a[episode_offset % 5]
+    column_offset = episode_offset / 5
+  end
+
+  # Compute column (and level number)
+  prev_count = tab_offset - file_offset
+  prev_eps = prev_count * f / 5
+  prev_cols = prev_eps / rows
+  col = column_offset + prev_cols
+  lvl = tab_offset % 5
+
+  # Return name
+  case type
+  when 0
+    "#{tab[:code]}-#{letter}-#{"%02d" % col}-#{"%02d" % lvl}"
+  when 1
+    "#{tab[:code]}-#{letter}-#{"%02d" % col}"
+  end
 end
 
-def get_avatar
-  GlobalProperty.find_by(key: 'avatar').value
-end
-
-def set_avatar(str)
-  GlobalProperty.find_by(key: 'avatar').update(value: str)
-end
-
-def numlen(n, float = true)
-  n.to_i.to_s.length + (float ? 4 : 0)
-end
-
-# Conditionally pluralize word
-# If 'pad' we pad string to longest between singular and plural, for alignment
-def cplural(word, n, pad = false)
-  sing = word
-  plur = word.pluralize
-  word = n == 1 ? sing : plur
-  pad  = [sing, plur].map(&:length).max
-  "%-#{pad}s" % word
-end
-
-# Strip off the @outte++ mention, if present
-# IDs might have an exclamation mark
-def remove_mentions!(msg)
-  msg.gsub!(/<@!?[0-9]*>\s*/, '')
-end
-
-def remove_command(msg)
-  msg.sub(/^!\w+\s*/i, '').strip
-end
+# <---------------------------------------------------------------------------->
+# <------                           GRAPHICS                             ------>
+# <---------------------------------------------------------------------------->
 
 def create_svg(
     filename: 'graph.svg',
@@ -892,77 +1185,9 @@ def create_svg(
   File.open(filename, 'w'){ |f| f.write(g.burn_svg_only) }
 end
 
-# Computes the name of a highscoreable based on the ID and type, e.g.:
-# Type = 0, ID = 2637 ---> SU-C-09-02
-# The complexity of this function lies in:
-#   1) The type itself (Level, Episode, Story) changes the computation.
-#   2) Only some tabs have X row.
-#   3) Only some tabs are secret.
-#   4) Lastly, and perhaps most importantly, some tabs in Coop and Race are
-#      actually split in multiple files, with the corresponding bits of
-#      X row staggered at the end of each one.
-# NOTE: Some invalid IDs will return valid names rather than nil, e.g., if
-# type is Story and ID = 120, it will return "!-00", a non-existing story.
-# This is a consequence of the algorithm, but it's harmless if only correct
-# IDs are inputted.
-def compute_name(id, type)
-  return nil if ![0, 1, 2].include?(type)
-  f = 5 ** type # scaling factor
-
-  # Fetch corresponding tab
-  tab = TABS_NEW.find{ |_, t| (t[:start]...t[:start] + t[:size]).include?(id * f) }
-  return nil if tab.nil?
-  tab = tab[1]
-
-  # Get stories out of the way
-  return "#{tab[:code]}-#{"%02d" % (id - tab[:start] / 25)}" if type == 2
-
-  # Compute offset in tab and file
-  tab_offset = id - tab[:start] / f
-  file_offset = tab_offset
-  file_count = tab[:files].values[0] / f
-  tab[:files].values.inject(0){ |sum, n|
-    if sum <= tab_offset
-      file_offset = tab_offset - sum
-      file_count = n / f
-    end
-    sum + n / f
-  }
-
-  # If it's a secret level tab, its numbering is episode-like
-  if type == 0 && tab[:secret]
-    type = 1
-    f = 5
-  end
-
-  # Compute episode and column offset in file
-  rows = tab[:x] ? 6 : 5
-  file_eps = file_count * f / 5
-  file_cols = file_eps / rows
-  episode_offset = file_offset * f / 5
-  if tab[:x] && episode_offset >= 5 * file_eps / 6
-    letter = 'X'
-    column_offset = episode_offset % file_cols
-  else
-    letter = ('A'..'E').to_a[episode_offset % 5]
-    column_offset = episode_offset / 5
-  end
-
-  # Compute column (and level number)
-  prev_count = tab_offset - file_offset
-  prev_eps = prev_count * f / 5
-  prev_cols = prev_eps / rows
-  col = column_offset + prev_cols
-  lvl = tab_offset % 5
-
-  # Return name
-  case type
-  when 0
-    "#{tab[:code]}-#{letter}-#{"%02d" % col}-#{"%02d" % lvl}"
-  when 1
-    "#{tab[:code]}-#{letter}-#{"%02d" % col}"
-  end
-end
+# <---------------------------------------------------------------------------->
+# <------                        BOT MANAGEMENT                          ------>
+# <---------------------------------------------------------------------------->
 
 # Permission system:
 #   Support for different roles (unrelated to Discord toles). Each role can
@@ -997,231 +1222,9 @@ def assert_permissions(event, roles = [])
   permissions = roles.map{ |role| check_permission(event, role) }
   granted = permissions.map{ |p| p[:granted] }.count(true) > 0
   error = "Sorry, only #{permissions.map{ |p| p[:allowed] }.flatten.to_sentence} are allowed to execute this command."
-  raise OutteError.new error if !granted
+  perror(error) if !granted
 rescue
-  raise OutteError.new "Permission check failed"
-end
-
-def clean_userlevel_message(msg)
-  msg.sub(/(for|of)?\w*userlevel\w*/i, '').squish
-end
-
-def remove_word_first(msg, word)
-  msg.sub(/\w*#{word}\w*/i, '').squish
-end
-
-# Find the botmaster's Discord user
-def botmaster
-  $bot.servers.each{ |id, server|
-    member = server.member(BOTMASTER_ID)
-    return member if !member.nil?
-  }
-  err("Couldn't find botmaster")
-  nil
-rescue => e
-  lex(e, "Error finding botmaster")
-  nil
-end
-
-# Find Discord server the bot is in, by ID or name
-def find_server(id: nil, name: nil)
-  if id
-    $bot.servers[id]
-  elsif name
-    $bot.servers.values.find{ |s| s.name.downcase.include?(name.downcase) } 
-  else
-    nil
-  end
-rescue
-  nil
-end
-
-def find_channel_in_server(id: nil, name: nil, server: nil)
-  return nil if server.nil?
-  if id
-    server.channels.find{ |c| c.id == id }
-  elsif name
-    server.channels.find{ |c| c.name.downcase.include?(name.downcase) }
-  else
-    nil
-  end
-rescue
-  nil
-end
-
-# Find Discord channel by ID or name, server optional
-def find_channel(id: nil, name: nil, server_id: nil, server_name: nil)
-  server = find_server(id: server_id, name: server_name)
-  if server
-    find_channel_in_server(id: id, name: name, server: server)
-  else
-    $bot.servers.each{ |_, s|
-      channel = find_channel_in_server(id: id, name: name, server: s)
-      return channel if !channel.nil?
-    }
-    nil
-  end
-rescue
-  nil
-end
-
-# Find emoji by ID or name
-def find_emoji(key, server = nil)
-  server = server || $bot.servers[SERVER_ID] || $bot.servers.first
-  return if server.nil?
-  if key.is_a?(Integer)
-    server.emojis[key]
-  elsif key.is_a?(String)
-    server.emojis.find{ |id, e| e.name.downcase.include?(key.downcase) }[1]
-  else
-    nil
-  end
-rescue
-  nil
-end
-
-# React to a Discord msg (by ID) with an emoji (by Unicode or name)
-def react(channel, msg_id, emoji)
-  channel = find_channel(name: channel) rescue nil
-  raise OutteError.new 'Channel not found' if channel.nil?
-  msg = channel.message(msg_id.to_i) rescue nil
-  raise OutteError.new 'Message not found' if msg.nil?
-  emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
-  raise OutteError.new 'Emoji not found' if emoji.nil?
-  msg.react(emoji)
-end
-
-def unreact(channel, msg_id, emoji = nil)
-  channel = find_channel(name: channel) rescue nil
-  raise OutteError.new 'Channel not found' if channel.nil?
-  msg = channel.message(msg_id.to_i) rescue nil
-  raise OutteError.new 'Message not found' if msg.nil?
-  if emoji.nil?
-    msg.my_reactions.each{ |r|
-      emoji = r.name.ascii_only? ? find_emoji(r.name, channel.server) : r.name
-      msg.delete_own_reaction(emoji)
-    }
-  else
-    emoji = find_emoji(emoji, channel.server) if emoji.ascii_only? rescue nil
-    raise OutteError.new 'Emoji not found' if emoji.nil?
-    msg.delete_own_reaction(emoji)
-  end
-end
-
-# Pings a role by name (returns ping string)
-def ping(rname)
-  server = TEST ? $bot.servers.values.first : $bot.servers[SERVER_ID]
-  if server.nil?
-    log("Server not found")
-    return ""
-  end
-
-  role = server.roles.select{ |r| r.name == rname }.first
-  if role != nil
-    if role.mentionable
-      return role.mention
-    else
-      log("Role #{rname} in server #{server.name} not mentionable")
-      return ""
-    end
-  else
-    log("Role #{rname} not found in server #{server.name}")
-    return ""
-  end
-rescue => e
-  lex(e, "Failed to ping role #{rname}")
-  ""
-end
-
-# Return the string that produces a clickable channel mention in Discord
-def mention_channel(name: nil, id: nil, server_name: nil, server_id: nil)
-  channel = find_channel(id: id, name: name, server_id: server_id, server_name: server_name)
-  return '' if channel.nil?
-  channel.mention
-rescue => e
-  lex(e, 'Failed to mention Discord channel')
-  ''
-end
-
-# DISTANCE BETWEEN STRINGS
-# * Find distance between two strings using the classic Damerau-Levenshtein
-# * Returns nil if the threshold is surpassed
-# * Read 'string_distance_list_mixed' for detailed docs
-def string_distance(word1, word2, max: 3, th: 3)
-  d = DamerauLevenshtein.distance(word1, word2, 1, max)
-  (d - [word1.length, word2.length].min).abs < th ? nil : d
-end
-
-# DISTANCE BETWEEN STRING AND PHRASE
-# Same as before, but compares a word with a phrase, but comparing word by word
-#   and taking the MINIMUM (for single-word matches, which is common)
-# Returns nil if the threshold is surpassed for EVERY word
-def string_distance_chunked(word, phrase, max: 3, th: 3)
-  phrase.split(/\W|_/i).reject{ |chunk| chunk.strip.empty? }.map{ |chunk|
-    string_distance(word, chunk, max: max, th: th)
-  }.compact.min
-end
-
-# DISTANCE BETWEEN WORD AND LIST
-# (read 'string_distance_list_mixed' for docs)
-def string_distance_list(word, list, max: 3, th: 3, chunked: false)
-  # Determine if IDs have been provided
-  ids = list[0].is_a?(Array)
-  # Sort and group by distance, rejecting invalids
-  list = list.each_with_index.map{ |n, i|
-                if chunked
-                  [string_distance_chunked(word, ids ? n[1] : n, max: max, th: th), n]
-                else
-                  [string_distance(word, ids ? n[1] : n, max: max, th: th), n]
-                end
-              }
-              .reject{ |d, n| d.nil? || d > max || (!th.nil? && (d - (ids ? n[1] : n).length).abs < th) }
-              .group_by{ |d, n| d }
-              .sort_by{ |g| g[0] }
-              .map{ |g| [g[0], g[1].map(&:last)] }
-              .to_h
-  # Complete the hash with the distance values that might not have appeared
-  # (this allows for more consistent use of the list, e.g., when zipping)
-  (0..max).each{ |i| list[i] = [] if !list.key?(i) }
-  list
-end
-
-# DISTANCE-MATCH A STRING IN A LIST
-#   --- Description ---
-# Sort list of strings based on a Damerau-Levenshtein-ish distance to a string.
-#
-# The list may be provided as:
-#   A list of strings
-#   A list of pairs, where the string is the second element
-# This is used when there may be duplicate strings that we don't want to
-# ditch, in which case the first element would be the ID that makes them
-# unique. Obviously, this is done with level and player names in mind, that
-# may have duplicates.
-#
-# The comparison between strings will be performed both normally and 'chunked',
-# which splits the strings in the list in words. These resulting lists are then
-# zipped (i.e. first distance 0, then chunked distance 0, the distance 1, etc.)
-#   --- Parameters ---
-# word       - String to match in the list
-# list       - List of strings / pairs to match in
-# min        - Minimum distance, all matches below this distance are keepies
-# max        - Maximum distance, all matches above this distance are ignored
-# th         - Threshold of maximum difference between the calculated distance
-#              and the string length to consider. The reason we do this is to
-#              ignore trivial results, eg, the distance between 'old' and 'new'
-#              is 3, not because the words are similar, but because they're only
-#              3 characters long
-# soft_limit - Limit of matches to show, assuming there aren't more keepies
-# hard_limit - Limit of matches to show, even if there are more keepies
-# Returns nil if the threshold is surpassed
-def string_distance_list_mixed(word, list, min: 1, max: 3, max2: 2, th: 3, soft_limit: 10, hard_limit: 20)
-  matches1 = string_distance_list(word, list, max: max,  th: th, chunked: false)
-  matches2 = string_distance_list(word, list, max: max2, th: th, chunked: true)
-  max = [max, max2].max
-  matches = (0..max).map{ |i| [i, ((matches1[i] || []) + (matches2[i] || [])).uniq(&:first)] }.to_h
-  keepies = matches.select{ |k, v| k <= min }.values.map(&:size).sum
-  to_take = [[keepies, soft_limit].max, hard_limit].min
-  matches.values.flatten(1).take(to_take)
+  perror("Permission check failed")
 end
 
 # This function sets up the potato parameters correctly in case outte was closed,
@@ -1236,6 +1239,7 @@ rescue
   nil
 end
 
+# Set global variables holding references to the main Discord channels the bot uses
 def set_channels(event = nil)
   if !event.nil?
     $channel         = event.channel
@@ -1261,6 +1265,11 @@ def set_channels(event = nil)
   log("CTP channel:     #{$ctp_channel.name}")     if !$ctp_channel.nil?
 end
 
+# Leave all the servers the bot is in which are not specifically white-listed
+#
+# This is used because, in rare cases, 3rd parties could add outte to their
+# Discord servers, because it's a public bot (otherwise, the botmaster would
+# need mod powers in all servers the bot is in).
 def leave_unknown_servers
   names = []
   $bot.servers.each{ |id, s|
@@ -1272,11 +1281,14 @@ def leave_unknown_servers
   warn("Left #{names.count} unknown servers: #{names.join(', ')}") if names.count > 0
 end
 
+# Immediately kill process and restart the bot
 def force_restart(reason = 'Unknown reason')
   warn("Restarted outte due to: #{reason}.", discord: true)
   exec('./inne')
 end
 
+# Schedule a restart as soon as possible, i.e., as soon as no maintainance tasks
+# are being executed, like publishing lotd or downloading the scores.
 def restart(reason = 'Unknown reason')
   log("Attempting to restart outte due to: #{reason}.")
   tasks = $active_tasks.select{ |k, v| v }.to_h
@@ -1287,4 +1299,103 @@ rescue => e
   lex(e, 'Failed to restart outte', discord: true)
   sleep(5)
   retry
+end
+
+# <---------------------------------------------------------------------------->
+# <------                             OTHER                              ------>
+# <---------------------------------------------------------------------------->
+
+# Compute the SHA1 hash. It uses Ruby's native version, unless 'c' is specified,
+# in which case it uses the external C util that implements STB's function.
+#
+# This is done, not for speed, but because the implementations differ, and
+# the STB one is the exact one used by N++, so it's the one we need to verify
+# the integrity of the hashes generated by the game.
+def sha1(data, c: true)
+  if c && $linux && File.file?(PATH_SHA1)
+    File.binwrite("util/#{HASH_INPUT_FN}", data)
+    code = shell("./util/sha1 ./util/#{HASH_INPUT_FN} ./util/#{HASH_OUTPUT_FN}")
+    return nil if !code
+    hash = File.binread("util/#{HASH_OUTPUT_FN}")
+    FileUtils.rm(["./util/#{HASH_INPUT_FN}", "./util/#{HASH_OUTPUT_FN}"])
+    hash
+  else
+    Digest::SHA1.digest(data)
+  end
+rescue => e
+  lex(e, 'Failed to compute the SHA1 hash')
+  nil
+end
+
+# Create a ZIP file. Provided data should be a Hash with the filenames
+# as keys and the file contents as values.
+def zip(data)
+  Zip::OutputStream.write_buffer{ |zip|
+    data.each{ |name, content|
+      zip.put_next_entry(name)
+      zip.write(content)
+    }
+  }.string
+end
+
+def unzip(data)
+  res = {}
+  Zip::File.open_buffer(data){ |zip|
+    zip.each{ |entry|
+      res[entry.name] = entry.get_input_stream.read
+    }
+  }
+  res
+end
+
+def release_connection
+  #ActiveRecord::Base.connection_pool.release_connection
+  ActiveRecord::Base.connection.disconnect!
+end
+
+# Weighed average
+def wavg(arr, w)
+  return -1 if arr.size != w.size
+  arr.each_with_index.map{ |a, i| a*w[i] }.sum.to_f / w.sum
+end
+
+def numlen(n, float = true)
+  n.to_i.to_s.length + (float ? 4 : 0)
+end
+
+# This corrects a datetime in the database when it's out of phase
+# (e.g. after a long downtime of the bot).
+def correct_time(time, frequency)
+  time -= frequency while time > Time.now
+  time += frequency while time < Time.now
+  time
+end
+
+# Transform a table (2-dim array) into a text table
+# Individual entries can be either strings or numbers:
+#   - Strings will be left-aligned
+#   - Numbers will be right-aligned
+#   - Floats will also be formatted with 3 decimals
+# Additionally, all entries will be padded.
+# An entry could also be the symbol :sep, will will insert a separator in that row
+def make_table(rows, header = nil, sep_x = "=", sep_y = "|", sep_i = "x")
+  text_rows = rows.select{ |r| r.is_a?(Array) }
+  count = text_rows.map(&:size).max
+  rows.each{ |r| if r.is_a?(Array) then r << "" while r.size < count end }
+  widths = (0..count - 1).map{ |c| text_rows.map{ |r| (r[c].is_a?(Float) ? "%.3f" % r[c] : r[c].to_s).length }.max }
+  sep = widths.map{ |w| sep_i + sep_x * (w + 2) }.join + sep_i + "\n"
+  table = sep.dup
+  table << sep_y + " " * (((sep.size - 1) - header.size) / 2) + header + " " * ((sep.size - 1) - ((sep.size - 1) - header.size) / 2 - header.size - 2) + sep_y + "\n" + sep if !header.nil?
+  rows.each{ |r|
+    if r == :sep
+      table << sep
+    else
+      r.each_with_index{ |s, i|
+        table << sep_y + " " + (s.is_a?(Numeric) ? (s.is_a?(Integer) ? s : "%.3f" % s).to_s.rjust(widths[i], " ") : s.to_s.ljust(widths[i], " ")) + " "
+      }
+      table << sep_y + "\n"
+    end
+  }
+  table << sep
+  return table
 end
