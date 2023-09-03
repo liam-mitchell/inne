@@ -929,6 +929,7 @@ end
 # find the optimal score / amount of whatever rankings or stat
 def find_max_type(rank, type, tabs, mappack = nil, board = 'hs')
   # Filter scores by type and tabs
+  basetype = type
   if !mappack.nil?
     type = "Mappack#{type.to_s}".constantize unless type.to_s[0..6] == 'Mappack'
     query = type.where(mappack: mappack)
@@ -946,9 +947,9 @@ def find_max_type(rank, type, tabs, mappack = nil, board = 'hs')
   when :avg_rank
     0
   when :maxable
-    Highscoreable.ties(type, tabs, nil, false, true).size
+    Highscoreable.ties(basetype, tabs, nil, false, true, mappack, board).size
   when :maxed
-    Highscoreable.ties(type, tabs, nil, true, true).size
+    Highscoreable.ties(basetype, tabs, nil, true, true, mappack, board).size
   when :clean
     0.0
   when :score
@@ -969,7 +970,7 @@ end
 # If 'empty' we allow no types, otherwise default to Level and Episode
 def find_max(rank, types, tabs, empty = false, mappack = nil, board = 'hs')
   # Normalize params
-  types = normalize_type(types, empty: empty, mappack: !mappack.nil?)
+  types = normalize_type(types, empty: empty)
 
   # Compute type-wise maxes, and add
   maxes = [types].flatten.map{ |t| find_max_type(rank, t, tabs, mappack, board) }
@@ -987,7 +988,7 @@ def min_scores(type, tabs, empty = false, a = 0, b = 20, star = false, mappack =
   return 0 if !mappack.nil?
 
   # Normalize types
-  types = normalize_type(type, empty: empty, mappack: !mappack.nil?)
+  types = normalize_type(type, empty: empty)
 
   # Compute mins per type, and add
   mins = types.map{ |t|

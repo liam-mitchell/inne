@@ -723,9 +723,9 @@ module Highscoreable
   end
 
   # @par player_id: Exclude levels where the player already has a score
-  # @par maxed:     Sort differently depending on whether we're interested in maxed or maxable
+  # @par maxed:     Filter and sort differently for maxes and maxables
   # @par rank:      Return rankings of people with most scores in maxed / maxable levels
-  def self.ties(type, tabs, player_id = nil, maxed = nil, rank = false, mappack = nil, board = 'hs')
+  def self.ties(type, tabs, player_id = nil, maxed = false, rank = false, mappack = nil, board = 'hs')
     type = ensure_type(type)
     bench(:start) if BENCHMARK
 
@@ -735,7 +735,7 @@ module Highscoreable
     type.prepend('Mappack') if mappack
     table.prepend('mappack_') if mappack
     rfield = !mappack ? 'rank' : "rank_#{board}"
-    trfield =!mappack ? 'tied_rank' : "tied_rank_#{board}"
+    trfield = !mappack ? 'tied_rank' : "tied_rank_#{board}"
 
     # Retrieve highscoreables with more ties for 0th
     klass = mappack ? MappackScore : Score
@@ -744,7 +744,7 @@ module Highscoreable
     ret = ret.joins("INNER JOIN #{table} ON #{table}.id = highscoreable_id")
              .where(highscoreable_type: type, trfield => 0)
              .group(:highscoreable_id)
-             .order(!maxed ? 'count(highscoreable_id) desc' : '', :highscoreable_id)
+             .order(!maxed || mappack ? 'count(highscoreable_id) desc' : '', :highscoreable_id)
              .having("count(highscoreable_id) >= #{MIN_TIES}")
              .having(!player_id.nil? ? 'amount = 0' : '')
              .pluck('highscoreable_id', 'count(highscoreable_id)', 'name', !player_id.nil? ? "count(if(player_id = #{player_id}, player_id, NULL)) AS amount" : '1')
@@ -755,31 +755,23 @@ module Highscoreable
     counts = klass.where(highscoreable_type: type, highscoreable_id: ret.keys)
                   .group(:highscoreable_id)
                   .order('count(id) desc')
-                  .count(:id)
+                  .count(:id) unless mappack
 
     # Filter highscoreables
-    maxed ? ret.select!{ |id, arr| arr[0] == counts[id] } : ret.select!{ |id, arr| arr[0] < counts[id] } if !maxed.nil?
+    maxed ? ret.select!{ |id, arr| arr[0] >= (!mappack ? counts[id] : 20) } : ret.select!{ |id, arr| arr[0] < (!mappack ? counts[id] : 20) } if !maxed.nil?
 
     if rank
       # Return only IDs, for the rankings
       ret = ret.keys
     else
       # Fetch player names owning the 0ths on said highscoreables
-      pnames = klass.where(highscoreable_type: type, highscoreable_id: ret.keys, rfield => 0)
+      names = klass.where(highscoreable_type: type, highscoreable_id: ret.keys, rfield => 0)
                     .joins("INNER JOIN players ON players.id = player_id")
-                    .pluck('highscoreable_id', 'name', 'display_name')
-                    .map{ |a, b, c| [a, [b, c]] }
+                    .pluck('highscoreable_id', 'IF(display_name IS NOT NULL, display_name, name)')
                     .to_h
 
       # Format response
-      ret = ret.map{ |id, arr|
-        [
-          arr[1],
-          arr[0],
-          counts[id],
-          pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]
-        ]
-      }
+      ret = ret.map{ |id, arr| [arr[1], arr[0], names[id]] }
     end
     bench(:step) if BENCHMARK
     ret
@@ -1396,13 +1388,14 @@ class Score < ActiveRecord::Base
     end
 
     # Normalize parameters and filter scores accordingly
-    type   = fix_type(type, [:avg_lead, :maxed, :maxable].include?(ranking))
-    type   = [type].flatten.map{ |t| "Mappack#{t.to_s}".constantize } if !mappack.nil?
-    level  = 2
-    level  = 1 if mappack || [:maxed, :maxable].include?(ranking)
-    level  = 0 if [:tied_rank, :avg_lead, :singular, :score].include?(ranking)
-    scores = filter(level, nil, type, tabs, a, b, ties, cool, star, mappack, board)
-    scores = scores.where.not(player: players) if !mappack.nil? && !players.empty?
+    type     = fix_type(type, [:avg_lead, :maxed, :maxable].include?(ranking))
+    basetype = type
+    type     = [type].flatten.map{ |t| "Mappack#{t.to_s}".constantize } if !mappack.nil?
+    level    = 2
+    level    = 1 if mappack || [:maxed, :maxable].include?(ranking)
+    level    = 0 if [:tied_rank, :avg_lead, :singular, :score].include?(ranking)
+    scores   = filter(level, nil, type, tabs, a, b, ties, cool, star, mappack, board)
+    scores   = scores.where.not(player: players) if !mappack.nil? && !players.empty?
 
     # Named fields
     rankf  = mappack.nil? ? 'rank' : "rank_#{board}"
@@ -1446,13 +1439,13 @@ class Score < ActiveRecord::Base
     when :avg_points
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star, mappack)}")
+                     .having("count(player_id) >= #{min_scores(basetype, tabs, false, a, b, star, mappack)}")
                      .order("avg(#{ties ? "20 - #{trankf}" : "20 - #{rankf}"}) desc")
                      .average(ties ? "20 - #{trankf}" : "20 - #{rankf}")
     when :avg_rank
       scores = scores.select("count(player_id)")
                      .group(:player_id)
-                     .having("count(player_id) >= #{min_scores(type, tabs, false, a, b, star, mappack)}")
+                     .having("count(player_id) >= #{min_scores(basetype, tabs, false, a, b, star, mappack)}")
                      .order("avg(#{ties ? trankf : rankf})")
                      .average(ties ? trankf : rankf)
     when :avg_lead
@@ -1478,13 +1471,13 @@ class Score < ActiveRecord::Base
                         ]
                       }
     when :maxed
-      scores = scores.where(highscoreable_id: Highscoreable.ties(type, tabs, nil, true, true))
+      scores = scores.where(highscoreable_id: Highscoreable.ties(basetype, tabs, nil, true, true, mappack, board))
                      .where("#{trankf} = 0")
                      .group(:player_id)
                      .order("count(id) desc")
                      .count(:id)
     when :maxable
-      scores = scores.where(highscoreable_id: Highscoreable.ties(type, tabs, nil, false, true))
+      scores = scores.where(highscoreable_id: Highscoreable.ties(basetype, tabs, nil, false, true, mappack, board))
                      .where("#{trankf} = 0")
                      .group(:player_id)
                      .order("count(id) desc")
@@ -2095,13 +2088,11 @@ class Player < ActiveRecord::Base
         query.average(ttype).to_h
       when :maxed
         Highscoreable.ties(type, [], nil, true, false)
-                 .select{ |t| t[1] == t[2] }
                  .group_by{ |t| t[0].split("-")[0] }
                  .map{ |tab, scores| [formalize_tab(tab), scores.size] }
                  .to_h
       when :maxable
         Highscoreable.ties(type, [], nil, false, false)
-                 .select{ |t| t[1] < t[2] }
                  .group_by{ |t| t[0].split("-")[0] }
                  .map{ |tab, scores| [formalize_tab(tab), scores.size] }
                  .to_h

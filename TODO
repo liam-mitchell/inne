@@ -15,7 +15,7 @@ Eddy's TODO list for inne:
 - Add total <rank> score, and show total score and total 19th score gained daily and weekly.
 - Compile usage stats (number of pings, most used commands, data uploaded / downloaded, etc).
 - Screenscores for userlevels.
-- Add "maxed" and "maxable" to "list" and "how many". Also, add "full" and "global" to "maxed" and "maxable".
+- Add "maxed" and "maxable" to "list" and "how many".
 - Add "ownage" and others to "table".
 - In "spread", when nth score doesn't exist, just take the last one. Apply to userlevels version too.
 - Perhaps add rank to how many function, i.e. "username has n/N top20 scores (ranked kth)".
@@ -37,7 +37,7 @@ Eddy's TODO list for inne:
 - Personal demo analysis function (for when a run is not in the global leaderboard)
 - Browse uncleared userlevels (levels with no completions)
 - Unmaxed missing (ignore maxes in missing)
-- Add "graphic" / "screenshot" parameter to many commands which output level lists, so that instead of the list, we get images with thumbnails of 5/10 levels, with arrow button navigation to move, a-la userlevel browse.
+- Add "graphic" / "image" parameter to many commands which output level lists, so that instead of the list, we get images with thumbnails of 5/10 levels, with arrow button navigation to move, a-la userlevel browse.
 - Add access to all functions using slash commands
 - Multiple matches:
   * Add for player names
@@ -69,7 +69,6 @@ Eddy's TODO list for inne:
 - String distance for player/author names (and also partial matching), and maybe even outte commands
 - Search by name for mappack levels, by also using the mappack code (e.g. cla score for birthday)
 - Add "my pack is ..." to default all requests to a specific mappack 
-- Add "missing maxable" for "maxable for"
 - For screenshot generation, allow to compose images out of bounds by cropping them appropriately. Make a commit to oily_png, like the original author intended. 
 - Generated nprofiles have extra challenges unlocked?
 - Add generic nprofile functionality
@@ -78,7 +77,6 @@ Eddy's TODO list for inne:
 - Minimum scores to appear in mappack average rank rankings are 0, fix.
 - Create a class QueryResult for when we parse a highscoreable, that contains the array of results, the header of text, a function to format the result, etc. Perhaps do the same for parsing players and other things.
 - Optimize gold_check (single SQL query per type?), both memory-wise and time-wise
-- For mappacks, "maxed" could mean maxable for >=20 ties, and "maxable" restricted to <20 ties
 
 \\ ------------------------ mappacker -----------------------
 

@@ -640,9 +640,10 @@ end
 def send_maxable(event, maxed = false)
   # Parse message parameters
   msg     = event.content
-  player  = parse_player(msg, nil, false, true, false)
+  player  = parse_player(msg, event.user.name, false, !msg[/missing/i], false)
   type    = parse_type(msg) || Level
   tabs    = parse_tabs(msg)
+  full    = parse_full(msg)
   mappack = parse_mappack(msg)
   board   = parse_board(msg, 'hs')
   perror("Metanet maps only have highscore mode for now.") if !mappack && board != 'hs'
@@ -650,15 +651,15 @@ def send_maxable(event, maxed = false)
 
   # Retrieve maxed/maxable scores
   ties   = Highscoreable.ties(type, tabs, player.nil? ? nil : player.id, maxed, false, mappack, board)
-  ties   = ties.take(NUM_ENTRIES) if !maxed
+  ties   = ties.take(NUM_ENTRIES) if (!maxed || mappack) && !full
   pad1   = ties.map{ |s| s[0].length }.max
   pad2   = ties.map{ |s| s[1].to_s.length }.max
   count  = ties.size
   ties   = ties.map { |s|
-    if maxed
-      "#{"%-#{pad1}s" % s[0]} - #{format_string(s[3])}"
+    if maxed && !mappack
+      "#{"%-#{pad1}s" % s[0]} - #{format_string(s[2])}"
     else
-      "#{"%-#{pad1}s" % s[0]} - #{"%#{pad2}d" % s[1]} - #{format_string(s[3])}"
+      "#{"%-#{pad1}s" % s[0]} - #{"%#{pad2}d" % s[1]} - #{format_string(s[2])}"
     end
   }.join("\n")
 
@@ -2495,16 +2496,16 @@ def respond(event)
   return send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
   return send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
   return send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
+  return send_maxable(event)        if msg =~ /maxable/i
+  return send_maxed(event)          if msg =~ /maxed/i
   return send_list(event, hm, true) if msg =~ /missing/i
   return send_list(event, false)    if msg =~ /how many/i
+  return send_list(event)           if msg =~ /\blist\b/i
   return send_list(event, false, false, true) if msg =~ /how cool/i 
   return send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
   return send_stats(event)          if msg =~ /\bstat/i
   return send_suggestions(event)    if msg =~ /\bworst\b/i || msg =~ /\bimprovable\b/i
   return send_tally(event)          if msg =~ /\btally\b/i
-  return send_list(event)           if msg =~ /\blist\b/i
-  return send_maxable(event)        if msg =~ /maxable/i && msg !~ /rank/i
-  return send_maxed(event)          if msg =~ /maxed/i && msg !~ /rank/i
   return send_splits(event)         if msg =~ /\bsplits\b/i
   return send_clean_one(event)      if msg =~ /cleanliness/i
   return send_mappacks(event)       if msg =~ /mappacks/i

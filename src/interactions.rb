@@ -236,8 +236,8 @@ end
 #      The second keyword specifies the category of the component (up to you).
 #      The third keyword specifies the specific component (button, select menu option).
 def respond_interaction_button(event)
-  keys   = event.custom_id.to_s.split(':')                       # Component parameters
-  type   = event.message.content.strip.split(' ').first.downcase # Source message type
+  keys = event.custom_id.to_s.split(':')                       # Component parameters
+  type = event.message.content.strip.split(' ').first.downcase # Source message type
   return if keys[0] != 'button' # Only listen to components of type "Button"
 
   case type
@@ -284,23 +284,23 @@ def respond_interaction_menu(event)
   case type
   when 'browsing' # Select Menus for the userlevel browse function
     case keys[1]
-    when 'order' # Reorder userlevels (by title, author, date, favs)
+    when 'order'  # Reorder userlevels (by title, author, date, favs)
       send_userlevel_browse(event, order: values.first.last)
-    when 'tab' # Change tab (all, best, featured, top, hardest)
+    when 'tab'    # Change tab (all, best, featured, top, hardest)
       send_userlevel_browse(event, tab: values.first.last)
-    when 'mode' # Change mode (all, solo, coop, race)
+    when 'mode'   # Change mode (all, solo, coop, race)
       send_userlevel_browse(event, mode: values.first.last)
     end
-  when 'aliases' # Select Menus for the alias list function
+  when 'aliases'  # Select Menus for the alias list function
     case keys[1]
-    when 'alias' # Change type of alias (level, player)
+    when 'alias'  # Change type of alias (level, player)
       send_aliases(event, type: values.first.last)
     end
-  when 'rankings'# Select Menus for the rankings function
+  when 'rankings' # Select Menus for the rankings function
     case keys[1]
-    when 'rtype' # Change rankings type (0th rankings, top20 rankings, etc)
+    when 'rtype'  # Change rankings type (0th rankings, top20 rankings, etc)
       send_rankings(event, rtype: values.first.last)
-    when 'tab' # Change highscoreable tab (all, si, s, su, sl, ss, ss2)
+    when 'tab'    # Change highscoreable tab (all, si, s, su, sl, ss, ss2)
       send_rankings(event, tab: values.first.last)
     end
   end
