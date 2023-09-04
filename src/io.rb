@@ -378,34 +378,35 @@ end
 # Parse a highscoreable based on the name
 # 'mappack' specifies whether searching for mappack highscoreables is allowed, not enforced
 def parse_highscoreable_by_name(msg, mappack: true)
-  code = parse_mappack(msg)
+  pack = parse_mappack(msg)
+  klass = pack ? MappackLevel.where(mappack: pack) : Level
   name = msg.split("\n")[0][NAME_PATTERN, 2]
 
   # Exact name match
-  ret = ['', Level.where_like('longname', name, partial: false).to_a]
+  ret = ['', klass.where_like('longname', name, partial: false).to_a]
   ret[0] = "Single name match found for #{name}" if ret[1].size == 1
   ret[0] = "Multiple name matches found for #{name}" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Exact alias match
-  query = Level.joins("INNER JOIN level_aliases ON levels.id = level_id")
+  query = klass.joins("INNER JOIN level_aliases ON #{klass.table_name}.id = level_id")
   ret = ['', query.where_like('alias', name, partial: false).to_a]
   ret[0] = "Single alias match found for #{name}" if ret[1].size == 1
   ret[0] = "Multiple alias matches found for #{name}" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Partial name match
-  ret = ['', Level.where_like('longname', name, partial: true).to_a]
+  ret = ['', klass.where_like('longname', name, partial: true).to_a]
   ret[0] = "Single partial name match found for #{name}" if ret[1].size == 1
   ret[0] = "Multiple partial name matches found for #{name}" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Closest matches
-  list = Level.all.pluck(:name, :longname)
+  list = klass.all.pluck(:name, :longname)
   matches = string_distance_list_mixed(name, list)
   ret = [
     "No matches found for #{verbatim(name)}. Did you mean...",
-    matches.map{ |m| Level.find_by(name: m[0]) }
+    matches.map{ |m| klass.find_by(name: m[0]) }
   ]
   return ret if !ret[1].empty?
 
@@ -447,7 +448,7 @@ def parse_highscoreable(
   # No results
   if ret[1].empty?
     if array
-      return ['No matches found', []]
+      return ['No results found.', []]
     else
       perror("Couldn't find the level, episode or story you were looking for :(")
     end
@@ -1097,6 +1098,7 @@ def format_list_score(s, board = nil)
 end
 
 def format_level_list(levels)
+  return if levels.empty?
   pad = levels.map{ |l| l.name.length }.max + 1
   format_block(levels.map{ |s| s.name.ljust(pad, ' ') + s.longname }.join("\n"))
 end
