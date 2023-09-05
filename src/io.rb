@@ -168,6 +168,7 @@ end
 # Fetch a Player or UserlevelPlayer from a text string.
 # Optionally may also infer the player from the username.
 # TODO: Change args to kwargs
+# TODO: Save discord_ids, and use them rather than username to distinguish
 def parse_player(
     msg,               # Text string to parse
     username,          # Name of Discord user, to infer player name
@@ -181,7 +182,6 @@ def parse_player(
   p = msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
   playerClass = userlevel ? UserlevelPlayer : Player
 
-  # We make sure to only return players with metanet_ids, ie., with highscores.
   if implicit
     parse_player_implicit(username, playerClass)
   else
@@ -259,10 +259,11 @@ def parse_challenge_code(msg)
   return msg[/([!?]+)[^-]/, 1]
 end
 
-def parse_videos(msg)
+def parse_videos(event)
+  msg = event.content
   author = parse_video_author(msg)
   msg = msg.chomp(" by " + author.to_s)
-  highscoreable = parse_highscoreable(msg)
+  highscoreable = parse_highscoreable(event)
   challenge = parse_challenge(msg)
   code = parse_challenge_code(msg)
   videos = highscoreable.videos
@@ -284,8 +285,10 @@ def parse_steam_id(msg)
 end
 
 # Parse a highscoreable by ID (e.g. SU-D-17-03) with a specific set of parameters
+# Optionally provide a user for specific preferences
 def parse_h_by_id_once(
     msg,            # Text to parse the ID from
+    user    = nil,  # User to parse specific preferences
     matches = [],   # Array to add the _normalized_ ID if found
     type:    Level, # Type of highscoreable ID
     mappack: false, # Whether to look for mappack IDs or regular ones
@@ -316,17 +319,17 @@ end
 #      even though it also fits the dashless level SU-A-1-5, because no such
 #      level exists).
 # 3) Then parse columns (no ambiguity as they don't have row letter).
-def parse_highscoreable_by_id(msg, mappack: false)
+def parse_highscoreable_by_id(msg, user = nil, mappack: false)
   ret = ['', []]
   
   # Mappack variants, if allowed
   matches = []
   if mappack
-    ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: true)  if ret[1].empty?
-    ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: true)  if ret[1].empty?
-    ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: true, dashed: false) if ret[1].empty?
-    ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: true, dashed: false) if ret[1].empty?
-    ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: true, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: true, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, matches, type: Story,   mappack: true, dashed: true)  if ret[1].empty?
 
     # If there were ID matches, but they didn't exist, raise
     if ret[1].empty? && matches.size > 0
@@ -337,11 +340,11 @@ def parse_highscoreable_by_id(msg, mappack: false)
 
   # Vanilla variants
   matches = []
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: true)  if ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: false, dashed: true)  if ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Level,   mappack: false, dashed: false) if ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Episode, mappack: false, dashed: false) if ret[1].empty?
-  ret = parse_h_by_id_once(msg, matches, type: Story,   mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: false, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: false, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, matches, type: Story,   mappack: false, dashed: true)  if ret[1].empty?
 
   # If there were ID matches, but they didn't exist, raise
   if ret[1].empty? && matches.size > 0
@@ -355,20 +358,23 @@ rescue
 end
 
 # Parse a highscoreable based on a "code" (e.g. lotd/eotw/cotm)
-def parse_highscoreable_by_code(msg, mappack: false)
-  ctp = !!msg[/ctp/i] && mappack
-  ret = nil
+def parse_highscoreable_by_code(msg, user = nil, mappack: false)
+  # Parse type
+  lotd = !!msg[/(level of the day|lotd)/i]
+  eotw = !!msg[/(episode of the week|eotw)/i]
+  cotm = !!msg[/(column of the month|cotm)/i]
+  klass = lotd ? Level : eotw ? Episode : Story
+  type = lotd ? 'level of the day' : eotw ? 'episode of the week' : 'column of the month'
 
-  if !!msg[/(level of the day|lotd)/i]
-    ret = GlobalProperty.get_current(Level, ctp)
-    perror("There is no current #{ctp ? 'CTP ' : ''}level of the day.") if ret.nil?
-  elsif !!msg[/(episode of the week|eotw)/i]
-    ret = GlobalProperty.get_current(Episode, ctp)
-    perror("There is no current #{ctp ? 'CTP ' : ''}episode of the week.") if ret.nil?
-  elsif !!msg[/(column of the month|cotm)/i]
-    ret = GlobalProperty.get_current(Story, ctp)
-    perror("There is no current #{ctp ? 'CTP ' : ''}column of the month.") if ret.nil?
-  end
+  # Parse mappack (manually specified and default one)
+  pack = mappack ? parse_mappack(msg) || user.mappack : nil
+  ctp = pack && pack.code.upcase == 'CTP'
+  type.prepend(pack.code.upcase + ' ') unless pack.code.upcase == 'MET' if pack
+  perror("There is no #{type}.") if pack && !pack.lotd
+
+  # Fetch lotd/eotw/cotm
+  ret = GlobalProperty.get_current(klass, ctp)
+  perror("There is no current #{type}.") if ret.nil?
 
   ret ? ["Single match found", [ret]] : ['', []]
 rescue
@@ -377,7 +383,7 @@ end
 
 # Parse a highscoreable based on the name
 # 'mappack' specifies whether searching for mappack highscoreables is allowed, not enforced
-def parse_highscoreable_by_name(msg, mappack: true)
+def parse_highscoreable_by_name(msg, user = nil, mappack: true)
   pack = parse_mappack(msg)
   klass = pack ? MappackLevel.where(mappack: pack) : Level
   name = msg.split("\n")[0][NAME_PATTERN, 2]
@@ -416,7 +422,6 @@ rescue
 end
 
 # TODO:
-# - Adapt parse_highscoreable_by_name for mappacks
 # - Use 'user' to transform vanilla IDs (and names?) to the mappack of the user's choice
 # - Add QueryResult class that handles keeping track of the results,
 #       formatting them, etc. Adjust functions and comments accordingly.
@@ -431,19 +436,22 @@ end
 #   Highscoreable || nil
 # if partial is disabled, with the single result, if it exists.
 def parse_highscoreable(
-    msg,            # Message text to parse
+    event,          # Event whose content contains the highscoreable to parse
     partial: false, # Perform partial and approximate matches as well
     array:   false, # Always return an array, even if there's a single result
     mappack: false, # Search mappack highscoreables as well
     user:    nil    # User who sent query (for user-specific query preferences)
   )
+  #byebug
+  msg = event.content
+  user = User.find_by(discord_id: event.user.id) || User.find_by(username: event.user.name)
   perror("Couldn't find the level, episode or story you were looking for :(") if msg.to_s.strip.empty?
   ret = ['', []]
 
   # Search for highscoreable according to different criteria
-  ret = parse_highscoreable_by_id(msg, mappack: mappack)
-  ret = parse_highscoreable_by_code(msg, mappack: mappack) if ret[1].empty?
-  ret = parse_highscoreable_by_name(msg, mappack: mappack) if ret[1].empty?
+  ret = parse_highscoreable_by_id(msg, user, mappack: mappack)
+  ret = parse_highscoreable_by_code(msg, user, mappack: mappack) if ret[1].empty?
+  ret = parse_highscoreable_by_name(msg, user, mappack: mappack) if ret[1].empty?
 
   # No results
   if ret[1].empty?
@@ -503,7 +511,7 @@ end
 # 4) Anywhere, using the 3 letter mappack code
 # The second parameter specifies the behaviour when the mappack is not found
 def parse_mappack(msg, rais = false)
-  (rais ? perror("Mappack not found") : (return nil)) if msg.strip.empty?
+  (rais ? perror("Mappack not found.") : (return nil)) if !msg || msg.strip.empty?
 
   mappack = Mappack.find_by(name: msg.strip[/\w+/i])
   return mappack if !mappack.nil?
@@ -514,7 +522,7 @@ def parse_mappack(msg, rais = false)
   mappack = Mappack.where(code: msg.scan(/\b[A-Z]{3}\b/i)).first
   return mappack if !mappack.nil?
 
-  rais ? perror("Mappack not found") : nil
+  rais ? perror("Mappack not found.") : nil
 end
 
 # We parse a complex variety of ranges here, from individual ranks, to tops,
@@ -921,7 +929,7 @@ end
 # Arg names must start with a dash and be alphanumeric (underscores allowed)
 # Arg values can be anything but dashes
 def parse_flags(msg)
-  msg.scan(/-(\w+)\s*([^-]+)?/)
+  msg.scan(/(?:\s+|^)-(\w+)(?:\s+(.*?))?(?=\s+-|$)/)
      .uniq{ |e| e[0] }
      .map{ |k, v| [k, v.nil? ? nil : v.squish] }
      .to_h

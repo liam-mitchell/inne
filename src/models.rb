@@ -2127,6 +2127,8 @@ class Role < ActiveRecord::Base
 end
 
 class User < ActiveRecord::Base
+  belongs_to :mappack
+
   def player
     Player.find_by(name: playername)
   end

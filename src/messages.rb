@@ -359,7 +359,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  h       = map.nil? ? parse_highscoreable(msg, partial: true, mappack: true) : map
+  h       = map.nil? ? parse_highscoreable(event, partial: true, mappack: true) : map
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
   mappack = h.is_a?(MappackHighscoreable)
@@ -429,7 +429,7 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
   # Parse message parameters
   initial = offset.nil? && date.nil? && page.nil?
   msg     = fetch_message(event, initial)
-  scores  = parse_highscoreable(msg, partial: true)
+  scores  = parse_highscoreable(event, partial: true)
 
   # Multiple matches, send match list
   if scores.is_a?(Array)
@@ -472,7 +472,7 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   msg     = fetch_message(event, initial)
   hash    = parse_palette(event)
   msg     = hash[:msg]
-  h       = map.nil? ? parse_highscoreable(msg, partial: true, mappack: true) : map
+  h       = map.nil? ? parse_highscoreable(event, partial: true, mappack: true) : map
   nav     = parse_nav(msg) || !initial
   
   # Multiple matches, send match list
@@ -510,7 +510,7 @@ end
 def send_screenscores(event)
   # Parse message parameters
   msg = event.content
-  map = parse_highscoreable(msg, mappack: true)
+  map = parse_highscoreable(event, mappack: true)
 
   # Return both screenshot and scores, without sending them
   ss  = send_screenshot(event, map, true)
@@ -534,7 +534,7 @@ end
 def send_scoreshot(event)
   # Parse message parameters
   msg = event.content
-  map = parse_highscoreable(msg, mappack: true)
+  map = parse_highscoreable(event, mappack: true)
 
   # Retrieve both screenshot and scores, without sending them
   s   = send_scores(event, map, true)
@@ -730,7 +730,7 @@ end
 def send_clean_one(event, ret = false)
   # Parse params
   msg = event.content
-  h = parse_highscoreable(msg, mappack: true)
+  h = parse_highscoreable(event, mappack: true)
   perror("Cleanliness is an episode/story-specific function!") if h.is_a?(Levelish)
   board = parse_board(msg, 'hs')
   perror("Sorry, G-- cleanlinesses aren't available yet.") if board == 'gm'
@@ -830,7 +830,7 @@ def send_level_id(event, page: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  level   = parse_highscoreable(msg, partial: true)
+  level   = parse_highscoreable(event, partial: true)
 
   # Multiple matches, send match list
   if level.is_a?(Array)
@@ -1122,7 +1122,7 @@ def send_challenges(event, page: nil)
   # Parse message parameters
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  lvl     = parse_highscoreable(msg, partial: true)
+  lvl     = parse_highscoreable(event, partial: true)
 
   # Multiple matches, send match list
   if lvl.is_a?(Array)
@@ -1145,7 +1145,7 @@ end
 def send_query(event, page: nil)
   initial = page.nil?
   msg     = fetch_message(event, initial)
-  lvl     = parse_highscoreable(msg, partial: true, array: true)
+  lvl     = parse_highscoreable(event, partial: true, array: true)
   format_level_matches(event, msg, page, initial, lvl, 'search')
 rescue => e
   lex(e, "Error performing query.", event: event)
@@ -1199,7 +1199,7 @@ def send_analysis(event, page: nil)
   msg     = fetch_message(event, initial)
   ranks   = parse_ranks(msg, -1)
   board   = parse_board(msg, 'hs')
-  h       = parse_highscoreable(msg, partial: true, mappack: true)
+  h       = parse_highscoreable(event, partial: true, mappack: true)
 
   # Multiple matches, send match list
   if h.is_a?(Array)
@@ -1336,7 +1336,7 @@ end
 
 def send_demo_download(event)
   msg    = event.content
-  h      = parse_highscoreable(msg)
+  h      = parse_highscoreable(event)
   rank   = [parse_range(msg).first, h.scores.size - 1].min
   score  = h.scores[rank]
   event << "Downloading #{score.player.name}'s #{rank.ordinalize} score in #{h.name} (#{"%.3f" % [score.score]}):"
@@ -1348,7 +1348,7 @@ end
 def send_download(event, page: nil)
   initial = page.nil?
   msg     = event.content
-  h       = parse_highscoreable(msg, partial: true, mappack: true)
+  h       = parse_highscoreable(event, partial: true, mappack: true)
 
   return format_level_matches(event, msg, page, initial, h, 'download') if h.is_a?(Array)
   perror("Only levels can be downloaded") if !h.is_a?(Levelish)
@@ -1384,7 +1384,7 @@ end
 def send_splits(event)
   # Parse message parameters
   msg = event.content
-  ep = parse_highscoreable(msg, mappack: true)
+  ep = parse_highscoreable(event, mappack: true)
   ep = ep.episode if ep.is_a?(Levelish)
   perror("Sorry, columns can't be analyzed yet.") if ep.is_a?(Storyish)
   mappack = ep.is_a?(MappackHighscoreable)
@@ -1672,12 +1672,21 @@ end
 
 def set_default_mappack(event)
   msg = event.content
-  pack = msg[/my (?:map\s*)?pack is (.*)[\.\s]*$/i, 1]
+  pack = msg[/my (?:.*?)(?:map\s*)?pack (?:.*?)is (.*)[\.\s]*$/i, 1]
+  dms = !!msg[/\bdms?\b/i]
+  rest = !!msg[/always/i]
   perror("You need to specify a mappack.") if pack.nil?
   mappack = parse_mappack(pack)
   perror("Mappack not recognized.") if mappack.nil?
-  user = User.find_or_create_by(username: event.user.name).update(mappack_id: mappack.id)
-  event << "Great, from now on your default mappack will be #{verbatim(mappack.name)}."
+  User.find_or_create_by(username: event.user.name).update(
+    mappack_id:          mappack.id,
+    default_on_channels: true,
+    default_on_dms:      dms || rest,
+    default_on_rest:     rest
+  )
+  places = "#{mappack.code.upcase} channels"
+  places = rest ? 'Every channel' : dms ? "#{places} and DMs" : places
+  event << "Great, from now on your default mappack will be #{verbatim(mappack.name)}. It will be used in: #{places}."
 rescue => e
   lex(e, 'Error setting default mappack.')
 end
@@ -1835,7 +1844,7 @@ rescue => e
 end
 
 def send_videos(event)
-  videos = parse_videos(event.content)
+  videos = parse_videos(event)
 
   # If we have more than one video, we probably shouldn't spam the channel too hard...
   # so we'll make people be more specific unless we can narrow it down.
@@ -1923,7 +1932,7 @@ def add_alias(event)
   type = !!msg[/\blevel\b/i] ? 'level' : (!!msg[/\bplayer\b/i] ? 'player' : nil)
   perror("You need to provide an alias type: level, player.") if type.nil?
 
-  entry = type == 'level' ? parse_highscoreable(msg) : parse_player(msg, event.user.name)
+  entry = type == 'level' ? parse_highscoreable(event) : parse_player(msg, event.user.name)
   entry.add_alias(aka)
   event << "Added alias \"#{aka}\" to #{type} #{entry.name}."
 rescue => e
@@ -2099,7 +2108,7 @@ def send_mappack_patch(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
   id = flags[:id]
-  highscoreable = parse_highscoreable(msg, mappack: true) if !id
+  highscoreable = parse_highscoreable(event, mappack: true) if !id
   player = parse_player('for ' + flags[:p], nil, false, true, true) if !id
   score = parse_score(flags[:s])
   event << MappackScore.patch_score(id, highscoreable, player, score)
@@ -2110,7 +2119,7 @@ end
 def send_mappack_ranks(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
-  h = parse_highscoreable(flags[:h], mappack: true)
+  h = parse_highscoreable(event, mappack: true)
   board = parse_board(flags[:b])
   perror("Only the hs/sr ranks can be updated") if !['hs', 'sr', nil].include?(board)
   h.update_ranks('hs') if board == 'hs' || board.nil?
@@ -2125,7 +2134,8 @@ def send_mappack_info(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
   mappack = parse_mappack(flags[:mappack], true)
-  mappack.set_info(flags[:name], flags[:author], flags[:date])
+  channels = flags[:channels].split.map(&:strip) if flags.key?(:channels)
+  mappack.set_info(name: flags[:name], author: flags[:author], date: flags[:date], channel: channels)
   flags.delete(:mappack)
   flags = flags.map{ |k, v| "#{k} to #{verbatim(v)}" unless v.nil? }.compact.to_sentence
   event << "Set mappack #{verbatim(mappack.code)} #{flags}."
@@ -2309,7 +2319,7 @@ def send_hash(event)
   flags = parse_flags(msg)
 
   # Parse highscoreable
-  h = parse_highscoreable(flags[:h], mappack: true)
+  h = parse_highscoreable(event, mappack: true)
   perror("Map no found.") if h.nil?
   map_data = h.map.dump_level(hash: true)
   perror("Map data for #{h.format_name} is null.") if map_data.nil?
@@ -2513,7 +2523,7 @@ def respond(event)
   return add_steam_id(event)        if msg =~ /my steam id is/i
   return add_display_name(event)    if msg =~ /my display name is/i
   return set_default_palette(event) if msg =~ /my palette is/i
-  return set_default_mappack(event) if msg =~ /my (map\s*)?pack is/i
+  return set_default_mappack(event) if msg =~ /my (.*?)(map\s*)?pack (.*?)is/i
   return send_unique_holders(event) if msg =~ /\bunique holders\b/i
   return send_twitch(event)         if msg =~ /\btwitch\b/i
   return add_role(event)            if msg =~ /\badd\s*role\b/i

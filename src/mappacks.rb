@@ -955,10 +955,12 @@ class Mappack < ActiveRecord::Base
   alias_attribute :levels,   :mappack_levels
   alias_attribute :episodes, :mappack_episodes
   alias_attribute :stories,  :mappack_stories
+  alias_attribute :channels, :mappack_channels
   has_many :mappack_scores
   has_many :mappack_levels
   has_many :mappack_episodes
   has_many :mappack_stories
+  has_many :mappack_channels
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # Parse all mappacks in the mappack directory into the database
@@ -1189,12 +1191,22 @@ class Mappack < ActiveRecord::Base
   end
 
   # Set the mappack's name and author on command, since that's not parsed from the files
-  def set_info(name, author, date)
-    self.update(
-      name:    name,
-      authors: author,
-      date:    Time.strptime(date, '%Y/%m/%d').strftime(DATE_FORMAT_MYSQL)
-    )
+  def set_info(name: nil, author: nil, date: nil, channel: nil)
+    self.update(name: name) if name
+    self.update(authors: author) if author
+    self.update(date: Time.strptime(date, '%Y/%m/%d').strftime(DATE_FORMAT_MYSQL)) if date
+    channel.each{ |c|
+      if is_num(c)
+        ch = find_channel(id: c.strip.to_i)
+      else
+        ch = find_channel(name: c.strip)
+      end
+      #byebug
+      perror("No channel found by the name #{verbatim(c.strip)}.") if !ch
+      ch = MappackChannel.find_or_create_by(id: ch.id)
+      channels << ch
+      ch.update(name: ch.name)
+    } if channel
   rescue => e
     lex(e, "Failed to set mappack '#{code}' info")
     nil
@@ -2050,4 +2062,11 @@ end
 # 2) Our SHA1 algo doesn't match the one used by N++, so we want to polish that.
 #    This is currently happening sometimes.
 class BadHash < ActiveRecord::Base
+end
+
+# This table stores the Discord IDs for the channels that are dedicated to each
+# mappack, so that decisions (such as default mappack for commands) can be based
+# on this information
+class MappackChannel < ActiveRecord::Base
+  belongs_to :mappack
 end
