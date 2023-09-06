@@ -947,10 +947,23 @@ end
 
 # Return a user's default mappack based on the event's channel of origin
 def default_mappack(user, channel)
-  return nil if !user || !user.mappack || !channel && !user.default_on_rest
-  return user.mappack if user.default_on_rest
-  return user.mappack if user.default_on_dms && channel.type == channel_type(:dm)
-  return user.mappack if user.default_on_channels && user.mappack.channels.pluck(:id).include?(channel.id)
+  # User-specific global default
+  return nil if !user || !channel && !user.mappack_default_always
+  return user.mappack if user.mappack_default_always
+
+  # Channel-specific default
+  if user.mappack_defaults
+    pack = MappackChannel.find_by(id: channel.id).mappack rescue nil
+    return pack if pack
+  end
+
+  # User-specific channel default
+  return nil if !user.mappack
+  return user.mappack if user.mappack.channels.pluck(:id).include?(channel.id) || user.mappack_default_dms && channel.type == channel_type(:dm)
+
+  return nil
+rescue
+  nil
 end
 
 # <---------------------------------------------------------------------------->

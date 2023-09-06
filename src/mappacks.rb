@@ -1201,11 +1201,10 @@ class Mappack < ActiveRecord::Base
       else
         ch = find_channel(name: c.strip)
       end
-      #byebug
       perror("No channel found by the name #{verbatim(c.strip)}.") if !ch
-      ch = MappackChannel.find_or_create_by(id: ch.id)
-      channels << ch
-      ch.update(name: ch.name)
+      chn = MappackChannel.find_or_create_by(id: ch.id)
+      channels << chn
+      chn.update(name: ch.name)
     } if channel
   rescue => e
     lex(e, "Failed to set mappack '#{code}' info")

@@ -1661,7 +1661,6 @@ end
 def set_default_mappack(event)
   msg = event.content
   pack = msg[/my (?:.*?)(?:map\s*)?pack (?:.*?)is (.*)[\.\s]*$/i, 1]
-  dms = !!msg[/\bdms?\b/i]
   always = !!msg[/always/i]
   perror("You need to specify a mappack.") if pack.nil?
   mappack = parse_mappack(pack)
@@ -1669,18 +1668,19 @@ def set_default_mappack(event)
   parse_user(event.user).update(
     mappack_id:             mappack.id,
     mappack_default_always: always,
-    mappack_default_dms:    dms || always
+    mappack_default_dms:    true
   )
-  places = "#{mappack.code.upcase} channels"
-  places = always ? 'Every channel' : dms ? "#{places} and DMs" : places
+  places = always ? 'Every channel' : "DMs and #{mappack.code.upcase} channels"
   event << "Great, from now on your default mappack will be #{verbatim(mappack.name)}. It will be used in: #{places}."
 rescue => e
   lex(e, 'Error setting default mappack.')
 end
 
 def set_default_mappacks(event)
-  byebug
-  user = User.parse(event)
+  user = parse_user(event.user)
+  val = user.mappack_defaults
+  user.update(mappack_defaults: !val)
+  event << "From now on, mappacks #{val ? "won't" : 'will'} be used by default in their respective channels (for you)."
 end
 
 def hello(event)
