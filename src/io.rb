@@ -160,7 +160,7 @@ def parse_player_implicit(username, playerClass = Player)
   player = playerClass.where.not(metanet_id: nil).find_by(name: username) rescue nil
   return player if !player.nil?
   # Check if user identified with another name
-  user = User.find_by(username: username) rescue nil
+  user = User.find_by(name: username) rescue nil
   perror("I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?") if user.nil? || user.player.nil?
   parse_player_explicit(user.player.name, playerClass)
 end
@@ -188,7 +188,7 @@ def parse_player(
     if p.nil?
       if explicit
         if enforce
-          perror("You need to specify a player for this function.")
+          perror("You need to specify a player name for this function.")
         else
           nil
         end
@@ -229,20 +229,27 @@ def parse_many_players(msg, userlevel = false)
   players.map{ |name| parse_player_explicit(name) }
 end
 
+# Parse a User object from a Discord::User object
+def parse_user(discord_user)
+  user = User.find_or_create_by(discord_id: discord_user.id)
+  user.update(name: discord_user.name)
+  user
+end
+
 # The username can include the tag after a hash
 def parse_discord_user(msg)
   user = msg[NAME_PATTERN, 2].downcase
   perror("You need to provide a user.") if user.nil?
 
   parts = user.split('#')
-  users = User.search(parts[0], !parts[1].nil? ? parts[1] : nil)
+  users = find_users(name: parts[0], tag: parts[1])
   case users.size
   when 0
     perror("No user named #{user} found in the server.")
   when 1
     return users.first
   else
-    list = users.map{ |u| u.username + '#' + u.tag }.join("\n")
+    list = users.map{ |u| u.name + '#' + u.tag }.join("\n")
     perror("Multiple users named #{parts[0]} found, please include the numerical tag as well:\n#{format_block(list)}")
   end
 end
@@ -289,6 +296,7 @@ end
 def parse_h_by_id_once(
     msg,            # Text to parse the ID from
     user    = nil,  # User to parse specific preferences
+    channel = nil,  # Discord channel
     matches = [],   # Array to add the _normalized_ ID if found
     type:    Level, # Type of highscoreable ID
     mappack: false, # Whether to look for mappack IDs or regular ones
@@ -319,17 +327,17 @@ end
 #      even though it also fits the dashless level SU-A-1-5, because no such
 #      level exists).
 # 3) Then parse columns (no ambiguity as they don't have row letter).
-def parse_highscoreable_by_id(msg, user = nil, mappack: false)
+def parse_highscoreable_by_id(msg, user = nil, channel = nil, mappack: false)
   ret = ['', []]
   
   # Mappack variants, if allowed
   matches = []
   if mappack
-    ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: true, dashed: true)  if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: true, dashed: true)  if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: true, dashed: false) if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: true, dashed: false) if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, matches, type: Story,   mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: true, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: true, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Story,   mappack: true, dashed: true)  if ret[1].empty?
 
     # If there were ID matches, but they didn't exist, raise
     if ret[1].empty? && matches.size > 0
@@ -340,11 +348,11 @@ def parse_highscoreable_by_id(msg, user = nil, mappack: false)
 
   # Vanilla variants
   matches = []
-  ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: false, dashed: true)  if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: false, dashed: true)  if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, matches, type: Level,   mappack: false, dashed: false) if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, matches, type: Episode, mappack: false, dashed: false) if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, matches, type: Story,   mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: false, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: false, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Story,   mappack: false, dashed: true)  if ret[1].empty?
 
   # If there were ID matches, but they didn't exist, raise
   if ret[1].empty? && matches.size > 0
@@ -358,7 +366,7 @@ rescue
 end
 
 # Parse a highscoreable based on a "code" (e.g. lotd/eotw/cotm)
-def parse_highscoreable_by_code(msg, user = nil, mappack: false)
+def parse_highscoreable_by_code(msg, user = nil, channel = nil, mappack: false)
   # Parse type
   lotd = !!msg[/(level of the day|lotd)/i]
   eotw = !!msg[/(episode of the week|eotw)/i]
@@ -367,7 +375,7 @@ def parse_highscoreable_by_code(msg, user = nil, mappack: false)
   type = lotd ? 'level of the day' : eotw ? 'episode of the week' : 'column of the month'
 
   # Parse mappack (manually specified and default one)
-  pack = mappack ? parse_mappack(msg) || user.mappack : nil
+  pack = mappack ? parse_mappack(msg) || default_mappack(user, channel) : nil
   ctp = pack && pack.code.upcase == 'CTP'
   type.prepend(pack.code.upcase + ' ') unless pack.code.upcase == 'MET' if pack
   perror("There is no #{type}.") if pack && !pack.lotd
@@ -383,7 +391,7 @@ end
 
 # Parse a highscoreable based on the name
 # 'mappack' specifies whether searching for mappack highscoreables is allowed, not enforced
-def parse_highscoreable_by_name(msg, user = nil, mappack: true)
+def parse_highscoreable_by_name(msg, user = nil, channel = nil, mappack: true)
   pack = parse_mappack(msg)
   klass = pack ? MappackLevel.where(mappack: pack) : Level
   name = msg.split("\n")[0][NAME_PATTERN, 2]
@@ -442,16 +450,16 @@ def parse_highscoreable(
     mappack: false, # Search mappack highscoreables as well
     user:    nil    # User who sent query (for user-specific query preferences)
   )
-  #byebug
   msg = event.content
-  user = User.find_by(discord_id: event.user.id) || User.find_by(username: event.user.name)
+  user = parse_user(event.user)
+  channel = event.channel
   perror("Couldn't find the level, episode or story you were looking for :(") if msg.to_s.strip.empty?
   ret = ['', []]
 
   # Search for highscoreable according to different criteria
-  ret = parse_highscoreable_by_id(msg, user, mappack: mappack)
-  ret = parse_highscoreable_by_code(msg, user, mappack: mappack) if ret[1].empty?
-  ret = parse_highscoreable_by_name(msg, user, mappack: mappack) if ret[1].empty?
+  ret = parse_highscoreable_by_id(msg, user, channel, mappack: mappack)
+  ret = parse_highscoreable_by_code(msg, user, channel, mappack: mappack) if ret[1].empty?
+  ret = parse_highscoreable_by_name(msg, user, channel, mappack: mappack) if ret[1].empty?
 
   # No results
   if ret[1].empty?
@@ -860,7 +868,7 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
 
   # Fall back to default if no explicit palette
   if pal.empty?
-    p = User.find_by(username: event.user.name).palette rescue nil
+    p = parse_user(event.user).palette rescue nil
     pal = p || dflt
   end
 

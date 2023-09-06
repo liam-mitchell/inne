@@ -141,8 +141,7 @@ class UserlevelPlayer < ActiveRecord::Base
   has_many :userlevel_histories, foreign_key: :player_id
 
   def print_name
-    user = User.where(playername: name).where.not(displayname: nil)
-    (user.empty? ? name : user.first.displayname).remove("`")
+    name.remove("`")
   end
 
   def newest(id = Userlevel.min_id)

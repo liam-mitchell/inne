@@ -796,6 +796,24 @@ rescue
   nil
 end
 
+# Find user by name and tag in a given server
+def find_users_in_server(name: nil, tag: nil, server: nil)
+  return [] if !server || !name
+  server.users.select{ |u|
+    u.name.downcase == name && (!tag.nil? ? u.tag == tag : true)
+  }
+rescue
+  []
+end
+
+def find_users(name: nil, tag: nil)
+  $bot.servers.map{ |_, server|
+    find_users_in_server(name: name, tag: tag, server: server)
+  }.flatten
+rescue
+  []
+end
+
 # React to a Discord msg (by ID) with an emoji (by Unicode or name)
 def react(channel, msg_id, emoji)
   channel = find_channel(name: channel) rescue nil
@@ -906,6 +924,33 @@ def change_avatar(avatar)
   end
 rescue
   perror("Too many changes! Wait and try again.")
+end
+
+# Return the channel type as per Discord's API
+#  0 Text channel
+#  1 DM
+#  2 Voice
+#  3 Group
+#  4 Category
+#  5 News / announcements
+#  6 Store
+# 10 News thread
+# 11 Public thread
+# 12 Private thread
+# 13 Stage voice
+# 14 Directory (channel in server hub)
+# 15 Forum (thread container)
+# 16 Media channel
+def channel_type(type)
+  Discordrb::Channel::TYPES[type.to_s.downcase.to_sym]
+end
+
+# Return a user's default mappack based on the event's channel of origin
+def default_mappack(user, channel)
+  return nil if !user || !user.mappack || !channel && !user.default_on_rest
+  return user.mappack if user.default_on_rest
+  return user.mappack if user.default_on_dms && channel.type == channel_type(:dm)
+  return user.mappack if user.default_on_channels && user.mappack.channels.pluck(:id).include?(channel.id)
 end
 
 # <---------------------------------------------------------------------------->
@@ -1210,7 +1255,7 @@ def check_permission(event, role)
       allowed: ['botmasters']
     }
   else
-    names = Role.owners(role).pluck(:username)
+    names = Role.owners(role).pluck(:name)
     {
       granted: Role.exists(event.user.id, role),
       allowed: role.pluralize #names

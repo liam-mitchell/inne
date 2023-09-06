@@ -1622,39 +1622,26 @@ def identify(event)
   msg = event.content
   user = event.user.name
   nick = msg[/my name is (.*)[\.]?$/i, 1]
+  perror("I couldn't figure out who you were! You have to send a message in the form #{verbatim('my name is <username>')}.") if nick.nil?
 
-  perror("I couldn't figure out who you were! You have to send a message in the form 'my name is <username>.'") if nick.nil?
+  player = parse_player("for #{nick}", nil, false, true, true)
+  user = parse_user(event.user)
+  user.player = player
 
-  user = User.find_or_create_by(username: user)
-  user.player = nick
-  user.save
-
-  event << "Awesome! From now on you can omit your username and I'll look up scores for #{nick}."
+  event << "Awesome! From now on you can omit your username and I'll look up scores for #{player.name}."
 rescue => e
   lex(e, "Error identifying.", event: event)
-end
-
-def add_steam_id(event)
-  msg = event.content
-  id = parse_steam_id(msg)
-  User.find_by(username: event.user.name).update(steam_id: id) if !User.find_by(username: event.user.name).nil? && User.find_by(steam_id: id).nil?
-  event << "Thanks! From now on I'll try to use your Steam ID to retrieve scores when I need to."
-rescue => e
-  lex(e, "Error adding Steam ID.", event: event)
 end
 
 def add_display_name(event)
   msg  = event.content
   name = msg[/my display name is (.*)[\.]?$/i, 1]
   perror("You need to specify some display name.") if name.nil?
-  user = User.find_by(username: event.user.name)
-  if user.nil?
-    event << "I don't know you, you first need to identify using 'my name is <player name>'."
-  else
-    user.update(displayname: name)
-    user.player.update(display_name: name) unless user.player.nil?
-    event << "Great, from now on #{user.playername} will show up as #{name}."
-  end
+  user = parse_user(event.user)
+  player = user.player
+  perror("I don't know what player you are yet, specify it first using #{verbatim('my name is <player name>')}.") if !player
+  player.update(display_name: name)
+  event << "Great, from now on #{player.name} will show up as #{name}."
 rescue => e
   lex(e, "Error changing display name.", event: event)
 end
@@ -1664,7 +1651,8 @@ def set_default_palette(event)
   palette = msg[/my palette is (.*)[\.\s]*$/i, 1]
   perror("You need to specify a palette name.") if palette.nil?
   palette = parse_palette(event, pal: palette, fallback: false)[:palette]
-  user = User.find_or_create_by(username: event.user.name).update(palette: palette)
+  user = parse_user(event.user)
+  user.update(palette: palette)
   event << "Great, from now on your default screenshot palette will be #{verbatim(palette)}."
 rescue => e
   lex(e, "Error setting default palette.", event: event)
@@ -1674,21 +1662,25 @@ def set_default_mappack(event)
   msg = event.content
   pack = msg[/my (?:.*?)(?:map\s*)?pack (?:.*?)is (.*)[\.\s]*$/i, 1]
   dms = !!msg[/\bdms?\b/i]
-  rest = !!msg[/always/i]
+  always = !!msg[/always/i]
   perror("You need to specify a mappack.") if pack.nil?
   mappack = parse_mappack(pack)
   perror("Mappack not recognized.") if mappack.nil?
-  User.find_or_create_by(username: event.user.name).update(
-    mappack_id:          mappack.id,
-    default_on_channels: true,
-    default_on_dms:      dms || rest,
-    default_on_rest:     rest
+  parse_user(event.user).update(
+    mappack_id:             mappack.id,
+    mappack_default_always: always,
+    mappack_default_dms:    dms || always
   )
   places = "#{mappack.code.upcase} channels"
-  places = rest ? 'Every channel' : dms ? "#{places} and DMs" : places
+  places = always ? 'Every channel' : dms ? "#{places} and DMs" : places
   event << "Great, from now on your default mappack will be #{verbatim(mappack.name)}. It will be used in: #{places}."
 rescue => e
   lex(e, 'Error setting default mappack.')
+end
+
+def set_default_mappacks(event)
+  byebug
+  user = User.parse(event)
 end
 
 def hello(event)
@@ -1914,7 +1906,7 @@ def add_role(event)
   perror("You need to provide a role in quotes.") if role.nil?
 
   Role.add(user, role)
-  event << "Added role \"#{role}\" to #{user.username}."
+  event << "Added role \"#{role}\" to #{user.name}."
 rescue => e
   lex(e, "Error adding role.", event: event)
 end
@@ -2430,24 +2422,27 @@ def respond_special(event)
   cmd = msg[/^!(\w+)/i, 1]
   return if cmd.nil?
   cmd.downcase!
-  send_reaction(event)           if cmd == 'react'
-  send_unreaction(event)         if cmd == 'unreact'
-  send_mappack_seed(event)       if cmd == 'mappack_seed'
-  send_mappack_patch(event)      if cmd == 'mappack_patch'
-  send_mappack_info(event)       if cmd == 'mappack_info'
-  send_mappack_digest(event)     if cmd == 'mappack_digest'
-  send_mappack_read(event)       if cmd == 'mappack_read'
-  send_mappack_ranks(event)      if cmd == 'mappack_ranks'
-  send_ul_csv(event)             if cmd == 'userlevel_csv'
-  send_ul_plot(event)            if cmd == 'userlevel_plot'
-  send_log_config(event)         if cmd == 'log'
-  send_meminfo(event)            if cmd == 'meminfo'
-  send_restart(event)            if cmd == 'restart'
-  send_test(event)               if cmd == 'test'
-  send_gold_check(event)         if cmd == 'gold_check'
-  send_hash(event)               if cmd == 'hash'
-  send_hashes(event)             if cmd == 'hashes'
-  send_nprofile_gen(event)       if cmd == 'nprofile_gen'
+
+  return send_reaction(event)           if cmd == 'react'
+  return send_unreaction(event)         if cmd == 'unreact'
+  return send_mappack_seed(event)       if cmd == 'mappack_seed'
+  return send_mappack_patch(event)      if cmd == 'mappack_patch'
+  return send_mappack_info(event)       if cmd == 'mappack_info'
+  return send_mappack_digest(event)     if cmd == 'mappack_digest'
+  return send_mappack_read(event)       if cmd == 'mappack_read'
+  return send_mappack_ranks(event)      if cmd == 'mappack_ranks'
+  return send_ul_csv(event)             if cmd == 'userlevel_csv'
+  return send_ul_plot(event)            if cmd == 'userlevel_plot'
+  return send_log_config(event)         if cmd == 'log'
+  return send_meminfo(event)            if cmd == 'meminfo'
+  return send_restart(event)            if cmd == 'restart'
+  return send_test(event)               if cmd == 'test'
+  return send_gold_check(event)         if cmd == 'gold_check'
+  return send_hash(event)               if cmd == 'hash'
+  return send_hashes(event)             if cmd == 'hashes'
+  return send_nprofile_gen(event)       if cmd == 'nprofile_gen'
+
+  event << "Unsupported special command."
 rescue OutteError => e
   # These exceptions are user error, so send the message out to the channel.
   event << e
@@ -2482,58 +2477,58 @@ def respond(event)
   # so we sort them according to certain priorities.
   #   For example, we put the ones that take level names first, since those may
   # contain many other words that could accidentally trigger commands.
-  return send_query(event)          if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
-  return send_screenshot(event)     if msg =~ /screenshot/i
-  return send_screenscores(event)   if msg =~ /screenscores/i || msg =~ /shotscores/i
-  return send_scoreshot(event)      if msg =~ /scoreshot/i || msg =~ /scorescreen/i
-  return send_scores(event)         if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
-  return send_analysis(event)       if msg =~ /analysis/i
-  return send_level_name(event)     if msg =~ /\blevel name\b/i
-  return send_level_id(event)       if msg =~ /\blevel id\b/i
-  return send_videos(event)         if msg =~ /\bvideo\b/i
-  return send_challenges(event)     if msg =~ /\bchallenges\b/i
-  return add_alias(event)           if msg =~ /\badd\s*(level|player)?\s*alias\b/i
-  return send_download(event)       if msg =~ /\bdownload\b/i
-  return send_demo_download(event)  if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
-  return send_trace(event)          if msg =~ /\btrace\b/i
-  return send_lotd(event, Level)    if msg =~ /lotd/i
-  return send_lotd(event, Episode)  if msg =~ /eotw/i
-  return send_lotd(event, Story)    if msg =~ /cotm/i
-  return send_table(event)          if msg =~ /\btable\b/i
-  return send_average_points(event) if msg =~ /\bpoints/i && msg =~ /average/i
-  return send_points(event)         if msg =~ /\bpoints/i
-  return send_spreads(event)        if msg =~ /spread/i
-  return send_average_rank(event)   if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
-  return send_average_lead(event)   if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
-  return send_total_score(event)    if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
-  return send_maxable(event)        if msg =~ /maxable/i
-  return send_maxed(event)          if msg =~ /maxed/i
-  return send_list(event, hm, true) if msg =~ /missing/i
-  return send_list(event, false)    if msg =~ /how many/i
-  return send_list(event)           if msg =~ /\blist\b/i
+  return send_query(event)           if msg =~ /\bsearch\b/i || msg =~ /\bbrowse\b/i
+  return send_screenshot(event)      if msg =~ /screenshot/i
+  return send_screenscores(event)    if msg =~ /screenscores/i || msg =~ /shotscores/i
+  return send_scoreshot(event)       if msg =~ /scoreshot/i || msg =~ /scorescreen/i
+  return send_scores(event)          if msg =~ /scores/i && !!msg[NAME_PATTERN, 2]
+  return send_analysis(event)        if msg =~ /analysis/i
+  return send_level_name(event)      if msg =~ /\blevel name\b/i
+  return send_level_id(event)        if msg =~ /\blevel id\b/i
+  return send_videos(event)          if msg =~ /\bvideo\b/i
+  return send_challenges(event)      if msg =~ /\bchallenges\b/i
+  return add_alias(event)            if msg =~ /\badd\s*(level|player)?\s*alias\b/i
+  return send_download(event)        if msg =~ /\bdownload\b/i
+  return send_demo_download(event)   if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
+  return send_trace(event)           if msg =~ /\btrace\b/i
+  return send_lotd(event, Level)     if msg =~ /lotd/i
+  return send_lotd(event, Episode)   if msg =~ /eotw/i
+  return send_lotd(event, Story)     if msg =~ /cotm/i
+  return send_table(event)           if msg =~ /\btable\b/i
+  return send_average_points(event)  if msg =~ /\bpoints/i && msg =~ /average/i
+  return send_points(event)          if msg =~ /\bpoints/i
+  return send_spreads(event)         if msg =~ /spread/i
+  return send_average_rank(event)    if msg =~ /average/i && msg =~ /rank/i && msg !~ /history/i && !!msg[NAME_PATTERN, 2]
+  return send_average_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
+  return send_total_score(event)     if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
+  return send_maxable(event)         if msg =~ /maxable/i
+  return send_maxed(event)           if msg =~ /maxed/i
+  return send_list(event, hm, true)  if msg =~ /missing/i
+  return send_list(event, false)     if msg =~ /how many/i
+  return send_list(event)            if msg =~ /\blist\b/i
   return send_list(event, false, false, true) if msg =~ /how cool/i 
-  return send_comparison(event)     if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
-  return send_stats(event)          if msg =~ /\bstat/i
-  return send_suggestions(event)    if msg =~ /\bworst\b/i || msg =~ /\bimprovable\b/i
-  return send_tally(event)          if msg =~ /\btally\b/i
-  return send_splits(event)         if msg =~ /\bsplits\b/i
-  return send_clean_one(event)      if msg =~ /cleanliness/i
-  return send_mappacks(event)       if msg =~ /mappacks/i
-  return identify(event)            if msg =~ /my name is/i
-  return add_steam_id(event)        if msg =~ /my steam id is/i
-  return add_display_name(event)    if msg =~ /my display name is/i
-  return set_default_palette(event) if msg =~ /my palette is/i
-  return set_default_mappack(event) if msg =~ /my (.*?)(map\s*)?pack (.*?)is/i
-  return send_unique_holders(event) if msg =~ /\bunique holders\b/i
-  return send_twitch(event)         if msg =~ /\btwitch\b/i
-  return add_role(event)            if msg =~ /\badd\s*role\b/i
-  return send_aliases(event)        if msg =~ /\baliases\b/i
-  return send_dmmc(event)           if msg =~ /\bdmmcize\b/i
-  return sanitize_archives(event)   if msg =~ /\bsanitize archives\b/
-  return update_ntrace(event)       if msg =~ /\bupdate\s*ntrace\b/i
-  return faceswap(event)            if msg =~ /faceswap/i
-  return hello(event)               if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
-  return thanks(event)              if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
+  return send_comparison(event)      if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
+  return send_stats(event)           if msg =~ /\bstat/i
+  return send_suggestions(event)     if msg =~ /\bworst\b/i || msg =~ /\bimprovable\b/i
+  return send_tally(event)           if msg =~ /\btally\b/i
+  return send_splits(event)          if msg =~ /\bsplits\b/i
+  return send_clean_one(event)       if msg =~ /cleanliness/i
+  return send_mappacks(event)        if msg =~ /mappacks/i
+  return identify(event)             if msg =~ /my name is/i
+  return add_display_name(event)     if msg =~ /my display name is/i
+  return set_default_palette(event)  if msg =~ /my palette is/i
+  return set_default_mappack(event)  if msg =~ /my (.*?)(map\s*)?pack (.*?)is/i
+  return set_default_mappacks(event) if msg =~ /use\s+default\s+(map)?\s*packs/i
+  return send_unique_holders(event)  if msg =~ /\bunique holders\b/i
+  return send_twitch(event)          if msg =~ /\btwitch\b/i
+  return add_role(event)             if msg =~ /\badd\s*role\b/i
+  return send_aliases(event)         if msg =~ /\baliases\b/i
+  return send_dmmc(event)            if msg =~ /\bdmmcize\b/i
+  return sanitize_archives(event)    if msg =~ /\bsanitize archives\b/
+  return update_ntrace(event)        if msg =~ /\bupdate\s*ntrace\b/i
+  return faceswap(event)             if msg =~ /faceswap/i
+  return hello(event)                if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
+  return thanks(event)               if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
 
   # If we get to this point, no command was executed
   event << "Sorry, I didn't understand your command."

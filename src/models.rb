@@ -1770,13 +1770,14 @@ class Player < ActiveRecord::Base
 
     if !invalid  # Parse server response and register player in database
       json = JSON.parse(res)
-      Player.find_or_create_by(metanet_id: json['user_id'].to_i).update(name: json['name'].to_s)
+      player = Player.find_or_create_by(metanet_id: json['user_id'].to_i)
+      player.update(name: json['name'].to_s)
       user = User.find_or_create_by(steam_id: json['steam_id'].to_s)
       user.update(
-        playername: json['name'].to_s,
+        player_id: player.id,
         last_active: Time.now
       )
-      user.update(username: json['name'].to_s) if user.username.nil?
+      user.update(name: json['name'].to_s) if user.name.nil?
     else         # If no response was received, attempt to log in locally
       locally = true
 
@@ -1793,10 +1794,10 @@ class Player < ActiveRecord::Base
       # Try to locate player in the database based on those params
       player = nil
       ids.each{ |id|
-        player = Player.find_by(metanet_id: id) rescue nil
+        player = Player.find_by(metanet_id: id)
         break if !player.nil?
       }
-      user = User.find_by(steam_id: steamid) rescue nil
+      user = User.find_by(steam_id: steamid)
 
       # Initialize response
       json = {}
@@ -1809,7 +1810,7 @@ class Player < ActiveRecord::Base
         
         if user.nil? && !steamid.empty?
           user = User.create_by(steam_id: steamid)
-          user.update(playername: player.name, last_active: Time.now)
+          user.update(player_id: player.id, last_active: Time.now)
         end
       else
         id = 0
@@ -1824,7 +1825,8 @@ class Player < ActiveRecord::Base
 
         if user.nil? && !steamid.empty?
           user = User.create_by(steam_id: steamid)
-          user.update(playername: name, last_active: Time.now)
+          user.update(last_active: Time.now)
+          user.update(player_id: ids[0]) if !ids.empty?
         end
       end
       res = json.to_json
@@ -1843,8 +1845,7 @@ class Player < ActiveRecord::Base
   end
 
   def print_name
-    user = User.where(playername: name).where.not(displayname: nil)
-    (user.empty? ? name : user.first.displayname).remove("`")
+    (display_name || name).remove("`")
   end
 
   def format_name(padding = DEFAULT_PADDING)
@@ -2118,7 +2119,7 @@ class Role < ActiveRecord::Base
 
   def self.add(user, role)
     self.find_or_create_by(discord_id: user.id, role: role)
-    User.find_or_create_by(username: user.username).update(discord_id: user.id)
+    User.find_or_create_by(discord_id: user.id).update(name: user.name)
   end
 
   def self.owners(role)
@@ -2129,18 +2130,13 @@ end
 class User < ActiveRecord::Base
   belongs_to :mappack
 
+  # TODO: Change this by a proper Rails association
   def player
-    Player.find_by(name: playername)
+    Player.find_by(id: player_id)
   end
 
-  def player=(person)
-    name = person.class == Player ? person.name : person.to_s
-    self.playername = name
-    self.save
-  end
-
-  def self.search(name, tag = nil)
-    $bot.servers[SERVER_ID].users.select{ |u| u.username.downcase == name && (!tag.nil? ? u.tag == tag : true) }
+  def player=(player)
+    self.update(player_id: player.id)
   end
 end
 
