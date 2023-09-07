@@ -959,7 +959,7 @@ def default_mappack(user, channel)
 
   # User-specific channel default
   return nil if !user.mappack
-  return user.mappack if user.mappack.channels.pluck(:id).include?(channel.id) || user.mappack_default_dms && channel.type == channel_type(:dm)
+  return user.mappack if user.mappack_default_dms && channel.type == channel_type(:dm)
 
   return nil
 rescue

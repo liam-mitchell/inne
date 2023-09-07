@@ -310,9 +310,11 @@ def parse_h_by_id_once(
   # Try to match pattern
   match = msg.match(pattern)
   return ['', []] if match.nil?
-  type = type.mappack if mappack
+  pack = default_mappack(user, channel)
   str = normalize_name(match)
+  str.prepend(pack.code.upcase + '-') if pack && !mappack
   matches << str
+  type = type.mappack if mappack || pack && pack.id != 0
   res = type.find_by(name: str)
   res ? ["Single match found for #{match}", [res]] : ['', []]
 rescue
@@ -371,6 +373,8 @@ def parse_highscoreable_by_code(msg, user = nil, channel = nil, mappack: false)
   lotd = !!msg[/(level of the day|lotd)/i]
   eotw = !!msg[/(episode of the week|eotw)/i]
   cotm = !!msg[/(column of the month|cotm)/i]
+  return ['', []] if !lotd && !eotw && !cotm
+  
   klass = lotd ? Level : eotw ? Episode : Story
   type = lotd ? 'level of the day' : eotw ? 'episode of the week' : 'column of the month'
 
@@ -392,34 +396,35 @@ end
 # Parse a highscoreable based on the name
 # 'mappack' specifies whether searching for mappack highscoreables is allowed, not enforced
 def parse_highscoreable_by_name(msg, user = nil, channel = nil, mappack: true)
-  pack = parse_mappack(msg)
-  klass = pack ? MappackLevel.where(mappack: pack) : Level
+  pack = mappack ? parse_mappack(msg) || default_mappack(user, channel) : nil
+  klass = pack && pack.id != 0 ? MappackLevel.where(mappack: pack) : Level
+  pack = pack && pack.id != 0 ? pack.code.upcase + ' ' : ''
   name = msg.split("\n")[0][NAME_PATTERN, 2]
 
   # Exact name match
   ret = ['', klass.where_like('longname', name, partial: false).to_a]
-  ret[0] = "Single name match found for #{name}" if ret[1].size == 1
-  ret[0] = "Multiple name matches found for #{name}" if ret[1].size > 1
+  ret[0] = "Single #{pack}name match found for #{name}" if ret[1].size == 1
+  ret[0] = "Multiple #{pack}name matches found for #{name}" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Exact alias match
   query = klass.joins("INNER JOIN level_aliases ON #{klass.table_name}.id = level_id")
   ret = ['', query.where_like('alias', name, partial: false).to_a]
-  ret[0] = "Single alias match found for #{name}" if ret[1].size == 1
-  ret[0] = "Multiple alias matches found for #{name}" if ret[1].size > 1
+  ret[0] = "Single #{pack}alias match found for #{name}" if ret[1].size == 1
+  ret[0] = "Multiple #{pack}alias matches found for #{name}" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Partial name match
   ret = ['', klass.where_like('longname', name, partial: true).to_a]
-  ret[0] = "Single partial name match found for #{name}" if ret[1].size == 1
-  ret[0] = "Multiple partial name matches found for #{name}" if ret[1].size > 1
+  ret[0] = "Single partial #{pack}name match found for #{name}" if ret[1].size == 1
+  ret[0] = "Multiple partial #{pack}name matches found for #{name}" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Closest matches
   list = klass.all.pluck(:name, :longname)
   matches = string_distance_list_mixed(name, list)
   ret = [
-    "No matches found for #{verbatim(name)}. Did you mean...",
+    "No #{pack}matches found for #{verbatim(name)}. Did you mean...",
     matches.map{ |m| klass.find_by(name: m[0]) }
   ]
   return ret if !ret[1].empty?
@@ -430,7 +435,6 @@ rescue
 end
 
 # TODO:
-# - Use 'user' to transform vanilla IDs (and names?) to the mappack of the user's choice
 # - Add QueryResult class that handles keeping track of the results,
 #       formatting them, etc. Adjust functions and comments accordingly.
 # - Add a parameter that tells this function whether multiple results should be
@@ -454,6 +458,7 @@ def parse_highscoreable(
   user = parse_user(event.user)
   channel = event.channel
   perror("Couldn't find the level, episode or story you were looking for :(") if msg.to_s.strip.empty?
+  pack = mappack ? parse_mappack(msg) || default_mappack(user, channel) : nil
   ret = ['', []]
 
   # Search for highscoreable according to different criteria
@@ -462,11 +467,12 @@ def parse_highscoreable(
   ret = parse_highscoreable_by_name(msg, user, channel, mappack: mappack) if ret[1].empty?
 
   # No results
+  pack = pack && pack.id != 0 ? pack.code.upcase + ' ' : ''
   if ret[1].empty?
     if array
-      return ['No results found.', []]
+      return ["No #{pack}results found.", []]
     else
-      perror("Couldn't find the level, episode or story you were looking for :(")
+      perror("Couldn't find the #{pack}level, episode or story you were looking for :(")
     end
   end
 

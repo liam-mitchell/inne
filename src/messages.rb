@@ -1670,7 +1670,7 @@ def set_default_mappack(event)
     mappack_default_always: always,
     mappack_default_dms:    true
   )
-  places = always ? 'Every channel' : "DMs and #{mappack.code.upcase} channels"
+  places = always ? 'Every channel' : "DMs"
   event << "Great, from now on your default mappack will be #{verbatim(mappack.name)}. It will be used in: #{places}."
 rescue => e
   lex(e, 'Error setting default mappack.')
@@ -2513,12 +2513,11 @@ def respond(event)
   return send_tally(event)           if msg =~ /\btally\b/i
   return send_splits(event)          if msg =~ /\bsplits\b/i
   return send_clean_one(event)       if msg =~ /cleanliness/i
-  return send_mappacks(event)        if msg =~ /mappacks/i
   return identify(event)             if msg =~ /my name is/i
   return add_display_name(event)     if msg =~ /my display name is/i
   return set_default_palette(event)  if msg =~ /my palette is/i
   return set_default_mappack(event)  if msg =~ /my (.*?)(map\s*)?pack (.*?)is/i
-  return set_default_mappacks(event) if msg =~ /use\s+default\s+(map)?\s*packs/i
+  return set_default_mappacks(event) if msg =~ /use\s*default\s*(map)?\s*packs/i || msg =~ /use\s*(map)?\s*pack\s*defaults/i
   return send_unique_holders(event)  if msg =~ /\bunique holders\b/i
   return send_twitch(event)          if msg =~ /\btwitch\b/i
   return add_role(event)             if msg =~ /\badd\s*role\b/i
@@ -2527,6 +2526,7 @@ def respond(event)
   return sanitize_archives(event)    if msg =~ /\bsanitize archives\b/
   return update_ntrace(event)        if msg =~ /\bupdate\s*ntrace\b/i
   return faceswap(event)             if msg =~ /faceswap/i
+  return send_mappacks(event)        if msg =~ /mappacks/i
   return hello(event)                if msg =~ /\bhello\b/i || msg =~ /\bhi\b/i
   return thanks(event)               if msg =~ /\bthank you\b/i || msg =~ /\bthanks\b/i
 
