@@ -2159,10 +2159,9 @@ class GlobalProperty < ActiveRecord::Base
   # Select a new lotd/eotw/cotm at random, and mark the current one as done
   # When all have been done, clear the marks to be able to start over
   def self.get_next(type, ctp = false)
-    klass = ctp ? type.mappack : type
-    query = ctp ? klass.where(mappack_id: 1, tab: 0) : klass
-    query.update_all(completed: nil) if query.where(completed: nil).count <= 0
-    ret = query.where(completed: nil).sample
+    type = type.mappack.where(mappack_id: 1, tab: [0, 1]) if ctp
+    type.update_all(completed: nil) if type.where(completed: nil).count <= 0
+    ret = type.where(completed: nil).sample
     ret.update(completed: true)
     ret
   end
