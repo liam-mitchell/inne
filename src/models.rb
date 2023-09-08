@@ -1771,13 +1771,11 @@ class Player < ActiveRecord::Base
     if !invalid  # Parse server response and register player in database
       json = JSON.parse(res)
       player = Player.find_or_create_by(metanet_id: json['user_id'].to_i)
-      player.update(name: json['name'].to_s)
-      user = User.find_or_create_by(steam_id: json['steam_id'].to_s)
-      user.update(
-        player_id: player.id,
+      player.update(
+        name:        json['name'].to_s,
+        steam_id:    json['steam_id'].to_s,
         last_active: Time.now
       )
-      user.update(name: json['name'].to_s) if user.name.nil?
     else         # If no response was received, attempt to log in locally
       locally = true
 
@@ -1797,7 +1795,7 @@ class Player < ActiveRecord::Base
         player = Player.find_by(metanet_id: id)
         break if !player.nil?
       }
-      user = User.find_by(steam_id: steamid)
+      player = Player.find_by(steam_id: steamid) if !player
 
       # Initialize response
       json = {}
@@ -1807,27 +1805,18 @@ class Player < ActiveRecord::Base
       if player
         json['user_id'] = player.metanet_id
         json['name'] = player.name
-        
-        if user.nil? && !steamid.empty?
-          user = User.create_by(steam_id: steamid)
-          user.update(player_id: player.id, last_active: Time.now)
-        end
+        player.update(steam_id: steamid, last_active: Time.now) if !steamid.empty?
       else
         id = 0
         name = ''
         if !ids.empty?
           id = ids[0]
           name = "Player #{ids[0]}"
-          Player.create_by(metanet_id: id, name: name)
+          player = Player.create_by(metanet_id: id, name: name)
+          player.update(steam_id: steamid, last_active: Time.now) if !steamid.empty?
         end
         json['user_id'] = id
         json['name'] = name
-
-        if user.nil? && !steamid.empty?
-          user = User.create_by(steam_id: steamid)
-          user.update(last_active: Time.now)
-          user.update(player_id: ids[0]) if !ids.empty?
-        end
       end
       res = json.to_json
     end
@@ -2212,16 +2201,16 @@ class GlobalProperty < ActiveRecord::Base
   # Select a new Steam ID to set (we do it in order, so that we can loop the list)
   # If 'fast', we only try the recently active Steam IDs
   def self.update_last_steam_id(fast = false)
-    current = (User.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
-    query = User.where.not(steam_id: nil)
+    current = (Player.find_by(steam_id: get_last_steam_id).id || 0) rescue 0
+    query = Player.where.not(steam_id: nil)
     query = query.where(active: true) if fast
-    next_user = (query.where('id > ?', current).first || query.first) rescue nil
-    set_last_steam_id(next_user.steam_id) if !next_user.nil?
+    next_player = (query.where('id > ?', current).first || query.first) rescue nil
+    set_last_steam_id(next_player.steam_id) if !next_player.nil?
   end
   
   # Mark date of when current Steam ID was active
   def self.activate_last_steam_id
-    p = User.find_by(steam_id: get_last_steam_id)
+    p = Player.find_by(steam_id: get_last_steam_id)
     p.update(last_active: Time.now) if !p.nil?
     update_steam_actives
   end
@@ -2229,8 +2218,8 @@ class GlobalProperty < ActiveRecord::Base
   # Update "active" boolean for recently active IDs
   def self.update_steam_actives
     period = FAST_PERIOD * 24 * 60 * 60
-    User.where("unix_timestamp(last_active) >= #{Time.now.to_i - period}").update_all(active: true)
-    User.where("unix_timestamp(last_active) < #{Time.now.to_i - period}").update_all(active: false)
+    Player.where("unix_timestamp(last_active) >= #{Time.now.to_i - period}").update_all(active: true)
+    Player.where("unix_timestamp(last_active) < #{Time.now.to_i - period}").update_all(active: false)
   end
 
   def self.get_avatar

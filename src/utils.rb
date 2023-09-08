@@ -291,7 +291,7 @@ end
 #   - fast:      Only try the recently active Steam IDs
 def get_data(uri_proc, data_proc, err, *vargs, fast: false)
   attempts ||= 0
-  ids = User.where.not(steam_id: nil)
+  ids = Player.where.not(steam_id: nil)
   ids = ids.where(active: true) if fast
   count = ids.count
   i = 0
