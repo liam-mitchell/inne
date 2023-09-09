@@ -2120,8 +2120,8 @@ class User < ActiveRecord::Base
   belongs_to :mappack
 
   # TODO: Change this by a proper Rails association
-  def player
-    Player.find_by(id: player_id)
+  def player(userlevel: false)
+    (userlevel ? UserlevelPlayer : Player).find_by(id: player_id)
   end
 
   def player=(player)

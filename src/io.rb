@@ -145,24 +145,39 @@ end
 
 # The following are 2 auxiliary functions for the next ones
 #   Parse a single player when a name has been provided
-def parse_player_explicit(name, playerClass = Player)
-  player = playerClass.where.not(metanet_id: nil).find_by(name: name) rescue nil
-  player = Player.joins('INNER JOIN player_aliases ON players.id = player_aliases.player_id')
-                 .where(["player_aliases.alias = ?", name])
-                 .take rescue nil if player.nil? && playerClass == Player
-  perror("#{name} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad...") if player.nil?
-  player
+def parse_player_explicit(name, userlevel = false)
+  return nil if name.strip.empty?
+
+  # Check if player with this name exists
+  player = (userlevel ? UserlevelPlayer : Player).where.not(metanet_id: nil).find_by(name: name)
+  return player if player
+
+  # Check if player with this alias exists
+  if !userlevel
+    player = Player.joins('INNER JOIN player_aliases ON players.id = player_aliases.player_id')
+                   .where(["player_aliases.alias = ?", name])
+                   .take
+    return player if player
+  end
+
+  # No results
+  perror("#{name} doesn't have any high scores! Either you misspelled the name / alias, or they're exceptionally bad...")
 end
 
 #   Parse a single player when a username has been provided
-def parse_player_implicit(username, playerClass = Player)
-  # Check if player with username exists
-  player = playerClass.where.not(metanet_id: nil).find_by(name: username) rescue nil
-  return player if !player.nil?
-  # Check if user identified with another name
-  user = User.find_by(name: username) rescue nil
-  perror("I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?") if user.nil? || user.player.nil?
-  parse_player_explicit(user.player.name, playerClass)
+def parse_player_implicit(event, userlevel = false)
+  username = event.user.name
+
+  # Check if the user is identified
+  user = User.find_by(discord_id: event.user.id)
+  return user.player(userlevel: userlevel) if user && user.player
+
+  # Check if player with same username exists
+  player = (userlevel ? UserlevelPlayer : Player).where.not(metanet_id: nil).find_by(name: username)
+  return player if player
+
+  # No results
+  perror("I couldn't find a player with your username! Have you identified yourself (with '@outte++ my name is <N++ display name>')?")
 end
 
 # Fetch a Player or UserlevelPlayer from a text string.
@@ -170,20 +185,19 @@ end
 # TODO: Change args to kwargs
 # TODO: Save discord_ids, and use them rather than username to distinguish
 def parse_player(
-    msg,               # Text string to parse
-    username,          # Name of Discord user, to infer player name
+    event,             # Originating event (contains text, user...)
     userlevel = false, # Whether to search in for userlevel players or regular ones
     explicit  = false, # Only parse explicit names, without inferring from username
     enforce   = false, # Even more, raise exception if no explicit name found
     implicit  = false, # The opposite, only infer from username
-    third     = false  # Allow 3rd person specification (e.g. "is xela" rather than "for xela")
+    third     = false, # Allow 3rd person specification (e.g. "is xela" rather than "for xela")
+    flag:     nil      # For special commands, flag that will contain the player name
   )
-  msg = msg.gsub(/"/, '')
-  p = msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
-  playerClass = userlevel ? UserlevelPlayer : Player
+  msg = event.content.gsub(/"/, '')
+  p = flag ? parse_flags(msg)[flag.to_sym].to_s : msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
 
   if implicit
-    parse_player_implicit(username, playerClass)
+    parse_player_implicit(event, userlevel)
   else
     if p.nil?
       if explicit
@@ -193,29 +207,29 @@ def parse_player(
           nil
         end
       else
-        parse_player_implicit(username, playerClass)
+        parse_player_implicit(event, userlevel)
       end
     else
-      parse_player_explicit(p, playerClass)
+      parse_player_explicit(p, userlevel)
     end
   end
 end
 
 # Parse a pair of players. The user may provide 0, 1 or 2 names in different
 # formats, so we act accordingly and reuse the previous method.
-def parse_players(msg, username, userlevel = false)
-  playerClass = userlevel ? UserlevelPlayer : Player
+def parse_players(event, userlevel = false)
+  msg = event.content
   p = parse_term(msg, global: true)
   case p.size
   when 0
-    p1 = parse_player(msg, username, userlevel, true, true, false)
-    p2 = parse_player(msg, username, userlevel, false, false, true)
+    p1 = parse_player(event, userlevel, true, true, false)
+    p2 = parse_player(event, userlevel, false, false, true)
   when 1
-    p1 = parse_player_explicit(p[0], playerClass)
-    p2 = parse_player(msg, username, userlevel, false, false, true)
+    p1 = parse_player_explicit(p[0], userlevel)
+    p2 = parse_player(event, userlevel, false, false, true)
   when 2
-    p1 = parse_player_explicit(p[0], playerClass)
-    p2 = parse_player_explicit(p[1], playerClass)
+    p1 = parse_player_explicit(p[0], userlevel)
+    p2 = parse_player_explicit(p[1], userlevel)
   else
     perror("Too many players! Please enter either 1 or 2.")
   end
@@ -223,7 +237,6 @@ def parse_players(msg, username, userlevel = false)
 end
 
 def parse_many_players(msg, userlevel = false)
-  playerClass = userlevel ? UserlevelPlayer : Player
   msg = msg[/without (.*)/i, 1] || ""  
   players = msg.split(/,|\band\b|\bor\b/i).flatten.map(&:strip).reject(&:empty?)
   players.map{ |name| parse_player_explicit(name) }
@@ -948,6 +961,8 @@ def parse_flags(msg)
      .map{ |k, v| [k, v.nil? ? nil : v.squish] }
      .to_h
      .symbolize_keys
+rescue
+  {}
 end
 
 def format_rank(rank)

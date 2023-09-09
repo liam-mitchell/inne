@@ -1004,7 +1004,7 @@ end
 
 def send_userlevel_count(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
@@ -1067,7 +1067,7 @@ end
 
 def send_userlevel_points(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
@@ -1085,7 +1085,7 @@ end
 
 def send_userlevel_avg_points(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
@@ -1102,7 +1102,7 @@ end
 
 def send_userlevel_avg_rank(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
@@ -1119,7 +1119,7 @@ end
 
 def send_userlevel_total_score(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
@@ -1135,7 +1135,7 @@ end
 
 def send_userlevel_avg_lead(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
@@ -1152,7 +1152,7 @@ end
 
 def send_userlevel_list(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   rank      = parse_rank(msg) || 20
@@ -1177,7 +1177,7 @@ end
 
 def send_userlevel_stats(event)
   msg       = event.content
-  player    = parse_player(msg, event.user.name, true)
+  player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
@@ -1205,7 +1205,7 @@ end
 def send_userlevel_spreads(event)
   msg    = event.content
   n      = (msg[/([0-9][0-9]?)(st|nd|rd|th)/, 1] || 1).to_i
-  player = parse_player(msg, nil, true, true, false)
+  player = parse_player(event, true, true, false)
   small  = !!(msg =~ /smallest/)
   full   = parse_global(msg)
   perror("I can't show you the spread between 0th and 0th...") if n == 0
@@ -1228,7 +1228,7 @@ end
 
 def send_userlevel_maxed(event)
   msg       = event.content
-  player    = parse_player(msg, nil, true, true, false)
+  player    = parse_player(event, true, true, false)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
@@ -1248,7 +1248,7 @@ end
 
 def send_userlevel_maxable(event)
   msg       = event.content
-  player    = parse_player(msg, nil, true, true, false)
+  player    = parse_player(event, true, true, false)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
@@ -1336,7 +1336,7 @@ end
 def send_userlevel_highscoring_summary(event)
   # Parse message parameters
   msg       = event.content
-  player    = parse_player(msg, nil, true, true, false)
+  player    = parse_player(event, true, true, false)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)

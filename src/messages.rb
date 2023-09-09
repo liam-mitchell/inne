@@ -20,7 +20,7 @@ require_relative 'userlevels.rb'
 def send_list(event, file = true, missing = false, third = false)
   # Parse message parameters
   msg     = event.content
-  player  = parse_player(msg, event.user.name, false, false, false, false, third)
+  player  = parse_player(event, false, false, false, false, third)
   msg     = msg.remove!(player.name)
   mappack = parse_mappack(msg)
   board   = parse_board(msg, 'hs')
@@ -301,7 +301,7 @@ end
 # Return a player's total score (sum of scores) in specified tabs and type
 def send_total_score(event)
   # Parse messsage parameters
-  player = parse_player(event.content, event.user.name)
+  player = parse_player(event)
   type   = parse_type(event.content)
   tabs   = parse_tabs(event.content)
 
@@ -325,7 +325,7 @@ def send_spreads(event)
   n      = (parse_rank(msg) || 2) - 1
   type   = parse_type(msg) || Level
   tabs   = parse_tabs(msg)
-  player = parse_player(msg, nil, false, true, false)
+  player = parse_player(event, false, true, false)
   small  = !!(msg =~ /smallest/)
   perror("I can't show you the spread between 0th and 0th...") if n == 0
 
@@ -558,7 +558,7 @@ end
 def send_stats(event)
   # Parse message parameters
   msg    = event.content
-  player = parse_player(msg, event.user.name)
+  player = parse_player(event)
   tabs   = parse_tabs(msg)
   ties   = parse_ties(msg)
 
@@ -640,7 +640,7 @@ end
 def send_maxable(event, maxed = false)
   # Parse message parameters
   msg     = event.content
-  player  = parse_player(msg, event.user.name, false, !msg[/missing/i], false)
+  player  = parse_player(event, false, !msg[/missing/i], false)
   type    = parse_type(msg) || Level
   tabs    = parse_tabs(msg)
   full    = parse_full(msg)
@@ -797,7 +797,7 @@ end
 def send_suggestions(event)
   # Parse message parameters
   msg    = event.content
-  player = parse_player(msg, event.user.name)
+  player = parse_player(event)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
   cool   = parse_cool(msg)
@@ -863,7 +863,7 @@ end
 def send_points(event, avg = false, rank = false)
   # Parse message parameters
   msg    = event.content
-  player = parse_player(msg, event.user.name)
+  player = parse_player(event)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
 
@@ -907,7 +907,7 @@ end
 def send_average_lead(event)
   # Parse message parameters
   msg    = event.content
-  player = parse_player(msg, event.user.name)
+  player = parse_player(event)
   type   = parse_type(msg) || Level
   tabs   = parse_tabs(msg)
 
@@ -927,7 +927,7 @@ end
 def send_table(event)
   # Parse message parameters
   msg    = event.content
-  player = parse_player(msg, event.user.name)
+  player = parse_player(event)
   cool   = parse_cool(msg)
   star   = parse_star(msg)
   global = false # Table for a user, or the community
@@ -1042,7 +1042,7 @@ def send_comparison(event)
   msg    = event.content
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
-  p1, p2 = parse_players(msg, event.user.name)
+  p1, p2 = parse_players(event)
 
   # Retrieve comparison info
   comp   = Player.comparison(type, tabs, p1, p2)
@@ -1622,9 +1622,9 @@ def identify(event)
   msg = event.content
   user = event.user.name
   nick = msg[/my name is (.*)[\.]?$/i, 1]
-  perror("I couldn't figure out who you were! You have to send a message in the form #{verbatim('my name is <username>')}.") if nick.nil?
+  perror("You have to send a message in the form #{verbatim('my name is <username>')}.") if nick.nil?
 
-  player = parse_player("for #{nick}", nil, false, true, true)
+  player = parse_player(event, false, true, true, false, true)
   user = parse_user(event.user)
   user.player = player
 
@@ -1924,7 +1924,7 @@ def add_alias(event)
   type = !!msg[/\blevel\b/i] ? 'level' : (!!msg[/\bplayer\b/i] ? 'player' : nil)
   perror("You need to provide an alias type: level, player.") if type.nil?
 
-  entry = type == 'level' ? parse_highscoreable(event) : parse_player(msg, event.user.name)
+  entry = type == 'level' ? parse_highscoreable(event) : parse_player(event)
   entry.add_alias(aka)
   event << "Added alias \"#{aka}\" to #{type} #{entry.name}."
 rescue => e
@@ -2101,7 +2101,7 @@ def send_mappack_patch(event)
   flags = parse_flags(msg)
   id = flags[:id]
   highscoreable = parse_highscoreable(event, mappack: true) if !id
-  player = parse_player('for ' + flags[:p], nil, false, true, true) if !id
+  player = parse_player(event, false, true, true, flag: :p) if !id
   score = parse_score(flags[:s])
   event << MappackScore.patch_score(id, highscoreable, player, score)
 rescue => e
@@ -2318,7 +2318,7 @@ def send_hash(event)
 
   # Parse player, if provided
   if flags[:p]
-    player = parse_player('for ' + flags[:p], '', false, true)
+    player = parse_player(event, false, true, flag: :p)
     perror("Player #{flags[:p]} not found.") if !player
     score = h.leaderboard.find{ |s| s['name'] == player.name }
     perror("No score by #{player.name} in #{h.name}.") if !score
@@ -2367,7 +2367,7 @@ def send_nprofile_gen(event)
   flags = parse_flags(msg)
   perror("You need to provide a player") if !flags.key?(:p)
   perror("You need to provide a mappack") if !flags.key?(:m)
-  player = parse_player('for ' + flags[:p].to_s, '', false, true)
+  player = parse_player(event, false, true, flag: :p)
   perror("Player not found") if player.nil?
   mappack = parse_mappack(flags[:m], true)
   mid = mappack.id
