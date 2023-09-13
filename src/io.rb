@@ -356,8 +356,8 @@ def parse_highscoreable_by_id(msg, user = nil, channel = nil, mappack: false)
 
     # If there were ID matches, but they didn't exist, raise
     if ret[1].empty? && matches.size > 0
-      ids = matches.map{ |m| verbatim(m) }.to_sentence
-      perror("There is no mappack level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}")
+      ids = matches.uniq.map{ |m| verbatim(m) }.to_sentence(two_words_connector: ' or ', last_word_connector: ', or ')
+      perror("There is no mappack level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}.")
     end
   end
 
@@ -371,8 +371,8 @@ def parse_highscoreable_by_id(msg, user = nil, channel = nil, mappack: false)
 
   # If there were ID matches, but they didn't exist, raise
   if ret[1].empty? && matches.size > 0
-    ids = matches.map{ |m| verbatim(m) }.to_sentence
-    perror("There is no level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}")
+    ids = matches.uniq.map{ |m| verbatim(m) }.to_sentence(two_words_connector: ' or ', last_word_connector: ', or ')
+    perror("There is no level/episode/story by the #{'ID'.pluralize(matches.size)}: #{ids}.")
   end
 
   ret

@@ -2404,6 +2404,35 @@ rescue => e
   lex(e, "Error generating nprofile.", event: event)
 end
 
+# Remove duplicate and obsolete users, fill in Discord ID field
+def sanitize_users(event)
+  # Remove obsolete users, i.e., those whose name doesn't exist in the server
+  # These users are now unreachable, as a consequence of outte using usernames
+  # rather than Discord IDs for a long time (now changed)
+  users = User.all.map{ |u| [u, find_users(name: u.name)] }
+  users.select{ |u| u.last.empty? }.each{ |u| u.first.delete }
+  users.reject!{ |u| u.last.empty? }
+
+  # Fill in Discord ID field for all the remaining users, unless there are
+  # multiple matches, in which case we will do it manually later
+  users.each{ |u|
+    u.first.update(discord_id: u.last.first.id, name: u.last.first.name) if u.last.size == 1
+  }
+
+  # Remove duplicate users, while keeping the relevant info
+  names = User.group(:name).having('count(name) > 1').pluck(:name)
+  names.each{ |n|
+    player_id = User.where(name: n).where.not(player_id: nil).order(id: :desc).first.player_id rescue nil
+    palette = User.where(name: n).where.not(palette: nil).order(id: :desc).first.palette rescue nil
+
+    copies = User.where(name: n).order(id: :desc).to_a
+    copies[0].update(player_id: player_id, palette: palette)
+    copies[1..-1].each(&:delete)
+  }
+
+  event << "Sanitized users"
+end
+
 # Special commands can only be executed by the botmaster, and are intended to
 # manage the bot on the fly without having to restart it, or to print sensitive
 # information.
@@ -2441,6 +2470,7 @@ def respond_special(event)
   return send_hash(event)               if cmd == 'hash'
   return send_hashes(event)             if cmd == 'hashes'
   return send_nprofile_gen(event)       if cmd == 'nprofile_gen'
+  return sanitize_users(event)          if cmd == 'sanitize_users'
 
   event << "Unsupported special command."
 rescue OutteError => e

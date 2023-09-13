@@ -800,7 +800,7 @@ end
 def find_users_in_server(name: nil, tag: nil, server: nil)
   return [] if !server || !name
   server.users.select{ |u|
-    u.name.downcase == name && (!tag.nil? ? u.tag == tag : true)
+    u.name.downcase == name.downcase && (!tag.nil? ? u.tag == tag : true)
   }
 rescue
   []
