@@ -262,7 +262,10 @@ def parse_discord_user(msg)
   when 1
     return users.first
   else
-    list = users.map{ |u| u.name + '#' + u.tag }.join("\n")
+    list = users.map{ |u| [u.name, u.tag.to_i, u.joined_at] }
+                .sort_by{ |u| [u[2], u[1]] }
+                .map{ |u| u[0] + '#' + u[1].to_s.ljust(4) + ' ' + u[2].strftime('%Y/%m/%d') }
+                .join("\n")
     perror("Multiple users named #{parts[0]} found, please include the numerical tag as well:\n#{format_block(list)}")
   end
 end

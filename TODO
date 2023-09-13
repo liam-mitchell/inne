@@ -1,5 +1,4 @@
 Ongoing:
-- Manually add missing Discord IDs (add a special command?)
 - Userlevels are now broken (for implicit parsing anyway) because the player_id is being used in Users (rather than userlevel_player_id). Merge userlevel_players and userlevel_authors with players. CAREFUL, several tables might depend on these tables (e.g. userlevel_scores will store the userlevel_player.id), gotta migrate all of these.
 - Ensure the new User structure has been well-adapted everywhere (e.g. for Player.login)
 

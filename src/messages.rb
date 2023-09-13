@@ -2431,6 +2431,32 @@ def sanitize_users(event)
   }
 
   event << "Sanitized users"
+rescue => e
+  lex(e, "Error sanitizing users.", event: event)
+end
+
+# Manually update the Discord ID of a user by name
+def set_user_id(event)
+  msg = remove_command(event.content)
+  flags = parse_flags(msg)
+  perror("You must provide a username.") if !flags[:name]
+  name = flags[:name].split('#').first
+  user = User.where(name: name)
+  perror("No user found by the name #{verbatim(name)}.") if user.empty?
+  perror("Multiple users found by the name #{verbatim(name)}.") if user.size > 1
+  user = user.first
+  discord_user = parse_discord_user("for #{flags[:name]}")
+  old_id = user.discord_id
+  new_id = discord_user.id
+  perror("#{user.name}'s Discord ID is already #{old_id}.") if old_id == new_id
+  user.update(discord_id: new_id)
+  if old_id
+    event << "Changed #{user.name}'s Discord ID from #{old_id} to #{new_id}."
+  else
+    event << "Set #{user.name}'s Discord ID to #{new_id}."
+  end
+rescue => e
+  lex(e, "Error setting user ID.", event: event)
 end
 
 # Special commands can only be executed by the botmaster, and are intended to
@@ -2471,6 +2497,7 @@ def respond_special(event)
   return send_hashes(event)             if cmd == 'hashes'
   return send_nprofile_gen(event)       if cmd == 'nprofile_gen'
   return sanitize_users(event)          if cmd == 'sanitize_users'
+  return set_user_id(event)             if cmd == 'set_user_id'
 
   event << "Unsupported special command."
 rescue OutteError => e
