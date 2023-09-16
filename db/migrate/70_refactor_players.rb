@@ -4,6 +4,7 @@ class RefactorPlayers < ActiveRecord::Migration[5.1]
     add_column :players, :steam_id, :string
     add_column :players, :last_active, :timestamp
     add_column :players, :active, :boolean
+    Player.reset_column_information
 
     # Find players and userlevel_players
     User.where.not(steam_id: nil).each{ |u|

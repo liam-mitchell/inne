@@ -216,7 +216,6 @@ class UserlevelHistory < ActiveRecord::Base
         timestamp:  time,
         rank:       rank,
         player_id:  r[0].id,
-        metanet_id: r[0].metanet_id,
         count:      r[1]
       }
     end
