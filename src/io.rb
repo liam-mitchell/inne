@@ -183,7 +183,6 @@ end
 # Fetch a Player or UserlevelPlayer from a text string.
 # Optionally may also infer the player from the username.
 # TODO: Change args to kwargs
-# TODO: Save discord_ids, and use them rather than username to distinguish
 def parse_player(
     event,             # Originating event (contains text, user...)
     userlevel = false, # Whether to search in for userlevel players or regular ones
@@ -196,23 +195,12 @@ def parse_player(
   msg = event.content.gsub(/"/, '')
   p = flag ? parse_flags(msg)[flag.to_sym].to_s : msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
 
-  if implicit
-    parse_player_implicit(event, userlevel)
-  else
-    if p.nil?
-      if explicit
-        if enforce
-          perror("You need to specify a player name for this function.")
-        else
-          nil
-        end
-      else
-        parse_player_implicit(event, userlevel)
-      end
-    else
-      parse_player_explicit(p, userlevel)
-    end
-  end
+  return parse_player_implicit(event, userlevel) if implicit
+  return parse_player_explicit(p, userlevel)     if p
+  return parse_player_implicit(event, userlevel) if !explicit
+  perror("You need to specify a player name.")   if enforce
+
+  nil
 end
 
 # Parse a pair of players. The user may provide 0, 1 or 2 names in different
