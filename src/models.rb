@@ -595,7 +595,7 @@ module Downloadable
 
   def save_scores(updated)
     ActiveRecord::Base.transaction do
-      # Save starts so we can reassign them again later
+      # Save stars so we can reassign them again later
       stars = scores.where(star: true).pluck(:player_id) if self.class != Userlevel
 
       # Loop through all new scores
@@ -1774,7 +1774,8 @@ class Player < ActiveRecord::Base
       player.update(
         name:        json['name'].to_s,
         steam_id:    json['steam_id'].to_s,
-        last_active: Time.now
+        last_active: Time.now,
+        active:      true
       )
     else         # If no response was received, attempt to log in locally
       locally = true
@@ -1805,7 +1806,7 @@ class Player < ActiveRecord::Base
       if player
         json['user_id'] = player.metanet_id
         json['name'] = player.name
-        player.update(steam_id: steamid, last_active: Time.now) if !steamid.empty?
+        player.update(steam_id: steamid) if !steamid.empty?
       else
         id = 0
         name = ''
@@ -1813,7 +1814,7 @@ class Player < ActiveRecord::Base
           id = ids[0]
           name = "Player #{ids[0]}"
           player = Player.create_by(metanet_id: id, name: name)
-          player.update(steam_id: steamid, last_active: Time.now) if !steamid.empty?
+          player.update(steam_id: steamid) if !steamid.empty?
         end
         json['user_id'] = id
         json['name'] = name

@@ -790,6 +790,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   invert = h[:invert]
   if query.nil?
     search, author, msg = parse_title_and_author(msg, false)
+    search = search.to_s # Prev func might return int
     search = unescape(search) if search.is_a?(String)
     author = unescape(author) if author.is_a?(String)
     author = UserlevelAuthor.parse(author)
@@ -797,8 +798,8 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     search = query[:title]
     author = UserlevelAuthor.parse(query[:author])
   end
-  page   = parse_page(msg, page, reset_page, !event.nil? ? event.message.components : nil)
-  mode   = MODES.select{ |k, v| v == (mode || parse_mode(msg, !socket.nil?)) }.keys.first
+  page = parse_page(msg, page, reset_page, !event.nil? ? event.message.components : nil)
+  mode = MODES.select{ |k, v| v == (mode || parse_mode(msg, !socket.nil?)) }.keys.first
 
   # Determine the category / tab
   cat = 10 # newest
