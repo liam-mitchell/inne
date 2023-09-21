@@ -69,7 +69,7 @@ def send_list(event, file = true, missing = false, third = false)
   header = "#{player.print_name} #{missing ? 'is missing' : 'has'} "
   header << "#{count} out of #{max} #{cool} #{tied} #{boardB} #{tabs} #{type} "
   header << "#{range}#{star} #{sing} scores #{ties} #{mappackB}"
-  event << format_header(header, close: '.')
+  event << format_header(header, close: '.', upcase: false)
   if file
     list = list.map{ |s| high ? s : format_list_score(s, !mappack.nil? ? board : nil) }.join("\n")
     if count <= 20
