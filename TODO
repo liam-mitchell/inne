@@ -23,7 +23,6 @@ Ongoing:
 - Screenscores for userlevels.
 - Add "maxed" and "maxable" to "list" and "how many".
 - Add "ownage" and others to "table".
-- In "spread", when nth score doesn't exist, just take the last one. Apply to userlevels version too.
 - Perhaps add rank to how many function, i.e. "username has n/N top20 scores (ranked kth)".
 - Report: Add # of 0ths, i.e., "• There were 23 new scores by 9 players in 18 levels, making the boards 15.083 seconds harder including X new 0ths increasing the total 0th score by 1.050 seconds."
 - Save how many times each streamer has streamed the game, and perhaps indicate it somehow if it's among the top ones (dope gamer alert!)
@@ -50,7 +49,7 @@ Ongoing:
 - Analysis: Implement for episodes and stories and userlevels and mappacks
 - "percent" for table
 - maybe modify function 'nav' from 'HighScore' module to allow for arbitrary offsets, and have some special sign to denote 'first' and 'last'
-- add "full" to everything that outputs lists (spreads, missing, etc), maybe nav too
+- add "full" to everything that outputs lists (missing, etc), maybe nav too
 - add "suggestions" command (random selection of scores the player doesn't have)
 - allow "missing" parameter in table, just like in "how many" or "list"
 - use Score.filter with a Player for some of the Player methods, like range_ns, improvable, table...

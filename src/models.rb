@@ -684,40 +684,57 @@ module Highscoreable
     rank.nil? ? '--' : rank.to_s.rjust(2, '0')
   end
 
-  def self.spreads(n, type, tabs, small = false, player_id = nil)
-    n = n.clamp(0,19)
-    type = ensure_type(type)
+  # Fetches list of highscoreables with largest/smallest difference between
+  # the 0th and Nth scores.
+  # @par small:     Whether to find smallest or largest differences
+  # @par player_id: Include only levels where the 0th is owned by player
+  def self.spreads(n, type, tabs, small = false, player_id = nil, full = false, mappack = nil, board = 'hs')
+    # Sanitize parameters
+    n      = n.clamp(0,19)
+    type   = ensure_type(type, !mappack.nil?)
+    type   = type.mappack if mappack
+    klass  = mappack ? MappackScore.where(mappack: mappack) : Score
+    sfield = mappack ? "score_#{board}" : 'score'
+    rfield = mappack ?  "rank_#{board}" : 'rank'
+    scale  = mappack && board == 'hs' ? 60.0 : 1
     bench(:start) if BENCHMARK
-    # retrieve player's 0ths if necessary
+
+    # Retrieve player's 0ths to filter scores, if necessary
     if !player_id.nil?
-      ids = Score.where(highscoreable_type: type.to_s, rank: 0, player_id: player_id)
+      ids = klass.where(highscoreable_type: type.to_s, rfield => 0, player_id: player_id)
       ids = ids.where(tab: tabs) if !tabs.empty?
       ids = ids.pluck('highscoreable_id')
     end
-    # retrieve required scores and compute spreads
-    ret1 = Score.where(highscoreable_type: type.to_s, rank: 0)
+
+    # Fetch required scores and compute spreads
+    ret1 = klass.where(highscoreable_type: type.to_s, rfield => 0)
     ret1 = ret1.where(tab: tabs) if !tabs.empty?
     ret1 = ret1.where(highscoreable_id: ids) if !player_id.nil?
-    ret1 = ret1.pluck(:highscoreable_id, :score).to_h
-    ret2 = Score.where(highscoreable_type: type.to_s, rank: n)
+    ret1 = ret1.pluck(:highscoreable_id, sfield).to_h
+
+    ret2 = klass.where(highscoreable_type: type.to_s, rfield => n)
     ret2 = ret2.where(tab: tabs) if !tabs.empty?
     ret2 = ret2.where(highscoreable_id: ids) if !player_id.nil?
-    ret2 = ret2.pluck(:highscoreable_id, :score).to_h
-    ret = ret2.map{ |id, s| [id, ret1[id] - s] }
+    ret2 = ret2.pluck(:highscoreable_id, sfield).to_h
+
+    ret = ret2.map{ |id, s| [id, (ret1[id] - s).abs / scale] }
               .sort_by{ |id, s| small ? s : -s }
-              .take(NUM_ENTRIES)
-              .to_h
-    # retrieve level names
+    ret = ret.take(NUM_ENTRIES) if !full
+    ret = ret.to_h
+
+    # Retrieve level names
     lnames = type.where(id: ret.keys)
                  .pluck(:id, :name)
                  .to_h
-    # retrieve player names
-    pnames = Score.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rank: 0)
-                  .joins("INNER JOIN players ON players.id = scores.player_id")
-                  .pluck('scores.highscoreable_id', 'players.name', 'players.display_name')
-                  .map{ |a, b, c| [a, [b, c]] }
+    
+    # Retrieve player names
+    pnames = klass.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rfield => 0)
+                  .joins("INNER JOIN players ON players.id = player_id")
+                  .pluck('highscoreable_id', 'IF(display_name IS NOT NULL, display_name, name)')
                   .to_h
-    ret = ret.map{ |id, s| [lnames[id], s, pnames[id][1].nil? ? pnames[id][0] : pnames[id][1]] }
+
+    # Format response
+    ret = ret.map{ |id, s| [lnames[id], s, pnames[id]] }
     bench(:step) if BENCHMARK
     ret
   end

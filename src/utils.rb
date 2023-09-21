@@ -971,8 +971,9 @@ end
 # <---------------------------------------------------------------------------->
 
 # sometimes we need to make sure there's exactly one valid type
-def ensure_type(type)
-  type.nil? ? Level : (type.is_a?(Array) ? (type.include?(Level) ? Level : type.flatten.first) : type)
+def ensure_type(type, mappack = false)
+  base = mappack ? MappackLevel : Level
+  type.nil? ? base : (type.is_a?(Array) ? (type.include?(base) ? base : type.flatten.first) : type)
 end
 
 # Converts any type input to an array of type classes

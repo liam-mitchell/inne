@@ -321,30 +321,39 @@ end
 # 0th and Nth rank
 def send_spreads(event)
   # Parse message parameters
-  msg    = event.content
-  n      = (parse_rank(msg) || 2) - 1
-  type   = parse_type(msg) || Level
-  tabs   = parse_tabs(msg)
-  player = parse_player(event, false, true, false)
-  small  = !!(msg =~ /smallest/)
+  msg     = event.content
+  n       = (parse_rank(msg) || 2) - 1
+  type    = parse_type(msg) || Level
+  tabs    = parse_tabs(msg)
+  player  = parse_player(event, false, true, false)
+  full    = parse_full(msg)
+  mappack = parse_mappack(msg)
+  board   = parse_board(msg, 'hs')
+  small   = !!(msg =~ /smallest/)
+  perror("Metanet maps only have highscore mode for now.") if !mappack && board != 'hs'
+  perror("This function is only available for highscore and speedrun modes for now.") if !['hs', 'sr'].include?(board)
   perror("I can't show you the spread between 0th and 0th...") if n == 0
 
   # Retrieve and format spreads
-  spreads  = Highscoreable.spreads(n, type, tabs, small, player.nil? ? nil : player.id)
+  sr       = board == 'sr'
+  spreads  = Highscoreable.spreads(n, type, tabs, small, player.nil? ? nil : player.id, full, mappack, board)
   namepad  = spreads.map{ |s| s[0].length }.max
-  scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + 4
+  scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + (sr ? 0 : 4)
+  fmt      = sr ? 'd' : '.3f'
   spreads  = spreads.each_with_index
-                    .map { |s, i| "#{"%02d" % i}: #{"%-#{namepad}s" % s[0]} - #{"%#{scorepad}.3f" % s[1]} - #{s[2]}"}
+                    .map { |s, i| "#{"%02d" % i}: #{"%-#{namepad}s" % s[0]} - #{"%#{scorepad}#{fmt}" % s[1]} - #{s[2]}"}
                     .join("\n")
 
   # Format response
-  spread = small ? 'smallest' : 'largest'
-  rank   = n.ordinalize
-  type   = format_type(type).downcase.pluralize
-  tabs   = tabs.empty? ? 'All ' : format_tabs(tabs)
-  player = !player.nil? ? "owned by #{player.print_name} " : ''
-  event << "#{tabs} #{type} #{player} with the #{spread} spread between 0th and #{rank}:".squish
-  event << format_block(spreads)
+  spread  = small ? 'smallest' : 'largest'
+  rank    = n.ordinalize
+  type    = format_type(type).downcase.pluralize
+  tabs    = tabs.empty? ? 'All ' : format_tabs(tabs)
+  player  = !player.nil? ? "owned by #{player.print_name} " : ''
+  mappack = format_mappack(mappack)
+  board   = format_board(board)
+  event << "#{tabs} #{type} #{player} with the #{spread} #{board} spread between 0th and #{rank} #{mappack}:".squish
+  full ? send_file(event, spreads, 'spreads.txt') : event << format_block(spreads)
 rescue => e
   lex(e, "Error performing spreads.", event: event)
 end
