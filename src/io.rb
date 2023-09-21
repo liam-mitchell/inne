@@ -471,16 +471,17 @@ def parse_highscoreable(
   ret = parse_highscoreable_by_name(msg, user, channel, mappack: mappack) if ret[1].empty?
 
   # No results
-  pack = pack && pack.id != 0 ? pack.code.upcase + ' ' : ''
+  pack_str = pack && pack.id != 0 ? pack.code.upcase + ' ' : ''
   if ret[1].empty?
     if array
-      return ["No #{pack}results found.", []]
+      return ["No #{pack_str}results found.", []]
     else
-      perror("Couldn't find the #{pack}level, episode or story you were looking for :(")
+      perror("Couldn't find the #{pack_str}level, episode or story you were looking for :(")
     end
   end
 
-  # Transform to single result if necessary
+  # Transform to vanilla and single result if appropriate
+  ret = [ret[0], ret[1].map{ |m| m.vanilla }]
   ret = ret[1].first if !partial || !array && ret[1].size == 1
   
   ret

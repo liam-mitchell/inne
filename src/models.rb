@@ -1168,6 +1168,12 @@ module Episodish
     self.is_a?(Episode) ? MappackEpisode.find_by(id: id) : self
   end
 
+  def vanilla(null = false)
+    return self if self.is_a?(Episode)
+    episode = Episode.find_by(id: id)
+    return episode ? episode : null ? nil : self
+  end
+
   def format_name
     "#{name.remove('MET-')}"
   end
@@ -1264,6 +1270,12 @@ module Storyish
   # Return the Map object (containing map data), if it exists
   def map
     self.is_a?(Story) ? MappackStory.find_by(id: id) : self
+  end
+
+  def vanilla(null = false)
+    return self if self.is_a?(Story)
+    story = Story.find_by(id: id)
+    return story ? story : null ? nil : self
   end
 
   def format_name

@@ -952,10 +952,8 @@ def default_mappack(user, channel)
   return user.mappack if user.mappack_default_always
 
   # Channel-specific default
-  if user.mappack_defaults
-    pack = MappackChannel.find_by(id: channel.id).mappack rescue nil
-    return pack if pack
-  end
+  pack = MappackChannel.find_by(id: channel.id).mappack rescue nil
+  return pack if pack
 
   # User-specific channel default
   return nil if !user.mappack
