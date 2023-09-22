@@ -945,21 +945,20 @@ def channel_type(type)
   Discordrb::Channel::TYPES[type.to_s.downcase.to_sym]
 end
 
-# Return a user's default mappack based on the event's channel of origin
+# Return a default mappack based on the user and channel
 def default_mappack(user, channel)
   # User-specific global default
-  return nil if !user || !channel && !user.mappack_default_always
-  return user.mappack if user.mappack_default_always
+  return user.mappack if user && user.mappack_default_always && user.mappack
 
   # Channel-specific default
   pack = MappackChannel.find_by(id: channel.id).mappack rescue nil
   return pack if pack
 
   # User-specific channel default
-  return nil if !user.mappack
+  return nil if !user || !channel || !user.mappack
   return user.mappack if user.mappack_default_dms && channel.type == channel_type(:dm)
 
-  return nil
+  nil
 rescue
   nil
 end

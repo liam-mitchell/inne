@@ -22,7 +22,7 @@ def send_list(event, file = true, missing = false, third = false)
   msg     = event.content
   player  = parse_player(event, false, false, false, false, third)
   msg     = msg.remove!(player.name)
-  mappack = parse_mappack(msg)
+  mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   board   = parse_board(msg, 'hs')
   type    = parse_type(msg)
   tabs    = parse_tabs(msg)
@@ -122,7 +122,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(rtype2.nil? ? msg : '', whole)
   rtype = fix_rtype(rtype, range[1])
   type  = parse_type(msg, type, true, initial, rtype == 'score' ? 'Level' : nil)
-  mappack = parse_mappack(msg)
+  mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   board = parse_board(msg, 'hs')
 
   perror("Speedrun mode isn't available for Metanet levels yet.") if board == 'sr' && !mappack
@@ -327,7 +327,7 @@ def send_spreads(event)
   tabs    = parse_tabs(msg)
   player  = parse_player(event, false, true, false)
   full    = parse_full(msg)
-  mappack = parse_mappack(msg)
+  mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   board   = parse_board(msg, 'hs')
   small   = !!(msg =~ /smallest/)
   perror("Metanet maps only have highscore mode for now.") if !mappack && board != 'hs'
@@ -653,7 +653,7 @@ def send_maxable(event, maxed = false)
   type    = parse_type(msg) || Level
   tabs    = parse_tabs(msg)
   full    = parse_full(msg)
-  mappack = parse_mappack(msg)
+  mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   board   = parse_board(msg, 'hs')
   perror("Metanet maps only have highscore mode for now.") if !mappack && board != 'hs'
   perror("This function is only available for highscore and speedrun modes for now.") if !['hs', 'sr'].include?(board)
@@ -702,7 +702,7 @@ def send_cleanliness(event)
   tabs    = parse_tabs(msg)
   rank    = parse_range(msg)[0]
   board   = parse_board(msg, 'hs')
-  mappack = parse_mappack(msg)
+  mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   full    = parse_full(msg)
   clean   = !!msg[/cleanest/i]
   perror("Cleanliness is only available for episodes or stories.") if type == Level
@@ -1672,7 +1672,7 @@ def set_default_mappack(event)
   pack = msg[/my (?:.*?)(?:map\s*)?pack (?:.*?)is (.*)[\.\s]*$/i, 1]
   always = !!msg[/always/i]
   perror("You need to specify a mappack.") if pack.nil?
-  mappack = parse_mappack(pack)
+  mappack = parse_mappack(pack, explicit: true, vanilla: false)
   perror("Mappack not recognized.") if mappack.nil?
   parse_user(event.user).update(
     mappack_id:             mappack.id,
@@ -2097,7 +2097,7 @@ end
 
 def send_mappack_read(event)
   msg = remove_command(event.content)
-  mappack = parse_mappack(msg)
+  mappack = parse_mappack(msg, explicit: true, vanilla: false)
   perror("Mappack not found.") if mappack.nil?
   mappack.read
   event << "Read mappack #{verbatim(mappack.name)}."
@@ -2134,7 +2134,8 @@ end
 def send_mappack_info(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
-  mappack = parse_mappack(flags[:mappack], true)
+  mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
+  perror("You need to provide a mappack.") if !mappack
   channels = flags[:channels].split.map(&:strip) if flags.key?(:channels)
   mappack.set_info(name: flags[:name], author: flags[:author], date: flags[:date], channel: channels)
   flags.delete(:mappack)
@@ -2378,7 +2379,9 @@ def send_nprofile_gen(event)
   perror("You need to provide a mappack") if !flags.key?(:m)
   player = parse_player(event, false, true, flag: :p)
   perror("Player not found") if player.nil?
-  mappack = parse_mappack(flags[:m], true)
+  mappack = parse_mappack(flags[:m], explicit: true, vanilla: false)
+  perror("You need to provide a mappack.") if !mappack
+  perror("Can't generate an nprofile for Metanet.") if mappack.id == 0
   mid = mappack.id
   nprofile = unzip(File.binread(File.join(DIR_UTILS, 'nprofile.zip')))['nprofile']
   size = nprofile.size

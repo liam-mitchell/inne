@@ -383,7 +383,7 @@ def parse_highscoreable_by_code(msg, user = nil, channel = nil, mappack: false)
   type = lotd ? 'level of the day' : eotw ? 'episode of the week' : 'column of the month'
 
   # Parse mappack (manually specified and default one)
-  pack = mappack ? parse_mappack(msg) || default_mappack(user, channel) : nil
+  pack = mappack ? parse_mappack(msg, user, channel) : nil
   ctp = pack && pack.code.upcase == 'CTP'
   type.prepend(pack.code.upcase + ' ') unless pack.code.upcase == 'MET' if pack
   perror("There is no #{type}.") if pack && !pack.lotd
@@ -400,7 +400,7 @@ end
 # Parse a highscoreable based on the name
 # 'mappack' specifies whether searching for mappack highscoreables is allowed, not enforced
 def parse_highscoreable_by_name(msg, user = nil, channel = nil, mappack: true)
-  pack = mappack ? parse_mappack(msg) || default_mappack(user, channel) : nil
+  pack = mappack ? parse_mappack(msg, user, channel) : nil
   klass = pack && pack.id != 0 ? MappackLevel.where(mappack: pack) : Level
   pack = pack && pack.id != 0 ? pack.code.upcase + ' ' : ''
   name = msg.split("\n")[0][NAME_PATTERN, 2]
@@ -462,7 +462,7 @@ def parse_highscoreable(
   user = parse_user(event.user)
   channel = event.channel
   perror("Couldn't find the level, episode or story you were looking for :(") if msg.to_s.strip.empty?
-  pack = mappack ? parse_mappack(msg) || default_mappack(user, channel) : nil
+  pack = mappack ? parse_mappack(msg, user, channel) : nil
   ret = ['', []]
 
   # Search for highscoreable according to different criteria
@@ -481,7 +481,7 @@ def parse_highscoreable(
   end
 
   # Transform to vanilla and single result if appropriate
-  ret = [ret[0], ret[1].map{ |m| m.vanilla }]
+  ret[1].map!{ |m| m.vanilla }
   ret = ret[1].first if !partial || !array && ret[1].size == 1
   
   ret
@@ -523,25 +523,30 @@ def parse_maxable(msg)
   !!msg[/\bmaxable\b/i]
 end
 
-# Parse a mappack from a message, we try 4 methods:
-# 1) The first word of the message, by mappack name
-# 2) A quoted term, by name
-# 3) At the end, using "for ...", by name
-# 4) Anywhere, using the 3 letter mappack code
-# The second parameter specifies the behaviour when the mappack is not found
-def parse_mappack(msg, rais = false)
-  (rais ? perror("Mappack not found.") : (return nil)) if !msg || msg.strip.empty?
+# Parse a mappack explicitly from a message, or implicitly from the user or
+# channel defaults
+# explicit - Disables implicit parsing
+# vanilla  - Converts Metanet mappack to nil (i.e. no mappack)
+def parse_mappack(msg, user = nil, channel = nil, explicit: false, vanilla: true)
+  # Init params
+  text = msg && !msg.strip.empty?
+  term = parse_term(msg, quoted: [], final: ['for'])
+  mappack = nil
 
-  mappack = Mappack.find_by(name: msg.strip[/\w+/i])
-  return mappack if !mappack.nil?
+  # Parse mappack explicitly in different ways
+  mappack = Mappack.find_by(name: msg.strip[/\w+/i])         if text
+  mappack = Mappack.find_by(name: term)                      if text && !mappack
+  mappack = Mappack.find_by(code: msg.scan(/\b[A-Z]{3}\b/i)) if text && !mappack
 
-  mappack = Mappack.find_by(name: parse_term(msg, quoted: [], final: ['for']))
-  return mappack if !mappack.nil?
+  # Parse mappack implicitly
+  mappack = default_mappack(user, channel) if !mappack && !explicit
 
-  mappack = Mappack.where(code: msg.scan(/\b[A-Z]{3}\b/i)).first
-  return mappack if !mappack.nil?
+  # Convert to vanilla if Metanet
+  mappack = nil if vanilla && mappack && mappack.id == 0
 
-  rais ? perror("Mappack not found.") : nil
+  mappack
+rescue
+  nil
 end
 
 # We parse a complex variety of ranges here, from individual ranks, to tops,
@@ -667,7 +672,7 @@ end
 #          (only valid for quoted parses)
 # 'remove' returns an array with the match, and the msg with the match removed
 def parse_term(str, quoted: nil, final: nil, global: false, remove: false)
-  return (remove ? ['', str] : '') if !str.is_a?(String)
+  return (remove ? ['', str] : '') if !str.is_a?(String) || str.strip.empty?
   final = nil if global
   prefix = [
     regexize_words(quoted),
