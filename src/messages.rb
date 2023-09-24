@@ -302,17 +302,17 @@ end
 def send_total_score(event)
   # Parse messsage parameters
   player = parse_player(event)
-  type   = parse_type(event.content)
+  type   = parse_type(event.content, nil, false, false, 'level')
   tabs   = parse_tabs(event.content)
 
   # Retrieve total score
   score = player.total_score(type, tabs)
 
   # Format response
-  max  = find_max(:score, type, tabs)
+  max  = round_score(find_max(:score, type, tabs))
   type = format_type(type).downcase
   tabs = format_tabs(tabs)
-  event << "#{player.print_name}'s total #{tabs} #{type} score is #{"%.3f" % [score]} out of #{"%.3f" % max}.".squish
+  event << "#{player.print_name}'s total #{tabs} #{type} score is #{"%.3f" % [round_score(score)]} out of #{"%.3f" % max}.".squish
 rescue => e
   lex(e, "Error calculating total score.", event: event)
 end
@@ -856,7 +856,7 @@ end
 
 # Return level name for a specified level ID
 def send_level_name(event)
-  level = parse_highscoreable(event.content.gsub(/level/, ""))
+  level = parse_highscoreable(event)
   perror("Episodes and stories don't have a name!") if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.name} is called #{level.longname}."
 rescue => e
@@ -1376,11 +1376,10 @@ def send_trace(event)
   wait_msg = event.send_message("Queued...") if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
     wait_msg.delete if !wait_msg.nil?
-    level = parse_highscoreable(event.content, mappack: true)
-    perror("Episodes and columns can't be traced") if !level.is_a?(Levelish)
-    map = !level.is_a?(Map) ? MappackLevel.find_by(id: level.id) : level
-    perror("Level data not found") if map.nil?
-    map.trace(event)
+    level = parse_highscoreable(event, mappack: true)
+    perror("Failed to parse highscoreable.") if !level
+    perror("Episodes and columns can't be traced.") if !level.is_a?(Levelish)
+    level.map.trace(event)
   end
 rescue => e
   lex(e, "Error performing trace.", event: event)
@@ -1399,7 +1398,7 @@ def send_splits(event)
   mappack = ep.is_a?(MappackHighscoreable)
   board = parse_board(msg, 'hs')
   perror("Sorry, speedrun mode isn't available for Metanet levels yet.") if !mappack && board == 'sr'
-  perror("Sorry, episode splits are only available for either highscore or speedrun mode") if !['hs', 'sr'].include?(board)
+  perror("Sorry, episode splits are only available for either highscore or speedrun mode.") if !['hs', 'sr'].include?(board)
   scores = ep.leaderboard(board, pluck: false)
   rank = parse_range(msg)[0].clamp(0, scores.size - 1)
   ntrace = board == 'hs' # Requires ntrace

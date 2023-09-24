@@ -66,6 +66,7 @@ def parse_score(str)
 end
 
 # Optionally allow to parse multiple types
+# TODO: Use kwargs
 def parse_type(msg, type = nil, multiple = false, initial = false, default = nil)
   # Sanitize default type
   default = nil if !['level', 'episode', 'story'].include?(default.to_s.downcase)
