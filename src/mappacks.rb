@@ -1885,17 +1885,20 @@ class MappackScore < ActiveRecord::Base
   # Perform the gold check (see the 2 methods above) for every score in the
   # database, returning the scores failing the check.
   def self.gold_check(id = MIN_REPLAY_ID)
-    scores = []
-    entries = self.where("highscoreable_type != 'MappackStory' and id > #{id}")
-    count = entries.size
-
-    entries.each_with_index{ |s, i|
-      dbg("Checking gold in mappack score #{i + 1} / #{count}...", newline: false, pad: true)
-      scores << s if !s.verify_gold
-    }
-    Log.clear
-
-    scores.sort_by{ |s| [s.highscoreable_type, s.highscoreable_id, s.player.name] }
+    self.joins('INNER JOIN mappack_levels ON mappack_levels.id = highscoreable_id')
+        .joins('INNER JOIN players on players.id = player_id')
+        .where("highscoreable_type = 'MappackLevel' AND mappack_scores.id >= #{id}")
+        .having('remainder > 0.001')
+        .order('highscoreable_id', 'mappack_scores.id')
+        .pluck(
+          'mappack_levels.name',
+          'SUBSTRING(players.name, 1, 16)',
+          'mappack_scores.id',
+          'score_hs / 60.0',
+          'rank_hs',
+          'rank_sr',
+          'ABS(MOD((score_hs + score_sr - 5401) / 120, 1)) AS remainder'
+        ).map{ |row| row[0..-2] }
   end
 
   def archive
