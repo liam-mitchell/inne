@@ -613,7 +613,7 @@ def send_channel_next(type, ctp = false)
     channel.send("There was no previous #{ctp ? 'CTP ' : ''}#{type_n} of the #{period}.")
   elsif !OFFLINE_STRICT || ctp
     diff = last.format_difference(old_scores, 'dual')
-    channel.send(last.format_difference_header(diff))
+    channel.send(last.format_difference_header(diff, past: true))
   end
   GlobalProperty.set_saved_scores(type, current, ctp)
 

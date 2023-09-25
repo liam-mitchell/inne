@@ -903,6 +903,7 @@ module Highscoreable
   def format_scores(np: 0, sp: 0, mode: 'hs', ranks: 20.times.to_a, join: true, full: false, cools: true, stars: true)
     if !self.is_a?(MappackHighscoreable) || mode != 'dual'
       ret = format_scores_board(mode, np: np, sp: sp, ranks: ranks, full: full, cools: cools, stars: stars)
+      ret = ["This #{self.class.to_s.remove('Mappack').downcase} has no scores!"] if ret.size == 0
       ret = ret.join("\n") if join
       return ret
     end
@@ -911,6 +912,11 @@ module Highscoreable
     length_hs = board_hs.first.length rescue 0
     length_sr = board_sr.first.length rescue 0
     size = [board_hs.size, board_sr.size].max
+    if size == 0
+      ret = ["This #{self.class.to_s.remove('Mappack').downcase} has no scores!"]
+      ret = ret.join("\n") if join
+      return ret
+    end
     board_hs = board_hs.ljust(size, ' ' * length_hs)
     board_sr = board_sr.ljust(size, ' ' * length_sr)
     header = '     ' + 'Highscore'.center(length_hs - 4) + '   ' + 'Speedrun'.center(length_sr - 4)
@@ -988,7 +994,9 @@ module Highscoreable
 
     diffs_hs = format_difference_board(old, 'hs', diff_score: false, empty: false)
     diffs_sr = format_difference_board(old, 'sr', diff_score: false, empty: false)
-    return '' if diffs_hs.empty? && diffs_sr.empty?
+    empty_hs = diffs_hs.count{ |d| d.strip[-1] == '━' } == diffs_hs.size
+    empty_sr = diffs_sr.count{ |d| d.strip[-1] == '━' } == diffs_sr.size
+    return '' if diffs_hs.empty? && diffs_sr.empty? || empty_hs && empty_sr
     length_hs = diffs_hs.first.length rescue 0
     length_sr = diffs_sr.first.length rescue 0
     size = [diffs_hs.size, diffs_sr.size].max
@@ -1002,18 +1010,20 @@ module Highscoreable
   end
 
   # Format the header for the Top20 changes
-  def format_difference_header(diff)
+  def format_difference_header(diff, past: false)
+    article = past ? 'last' : 'this'
     period = is_level? ? 'day' : is_episode? ? 'week' : 'month'
-    since = is_level? ? 'today' : is_episode? ? 'this week' : 'this month'
+    since = is_level? ? (past ? 'yesterday' : 'today') : is_episode? ? "#{article} week" : "#{article} month"
     type = is_story? ? 'column' : self.class.to_s.downcase.remove('mappack')
     mappack = is_mappack? ? self.mappack.code.upcase : ''
 
     if diff.nil?
       "Failed to calculate top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}.".squish
     elsif diff.strip.empty?
-      "There have been no top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}.".squish
+      "There #{past ? 'were' : 'have been'} no top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}.".squish
     else
-      "Top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}:".squish + format_block(diff)
+      header = "Top20 changes on #{since}'s #{mappack} #{type} of the #{period}, #{format_name}"
+      format_header(header) + format_block(diff)
     end
   end
 
@@ -1187,7 +1197,7 @@ module Episodish
 
     level_scores = klass.where(highscoreable: levels, rfield => 0).sum(sfield) rescue nil
     episode_score = scores.find_by(rfield => rank)[sfield] rescue nil
-    raise "No #{rank.ordinalize} #{format_board(board)} score found in this leaderboard." if level_scores.nil? || episode_score.nil?
+    return nil if level_scores.nil? || episode_score.nil?
     diff = (level_scores - episode_score).abs / scale - offset
     diff = diff.to_i if is_mappack? && board != 'hs'
 
@@ -1295,7 +1305,7 @@ module Storyish
 
     level_scores = klass.where(highscoreable: levels, rfield => 0).sum(sfield) rescue nil
     story_score = scores.find_by(rfield => rank)[sfield] rescue nil
-    raise "No #{rank.ordinalize} #{format_board(board)} score found in this leaderboard." if level_scores.nil? || story_score.nil?
+    return nil if level_scores.nil? || story_score.nil?
     diff = (level_scores - story_score).abs / scale - offset
     diff = diff.to_i if is_mappack? && board != 'hs'
 

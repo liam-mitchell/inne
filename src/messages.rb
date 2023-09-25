@@ -121,7 +121,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   ].include?(rtype) # default rank is top20, not top1 (0th)
   range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(rtype2.nil? ? msg : '', whole)
   rtype = fix_rtype(rtype, range[1])
-  type  = parse_type(msg, type, true, initial, rtype == 'score' ? 'Level' : nil)
+  type  = parse_type(msg, type: type, multiple: true, initial: initial, default: rtype == 'score' ? Level : nil)
   mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   board = parse_board(msg, 'hs')
 
@@ -302,7 +302,7 @@ end
 def send_total_score(event)
   # Parse messsage parameters
   player = parse_player(event)
-  type   = parse_type(event.content, nil, false, false, 'level')
+  type   = parse_type(event.content, default: Level)
   tabs   = parse_tabs(event.content)
 
   # Retrieve total score
@@ -323,7 +323,7 @@ def send_spreads(event)
   # Parse message parameters
   msg     = event.content
   n       = (parse_rank(msg) || 2) - 1
-  type    = parse_type(msg) || Level
+  type    = parse_type(msg, default: Level)
   tabs    = parse_tabs(msg)
   player  = parse_player(event, false, true, false)
   full    = parse_full(msg)
@@ -398,8 +398,7 @@ def send_scores(event, map = nil, ret = false, page: nil)
   end
 
   # Format scores
-  header =  "#{format_full(full)} #{format_board(board).pluralize} for #{h.format_name}:".squish
-  header[0] = header[0].upcase
+  header = format_header("#{format_full(full)} #{format_board(board).pluralize} for #{h.format_name}")
   res << header
   scores = h.format_scores(mode: board, full: full, join: false)
   if full && scores.count > 20
@@ -408,23 +407,21 @@ def send_scores(event, map = nil, ret = false, page: nil)
     res << format_block(scores.join("\n"))
   end
 
-  # Add cleanliness if it's an episode
+  # Add cleanliness if it's an episode or a story
   res << send_clean_one(event, true) if (h.is_a?(Episodish) || h.is_a?(Storyish)) && board != 'gm'
+
+  # If it's an episode, update all 5 level scores in the background
+  if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
+    _thread(release: true) do
+      h.levels.each(&:update_scores)
+    end
+  end
 
   # Send response or return it
   if ret
     return res
   else
     event << res
-  end
-
-  # If it's an episode, update all 5 level scores in the background
-  if h.is_a?(Episode) && !offline && !OFFLINE_STRICT
-    Thread.new do
-      h.levels.each(&:update_scores)
-    ensure
-      release_connection
-    end
   end
 rescue => e
   lex(e, "Error sending scores.", event: event)
@@ -650,7 +647,7 @@ def send_maxable(event, maxed = false)
   # Parse message parameters
   msg     = event.content
   player  = parse_player(event, false, !msg[/missing/i], false)
-  type    = parse_type(msg) || Level
+  type    = parse_type(msg, default: Level)
   tabs    = parse_tabs(msg)
   full    = parse_full(msg)
   mappack = parse_mappack(msg, parse_user(event.user), event.channel)
@@ -698,7 +695,7 @@ end
 def send_cleanliness(event)
   # Parse message parameters
   msg     = event.content
-  type    = parse_type(msg, nil, false, false, 'episode')
+  type    = parse_type(msg, default: Episode)
   tabs    = parse_tabs(msg)
   rank    = parse_range(msg)[0]
   board   = parse_board(msg, 'hs')
@@ -748,6 +745,7 @@ def send_clean_one(event, ret = false)
 
   # Compute cleanliness
   clean = h.cleanliness(rank, board)
+  (ret ? (return '') : perror("No #{rank.ordinalize} #{format_board(board)} score found in this leaderboard.")) if !clean
   clean_round = round_score(clean)
   fmt = clean.is_a?(Integer) ? '%df' : '%.3f (%df)'
   args = clean.is_a?(Integer) ? [clean_round] : [clean_round, (60 * clean_round).round]
@@ -917,7 +915,7 @@ def send_average_lead(event)
   # Parse message parameters
   msg    = event.content
   player = parse_player(event)
-  type   = parse_type(msg) || Level
+  type   = parse_type(msg, default: Level)
   tabs   = parse_tabs(msg)
 
   # Retrieve average 0th lead
@@ -1099,7 +1097,7 @@ end
 def send_random(event)
   # Parse message parameters
   msg    = event.content
-  type   = parse_type(msg) || Level
+  type   = parse_type(msg, default: Level)
   tabs   = parse_tabs(msg)
   amount = [msg[/\d+/].to_i || 1, NUM_ENTRIES].min
 
@@ -1162,15 +1160,22 @@ end
 
 # Sends the Top20 changes for the current lotd/eotw/cotm
 def send_diff(event)
-  msg = event.content
-  ctp = !!msg[/ctp/i]
-  type = parse_type(msg) || Level
+  # Parse params
+  msg      = event.content
+  mappack  = parse_mappack(msg, parse_user(event.user), event.channel)
+  type     = parse_type(msg, default: Level)
+  period   = type == Level ? 'day'   : type == Episode ? 'week'    : 'month'
+  type_str = type == Level ? 'level' : type == Episode ? 'episode' : 'column'
+  code     = mappack.nil? || mappack.id == 0 ? '' : mappack.code.upcase + ' '
+  name     = "#{code}#{type_str} of the #{period}"
+  perror("There is no #{name}.") if mappack && !['met', 'ctp'].include?(mappack.code)
+
+  # Fetch and format differences
+  ctp = mappack && mappack.code == 'ctp'
   current = GlobalProperty.get_current(type, ctp)
   old_scores = GlobalProperty.get_saved_scores(type, ctp)
-  period = type == Level ? 'day'   : type == Episode ? 'week'    : 'month'
-  type   = type == Level ? 'level' : type == Episode ? 'episode' : 'column'
-  perror("There is no current #{ctp ? 'CTP' : ''} #{type} of the #{period}.".squish) if current.nil?
-  perror("The old scores for the current #{ctp ? 'CTP' : ''} #{type} of the #{period} we not saved :S".squish) if old_scores.nil?
+  perror("There is no current #{name}.") if current.nil?
+  perror("The old scores for the current #{name} we not saved :S") if old_scores.nil?
   diff = current.format_difference(old_scores, 'dual')
   event << current.format_difference_header(diff)
 rescue => e

@@ -682,14 +682,8 @@ end
 # <------                      BINARY MANIPULATION                       ------>
 # <---------------------------------------------------------------------------->
 
-# Turn a little endian binary array into an integer
-# TODO: This is just a special case of_unpack, substitute
-def parse_int(bytes)
-  if bytes.is_a?(Array) then bytes = bytes.join end
-  bytes.unpack('H*')[0].scan(/../).reverse.join.to_i(16)
-end
-
 # Convert an integer into a little endian binary string of 'size' bytes and back
+# TODO: Substitute most/all uses of this with Ruby's native pack/unpack functions
 def _pack_raw(n, size)
   n.to_s(16).rjust(2 * size, "0").scan(/../).reverse.map{ |b|
     [b].pack('H*')[0]

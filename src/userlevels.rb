@@ -406,10 +406,10 @@ class Userlevel < ActiveRecord::Base
   # severely limit querying flexibility.
   def self.parse_tabs(levels)
     return false if levels.nil? || levels.size < 48
-    count  = parse_int(levels[16..19])
-    page   = parse_int(levels[20..23])
-    qt     = parse_int(levels[28..31])
-    mode   = parse_int(levels[32..35])
+    count  = _unpack(levels[16..19])
+    page   = _unpack(levels[20..23])
+    qt     = _unpack(levels[28..31])
+    mode   = _unpack(levels[32..35])
     tab    = USERLEVEL_TABS[qt][:name] rescue nil
     return false if tab.nil?
 
@@ -418,7 +418,7 @@ class Userlevel < ActiveRecord::Base
         index = page * PART_SIZE + i
         return false if USERLEVEL_TABS[qt][:size] != -1 && index >= USERLEVEL_TABS[qt][:size]
         print("Updating #{MODES[mode].downcase} #{USERLEVEL_TABS[qt][:name]} map #{index + 1} / #{USERLEVEL_TABS[qt][:size]}...".ljust(80, " ") + "\r")
-        UserlevelTab.find_or_create_by(mode: mode, qt: qt, index: index).update(userlevel_id: parse_int(l[0..3]))
+        UserlevelTab.find_or_create_by(mode: mode, qt: qt, index: index).update(userlevel_id: _unpack(l[0..3]))
         return false if USERLEVEL_TABS[qt][:size] != -1 && index + 1 >= USERLEVEL_TABS[qt][:size] # Seems redundant, but prevents downloading a file for nothing
       }
     end
@@ -432,7 +432,7 @@ class Userlevel < ActiveRecord::Base
   def self.update_relationships(qt = 11, page = 0, mode = 0)
     return false if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
     levels = get_levels(qt, page, mode)
-    return parse_tabs(levels) && parse_int(levels[16..19]) == PART_SIZE
+    return parse_tabs(levels) && _unpack(levels[16..19]) == PART_SIZE
   end
 
   def self.browse(qt = 10, page = 0, mode = 0, update = false)
@@ -1012,7 +1012,6 @@ def send_userlevel_count(event)
   bott      = parse_bottom_rank(msg) || 0
   ind       = nil
   dflt      = parse_rank(msg).nil? && parse_bottom_rank(msg).nil?
-  type      = parse_type(msg)
   tabs      = parse_tabs(msg)
   ties      = parse_ties(msg)
   tied      = parse_tied(msg)

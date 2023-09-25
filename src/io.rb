@@ -65,11 +65,20 @@ def parse_score(str)
   score.to_f
 end
 
-# Optionally allow to parse multiple types
-# TODO: Use kwargs
-def parse_type(msg, type = nil, multiple = false, initial = false, default = nil)
+# Parse the highscoreable type (Level/Episode/Story) from a message
+def parse_type(
+    msg,             # Text to parse type from
+    type:     nil,   # Initial type we might send
+    multiple: false, # Whether to allow multiple types and return and array
+    initial:  false, # Whether this is the first call to the function
+    default:  nil    # Default types when none is found
+  )
   # Sanitize default type
-  default = nil if !['level', 'episode', 'story'].include?(default.to_s.downcase)
+  if !['level', 'episode', 'story'].include?(default.to_s.downcase)
+    default = nil
+  else
+    default = default.to_s.capitalize.constantize
+  end
 
   # First, parse the parameter we sent
   type = type.to_s.capitalize.constantize unless type.nil?
@@ -84,7 +93,7 @@ def parse_type(msg, type = nil, multiple = false, initial = false, default = nil
   if multiple
     # If still empty (and initial), push default types
     if initial && ret.empty?
-      default.nil? ? ret.push(*DEFAULT_TYPES.map(&:constantize)) : ret.push(default.to_s.capitalize.constantize)
+      default.nil? ? ret.push(*DEFAULT_TYPES.map(&:constantize)) : ret.push(default)
     end
 
     # If "overall" is matched, push default types too
@@ -97,7 +106,7 @@ def parse_type(msg, type = nil, multiple = false, initial = false, default = nil
     ret.uniq!
   else
     # If not multiple, we return either the default we sent, or nil (type not found)
-    ret = !default.nil? ? default.to_s.capitalize.constantize : nil
+    ret = default
   end
 
   ret
