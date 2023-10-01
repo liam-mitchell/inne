@@ -961,8 +961,8 @@ end
 # <------                         N++ SPECIFIC                           ------>
 # <---------------------------------------------------------------------------->
 
-# sometimes we need to make sure there's exactly one valid type
-def ensure_type(type, mappack = false)
+# Sometimes we need to make sure there's exactly one valid type
+def ensure_type(type, mappack: false)
   base = mappack ? MappackLevel : Level
   type.nil? ? base : (type.is_a?(Array) ? (type.include?(base) ? base : type.flatten.first) : type)
 end
@@ -973,7 +973,22 @@ def normalize_type(type, empty: false, mappack: false)
   type = DEFAULT_TYPES.map(&:constantize) if type.nil?
   type = [type] if !type.is_a?(Array)
   type = DEFAULT_TYPES.map(&:constantize) if !empty && type.empty?
-  type.map{ |t| mappack && t.to_s[0..6] != 'Mappack' ? "Mappack#{t.to_s}".constantize : t }
+  type.map{ |t| mappack ? t.mappack : t.vanilla }
+end
+
+# Normalize how highscoreable types are handled.
+# A good example:
+#   [Level, Episode]
+# Bad examples:
+#   nil   (transforms to [Level, Episode])
+#   Level (transforms to [Level])
+# 'single' means we return a single type instead
+def fix_type(type, single = false)
+  if single
+    ensure_type(type)
+  else
+    type.nil? ? DEFAULT_TYPES.map(&:constantize) : (!type.is_a?(Array) ? [type] : type)
+  end
 end
 
 # find the optimal score / amount of whatever rankings or stat

@@ -1363,6 +1363,14 @@ class MappackLevel < ActiveRecord::Base
   belongs_to :mappack_episode, foreign_key: :episode_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
+  def self.mappack
+    MappackLevel
+  end
+
+  def self.vanilla
+    Level
+  end
+
   # Computes the level's hash, which the game uses for integrity verifications
   def hash(c: false)
     map_data = dump_level(hash: true)
@@ -1422,6 +1430,14 @@ class MappackEpisode < ActiveRecord::Base
   belongs_to :mappack_story, foreign_key: :story_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
+  def self.mappack
+    MappackEpisode
+  end
+
+  def self.vanilla
+    Episode
+  end
+
   # Computes the episode's hash, which the game uses for integrity verifications
   def hash(c: false)
     hashes = levels.order(:id).map{ |l| l.hash(c: c) }.compact
@@ -1447,6 +1463,14 @@ class MappackStory < ActiveRecord::Base
   has_many :mappack_scores, as: :highscoreable
   belongs_to :mappack
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
+
+  def self.mappack
+    MappackStory
+  end
+
+  def self.vanilla
+    Story
+  end
 
   # Computes the story's hash, which the game uses for integrity verifications
   def hash(c: false)

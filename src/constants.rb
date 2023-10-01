@@ -12,7 +12,7 @@
 
 # General
 TEST           = true  # Switch to the local test bot
-BENCHMARK      = false # Benchmark and log functions (for optimization)
+BENCHMARK      = true # Benchmark and log functions (for optimization)
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)

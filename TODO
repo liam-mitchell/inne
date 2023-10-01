@@ -52,7 +52,7 @@ Ongoing:
 - add "full" to everything that outputs lists (missing, etc), maybe nav too
 - add "suggestions" command (random selection of scores the player doesn't have)
 - allow "missing" parameter in table, just like in "how many" or "list"
-- use Score.filter with a Player for some of the Player methods, like range_ns, improvable, table...
+- use Score.filter with a Player for some of the Player methods, like range_ns, table...
 - add Score::filter to rank_exclude
 - CKC rankings weighed by the number of cool kids in each board
 - Have all people tied in rankings have the same rank, with hyphens. Show slightly over 20 if tied at the bottom, up to another limit, like 25.

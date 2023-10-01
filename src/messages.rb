@@ -801,32 +801,34 @@ rescue => e
 end
 
 # Return list of a player's most improvable scores, filtered by type and tab
-def send_suggestions(event)
+def send_worst(event, worst = true)
   # Parse message parameters
-  msg    = event.content
-  player = parse_player(event)
-  type   = parse_type(msg)
-  tabs   = parse_tabs(msg)
-  cool   = parse_cool(msg)
-  star   = parse_star(msg)
-  range  = parse_range(msg, true)
-  ties   = parse_ties(msg)
+  msg     = event.content
+  player  = parse_player(event)
+  type    = parse_type(msg, default: Level)
+  tabs    = parse_tabs(msg)
+  full    = parse_full(msg)
+  mappack = parse_mappack(msg, parse_user(event.user), event.channel)
+  board   = parse_board(msg, 'hs')
+  perror("This function is only available for highscore and speedrun mode.") if !['hs', 'sr'].include?(board)
+  perror("Speedrun mode is not yet available for Metanet levels.") if board == 'sr' && !mappack 
 
   # Retrieve and format most improvable scores
-  list = player.improvable_scores(type, tabs, range[0], range[1], ties, cool, star)
+  list = player.score_gaps(type, tabs, worst, full, mappack, board)
+  fmt  = board == 'sr' ? 'd' : '.3f'
   pad1 = list.map{ |level, gap| level.length }.max
-  pad2 = list.map{ |level, gap| gap }.max.to_i.to_s.length + 4
-  list = list.map{ |level, gap| "#{"%-#{pad1}s" % [level]} - #{"%#{pad2}.3f" % [gap]}" }.join("\n")
+  pad2 = list.map{ |level, gap| gap }.max.to_i.to_s.length + (board == 'sr' ? 0 : 4)
+  list = list.map{ |level, gap| "#{"%-#{pad1}s" % [level]} - #{"%#{pad2}#{fmt}" % [gap]}" }.join("\n")
 
   # Send response
-  tabs  = format_tabs(tabs)
-  type  = format_type(type).downcase
-  cool  = format_cool(cool)
-  star  = format_star(star)
-  range = format_range(range[0], range[1])
-  ties  = format_ties(ties)
-  event << "Most improvable #{cool} #{star} #{tabs} #{type} #{range} scores #{ties} for #{player.print_name}:".squish
-  event << format_block(list)
+  adverb  = worst ? 'most' : 'least'
+  worst   = worst ? 'worst' : 'best'
+  tabs    = format_tabs(tabs)
+  type    = format_type(type).downcase
+  mappack = format_mappack(mappack)
+  board   = format_board(board).pluralize
+  event << format_header("#{adverb} improvable #{tabs} #{type} #{board} #{mappack} for #{player.print_name}")
+  full ? send_file(event, list, "#{worst}.txt") : event << format_block(list)
 rescue => e
   lex(e, "Error getting worst scores.", event: event)
 end
@@ -2019,21 +2021,6 @@ rescue => e
   lex(e, "Error fetching dMMc maps.", event: event)
 end
 
-# Clean database (remove cheated archives, duplicates, orphaned demos, etc)
-# See Archive::sanitize for more details
-def sanitize_archives(event)
-  assert_permissions(event)
-  counts = Archive::sanitize
-  if counts.empty?
-    event << "Nothing to sanitize."
-    return
-  end
-  event << "Sanitized database:"
-  counts.each{ |name, msg| event << "* #{msg}" }
-rescue => e
-  lex(e, "Error sanitizing archives.", event: event)
-end
-
 def potato
   return if !RESPOND
   while true
@@ -2065,6 +2052,21 @@ def robot(event)
   middle = ["I can assure you he's not", "Eddy is not a robot", "Master is very much human", "Senpai is a ningen", "Mr. E is definitely human", "Owner is definitely a hooman", "Eddy is a living human being", "Eduardo es una persona"]
   ending = [".", "!", " >:(", " (ಠ益ಠ)", " (╯°□°)╯︵ ┻━┻"]
   event.send_message(start.sample + middle.sample + ending.sample)
+end
+
+# Clean database (remove cheated archives, duplicates, orphaned demos, etc)
+# See Archive::sanitize for more details
+def sanitize_archives(event)
+  assert_permissions(event)
+  counts = Archive::sanitize
+  if counts.empty?
+    event << "Nothing to sanitize."
+    return
+  end
+  event << "Sanitized database:"
+  counts.each{ |name, msg| event << "* #{msg}" }
+rescue => e
+  lex(e, "Error sanitizing archives.", event: event)
 end
 
 def send_test(event)
@@ -2510,6 +2512,7 @@ def respond_special(event)
   return send_hash(event)               if cmd == 'hash'
   return send_hashes(event)             if cmd == 'hashes'
   return send_nprofile_gen(event)       if cmd == 'nprofile_gen'
+  return sanitize_archives(event)       if cmd == 'sanitize_archives'
   return sanitize_users(event)          if cmd == 'sanitize_users'
   return set_user_id(event)             if cmd == 'set_user_id'
 
@@ -2580,7 +2583,8 @@ def respond(event)
   return send_list(event, false, false, true) if msg =~ /how cool/i 
   return send_comparison(event)      if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
   return send_stats(event)           if msg =~ /\bstat/i
-  return send_suggestions(event)     if msg =~ /\bworst\b/i || msg =~ /\bimprovable\b/i
+  return send_worst(event, true)     if msg =~ /\bworst\b/i
+  return send_worst(event, false)    if msg =~ /\bbest\b/i
   return send_tally(event)           if msg =~ /\btally\b/i
   return send_splits(event)          if msg =~ /\bsplits\b/i
   return send_clean_one(event)       if msg =~ /cleanliness/i
@@ -2594,7 +2598,6 @@ def respond(event)
   return add_role(event)             if msg =~ /\badd\s*role\b/i
   return send_aliases(event)         if msg =~ /\baliases\b/i
   return send_dmmc(event)            if msg =~ /\bdmmcize\b/i
-  return sanitize_archives(event)    if msg =~ /\bsanitize archives\b/
   return update_ntrace(event)        if msg =~ /\bupdate\s*ntrace\b/i
   return faceswap(event)             if msg =~ /faceswap/i
   return send_mappacks(event)        if msg =~ /mappacks/i

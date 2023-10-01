@@ -691,7 +691,7 @@ module Highscoreable
   def self.spreads(n, type, tabs, small = false, player_id = nil, full = false, mappack = nil, board = 'hs')
     # Sanitize parameters
     n      = n.clamp(0,19)
-    type   = ensure_type(type, !mappack.nil?)
+    type   = ensure_type(type, mappack: !mappack.nil?)
     type   = type.mappack if mappack
     klass  = mappack ? MappackScore.where(mappack: mappack) : Score
     sfield = mappack ? "score_#{board}" : 'score'
@@ -1165,6 +1165,10 @@ class Level < ActiveRecord::Base
     MappackLevel
   end
 
+  def self.vanilla
+    Level
+  end
+
   def add_alias(a)
     LevelAlias.find_or_create_by(level: self, alias: a)
   end
@@ -1239,6 +1243,10 @@ class Episode < ActiveRecord::Base
 
   def self.mappack
     MappackEpisode
+  end
+
+  def self.vanilla
+    Episode
   end
 
   def self.ownages(tabs)
@@ -1327,6 +1335,10 @@ class Story < ActiveRecord::Base
 
   def self.mappack
     MappackStory
+  end
+
+  def self.vanilla
+    Story
   end
 end
 
@@ -1671,8 +1683,6 @@ class Score < ActiveRecord::Base
   end
 end
 
-# Note: Players used to be referenced by Users, not anymore. Everything has been
-# structured to better deal with multiple players and/or users with the same name.
 class Player < ActiveRecord::Base
   alias_attribute :tweaks, :mappack_scores_tweaks
   has_many :scores
@@ -1682,14 +1692,6 @@ class Player < ActiveRecord::Base
   has_many :player_aliases
   has_many :mappack_scores
   has_many :mappack_scores_tweaks
-
-  # Deprecated since it's slower, see Score::rank
-  def self.rankings(&block)
-    players = Player.all
-
-    players.map { |p| [p, yield(p)] }
-      .sort_by { |a| -a[1] }
-  end
 
   def self.histories(type, attrs, column)
     attrs[:highscoreable_type] ||= ['Level', 'Episode'] # Don't include stories
@@ -1927,10 +1929,26 @@ class Player < ActiveRecord::Base
     scores_by_type_and_tabs(type, tabs).where("#{ties ? "tied_rank" : "rank"} < #{n}")
   end
 
-  # If we're asking for missing 'cool' or 'star' scores, we actually take the
-  # scores the player HAS which are missing the cool/star badge.
-  # Otherwise, missing includes all the scores the player DOESN'T have.
-  def range_ns(a, b, type, tabs, ties, tied = false, cool = false, star = false, missing = false, mappack = nil, board = 'hs')
+  # Fetch player's scores (or, alternatively, missing scores) filtering by many
+  # parameters, like type, tabs, rank...
+  #
+  # NOTE:
+  #   If we're asking for missing 'cool' or 'star' scores, we actually take the
+  #   scores the player HAS which are missing the cool/star badge.
+  #   Otherwise, missing includes all the scores the player DOESN'T have.
+  def range_ns(
+      a,               # Bottom rank
+      b,               # Lower rank
+      type,            # Type
+      tabs,            # Tab list
+      ties,            # Include ties when filtering by rank (use tied rank field)
+      tied    = false, # Only include tied scores when filtering by rank
+      cool    = false, # Scores must be cool
+      star    = false, # Scores must be star (ex-0ths)
+      missing = false, # Fetch missing scores with the desired properties
+      mappack = nil,   # Mappack to use (nil = Metanet)
+      board   = 'hs'   # Leaderboard type
+    )
     return missing(type, tabs, a, b, ties, tied, mappack, board) if missing && !cool && !star
     
     # Return highscoreable names rather than scores
@@ -2004,22 +2022,31 @@ class Player < ActiveRecord::Base
     scores
   end
 
-  def improvable_scores(type, tabs, a = 0, b = 20, ties = false, cool = false, star = false)
-    type = ensure_type(type) # only works for a single type
+  # Return highscoreables with the biggest/smallest differences between the player's
+  # score and the 0th.
+  def score_gaps(type, tabs, worst = true, full = false, mappack = nil, board = 'hs')
+    # Prepare params
+    type = ensure_type(normalize_type(type))
+    type = type.mappack if mappack
+    tname = type.table_name
+    sfield = mappack ? "score_#{board}" : 'score'
+    rfield = mappack ? "rank_#{board}" : 'rank'
+    klass = mappack ? MappackScore.where(mappack: mappack).where.not(rfield => nil) : Score
+    diff = "ABS(MAX(#{sfield}) - MIN(#{sfield}))"
+    diff += '/ 60.0' if mappack && board == 'hs'
+
+    # Calculate gaps
     bench(:start) if BENCHMARK
-    ttype = ties ? 'tied_rank' : 'rank'
-    ids = scores_by_type_and_tabs(type, tabs).where("#{ttype} >= #{a} AND #{ttype} < #{b}")
-    ids = ids.where(cool: true) if cool
-    ids = ids.where(star: true) if star
-    ids = ids.pluck(:highscoreable_id, :score).to_h
-    ret = Score.where(highscoreable_type: type.to_s, highscoreable_id: ids.keys, rank: 0)
-    ret = ret.pluck(:highscoreable_id, :score)
-             .map{ |id, s| [id, s - ids[id]] }
-             .sort_by{ |s| -s[1] }
-             .take(NUM_ENTRIES)
-             .map{ |id, s| [type.find(id).name, s] }
+    list = klass.joins("INNER JOIN #{tname} ON #{tname}.id = highscoreable_id")
+                .where(highscoreable_type: type)
+                .where("#{rfield} = 0 OR player_id = #{self.id}")
+                .group(:highscoreable_id)
+                .having('diff > 0')
+                .order("diff #{worst ? 'DESC' : 'ASC'}")
+                .limit(full ? nil : NUM_ENTRIES)
+                .pluck(:name, "#{diff} AS diff")
     bench(:step) if BENCHMARK
-    ret
+    list
   end
 
   def points(type, tabs)

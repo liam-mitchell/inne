@@ -112,21 +112,6 @@ def parse_type(
   ret
 end
 
-# Normalize how highscoreable types are handled.
-# A good example:
-#   [Level, Episode]
-# Bad examples:
-#   nil   (transforms to [Level, Episode])
-#   Level (transforms to [Level])
-# 'single' means we return a single type instead
-def fix_type(type, single = false)
-  if single
-    ensure_type(type)
-  else
-    type.nil? ? DEFAULT_TYPES.map(&:constantize) : (!type.is_a?(Array) ? [type] : type)
-  end
-end
-
 def parse_alias_type(msg, type = nil)
   ['level', 'player'].include?(type) ? type : (!!msg[/player/i] ? 'player' : 'level')
 end
