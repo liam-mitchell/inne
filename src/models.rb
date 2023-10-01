@@ -717,7 +717,8 @@ module Highscoreable
     ret2 = ret2.where(highscoreable_id: ids) if !player_id.nil?
     ret2 = ret2.pluck(:highscoreable_id, sfield).to_h
 
-    ret = ret2.map{ |id, s| [id, (ret1[id] - s).abs / scale] }
+    ret = ret2.map{ |id, s| [id, (ret1[id] - s).abs / scale] rescue nil }
+              .compact
               .sort_by{ |id, s| small ? s : -s }
     ret = ret.take(NUM_ENTRIES) if !full
     ret = ret.to_h

@@ -341,7 +341,7 @@ def send_spreads(event)
   scorepad = spreads.map{ |s| s[1] }.max.to_i.to_s.length + (sr ? 0 : 4)
   fmt      = sr ? 'd' : '.3f'
   spreads  = spreads.each_with_index
-                    .map { |s, i| "#{"%02d" % i}: #{"%-#{namepad}s" % s[0]} - #{"%#{scorepad}#{fmt}" % s[1]} - #{s[2]}"}
+                    .map { |s, i| "#{"%-#{namepad}s" % s[0]} - #{"%#{scorepad}#{fmt}" % s[1]} - #{s[2]}"}
                     .join("\n")
 
   # Format response
