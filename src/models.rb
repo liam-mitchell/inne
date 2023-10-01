@@ -2033,6 +2033,7 @@ class Player < ActiveRecord::Base
     sfield = mappack ? "score_#{board}" : 'score'
     rfield = mappack ? "rank_#{board}" : 'rank'
     klass = mappack ? MappackScore.where(mappack: mappack).where.not(rfield => nil) : Score
+    klass = klass.where(tab: tabs) unless tabs.empty?
     diff = "ABS(MAX(#{sfield}) - MIN(#{sfield}))"
     diff += '/ 60.0' if mappack && board == 'hs'
 
