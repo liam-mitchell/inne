@@ -2417,7 +2417,10 @@ def send_nprofile_gen(event)
                 nprofile[o + 36...o + 40] = [score].pack('l<') if score > old_score
               }
   perror("Size mismatch after nprofile patch") if nprofile.size != size
-  File.binwrite("#{sanitize_filename(player.name)}_nprofile", nprofile)
+  File.binwrite(
+    "#{sanitize_filename(player.name)}_nprofile.zip",
+    zip({ 'nprofile' => nprofile })
+  )
   event << "#{mappack.code.upcase} nprofile for #{player.name} was generated"
 rescue => e
   lex(e, "Error generating nprofile.", event: event)
