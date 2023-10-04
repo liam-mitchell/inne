@@ -72,6 +72,7 @@ Ongoing:
 - Create a class QueryResult for when we parse a highscoreable, that contains the array of results, the header of text, a function to format the result, etc. Perhaps do the same for parsing players and other things.
 - Add "completions" after scores (easy for mappacks, littleninjathatcould for metanet)
 - Add function to update stars in scores table, since due to errors we could sporadicaly lose some of them, but we can rebuild them by looking at the archives table.
+- When we have multiple level matches, make parse_highscoreable print and navigate the list, rather than the other functions (which duplicates code). Adapt all functions using this, and do the same for player names.
 
 \\ ------------------------ mappacker -----------------------
 

@@ -2260,12 +2260,15 @@ end
 
 def send_gold_check(event)
   msg = remove_command(event.content)
-  id = [msg[/\d+/].to_i, MIN_REPLAY_ID].max
+  flags = parse_flags(msg)
+  id = [flags[:id].to_i, MIN_REPLAY_ID].max
+  mappack = parse_mappack(flags[:mappack], vanilla: false)
+  strict = flags.key?(:strict)
   event << "List of potentially incorrect mappack scores:"
   rows = []
   rows << ['Level', 'Player', 'ID', 'Current', 'HS', 'SR']
   rows << :sep
-  rows.push(*MappackScore.gold_check(id))
+  rows.push(*MappackScore.gold_check(id: id, mappack: mappack, strict: strict))
   rows.size > 22 ? send_file(event, make_table(rows), 'gold_check.txt') : event << format_block(make_table(rows))
 rescue => e
   lex(e, "Error performing gold check.", event: event)
@@ -2379,10 +2382,10 @@ end
 def send_nprofile_gen(event)
   msg = remove_command(event.content)
   flags = parse_flags(msg)
-  perror("You need to provide a player") if !flags.key?(:p)
-  perror("You need to provide a mappack") if !flags.key?(:m)
+  perror("You need to provide a player.") if !flags.key?(:p)
+  perror("You need to provide a mappack.") if !flags.key?(:m)
   player = parse_player(event, false, true, flag: :p)
-  perror("Player not found") if player.nil?
+  perror("Player not found.") if player.nil?
   mappack = parse_mappack(flags[:m], explicit: true, vanilla: false)
   perror("You need to provide a mappack.") if !mappack
   perror("Can't generate an nprofile for Metanet.") if mappack.id == 0

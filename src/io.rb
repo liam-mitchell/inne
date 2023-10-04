@@ -948,7 +948,7 @@ end
 # Arg names must start with a dash and be alphanumeric (underscores allowed)
 # Arg values can be anything but dashes
 def parse_flags(msg)
-  msg.scan(/(?:\s+|^)-(\w+)(?:\s+(.*?))?(?=\s+-|$)/)
+  msg.scan(/(?:\s+|^)-(\w+)(?:\s+([^-].*?))?(?=\s+-|$)/)
      .uniq{ |e| e[0] }
      .map{ |k, v| [k, v.nil? ? nil : v.squish] }
      .to_h
