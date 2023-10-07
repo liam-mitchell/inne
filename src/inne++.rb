@@ -238,6 +238,7 @@ def setup_bot
     str = special ? 'Special ' : ''
     str = "#{str}DM by #{event.user.name}: #{event.content}"
     special ? succ(str) : msg(str)
+    send_message(event)
   rescue => e
     lex(e, 'Failed to handle Discord DM')
   ensure
@@ -250,6 +251,7 @@ def setup_bot
     remove_mentions!(event.content)
     respond(event)
     msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
+    send_message(event)
   rescue => e
     lex(e, 'Failed to handle Discord ping')
   ensure

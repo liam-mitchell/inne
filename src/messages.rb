@@ -490,12 +490,10 @@ def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   # Single match, retrieve screenshot
   #scores = scores.nav(offset.to_i)
   h = h.map if !h.is_a?(MappackHighscoreable)
-  screenshot = Map.screenshot(hash[:palette], file: true, h: h)
+  spoiler = h.is_mappack? && h.mappack.code == 'ctp' && !(event.channel.type == 1 || event.channel.id == CHANNEL_CTP_SECRETS)
+  screenshot = Map.screenshot(hash[:palette], file: true, h: h, spoiler: spoiler)
   perror("Failed to generate screenshot!") if screenshot.nil?
-
-  # Determine if screenshot needs to be spoiled
-  spoiler = h.is_mappack? && h.mappack.code == 'ctp' && !(event.channel.type == 1 || event.channel.id == CHANNEL_CTP_SECRETS) ? true : false
-    
+  
   # Send response
   str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette #{verbatim(hash[:palette])}:"
   file = screenshot

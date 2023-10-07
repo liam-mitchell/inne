@@ -255,7 +255,9 @@ def send_userlevel_report
                     .join("\n")
 
   $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
+  sleep(0.25)
   $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n#{format_block(zeroes)}")
+  sleep(0.25)
   $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n#{format_block(points)}")
 
   $active_tasks[:userlevel_report] = false

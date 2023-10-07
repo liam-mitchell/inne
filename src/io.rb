@@ -1174,3 +1174,30 @@ def send_file(event, data, name = 'result.txt', binary = false)
   return nil if data.nil?
   event.attach_file(tmp_file(data, name, binary: binary))
 end
+
+# Send a message to a destination (typically a respondable event or a Discord channel)
+# If the parameters are empty, then the content/file already appended to the event will
+# be used, if any.
+# Register msg in db at the end.
+# TODO: How to send spoilered files with this approach?
+def send_message(dest, content: '', file: nil, filename: nil, spoiler: false)
+  # Grab stuff already appended to message, and drain it to prevent autosend
+  if dest.is_a?(Discordrb::Events::MessageEvent)
+    content = dest.drain_into('') if content.empty?
+    file = dest.file if !file
+    filename = dest.filename.to_s if !filename
+    spoiler ||= !!dest.file_spoiler
+    dest.detach_file
+  end
+  files = []
+  files << file if file
+
+  # Ignore empty messages
+  return if content.empty? && files.empty?
+
+  # Send message with attachments
+  msg = dest.send_message(content, false, nil, files, nil, nil, nil)
+
+  # Register message
+  # ...
+end

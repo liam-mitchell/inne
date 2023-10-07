@@ -388,7 +388,8 @@ module Map
       ppc:     0,               # Points per coordinate (essentially the scale) (0 = use default)
       h:       nil,             # Highscoreable to screenshot
       anim:    false,           # Whether to animate plotted coords or not
-      coords:  []               # Coordinates of routes to trace
+      coords:  [],              # Coordinates of routes to trace
+      spoiler: false            # Whether the screenshot should be spoilered in Discord
     )
 
     bench(:start) if BENCHMARK
@@ -708,14 +709,14 @@ module Map
     bench(:step) if BENCHMARK
 
     return nil if !res
-    file ? tmp_file(res, "#{h.name}.#{anim ? 'mp4' : 'png'}", binary: true) : res
+    file ? tmp_file(res, "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{anim ? 'mp4' : 'png'}", binary: true) : res
   rescue => e
     lex(e, "Failed to generate screenshot")
     nil
   end
 
-  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, anim: false, coords: [])
-    Map.screenshot(theme, file: file, blank: blank, anim: anim, coords: coords, h: self, ppc: anim ? 4 : 0)
+  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, anim: false, coords: [], spoiler: false)
+    Map.screenshot(theme, file: file, blank: blank, anim: anim, coords: coords, h: self, ppc: anim ? 4 : 0, spoiler: spoiler)
   end
 
   # Plot routes and legend on top of an image (typically a screenshot)
