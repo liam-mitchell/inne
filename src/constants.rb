@@ -11,10 +11,10 @@
 # <--------------------------------------------------------------------------->
 
 # General
-TEST           = true  # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 BENCHMARK      = false # Benchmark and log functions (for optimization)
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = false # Execute all threads
+DO_EVERYTHING  = true  # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 BYEBUG         = false # Breakpoint right after loading the bot
 
@@ -635,7 +635,8 @@ BLACKLIST = {
   298531 => ["Boringfish"],
   307030 => ["The_Mega_Force"],
   325245 => ["Staticwork"],
-  326339 => ["Psina"]
+  326339 => ["Psina"],
+  336069 => ["Progressively idle"]
 }
 
 # Additional blacklisted names whose ID we don't know, since their scores
