@@ -938,11 +938,7 @@ module Map
   rescue OutteError => e
     # TODO: See if we can refactor this to avoid having to reference OutteError
     # directly and making this handling more elegant
-    if !tmp_msg.first.nil?
-      tmp_msg.first.edit(e)
-    else
-      raise
-    end
+    !tmp_msg.first.nil? ? tmp_msg.first.edit(e) : raise
     event.drain
   rescue => e
     tmp_msg.first.edit('Failed to trace replays') if !tmp_msg.first.nil?

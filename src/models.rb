@@ -2912,13 +2912,19 @@ module Twitch extend self
     return if $content_channel.nil?
     game = GAME_IDS.invert[stream['game_id'].to_i]
     return if !game
-    $content_channel.send_message("#{ping(TWITCH_ROLE)} #{verbatim(stream['user_name'])} started streaming **#{game}**! #{verbatim(stream['title'])} <https://www.twitch.tv/#{stream['user_login']}>")
+    send_message($content_channel, content: "#{ping(TWITCH_ROLE)} #{verbatim(stream['user_name'])} started streaming **#{game}**! #{verbatim(stream['title'])} <https://www.twitch.tv/#{stream['user_login']}>")
     return if !$twitch_streams.key?(game)
     s = $twitch_streams[game].select{ |s| s['user_id'] ==  stream['user_id'] }.first
     s['posted'] = Time.now.to_i if !s.nil?
   rescue => e
     lex(e, 'Failed to post new Twitch stream')
   end
+end
+
+# This class logs all messages sent by outte, and who it is in response to
+# That way, the user may request to delete the message later by any mechanism
+# we decide to devise
+class Message < ActiveRecord::Base
 end
 
 # See "Socket Variables" in constants.rb for docs

@@ -68,6 +68,7 @@ CHANNEL_CTP_SECRETS    = 1137794113475969034 # #ctp-secrets
 # Limits
 DISCORD_CHAR_LIMIT     = 2000                # Message character limit
 DISCORD_FILE_LIMIT     = 25 * 1000 ** 2      # Attachment size limit
+DELETE_TIMELIMIT       = 5 * 60              # Seconds to delete an outte post
 
 # Non-standard character widths in the monospaced font (for padding adjustments)
 WIDTH_EMOJI = 2
@@ -81,8 +82,11 @@ SERVER_WHITELIST = [
 ]
 
 # Others
-BOT_STATUS   = 'online'
-BOT_ACTIVITY = "inne's evil cousin"
+BOT_STATUS   = 'online'             # Discord status for the bot
+BOT_ACTIVITY = "inne's evil cousin" # Discord activity for the bot
+EMOJIS_TO_DELETE = [                # Emojis to delete msgs via reactions
+  '❌', '✖️', '🇽', '⛔', '🚫'
+]
 
 # <--------------------------------------------------------------------------->
 # <------                     LOGGING VARIABLES                         ------>

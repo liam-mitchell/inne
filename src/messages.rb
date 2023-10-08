@@ -515,45 +515,24 @@ def send_screenscores(event)
   # Parse message parameters
   msg = event.content
   map = parse_highscoreable(event, mappack: true)
-
-  # Return both screenshot and scores, without sending them
   ss  = send_screenshot(event, map, true)
   s   = send_scores(event, map, true)
-
-  # Send screenshot, if available
-  if ss[0].nil?
-    event.send_message(ss[1])
-  else
-    event.send_file(ss[0], caption: ss[1], spoiler: ss[2])
-  end
-
-  # Wait a bit to prevent an order change, and send scores
-  sleep(0.05)
-  event.send_message(s)
+  send_message(event, content: ss[1], files: [ss[0]], spoiler: ss[2])
+  sleep(0.25)
+  send_message(event, content: s)
 rescue => e
   lex(e, "Error sending screenshot or scores.", event: event)
 end
 
 # Same, but sending the scores first and the screenshot second
 def send_scoreshot(event)
-  # Parse message parameters
   msg = event.content
   map = parse_highscoreable(event, mappack: true)
-
-  # Retrieve both screenshot and scores, without sending them
   s   = send_scores(event, map, true)
   ss  = send_screenshot(event, map, true)
-
-  # Send scores
-  event.send_message(s)
-
-  # Wait a bit to prevent an order change, and send screenshot, if available
-  sleep(0.05)
-  if ss[0].nil?
-    event.send_message(ss[1])
-  else
-    event.send_file(ss[0], caption: ss[1], spoiler: ss[2])
-  end
+  send_message(event, content: s)
+  sleep(0.25)
+  send_message(event, content: ss[1], files: [ss[0]], spoiler: ss[2])
 rescue => e
   lex(e, "Error sending screenshot or scores.", event: event)
 end
@@ -598,8 +577,8 @@ def send_stats(event)
     event << msg1
     event << msg2
   else
-    event.send_message(msg1 + "```")
-    event.send_message("```" + msg2)
+    send_message(event, content: msg1 + "```")
+    send_message(event, content: "```" + msg2)
   end
 rescue => e
   lex(e, "Error computing stats.", event: event)
@@ -1378,9 +1357,9 @@ end
 def send_trace(event)
   assert_permissions(event, ['ntracer'])
   perror("Sorry, tracing is disabled.") if !FEATURE_NTRACE
-  wait_msg = event.send_message("Queued...") if $mutex[:ntrace].locked?
+  wait_msg = send_message(event, content: "Queued...", removable: false) if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
-    wait_msg.delete if !wait_msg.nil?
+    wait_msg.delete if !wait_msg.nil? rescue nil
     level = parse_highscoreable(event, mappack: true)
     perror("Failed to parse highscoreable.") if !level
     perror("Episodes and columns can't be traced.") if !level.is_a?(Levelish)
@@ -1420,9 +1399,9 @@ def send_splits(event)
     ep_scores = []
 
     # Execute ntrace in mutex
-    wait_msg = event.send_message("Queued...") if $mutex[:ntrace].locked?
+    wait_msg = send_message(event, content: "Queued...", removable: false) if $mutex[:ntrace].locked?
     $mutex[:ntrace].synchronize do
-      wait_msg.delete if !wait_msg.nil?
+      wait_msg.delete if !wait_msg.nil? rescue nil
 
       # Export input files
       File.binwrite('inputs_episode', scores[rank].demo.demo)
@@ -1697,7 +1676,7 @@ def set_default_mappacks(event)
 end
 
 def hello(event)
-  $bot.update_status(BOT_STATUS, BOT_ACTIVITY, nil, 0, false, 0)
+  update_bot_status
   event << "Hi!"
   set_channels(event) if $channel.nil?
 rescue => e
@@ -1799,7 +1778,7 @@ def send_help(event)
   File.open('README.md').read.each_line do |line|
     line = line.gsub("\n", "")
     if line == " "
-      event.send_message(msg)
+      send_message(event, content: msg)
       msg = "Commands continued...\n"
     else
       msg += "\n**#{line.gsub(/^### /, "")}**\n" if line =~ /^### /
@@ -1807,7 +1786,7 @@ def send_help(event)
     end
   end
 
-  event.send_message(msg)
+  send_message(event, content: msg)
 
   event << "In any of these commands, if you see '<level>', replace that with either a level/episode ID (eg. SI-A-00-00) or a level name (eg. supercomplexity)"
   event << "If you see '<tab>', you can replace that with any combination of SI/intro, S/N++, SU/ultimate, SL/legacy, ?/secret, and !/ultimate secret, or you can leave it off for overall totals."
@@ -1865,7 +1844,7 @@ def send_videos(event)
   # one without challenges
   if default.length == 1
     # Send immediately, so the video link shows above the additional videos
-    event.send_message(default[0].url)
+    send_message(event, content: default[0].url)
     event << "\nI have some challenge videos for this level as well! You can ask for them by being more specific about challenges and authors, by saying '<challenge> video for <level>' or 'video for <level> by <author>':\n#{format_block(descriptions)}"
     return
   end
@@ -1995,15 +1974,15 @@ def send_dmmc(event)
   assert_permissions(event, ['dmmc'])
   msg        = event.content.remove('dmmcize').strip
   limit      = 30
-  levels     = Userlevel.where_like('title', msg).to_a[0..limit - 1]
+  levels     = Userlevel.where_like('title', msg).limit(limit).to_a
   count      = levels.count
   palettes   = Userlevel::THEMES.dup
   response   = nil
   zip_buffer = Zip::OutputStream.write_buffer{ |zip|
     levels.each_with_index{ |u, i|
       if i == 0
-        response = event.channel.send_message("Creating screenshot 1 of #{count}...")
-      else
+        response = send_message(event, content: "Creating screenshot 1 of #{count}...", removable: false)
+      elsif i % 3 == 0
         response.edit("Creating screenshot #{i + 1} of #{count}...")
       end
       palette = palettes.sample
@@ -2013,7 +1992,8 @@ def send_dmmc(event)
     }
   }
   zip = zip_buffer.string
-  response.delete
+  response.delete if response
+  event << "Generated and zipped #{levels.size} screenshots."
   send_file(event, zip, 'dmmc.zip', true)
 rescue => e
   lex(e, "Error fetching dMMc maps.", event: event)
@@ -2025,7 +2005,7 @@ def potato
     sleep(POTATO_RATE)
     next if $nv2_channel.nil? || $last_potato.nil?
     if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
-      $nv2_channel.send_message(FRUITS[$potato])
+      send_message($nv2_channel, content: FRUITS[$potato], removable: false)
       log(FRUITS[$potato].gsub(/:/, '').capitalize + 'ed nv2')
       $potato = ($potato + 1) % FRUITS.size
       $last_potato = Time.now.to_i
@@ -2040,7 +2020,7 @@ def mishnub(event)
   fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
   laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
   if rand < 0.05 && (event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN)
-    event.send_message(youmean.sample + mishu.sample + amirite.sample + fellas.sample + laugh.sample) 
+    send_message(event, content: youmean.sample + mishu.sample + amirite.sample + fellas.sample + laugh.sample, removable: false) 
     $last_mishu = Time.now.to_i unless event.channel.type == 1
   end
 end
@@ -2049,7 +2029,7 @@ def robot(event)
   start  = ["No! ", "Not at all. ", "Negative. ", "By no means. ", "Most certainly not. ", "Not true. ", "Nuh uh. "]
   middle = ["I can assure you he's not", "Eddy is not a robot", "Master is very much human", "Senpai is a ningen", "Mr. E is definitely human", "Owner is definitely a hooman", "Eddy is a living human being", "Eduardo es una persona"]
   ending = [".", "!", " >:(", " (ಠ益ಠ)", " (╯°□°)╯︵ ┻━┻"]
-  event.send_message(start.sample + middle.sample + ending.sample)
+  send_message(event, content: start.sample + middle.sample + ending.sample, removable: false)
 end
 
 # Clean database (remove cheated archives, duplicates, orphaned demos, etc)

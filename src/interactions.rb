@@ -194,11 +194,11 @@ end
 # events are different (MentionEvent or PrivateMessageEvent if its a new
 # message, and ButtonEvent or SelectMenuEvent if its an existing message),
 # so we need to access different methods with different syntax.
-def send_message_with_interactions(event, msg, view = nil, edit = false, attachments = [])
+def send_message_with_interactions(event, msg, components = nil, edit = false, files = [])
   if edit # ButtonEvent / SelectMenuEvent
-    event.update_message(content: msg, components: view)
+    event.update_message(content: msg, components: components)
   else # MentionEvent / PrivateMessageEvent
-    event.channel.send_message(msg, false, nil, attachments, nil, nil, view)
+    send_message(event, content: msg, files: files, components: components)
   end
 end
 

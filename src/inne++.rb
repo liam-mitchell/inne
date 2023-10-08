@@ -232,12 +232,15 @@ def setup_bot
   # Respond to DMs
   $bot.private_message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
+
+    # Log
     remove_mentions!(event.content)
     special = event.user.id == BOTMASTER_ID && event.content[0] == '!'
-    special ? respond_special(event) : respond(event)
-    str = special ? 'Special ' : ''
-    str = "#{str}DM by #{event.user.name}: #{event.content}"
+    str = "#{special ? 'Special ' : ''}DM by #{event.user.name}: #{event.content}"
     special ? succ(str) : msg(str)
+
+    # Respond
+    special ? respond_special(event) : respond(event)
     send_message(event)
   rescue => e
     lex(e, 'Failed to handle Discord DM')
@@ -248,9 +251,13 @@ def setup_bot
   # Respond to pings
   $bot.mention do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
+
+    # Log
     remove_mentions!(event.content)
-    respond(event)
     msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
+
+    # Respond
+    respond(event)
     send_message(event)
   rescue => e
     lex(e, 'Failed to handle Discord ping')
@@ -261,19 +268,39 @@ def setup_bot
   # Parse all messages, and optionally respond
   $bot.message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
+
+    # Special commands
     remove_mentions!(event.content)
+    if event.content[0] == '!' && event.user.id == BOTMASTER_ID && event.channel.type != 1
+      succ("Special command: #{event.content}")
+      respond_special(event)
+      send_message(event)
+    end
+
+    # Others
     if event.channel == $nv2_channel
       $last_potato = Time.now.to_i
       $potato = 0
     end
     mishnub(event) if MISHU && event.content.downcase.include?("mishu")
     robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
-    if event.content[0] == '!' && event.user.id == BOTMASTER_ID && event.channel.type != 1
-      respond_special(event)
-      succ("Special command: #{event.content}")
-    end
   rescue => e
     lex(e, 'Failed to handle Discord message')
+  ensure
+    release_connection
+  end
+
+  # Parse new reactions
+  $bot.reaction_add do |event|
+    msg = event.message
+    next if msg.user.id != $config['discord_client']
+    next if !EMOJIS_TO_DELETE.include?(event.emoji.to_s)
+    next msg.delete if event.user.id == BOTMASTER_ID
+    next if Time.now - msg.timestamp > DELETE_TIMELIMIT
+    next if !Message.find_by(id: msg.id, user_id: event.user.id)
+    msg.delete
+  rescue => e
+    lex(e, 'Failed to handle Discord reaction')
   ensure
     release_connection
   end
@@ -282,6 +309,7 @@ def setup_bot
   $bot.button do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_button(event)
+    send_message(event)
   rescue => e
     lex(e, 'Failed to handle Discord button interaction')
   ensure
@@ -292,6 +320,7 @@ def setup_bot
   $bot.select_menu do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
     respond_interaction_menu(event)
+    send_message(event)
   rescue => e
     lex(e, 'Failed to handle Discord select menu interaction')
   ensure

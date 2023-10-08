@@ -214,7 +214,13 @@ module Log
 
     # Log to Discord DMs, if specified
     discord(text) if log_to_discord
-    event.is_a?(Discordrb::Events::Respondable) ? event << text : event.channel.send_message(text) if event
+    if event
+      if event.is_a?(Discordrb::Events::Respondable)
+        event << text
+      else
+        send_message(event, content: text)
+      end
+    end
 
     # Return original text
     text
@@ -233,7 +239,7 @@ module Log
 
   # Send DM to botmaster
   def self.discord(msg)
-    botmaster.pm.send_message(msg) if LOG_TO_DISCORD rescue nil
+    send_message(botmaster.pm, content: msg) if LOG_TO_DISCORD rescue nil
   end
 
   # Clear the current terminal line
@@ -902,7 +908,7 @@ end
 def concurrent_edit(event, msgs, content)
   Thread.new do
     msgs.map!{ |msg|
-      msg.nil? ? event.send_message(content) : msg.edit(content)
+      msg.nil? ? send_message(event, content: content) : msg.edit(content)
     }
   rescue
     msgs
@@ -1345,6 +1351,10 @@ def leave_unknown_servers
     end
   }
   warn("Left #{names.count} unknown servers: #{names.join(', ')}") if names.count > 0
+end
+
+def update_bot_status
+  $bot.update_status(BOT_STATUS, BOT_ACTIVITY, nil, 0, false, 0)
 end
 
 # Immediately kill process and restart the bot

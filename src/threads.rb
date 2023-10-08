@@ -13,6 +13,7 @@ require_relative 'models.rb'
 # - Update scores for lotd, eotw and cotm.
 # - Update database with newest userlevels from all playing modes.
 # - Update bot's status (it only lasts so much).
+# - Clear old message logs
 def update_status
   while(true)
     sleep(WAIT) # prevent crazy loops
@@ -24,7 +25,8 @@ def update_status
       GlobalProperty.get_current(Episode).update_scores
       GlobalProperty.get_current(Story).update_scores
     end
-    $bot.update_status("online", "inne's evil cousin", nil, 0, false, 0)
+    update_bot_status
+    Message.where("date < ?", Time.now - DELETE_TIMELIMIT).delete_all
     $active_tasks[:status] = false
     sleep(STATUS_UPDATE_FREQUENCY)
   end
@@ -165,7 +167,7 @@ def send_report
              .join(" ")
   sep = "-" * (pad.sum + pad.size + 5)
 
-  $channel.send_message("**Weekly highscoring report**:#{format_block([header, sep, changes].join("\n"))}")
+  send_message($channel, content: "**Weekly highscoring report**:#{format_block([header, sep, changes].join("\n"))}")
   if LOG_REPORT
     log_text = log.sort_by{ |name, scores| name }.map{ |name, scores|
       scores.map{ |s|
@@ -204,7 +206,7 @@ def send_report
   total = total.map{ |klass, n|
     "• There were **#{n[2]}** new scores by **#{n[3]}** players in **#{n[4]}** #{klass.downcase.pluralize}, making the boards **#{"%.3f" % [n[1].to_f / 60.0]}** seconds harder and increasing the total 0th score by **#{"%.3f" % [n[0].to_f / 60.0]}** seconds."
   }.join("\n")
-  $channel.send_message("**Daily highscoring summary**:\n" + total)
+  send_message($channel, content: "**Daily highscoring summary**:\n" + total)
 
   $active_tasks[:report] = false
   succ("Highscoring report sent")  
@@ -254,11 +256,11 @@ def send_userlevel_report
                     .map{ |p, i| "#{"%02d" % i}: #{format_string(p[0].name)} - #{"%3d" % p[1]}" }
                     .join("\n")
 
-  $mapping_channel.send_message("**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
+  send_message($mapping_channel, content: "**Userlevel highscoring update [Newest #{USERLEVEL_REPORT_SIZE} maps]**")
   sleep(0.25)
-  $mapping_channel.send_message("Userlevel 0th rankings with ties on #{Time.now.to_s}:\n#{format_block(zeroes)}")
+  send_message($mapping_channel, content: "Userlevel 0th rankings with ties on #{Time.now.to_s}:\n#{format_block(zeroes)}")
   sleep(0.25)
-  $mapping_channel.send_message("Userlevel point rankings on #{Time.now.to_s}:\n#{format_block(points)}")
+  send_message($mapping_channel, content: "Userlevel point rankings on #{Time.now.to_s}:\n#{format_block(points)}")
 
   $active_tasks[:userlevel_report] = false
   succ("Userlevel highscoring report sent")
@@ -553,7 +555,7 @@ def send_channel_episode_reminder(ctp = false)
   channel = ctp ? $ctp_channel : $channel
   eotw = GlobalProperty.get_current(Episode, ctp)
   return if eotw.nil?
-  channel.send_message("Also, remember that the current #{ctp ? 'CTP ' : ''}episode of the week is #{eotw.format_name}.")
+  send_message(channel, content: "Also, remember that the current #{ctp ? 'CTP ' : ''}episode of the week is #{eotw.format_name}.")
 rescue => e
   lex(e, 'Failed to send eotw reminder')
 end
@@ -562,7 +564,7 @@ def send_channel_story_reminder(ctp = false)
   channel = ctp ? $ctp_channel : $channel
   cotm = GlobalProperty.get_current(Story, ctp)
   return if cotm.nil?
-  channel.send_message("Also, remember that the current #{ctp ? 'CTP ' : ''}column of the month is #{cotm.format_name}.")
+  send_message(channel, content: "Also, remember that the current #{ctp ? 'CTP ' : ''}column of the month is #{cotm.format_name}.")
 rescue => e
   lex(e, 'Failed to send cotm reminder')
 end

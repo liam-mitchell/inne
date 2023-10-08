@@ -3,8 +3,10 @@
 # sending files...)
 
 require 'active_support/core_ext/integer/inflections' # ordinalize
+
 require_relative 'constants.rb'
 require_relative 'utils.rb'
+require_relative 'models.rb'
 
 # Fetch message from an event. Depending on the event that was triggered, this is
 # accessed in a different way. We use the "initial" boolean to determine whether
@@ -1177,27 +1179,32 @@ end
 
 # Send a message to a destination (typically a respondable event or a Discord channel)
 # If the parameters are empty, then the content/file already appended to the event will
-# be used, if any.
-# Register msg in db at the end.
-# TODO: How to send spoilered files with this approach?
-def send_message(dest, content: '', file: nil, filename: nil, spoiler: false)
-  # Grab stuff already appended to message, and drain it to prevent autosend
+# be used, if any. Register msg in db at the end.
+def send_message(dest, content: '', files: [], components: nil, spoiler: false, removable: true)
+  # Save stuff already appended to message, and remove it to prevent autosend
   if dest.is_a?(Discordrb::Events::MessageEvent)
-    content = dest.drain_into('') if content.empty?
-    file = dest.file if !file
-    filename = dest.filename.to_s if !filename
+    # Grab message
+    content = dest.saved_message if content.empty?
+    dest.drain
+
+    # Grab attachment
+    files << dest.file if files.empty?
     spoiler ||= !!dest.file_spoiler
     dest.detach_file
   end
-  files = []
-  files << file if file
 
-  # Ignore empty messages
+  # Config attachments and return if no message
+  files.reject!{ |f| !f.is_a?(File) }
+  files.each{ |f| File.rename(f.path, "SPOILER_#{f.path}") } if spoiler
   return if content.empty? && files.empty?
 
-  # Send message with attachments
-  msg = dest.send_message(content, false, nil, files, nil, nil, nil)
-
-  # Register message
-  # ...
+  # Send message and log it in db
+  user_id = dest.user.id if dest.respond_to?(:user)
+  dest = dest.channel if dest.respond_to?(:channel)
+  return if !dest.respond_to?(:send_message)
+  msg = dest.send_message(content, false, nil, files, nil, nil, components)
+  Message.create(id: msg.id, user_id: user_id, date: Time.now) if user_id && removable
+  msg
+rescue => e
+  lex(e, 'Failed to send message to Discord')
 end

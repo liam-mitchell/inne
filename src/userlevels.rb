@@ -809,6 +809,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   #<------ FETCH userlevels ------>
 
   pagesize = !socket.nil? ? QUERY_LIMIT_SOFT : PAGE_SIZE
+
   # Filter userlevels
   if query.nil?
     query   = Userlevel::tab(cat, mode)
@@ -817,12 +818,15 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   else
     query   = query[:query]
   end
+
   # Compute count, page number, total pages, and offset
   count     = query.count
   pag       = compute_pages(count, page, pagesize)
+
   # Order userlevels
   order_str = Userlevel::sort(order, invert)
   query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
+  
   # Fetch userlevels
   ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
   maps      = query.where(id: ids).all.to_a
@@ -883,7 +887,7 @@ def send_userlevel_individual(event, msg, userlevel = nil, &block)
   when 1
     yield(map)
   else
-    event.send_message(map[:msg])
+    send_message(event, content: map[:msg])
     sleep(0.250) # Prevent rate limiting
     send_userlevel_browse(event, query: map)
   end
@@ -1341,10 +1345,7 @@ def send_userlevel_highscoring_summary(event)
   full      = parse_global(msg)
   mode      = parse_mode(msg, false, true)
 
-  if full && player.nil? && author.nil?
-    event.send_message("The global userlevel highscoring summary is disabled for now until it's optimized, you can still do the regular summary, or the global summary for a specific player or author.")
-    return
-  end
+  perror("The global userlevel highscoring summary is disabled for now until it's optimized, you can still do the regular summary, or the global summary for a specific player or author.") if full && !player && !author
 
   # Fetch userlevels
   maps = full ? Userlevel.global : Userlevel.newest
@@ -1419,9 +1420,9 @@ end
 def send_userlevel_trace(event)
   assert_permissions(event, ['ntracer'])
   perror("Sorry, tracing is disabled.") if !FEATURE_NTRACE
-  wait_msg = event.send_message("Waiting for another trace to finish...") if $mutex[:ntrace].locked?
+  wait_msg = send_message(event, content: 'Waiting for another trace to finish...', removable: false) if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
-    wait_msg.delete if !wait_msg.nil?
+    wait_msg.delete if !wait_msg.nil? rescue nil
     event.content.sub!(/user\s*level/i, '')
     event.content.squish!
     msg = parse_palette(event)[:msg]
