@@ -8,23 +8,19 @@ require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'models.rb'
 
-# Fetch message from an event. Depending on the event that was triggered, this is
-# accessed in a different way. We use the "initial" boolean to determine whether
-# the post is going to be created (in which case the event that triggered it is
-# either a MentionEvent or a PrivateMessageEvent) or edited (in which case the
-# event that triggered it must have been either a ButtonEvent or a SelectMenuEvent,
-# or any other future interaction event).
-# TODO: If initial is nil, we can deduce it from the event class. Implement this,
-# perhaps even remove the initial part. MentionEvent and PrivateMessageEvent
-# inherit from MessageEvent, and the other 2 inherit from ComponentEvent, use these.
-# Obviously, fix all usages of fetch_message in other files.
-def fetch_message(event, initial = nil)
-  if initial # MentionEvent / PrivateMessageEvent
-    event.content
-  else # ButtonEvent / SelectMenuEvent
-    msg = event.message.content
-    msg.split("```").first # Only header of message
-  end
+# Fetch message from an event. Depending on the event that was triggered, this
+# may accessed and handled in a different way.
+def parse_message(event)
+  # Integrity checks
+  is_message = event.is_a?(Discordrb::Events::MessageEvent)
+  is_component = event.is_a?(Discordrb::Events::ComponentEvent)
+  raise "Cannot parse message from a #{event.class.to_s}." if !is_message && !is_component
+
+  # Extract message
+  msg = event.message.content
+  msg = msg.split("```").first if is_component # Only header
+
+  msg
 end
 
 # This is used mainly for page navigation. We determine the current page,
@@ -189,7 +185,7 @@ def parse_player(
     third     = false, # Allow 3rd person specification (e.g. "is xela" rather than "for xela")
     flag:     nil      # For special commands, flag that will contain the player name
   )
-  msg = event.content.gsub(/"/, '')
+  msg = parse_message(event).gsub(/"/, '')
   p = flag ? parse_flags(msg)[flag.to_sym].to_s : msg[/(for|of#{third ? '|is' : ''}) (.*)[\.\?]?/i, 2]
 
   return parse_player_implicit(event, userlevel) if implicit
@@ -203,7 +199,7 @@ end
 # Parse a pair of players. The user may provide 0, 1 or 2 names in different
 # formats, so we act accordingly and reuse the previous method.
 def parse_players(event, userlevel = false)
-  msg = event.content
+  msg = parse_message(event)
   p = parse_term(msg, global: true)
   case p.size
   when 0
@@ -268,7 +264,7 @@ def parse_challenge_code(msg)
 end
 
 def parse_videos(event)
-  msg = event.content
+  msg = parse_message(event)
   author = parse_video_author(msg)
   msg = msg.chomp(" by " + author.to_s)
   highscoreable = parse_highscoreable(event)
@@ -300,23 +296,29 @@ def parse_h_by_id_once(
     channel = nil,  # Discord channel
     matches = [],   # Array to add the _normalized_ ID if found
     type:    Level, # Type of highscoreable ID
-    mappack: false, # Whether to look for mappack IDs or regular ones
+    vanilla: true,  # Whether to look for mappack IDs or regular ones
+    mappack: false, # Whether we allow mappacks or not
     dashed:  true   # Strict dashed IDs vs optionally-dashed IDs
   )
   # Parse selected pattern
-  packing = mappack ? :mappack : :vanilla
+  packing = vanilla ? :vanilla : :mappack
   dashing = dashed ? :dashed : :dashless
   pattern = ID_PATTERNS[type.to_s][packing][dashing]
 
-  # Try to match pattern
+  # Match pattern
   match = msg.match(pattern)
   return ['', []] if match.nil?
+
+  # Format name
   pack = default_mappack(user, channel)
   str = normalize_name(match)
-  str.prepend(pack.code.upcase + '-') if pack && !mappack
   matches << str
-  type = type.mappack if mappack || pack && pack.id != 0
-  res = type.find_by(name: str)
+  code = pack ? pack.code.upcase : 'MET'
+  str.prepend(code + '-') if vanilla && mappack
+
+  # Find highscoreable
+  klass = mappack ? type.mappack : type
+  res = klass.find_by(name: str)
   res ? ["Single match found for #{match}", [res]] : ['', []]
 rescue
   ['', []]
@@ -336,11 +338,11 @@ def parse_highscoreable_by_id(msg, user = nil, channel = nil, mappack: false)
   # Mappack variants, if allowed
   matches = []
   if mappack
-    ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: true, dashed: true)  if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: true, dashed: true)  if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: true, dashed: false) if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: true, dashed: false) if ret[1].empty?
-    ret = parse_h_by_id_once(msg, user, channel, matches, type: Story,   mappack: true, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: true, vanilla: false, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: true, vanilla: false, dashed: true)  if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: true, vanilla: false, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: true, vanilla: false, dashed: false) if ret[1].empty?
+    ret = parse_h_by_id_once(msg, user, channel, matches, type: Story,   mappack: true, vanilla: false, dashed: true)  if ret[1].empty?
 
     # If there were ID matches, but they didn't exist, raise
     if ret[1].empty? && matches.size > 0
@@ -351,11 +353,11 @@ def parse_highscoreable_by_id(msg, user = nil, channel = nil, mappack: false)
 
   # Vanilla variants
   matches = []
-  ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: false, dashed: true)  if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: false, dashed: true)  if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: false, dashed: false) if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: false, dashed: false) if ret[1].empty?
-  ret = parse_h_by_id_once(msg, user, channel, matches, type: Story,   mappack: false, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: mappack, vanilla: true, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: mappack, vanilla: true, dashed: true)  if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Level,   mappack: mappack, vanilla: true, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Episode, mappack: mappack, vanilla: true, dashed: false) if ret[1].empty?
+  ret = parse_h_by_id_once(msg, user, channel, matches, type: Story,   mappack: mappack, vanilla: true, dashed: true)  if ret[1].empty?
 
   # If there were ID matches, but they didn't exist, raise
   if ret[1].empty? && matches.size > 0
@@ -452,10 +454,9 @@ def parse_highscoreable(
     event,          # Event whose content contains the highscoreable to parse
     partial: false, # Perform partial and approximate matches as well
     array:   false, # Always return an array, even if there's a single result
-    mappack: false, # Search mappack highscoreables as well
-    user:    nil    # User who sent query (for user-specific query preferences)
+    mappack: false  # Search mappack highscoreables as well
   )
-  msg = event.content
+  msg = parse_message(event)
   user = parse_user(event.user)
   channel = event.channel
   perror("Couldn't find the level, episode or story you were looking for :(") if msg.to_s.strip.empty?
@@ -842,7 +843,7 @@ end
 # if it's not quoted. Only look in 'pal' if not nil. 'fallback' will default
 # to the default palette if no good matches, otherwise exception.
 def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
-  msg = event.content
+  msg = parse_message(event)
   err = ""
   pal.strip! if !pal.nil?
 

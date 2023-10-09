@@ -234,13 +234,13 @@ def setup_bot
     next if !RESPOND && event.user.id != BOTMASTER_ID
 
     # Log
-    remove_mentions!(event.content)
-    special = event.user.id == BOTMASTER_ID && event.content[0] == '!'
-    str = "#{special ? 'Special ' : ''}DM by #{event.user.name}: #{event.content}"
-    special ? succ(str) : msg(str)
+    msg = parse_message(event)
+    remove_mentions!(msg)
+    next if msg[0] == '!' && event.user.id == BOTMASTER_ID
+    msg("DM by #{event.user.name}: #{msg}")
 
     # Respond
-    special ? respond_special(event) : respond(event)
+    respond(event)
     send_message(event)
   rescue => e
     lex(e, 'Failed to handle Discord DM')
@@ -250,11 +250,13 @@ def setup_bot
 
   # Respond to pings
   $bot.mention do |event|
-    next if !RESPOND && event.user.id != BOTMASTER_ID
+    next if !RESPOND && event.user.id != BOTMASTER_ID || event.channel.type == 1
 
     # Log
-    remove_mentions!(event.content)
-    msg("Mention by #{event.user.name} in #{event.channel.name}: #{event.content}")
+    msg = parse_message(event)
+    remove_mentions!(msg)
+    next if msg[0] == '!' && event.user.id == BOTMASTER_ID
+    msg("Mention by #{event.user.name} in #{event.channel.name}: #{msg}")
 
     # Respond
     respond(event)
@@ -270,9 +272,10 @@ def setup_bot
     next if !RESPOND && event.user.id != BOTMASTER_ID
 
     # Special commands
-    remove_mentions!(event.content)
-    if event.content[0] == '!' && event.user.id == BOTMASTER_ID && event.channel.type != 1
-      succ("Special command: #{event.content}")
+    msg = parse_message(event)
+    remove_mentions!(msg)
+    if msg[0] == '!' && event.user.id == BOTMASTER_ID
+      succ("Special command: #{msg}")
       respond_special(event)
       send_message(event)
     end
@@ -282,8 +285,8 @@ def setup_bot
       $last_potato = Time.now.to_i
       $potato = 0
     end
-    mishnub(event) if MISHU && event.content.downcase.include?("mishu")
-    robot(event) if !!event.content[/eddy\s*is\s*a\s*robot/i]
+    mishnub(event) if MISHU && msg.downcase.include?("mishu")
+    robot(event) if !!msg[/eddy\s*is\s*a\s*robot/i]
   rescue => e
     lex(e, 'Failed to handle Discord message')
   ensure
@@ -292,6 +295,7 @@ def setup_bot
 
   # Parse new reactions
   $bot.reaction_add do |event|
+    next if !RESPOND && event.user.id != BOTMASTER_ID
     msg = event.message
     next if msg.user.id != $config['discord_client']
     next if !EMOJIS_TO_DELETE.include?(event.emoji.to_s)

@@ -19,7 +19,7 @@ require_relative 'userlevels.rb'
 #   Arg 'third':   Allows to parse player name using 'is'
 def send_list(event, file = true, missing = false, third = false)
   # Parse message parameters
-  msg     = event.content
+  msg     = parse_message(event)
   player  = parse_player(event, false, false, false, false, third)
   msg     = msg.remove!(player.name)
   mappack = parse_mappack(msg, parse_user(event.user), event.channel)
@@ -96,7 +96,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   # PARSE ranking parameters (from function arguments and message)
   initial    = page.nil? && type.nil? && tab.nil? && rtype.nil? && ties.nil?
   reset_page = !type.nil? || !tab.nil? || !rtype.nil? || !ties.nil?
-  msg   = fetch_message(event, initial)
+  msg   = parse_message(event)
   tabs  = parse_tabs(msg, tab)
   tab   = tabs.empty? ? 'all' : (tabs.size == 1 ? tabs[0].to_s.downcase : 'tab')
   ties  = !ties.nil? ? ties : parse_ties(msg, rtype)
@@ -261,7 +261,7 @@ end
 # (e.g. classify levels by amount of cool/* scores)
 def send_tally(event)
   # Parse message parameters
-  msg   = event.content
+  msg   = parse_message(event)
   type  = parse_type(msg)
   tabs  = parse_tabs(msg)
   cool  = parse_cool(msg)
@@ -300,10 +300,11 @@ end
 
 # Return a player's total score (sum of scores) in specified tabs and type
 def send_total_score(event)
-  # Parse messsage parameters
+  # Parse message parameters
+  msg    = parse_message(event)
   player = parse_player(event)
-  type   = parse_type(event.content, default: Level)
-  tabs   = parse_tabs(event.content)
+  type   = parse_type(msg, default: Level)
+  tabs   = parse_tabs(msg)
 
   # Retrieve total score
   score = player.total_score(type, tabs)
@@ -321,7 +322,7 @@ end
 # 0th and Nth rank
 def send_spreads(event)
   # Parse message parameters
-  msg     = event.content
+  msg     = parse_message(event)
   n       = (parse_rank(msg) || 2) - 1
   type    = parse_type(msg, default: Level)
   tabs    = parse_tabs(msg)
@@ -367,7 +368,7 @@ end
 def send_scores(event, map = nil, ret = false, page: nil)
   # Parse message parameters
   initial = page.nil?
-  msg     = fetch_message(event, initial)
+  msg     = parse_message(event)
   h       = map.nil? ? parse_highscoreable(event, partial: true, mappack: true) : map
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
@@ -434,7 +435,7 @@ end
 def send_nav_scores(event, offset: nil, date: nil, page: nil)
   # Parse message parameters
   initial = offset.nil? && date.nil? && page.nil?
-  msg     = fetch_message(event, initial)
+  msg     = parse_message(event)
   scores  = parse_highscoreable(event, partial: true)
 
   # Multiple matches, send match list
@@ -462,7 +463,7 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
   # Send response
   view = Discordrb::Webhooks::View.new
   interaction_add_level_navigation(view, scores.name.center(11, ' '))
-  interaction_add_date_navigation(view, new_index + 1, dates.size, date, date == 0 ? " " * 11 : Time.at(date).strftime("%Y-%b-%d"))
+  interaction_add_date_navigation(view, new_index + 1, dates.size, date, date == 0 ? 'Date' : Time.at(date).strftime("%Y-%b-%d"))
   send_message_with_interactions(event, str, view, !initial)
 rescue => e
   lex(e, "Error navigating scores.", event: event)
@@ -475,7 +476,7 @@ end
 def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
   # Parse message parameters
   initial = page.nil?
-  msg     = fetch_message(event, initial)
+  msg     = parse_message(event)
   hash    = parse_palette(event)
   msg     = hash[:msg]
   h       = map.nil? ? parse_highscoreable(event, partial: true, mappack: true) : map
@@ -513,7 +514,7 @@ end
 # since it's a very common combination
 def send_screenscores(event)
   # Parse message parameters
-  msg = event.content
+  msg = parse_message(event)
   map = parse_highscoreable(event, mappack: true)
   ss  = send_screenshot(event, map, true)
   s   = send_scores(event, map, true)
@@ -526,7 +527,7 @@ end
 
 # Same, but sending the scores first and the screenshot second
 def send_scoreshot(event)
-  msg = event.content
+  msg = parse_message(event)
   map = parse_highscoreable(event, mappack: true)
   s   = send_scores(event, map, true)
   ss  = send_screenshot(event, map, true)
@@ -540,7 +541,7 @@ end
 # Returns rank distribution of a player's scores, in both table and histogram form
 def send_stats(event)
   # Parse message parameters
-  msg    = event.content
+  msg    = parse_message(event)
   player = parse_player(event)
   tabs   = parse_tabs(msg)
   ties   = parse_ties(msg)
@@ -593,7 +594,7 @@ end
 #     and then subtracting the episode 0th score.
 def send_community(event)
   # Parse message parameters
-  msg  = event.content
+  msg  = parse_message(event)
   tabs = parse_tabs(msg)
   cond = !(tabs&[:SS, :SS2]).empty? || tabs.empty?
 
@@ -622,7 +623,7 @@ end
 # Return list of levels/episodes sorted by number of ties for 0th (desc)
 def send_maxable(event, maxed = false)
   # Parse message parameters
-  msg     = event.content
+  msg     = parse_message(event)
   player  = parse_player(event, false, !msg[/missing/i], false)
   type    = parse_type(msg, default: Level)
   tabs    = parse_tabs(msg)
@@ -671,7 +672,7 @@ end
 # episode 0th and the sum of the level 0ths
 def send_cleanliness(event)
   # Parse message parameters
-  msg     = event.content
+  msg     = parse_message(event)
   type    = parse_type(msg, default: Episode)
   tabs    = parse_tabs(msg)
   rank    = parse_range(msg)[0]
@@ -712,7 +713,7 @@ end
 # Returns the cleanliness of a single episode or story 0th
 def send_clean_one(event, ret = false)
   # Parse params
-  msg = event.content
+  msg = parse_message(event)
   h = parse_highscoreable(event, mappack: true)
   perror("Cleanliness is an episode/story-specific function!") if h.is_a?(Levelish)
   board = parse_board(msg, 'hs')
@@ -753,7 +754,7 @@ end
 # has 0th in all 5 levels and the episode
 def send_ownages(event)
   # Parse message parameters
-  msg  = event.content
+  msg  = parse_message(event)
   tabs = parse_tabs(msg)
 
   # Retrieve ownages
@@ -780,7 +781,7 @@ end
 # Return list of a player's most improvable scores, filtered by type and tab
 def send_worst(event, worst = true)
   # Parse message parameters
-  msg     = event.content
+  msg     = parse_message(event)
   player  = parse_player(event)
   type    = parse_type(msg, default: Level)
   tabs    = parse_tabs(msg)
@@ -815,7 +816,7 @@ end
 def send_level_id(event, page: nil)
   # Parse message parameters
   initial = page.nil?
-  msg     = fetch_message(event, initial)
+  msg     = parse_message(event)
   level   = parse_highscoreable(event, partial: true)
 
   # Multiple matches, send match list
@@ -848,7 +849,7 @@ end
 #   'rank' we compute the average rank, which is just 20 - avg points
 def send_points(event, avg = false, rank = false)
   # Parse message parameters
-  msg    = event.content
+  msg    = parse_message(event)
   player = parse_player(event)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
@@ -892,7 +893,7 @@ end
 # Return a player's average 0th lead across all their 0ths
 def send_average_lead(event)
   # Parse message parameters
-  msg    = event.content
+  msg    = parse_message(event)
   player = parse_player(event)
   type   = parse_type(msg, default: Level)
   tabs   = parse_tabs(msg)
@@ -912,7 +913,7 @@ end
 # and classifying it by type (columns) and tabs (rows)
 def send_table(event)
   # Parse message parameters
-  msg    = event.content
+  msg    = parse_message(event)
   player = parse_player(event)
   cool   = parse_cool(msg)
   star   = parse_star(msg)
@@ -1025,7 +1026,7 @@ end
 # Returns both the counts, as well as the list of scores in a file
 def send_comparison(event)
   # Parse message parameters
-  msg    = event.content
+  msg    = parse_message(event)
   type   = parse_type(msg)
   tabs   = parse_tabs(msg)
   p1, p2 = parse_players(event)
@@ -1075,7 +1076,7 @@ end
 # Return a list of random highscoreables
 def send_random(event)
   # Parse message parameters
-  msg    = event.content
+  msg    = parse_message(event)
   type   = parse_type(msg, default: Level)
   tabs   = parse_tabs(msg)
   amount = [msg[/\d+/].to_i || 1, NUM_ENTRIES].min
@@ -1107,7 +1108,7 @@ def send_challenges(event, page: nil)
 
   # Parse message parameters
   initial = page.nil?
-  msg     = fetch_message(event, initial)
+  msg     = parse_message(event)
   lvl     = parse_highscoreable(event, partial: true)
 
   # Multiple matches, send match list
@@ -1130,8 +1131,8 @@ end
 # 'page' parameters controls button page navigation when there are many results
 def send_query(event, page: nil)
   initial = page.nil?
-  msg     = fetch_message(event, initial)
-  lvl     = parse_highscoreable(event, partial: true, array: true)
+  msg     = parse_message(event)
+  lvl     = parse_highscoreable(event, partial: true, array: true, mappack: true)
   format_level_matches(event, msg, page, initial, lvl, 'search')
 rescue => e
   lex(e, "Error performing query.", event: event)
@@ -1140,7 +1141,7 @@ end
 # Sends the Top20 changes for the current lotd/eotw/cotm
 def send_diff(event)
   # Parse params
-  msg      = event.content
+  msg      = parse_message(event)
   mappack  = parse_mappack(msg, parse_user(event.user), event.channel)
   type     = parse_type(msg, default: Level)
   period   = type == Level ? 'day'   : type == Episode ? 'week'    : 'month'
@@ -1162,7 +1163,8 @@ rescue => e
 end
 
 def send_mappacks(event)
-  short = !!event.content[/short/i]
+  msg = parse_message(event)
+  short = !!msg[/short/i]
   counts = MappackLevel.group(:mappack_id).count
   list = Mappack.all.order(:date).map{ |m|
     fields = []
@@ -1189,7 +1191,7 @@ end
 def send_analysis(event, page: nil)
   # Parse message parameters
   initial = page.nil?
-  msg     = fetch_message(event, initial)
+  msg     = parse_message(event)
   ranks   = parse_ranks(msg, -1)
   board   = parse_board(msg, 'hs')
   h       = parse_highscoreable(event, partial: true, mappack: true)
@@ -1328,7 +1330,7 @@ rescue => e
 end
 
 def send_demo_download(event)
-  msg    = event.content
+  msg    = parse_message(event)
   h      = parse_highscoreable(event)
   rank   = [parse_range(msg).first, h.scores.size - 1].min
   score  = h.scores[rank]
@@ -1340,7 +1342,7 @@ end
 
 def send_download(event, page: nil)
   initial = page.nil?
-  msg     = event.content
+  msg     = parse_message(event)
   h       = parse_highscoreable(event, partial: true, mappack: true)
 
   return format_level_matches(event, msg, page, initial, h, 'download') if h.is_a?(Array)
@@ -1375,7 +1377,7 @@ end
 # Also return the differences between both
 def send_splits(event)
   # Parse message parameters
-  msg = event.content
+  msg = parse_message(event)
   ep = parse_highscoreable(event, mappack: true)
   ep = ep.episode if ep.is_a?(Levelish)
   perror("Sorry, columns can't be analyzed yet.") if ep.is_a?(Storyish)
@@ -1523,7 +1525,7 @@ def send_history2(event)
   min = 10          # minimum y axis max
   players = 10      # amount of players to be plotted
 
-  msg = event.content
+  msg = parse_message(event)
 
   type = parse_type(msg)
   tabs = parse_tabs(msg)
@@ -1611,7 +1613,7 @@ def send_history2(event)
 end
 
 def identify(event)
-  msg = event.content
+  msg = parse_message(event)
   user = event.user.name
   nick = msg[/my name is (.*)[\.]?$/i, 1]
   perror("You have to send a message in the form #{verbatim('my name is <username>')}.") if nick.nil?
@@ -1626,7 +1628,7 @@ rescue => e
 end
 
 def add_display_name(event)
-  msg  = event.content
+  msg  = parse_message(event)
   name = msg[/my display name is (.*)[\.]?$/i, 1]
   perror("You need to specify some display name.") if name.nil?
   user = parse_user(event.user)
@@ -1639,7 +1641,7 @@ rescue => e
 end
 
 def set_default_palette(event)
-  msg = event.content
+  msg = parse_message(event)
   palette = msg[/my palette is (.*)[\.\s]*$/i, 1]
   perror("You need to specify a palette name.") if palette.nil?
   palette = parse_palette(event, pal: palette, fallback: false)[:palette]
@@ -1651,7 +1653,7 @@ rescue => e
 end
 
 def set_default_mappack(event)
-  msg = event.content
+  msg = parse_message(event)
   pack = msg[/my (?:.*?)(?:map\s*)?pack (?:.*?)is (.*)[\.\s]*$/i, 1]
   always = !!msg[/always/i]
   perror("You need to specify a mappack.") if pack.nil?
@@ -1798,9 +1800,12 @@ end
 # Send info about current and next lotd/eotw/cotm
 def send_lotd(event, type = Level)
   # Parse params
+  msg = parse_message(event)
+  mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   type = Level if ![Level, Episode, Story].include?(type)
-  ctp = !!event.content[/ctp/i]
+  ctp = mappack && mappack.code.upcase == 'CTP'
   period = type == Level ? 'day' : (type == Episode ? 'week' : 'month')
+  perror("There is no #{mappack.code.upcase} #{type.to_s.downcase} of the #{period}.") if mappack && mappack.id > 1
 
   # Fetch lotd and time
   curr_h = GlobalProperty.get_current(type, ctp)
@@ -1891,7 +1896,7 @@ end
 def add_role(event)
   assert_permissions(event)
 
-  msg  = event.content
+  msg  = parse_message(event)
   user = parse_discord_user(msg)
 
   role = parse_term(msg)
@@ -1908,7 +1913,7 @@ end
 def add_alias(event)
   assert_permissions(event) # Only the botmaster can execute this
 
-  msg = event.content
+  msg = parse_message(event)
   aka = parse_term(msg)
   perror("You need to provide an alias in quotes.") if aka.nil?
 
@@ -1929,7 +1934,7 @@ def send_aliases(event, page: nil, type: nil)
   # PARSE
   initial    = page.nil? && type.nil?
   reset_page = !type.nil?
-  msg        = fetch_message(event, initial)
+  msg        = parse_message(event)
   type       = parse_alias_type(msg, type)
   page       = parse_page(msg, page, reset_page, event.message.components)
   case type
@@ -1972,7 +1977,7 @@ end
 # in random palettes, zip them, and upload them.
 def send_dmmc(event)
   assert_permissions(event, ['dmmc'])
-  msg        = event.content.remove('dmmcize').strip
+  msg        = parse_message(event).remove('dmmcize').strip
   limit      = 30
   levels     = Userlevel.where_like('title', msg).limit(limit).to_a
   count      = levels.count
@@ -2050,14 +2055,14 @@ end
 def send_test(event)
   assert_permissions(event)
 
-#  maps = send_userlevel_browse(nil, socket: event.content)
+#  maps = send_userlevel_browse(nil, socket: parse_message(event))
 #  Userlevel::dump_query(maps, 10, 0)
-#  p = UserlevelAuthor.parse(parse_userlevel_author(event.content))
+#  p = UserlevelAuthor.parse(parse_userlevel_author(parse_message(event)))
 #  event << "Found: #{p.name}"
 end
 
 def send_reaction(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   react(flags[:c], flags[:m], flags[:r])
 rescue => e
@@ -2065,7 +2070,7 @@ rescue => e
 end
 
 def send_unreaction(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   unreact(flags[:c], flags[:m], flags[:r])
 rescue => e
@@ -2080,7 +2085,7 @@ rescue => e
 end
 
 def send_mappack_read(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   mappack = parse_mappack(msg, explicit: true, vanilla: false)
   perror("Mappack not found.") if mappack.nil?
   mappack.read
@@ -2090,7 +2095,7 @@ rescue => e
 end
 
 def send_mappack_patch(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   id = flags[:id]
   highscoreable = parse_highscoreable(event, mappack: true) if !id
@@ -2102,7 +2107,7 @@ rescue => e
 end
 
 def send_mappack_ranks(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   h = parse_highscoreable(event, mappack: true)
   board = parse_board(flags[:b])
@@ -2116,7 +2121,7 @@ rescue => e
 end
 
 def send_mappack_info(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
   perror("You need to provide a mappack.") if !mappack
@@ -2224,7 +2229,7 @@ def send_ul_plot_month(event)
 end
 
 def send_ul_plot(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   case flags[:period]
   when 'month'
@@ -2237,10 +2242,10 @@ rescue => e
 end
 
 def send_gold_check(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   id = [flags[:id].to_i, MIN_REPLAY_ID].max
-  mappack = parse_mappack(flags[:mappack], vanilla: false)
+  mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
   strict = flags.key?(:strict)
   event << "List of potentially incorrect mappack scores:"
   rows = []
@@ -2254,7 +2259,7 @@ end
 
 
 def send_log_config(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   event << "Enabled logging modes: #{Log.modes.join(', ')}." if flags.empty?
   flags.each{ |f, v|
@@ -2302,7 +2307,7 @@ end
 
 # Compare Ruby and C SHA1 hashes for a specific level or score
 def send_hash(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
 
   # Parse highscoreable
@@ -2358,7 +2363,7 @@ rescue => e
 end
 
 def send_nprofile_gen(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   perror("You need to provide a player.") if !flags.key?(:p)
   perror("You need to provide a mappack.") if !flags.key?(:m)
@@ -2437,7 +2442,7 @@ end
 
 # Manually update the Discord ID of a user by name
 def set_user_id(event)
-  msg = remove_command(event.content)
+  msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   perror("You must provide a username.") if !flags[:name]
   name = flags[:name].split('#').first
@@ -2473,7 +2478,7 @@ end
 #   Will react to the message with id B in channel with name A with emoji C
 def respond_special(event)
   assert_permissions(event)
-  msg = event.content.strip
+  msg = parse_message(event).strip
   cmd = msg[/^!(\w+)/i, 1]
   return if cmd.nil?
   cmd.downcase!
@@ -2511,7 +2516,7 @@ rescue => e
 end
 
 def respond(event)
-  msg = event.content
+  msg = parse_message(event)
   hm = !msg[/\bhow many\b/i]
 
   # Divert flow to userlevel specific functions

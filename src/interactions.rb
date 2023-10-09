@@ -236,8 +236,8 @@ end
 #      The second keyword specifies the category of the component (up to you).
 #      The third keyword specifies the specific component (button, select menu option).
 def respond_interaction_button(event)
-  keys = event.custom_id.to_s.split(':')                       # Component parameters
-  type = event.message.content.strip.split(' ').first.downcase # Source message type
+  keys = event.custom_id.to_s.split(':')                      # Component parameters
+  type = parse_message(event).strip.split(' ').first.downcase # Source message type
   return if keys[0] != 'button' # Only listen to components of type "Button"
 
   case type
@@ -276,9 +276,9 @@ def respond_interaction_button(event)
 end
 
 def respond_interaction_menu(event)
-  keys   = event.custom_id.to_s.split(':')                       # Component parameters
-  values = event.values.map{ |v| v.split(':') }                  # Component option parameters
-  type   = event.message.content.strip.split(' ').first.downcase # Source message type
+  keys   = event.custom_id.to_s.split(':')                      # Component parameters
+  values = event.values.map{ |v| v.split(':') }                 # Component option parameters
+  type   = parse_message(event).strip.split(' ').first.downcase # Source message type
   return if keys[0] != 'menu' # Only listen to components of type "Select Menu"
   
   case type

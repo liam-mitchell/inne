@@ -781,7 +781,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     if !query.nil?
       msg = ""
     else
-      msg = fetch_message(event, initial)
+      msg = parse_message(event)
     end
   end
   h      = parse_order(msg, order) # Updates msg
@@ -894,7 +894,7 @@ def send_userlevel_individual(event, msg, userlevel = nil, &block)
 end
 
 def send_userlevel_download(event)
-  msg = clean_userlevel_message(event.content)
+  msg = clean_userlevel_message(parse_message(event))
   msg = remove_word_first(msg, 'download')
   send_userlevel_individual(event, msg){ |map|
     output = "Downloading userlevel #{verbatim(map[:query].title)} "
@@ -911,9 +911,10 @@ end
 # We can pass the actual level instead of parsing it from the message
 # This is used e.g. by the random userlevel function
 def send_userlevel_screenshot(event, userlevel = nil)
-  event.content.sub!(/(for|of)?\w*userlevel\w*/i, '')
-  event.content.sub!(/\w*screenshot\w*/i, '')
-  event.content.squish!
+  msg = parse_message(event)
+  msg.sub!(/(for|of)?\w*userlevel\w*/i, '')
+  msg.sub!(/\w*screenshot\w*/i, '')
+  msg.squish!
   h = parse_palette(event)
   send_userlevel_individual(event, h[:msg], userlevel){ |map|
     output = "#{h[:error]}"
@@ -930,7 +931,7 @@ rescue => e
 end
 
 def send_userlevel_scores(event)
-  msg = clean_userlevel_message(event.content)
+  msg = clean_userlevel_message(parse_message(event))
   msg = remove_word_first(msg, 'scores')
   send_userlevel_individual(event, msg){ |map|
     output = "Scores for userlevel #{verbatim(map[:query].title)} "
@@ -944,7 +945,7 @@ rescue => e
 end
 
 def send_userlevel_rankings(event)
-  msg       = event.content
+  msg       = parse_message(event)
   rank      = parse_rank(msg) || 1
   rank      = 1 if rank < 0
   rank      = 20 if rank > 20
@@ -1007,7 +1008,7 @@ rescue => e
 end
 
 def send_userlevel_count(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1069,7 +1070,7 @@ rescue => e
 end
 
 def send_userlevel_points(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1087,7 +1088,7 @@ rescue => e
 end
 
 def send_userlevel_avg_points(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1104,7 +1105,7 @@ rescue => e
 end
 
 def send_userlevel_avg_rank(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1121,7 +1122,7 @@ rescue => e
 end
 
 def send_userlevel_total_score(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1137,7 +1138,7 @@ rescue => e
 end
 
 def send_userlevel_avg_lead(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1154,7 +1155,7 @@ rescue => e
 end
 
 def send_userlevel_list(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1179,7 +1180,7 @@ rescue => e
 end
 
 def send_userlevel_stats(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1206,7 +1207,7 @@ rescue => e
 end
 
 def send_userlevel_spreads(event)
-  msg    = event.content
+  msg    = parse_message(event)
   n      = (msg[/([0-9][0-9]?)(st|nd|rd|th)/, 1] || 1).to_i
   player = parse_player(event, true, true, false)
   small  = !!(msg =~ /smallest/)
@@ -1230,7 +1231,7 @@ rescue => e
 end
 
 def send_userlevel_maxed(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true, true, false)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1250,7 +1251,7 @@ rescue => e
 end
 
 def send_userlevel_maxable(event)
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true, true, false)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1272,7 +1273,7 @@ rescue => e
 end
 
 def send_random_userlevel(event)
-  msg       = event.content
+  msg       = parse_message(event)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
   amount    = [(msg[/\d+/] || 1).to_i, PAGE_SIZE].min
@@ -1296,7 +1297,7 @@ end
 
 def send_userlevel_mapping_summary(event)
   # Parse message parameters
-  msg       = event.content
+  msg       = parse_message(event)
   author    = UserlevelAuthor.parse(parse_userlevel_both(msg))
   author_id = !author.nil? ? author.id : nil
   mode      = parse_mode(msg, false, true)
@@ -1338,7 +1339,7 @@ end
 
 def send_userlevel_highscoring_summary(event)
   # Parse message parameters
-  msg       = event.content
+  msg       = parse_message(event)
   player    = parse_player(event, true, true, false)
   author    = parse_author(msg, false)
   author_id = !author.nil? ? author.id : nil
@@ -1407,7 +1408,7 @@ def send_userlevel_highscoring_summary(event)
 end
 
 def send_userlevel_summary(event)
-  msg = event.content
+  msg = parse_message(event)
   mapping     = !!msg[/mapping/i]
   highscoring = !!msg[/highscoring/i]
   both        = !(mapping || highscoring)
@@ -1423,8 +1424,8 @@ def send_userlevel_trace(event)
   wait_msg = send_message(event, content: 'Waiting for another trace to finish...', removable: false) if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
     wait_msg.delete if !wait_msg.nil? rescue nil
-    event.content.sub!(/user\s*level/i, '')
-    event.content.squish!
+    parse_message(event).sub!(/user\s*level/i, '')
+    parse_message(event).squish!
     msg = parse_palette(event)[:msg]
     send_userlevel_individual(event, msg){ |map|
       map[:query].trace(event)
@@ -1457,7 +1458,7 @@ rescue => e
 end
 
 def respond_userlevels(event)
-  msg = event.content
+  msg = parse_message(event)
 
   # Exclusively global methods
   if !msg[NAME_PATTERN, 2]

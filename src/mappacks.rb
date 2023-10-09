@@ -863,7 +863,7 @@ module Map
 
   def trace(event)
     t = Time.now
-    msg = event.content
+    msg = parse_message(event)
     tmp_msg = [nil]
     h = parse_palette(event)
     msg, palette, error = h[:msg], h[:palette], h[:error]
