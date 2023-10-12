@@ -1,4 +1,6 @@
 Ongoing:
+- Delete send_message_with_interactions and substitute by calls to send_message
+- Delete parameter "initial" wherever it's no longer necessary
 - Display names and implicit player parsing do not work for userlevels now. Merge userlevel_players with players:
   * Add metanet_id column to userlevel_scores
   * Merge userlevel_players (not already in players) with players

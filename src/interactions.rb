@@ -187,17 +187,11 @@ ensure
   view
 end
 
-# Function to send messages specifically when they have interactions attached
-# (i.e. buttons or select menus). At the moment, there is no way to to attach
-# interactions to a message and use << to prevent rate limiting, so we need to
-# either send a new message, or edit the current one. Also, the originating
-# events are different (MentionEvent or PrivateMessageEvent if its a new
-# message, and ButtonEvent or SelectMenuEvent if its an existing message),
-# so we need to access different methods with different syntax.
+# Function to send or edit a message with components
 def send_message_with_interactions(event, msg, components = nil, edit = false, files = [])
-  if edit # ButtonEvent / SelectMenuEvent
+  if event.is_a?(Discordrb::Events::ComponentEvent)
     event.update_message(content: msg, components: components)
-  else # MentionEvent / PrivateMessageEvent
+  else
     send_message(event, content: msg, files: files, components: components)
   end
 end

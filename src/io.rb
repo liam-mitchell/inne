@@ -1196,7 +1196,16 @@ def send_message(dest, content: '', files: [], components: nil, spoiler: false, 
 
   # Config attachments and return if no message
   files.reject!{ |f| !f.is_a?(File) }
-  files.each{ |f| File.rename(f.path, "SPOILER_#{f.path}") } if spoiler
+  files.map!{ |f|
+    if !File.basename(f).start_with?('SPOILER_')
+      new_name = File.join(File.dirname(f), 'SPOILER_' + File.basename(f))
+      File.rename(f.path, new_name)
+      f.close
+      File.open(new_name, 'r')
+    else
+      f
+    end
+  } if spoiler
   return if content.empty? && files.empty?
 
   # Send message and log it in db
