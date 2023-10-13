@@ -94,7 +94,7 @@ end
 # so it takes preference, and is used instead of parsing it from the message
 def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   # PARSE ranking parameters (from function arguments and message)
-  initial    = page.nil? && type.nil? && tab.nil? && rtype.nil? && ties.nil?
+  initial    = parse_initial(event)
   reset_page = !type.nil? || !tab.nil? || !rtype.nil? || !ties.nil?
   msg   = parse_message(event)
   tabs  = parse_tabs(msg, tab)
@@ -246,7 +246,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     interaction_add_type_buttons(view, type, ties)
     interaction_add_select_menu_rtype(view, rtype)
     interaction_add_select_menu_metanet_tab(view, tab)
-    send_message_with_interactions(event, header + "\n" + rank, view, !initial)
+    send_message(event, content: header + "\n" + rank, components: view)
   else
     length = header.length + rank.length
     event << header
@@ -364,12 +364,10 @@ end
 #          being parsed from the message (used, e.g., for lotd)
 #   'ret'  means the leaderboards will be returned to be used in another
 #          function (e.g., screenscores), rather than sent
-#   'page' is used to navigate when there are multiple pages of matching levels
-def send_scores(event, map = nil, ret = false, page: nil)
+def send_scores(event, map = nil, ret = false)
   # Parse message parameters
-  initial = page.nil?
   msg     = parse_message(event)
-  h       = map.nil? ? parse_highscoreable(event, partial: true, mappack: true) : map
+  h       = map.nil? ? parse_highscoreable(event, mappack: true) : map
   offline = parse_offline(msg)
   nav     = parse_nav(msg)
   mappack = h.is_a?(MappackHighscoreable)
@@ -382,12 +380,6 @@ def send_scores(event, map = nil, ret = false, page: nil)
   # Navigating scores goes into a different method (see below this one)
   if !!msg[/nav((igat)((e)|(ing)))?\s*(high\s*)?scores/i] && !h.is_a?(MappackHighscoreable)
     send_nav_scores(event)
-    return
-  end
-
-  # Multiple matches, send match list
-  if h.is_a?(Array)
-    format_level_matches(event, msg, page, initial, h, 'search')
     return
   end
 
@@ -432,19 +424,13 @@ end
 # - Does not update the scores.
 # - Adds navigating between levels.
 # - Adds navigating between dates.
-def send_nav_scores(event, offset: nil, date: nil, page: nil)
+def send_nav_scores(event, offset: nil, date: nil)
   # Parse message parameters
-  initial = offset.nil? && date.nil? && page.nil?
+  initial = parse_initial(event)
   msg     = parse_message(event)
-  scores  = parse_highscoreable(event, partial: true)
+  scores  = parse_highscoreable(event)
 
-  # Multiple matches, send match list
-  if scores.is_a?(Array)
-    format_level_matches(event, msg, page, initial, scores, 'search')
-    return
-  end
-
-  # Single match, retrieve scores for specified date and highscoreable
+  # Retrieve scores for specified date and highscoreable
   scores = scores.nav(offset.to_i)
   dates  = Archive.changes(scores).sort.reverse
   if initial || date.nil?
@@ -464,48 +450,30 @@ def send_nav_scores(event, offset: nil, date: nil, page: nil)
   view = Discordrb::Webhooks::View.new
   interaction_add_level_navigation(view, scores.name.center(11, ' '))
   interaction_add_date_navigation(view, new_index + 1, dates.size, date, date == 0 ? 'Date' : Time.at(date).strftime("%Y-%b-%d"))
-  send_message_with_interactions(event, str, view, !initial)
+  send_message(event, content: str, components: view)
 rescue => e
   lex(e, "Error navigating scores.", event: event)
 end
 
 # Send a screenshot of a level/episode/story
-#
-# Prepared for navigation, but it's not possible to edit attachments for now,
-# so commented that functionality, and 'offset' is not being used.
-def send_screenshot(event, map = nil, ret = false, page: nil, offset: nil)
+def send_screenshot(event, map = nil, ret = false)
   # Parse message parameters
-  initial = page.nil?
-  msg     = parse_message(event)
-  hash    = parse_palette(event)
-  msg     = hash[:msg]
-  h       = map.nil? ? parse_highscoreable(event, partial: true, mappack: true) : map
-  nav     = parse_nav(msg) || !initial
+  msg  = parse_message(event)
+  hash = parse_palette(event)
+  msg  = hash[:msg]
+  h    = map.nil? ? parse_highscoreable(event, mappack: true) : map
   
-  # Multiple matches, send match list
-  if h.is_a?(Array)
-    format_level_matches(event, msg, page, initial, h, 'search')
-    return
-  end
-
-  # Single match, retrieve screenshot
-  #scores = scores.nav(offset.to_i)
-  h = h.map if !h.is_a?(MappackHighscoreable)
+  # Retrieve screenshot
+  h = h.map
   spoiler = h.is_mappack? && h.mappack.code == 'ctp' && !(event.channel.type == 1 || event.channel.id == CHANNEL_CTP_SECRETS)
   screenshot = Map.screenshot(hash[:palette], file: true, h: h, spoiler: spoiler)
   perror("Failed to generate screenshot!") if screenshot.nil?
   
   # Send response
-  str  = "#{hash[:error]}Screenshot for #{h.format_name} in palette #{verbatim(hash[:palette])}:"
-  file = screenshot
-  return [file, str, spoiler] if ret
-  if nav
-    # Attachments can't be modified so we're stuck for now
-    send_message_with_interactions(event, str, nil, false, [file])
-  else
-    event << str
-    event.attach_file(file, spoiler: spoiler)
-  end
+  str = "#{hash[:error]}Screenshot for #{h.format_name} in palette #{verbatim(hash[:palette])}:"
+  return [screenshot, str, spoiler] if ret
+  event << str
+  event.attach_file(screenshot, spoiler: spoiler)
 rescue => e
   lex(e, "Error sending screenshot.", event: event)
 end
@@ -812,20 +780,9 @@ rescue => e
 end
 
 # Return level ID for a specified level name
-# The parameter 'page' is for button page navigation when there are many results
-def send_level_id(event, page: nil)
-  # Parse message parameters
-  initial = page.nil?
-  msg     = parse_message(event)
-  level   = parse_highscoreable(event, partial: true)
-
-  # Multiple matches, send match list
-  if level.is_a?(Array)
-    format_level_matches(event, msg, page, initial, level, 'search')
-    return
-  end
-
-  # Single match, send ID if it's a level
+def send_level_id(event)
+  msg   = parse_message(event)
+  level = parse_highscoreable(event, mappack: true)
   perror("Episodes and stories don't have a name!") if level.is_a?(Episode) || level.is_a?(Story)
   event << "#{level.longname} is level #{level.name}."
 rescue => e
@@ -1099,25 +1056,15 @@ rescue => e
 end
 
 # Return list of challenges for specified level, ordered and formatted as in the game
-# 'page' parameters controls button page navigation when there are many results
-def send_challenges(event, page: nil)
+def send_challenges(event)
   if event.channel.type != 1 && event.channel.id != CHANNEL_SECRETS
     mention = mention_channel(id: CHANNEL_SECRETS)
     perror("No asking for challenges outside of #{mention} or DMs!")
   end
 
-  # Parse message parameters
-  initial = page.nil?
-  msg     = parse_message(event)
-  lvl     = parse_highscoreable(event, partial: true)
-
-  # Multiple matches, send match list
-  if lvl.is_a?(Array)
-    format_level_matches(event, msg, page, initial, lvl, 'search')
-    return
-  end
-
-  # Single match, send challenge list if it's a non-secret level
+  msg = parse_message(event)
+  lvl = parse_highscoreable(event, mappack: true)
+  perror("Mappacks don't have challenges (yet ¬‿¬)") if lvl.is_mappack?
   perror("#{lvl.class.to_s.pluralize.capitalize} don't have challenges!") if lvl.class != Level
   perror("#{lvl.tab.to_s} levels don't have challenges!") if ["SI", "SL"].include?(lvl.tab.to_s)
   event << "Challenges for #{lvl.longname} (#{lvl.name}):\n#{format_block(lvl.format_challenges)}"
@@ -1130,10 +1077,7 @@ end
 # (e.g. scores, screenshot, challenges, level id, ...)
 # 'page' parameters controls button page navigation when there are many results
 def send_query(event, page: nil)
-  initial = page.nil?
-  msg     = parse_message(event)
-  lvl     = parse_highscoreable(event, partial: true, array: true, mappack: true)
-  format_level_matches(event, msg, page, initial, lvl, 'search')
+  lvl = parse_highscoreable(event, list: true, mappack: true, page: page)
 rescue => e
   lex(e, "Error performing query.", event: event)
 end
@@ -1188,19 +1132,12 @@ rescue => e
 end
 
 # Return the demo analysis of a level's replay
-def send_analysis(event, page: nil)
+def send_analysis(event)
   # Parse message parameters
-  initial = page.nil?
-  msg     = parse_message(event)
-  ranks   = parse_ranks(msg, -1)
-  board   = parse_board(msg, 'hs')
-  h       = parse_highscoreable(event, partial: true, mappack: true)
-
-  # Multiple matches, send match list
-  if h.is_a?(Array)
-    format_level_matches(event, msg, page, initial, h, 'search')
-    return
-  end
+  msg   = parse_message(event)
+  ranks = parse_ranks(msg, -1)
+  board = parse_board(msg, 'hs')
+  h     = parse_highscoreable(event, mappack: true)
 
   # Integrity checks
   perror("Episodes and columns can't be analyzed yet.") if h.is_a?(Episode) || h.is_a?(Story)
@@ -1330,24 +1267,20 @@ rescue => e
 end
 
 def send_demo_download(event)
-  msg    = parse_message(event)
-  h      = parse_highscoreable(event)
-  rank   = [parse_range(msg).first, h.scores.size - 1].min
-  score  = h.scores[rank]
+  msg   = parse_message(event)
+  h     = parse_highscoreable(event)
+  rank  = [parse_range(msg).first, h.scores.size - 1].min
+  score = h.scores[rank]
   event << "Downloading #{score.player.name}'s #{rank.ordinalize} score in #{h.name} (#{"%.3f" % [score.score]}):"
   send_file(event, score.demo.demo, "#{h.name}_#{rank.ordinalize}_replay", true)
 rescue => e
   lex(e, "Error downloading demo.", event: event)
 end
 
-def send_download(event, page: nil)
-  initial = page.nil?
-  msg     = parse_message(event)
-  h       = parse_highscoreable(event, partial: true, mappack: true)
-
-  return format_level_matches(event, msg, page, initial, h, 'download') if h.is_a?(Array)
+def send_download(event)
+  msg = parse_message(event)
+  h   = parse_highscoreable(event, mappack: true, map: true)
   perror("Only levels can be downloaded") if !h.is_a?(Levelish)
-  h = MappackLevel.find_by(id: h.id) if !h.is_a?(MappackLevel)
   event << "Downloading #{h.format_name}:"
   send_file(event, h.dump_level, h.name, true)
 rescue => e
@@ -1932,7 +1865,6 @@ end
 # ("type" has to be either 'level' or 'player' for now)
 def send_aliases(event, page: nil, type: nil)
   # PARSE
-  initial    = page.nil? && type.nil?
   reset_page = !type.nil?
   msg        = parse_message(event)
   type       = parse_alias_type(msg, type)
@@ -1968,7 +1900,7 @@ def send_aliases(event, page: nil, type: nil)
   view = Discordrb::Webhooks::View.new
   interaction_add_button_navigation(view, pag[:page], pag[:pages])
   interaction_add_select_menu_alias_type(view, type)
-  send_message_with_interactions(event, output, view, !initial)
+  send_message(event, content: output, components: view)
 rescue => e
   lex(e, "Error fetching aliases.", event: event)
 end
@@ -2506,13 +2438,6 @@ def respond_special(event)
   return set_user_id(event)             if cmd == 'set_user_id'
 
   event << "Unsupported special command."
-rescue OutteError => e
-  # These exceptions are user error, so send the message out to the channel.
-  event << e
-rescue => e
-  # These exceptions are internal errors, so send warning to the channel and
-  # log full trace to the terminal/log file
-  lex(e, "Failed to handle special message.", event: event)
 end
 
 def respond(event)
@@ -2595,11 +2520,4 @@ def respond(event)
 
   # If we get to this point, no command was executed
   event << "Sorry, I didn't understand your command."
-rescue OutteError => e
-  # These exceptions are user error, so send the message out to the channel.
-  event << e
-rescue => e
-  # These exceptions are internal errors, so send warning to the channel and
-  # log full trace to the terminal/log file
-  lex(e, "Error parsing message.", event: event)
 end

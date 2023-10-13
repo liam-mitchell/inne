@@ -310,7 +310,7 @@ def parse_h_by_id_once(
   return ['', []] if match.nil?
 
   # Format name
-  pack = default_mappack(user, channel)
+  pack = parse_mappack(msg, user, channel)
   str = normalize_name(match)
   matches << str
   code = pack ? pack.code.upcase : 'MET'
@@ -401,26 +401,26 @@ end
 def parse_highscoreable_by_name(msg, user = nil, channel = nil, mappack: true)
   pack = mappack ? parse_mappack(msg, user, channel) : nil
   klass = pack && pack.id != 0 ? MappackLevel.where(mappack: pack) : Level
-  pack = pack && pack.id != 0 ? pack.code.upcase + ' ' : ''
-  name = msg.split("\n")[0][NAME_PATTERN, 2]
+  pack = pack && pack.id != 0 ? pack.code.upcase + ' ' : 'MET '
+  name = msg.split("\n")[0][/(?:for|of) (.*)/i, 1].tr('"`:', '').strip
 
   # Exact name match
   ret = ['', klass.where_like('longname', name, partial: false).to_a]
-  ret[0] = "Single #{pack}name match found for #{name}" if ret[1].size == 1
-  ret[0] = "Multiple #{pack}name matches found for #{name}" if ret[1].size > 1
+  ret[0] = "Single #{pack}name match found for #{verbatim(name)}:" if ret[1].size == 1
+  ret[0] = "Multiple #{pack}name matches found for #{verbatim(name)}" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Exact alias match
   query = klass.joins("INNER JOIN level_aliases ON #{klass.table_name}.id = level_id")
   ret = ['', query.where_like('alias', name, partial: false).to_a]
-  ret[0] = "Single #{pack}alias match found for #{name}" if ret[1].size == 1
-  ret[0] = "Multiple #{pack}alias matches found for #{name}" if ret[1].size > 1
+  ret[0] = "Single #{pack}alias match found for #{verbatim(name)}:" if ret[1].size == 1
+  ret[0] = "Multiple #{pack}alias matches found for #{verbatim(name)}:" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Partial name match
   ret = ['', klass.where_like('longname', name, partial: true).to_a]
-  ret[0] = "Single partial #{pack}name match found for #{name}" if ret[1].size == 1
-  ret[0] = "Multiple partial #{pack}name matches found for #{name}" if ret[1].size > 1
+  ret[0] = "Single partial #{pack}name match found for #{verbatim(name)}:" if ret[1].size == 1
+  ret[0] = "Multiple partial #{pack}name matches found for #{verbatim(name)}:" if ret[1].size > 1
   return ret if !ret[1].empty?
 
   # Closest matches
@@ -442,7 +442,6 @@ end
 #       formatting them, etc. Adjust functions and comments accordingly.
 # - Add a parameter that tells this function whether multiple results should be
 #   formatted automatically or the list/QueryResult should be returned instead
-# - Rename 'partial' to 'multiple'
 
 # Parse a highscoreable (Level, Episode, Story, or the corresponding Mappack ones)
 # Returns
@@ -452,9 +451,11 @@ end
 # if partial is disabled, with the single result, if it exists.
 def parse_highscoreable(
     event,          # Event whose content contains the highscoreable to parse
-    partial: false, # Perform partial and approximate matches as well
-    array:   false, # Always return an array, even if there's a single result
-    mappack: false  # Search mappack highscoreables as well
+    list:    false, # Force to print list, even if there's a single match
+    mappack: false, # Search mappack highscoreables as well
+    page:    0,     # Page offset when navigating list of matches
+    vanilla: true,  # Don't return Metanet highscoreables as MappackHighscoreable
+    map:     false  # Force Metanet highscoreables to MappackHighscoreable
   )
   msg = parse_message(event)
   user = parse_user(event.user)
@@ -479,8 +480,13 @@ def parse_highscoreable(
   end
 
   # Transform to vanilla and single result if appropriate
-  ret[1].map!{ |m| m.vanilla }
-  ret = ret[1].first if !partial || !array && ret[1].size == 1
+  ret[1].map!{ |m| m.vanilla } if vanilla
+  ret[1].map!{ |m| m.map } if map
+  if !list && ret[1].size == 1
+    ret = ret[1].first
+  else
+    format_level_matches(event, msg, page, ret, 'results')
+  end
   
   ret
 rescue => e
@@ -960,6 +966,12 @@ rescue
   {}
 end
 
+# Determine whether an event is initial (the first time a post gets made)
+# or not (an edit, like after a button press)
+def parse_initial(event)
+  !event.is_a?(Discordrb::Events::ComponentEvent)
+end
+
 def format_rank(rank)
   rank.to_i == 1 ? '0th' : "top #{rank}"
 end
@@ -1135,23 +1147,21 @@ def format_level_list(levels)
   format_block(levels.map{ |s| s.name.ljust(pad, ' ') + s.longname }.join("\n"))
 end
 
-def format_level_matches(event, msg, page, initial, matches, func)
-  exact = matches[0].split(' ')[0] == 'Multiple'
-  if exact # Multiple partial matches
+# Format a list of levels resulting from a search
+def format_level_matches(event, msg, page, matches, name)
+  # Truncate list
+  list = matches[1]
+  if list.size > PAGE_SIZE
     page = parse_page(msg, page, false, event.message.components)
-    pag  = compute_pages(matches[1].size, page)
-    list = matches[1][pag[:offset]...pag[:offset] + PAGE_SIZE]
-  else # No partial matches, but suggestions based on string distance
-    list = matches[1][0..PAGE_SIZE - 1]
+    pag  = compute_pages(list.size, page)
+    list = list[pag[:offset]...pag[:offset] + PAGE_SIZE]
   end
-  str  = "#{func.capitalize} - #{matches[0]}\n#{format_level_list(list)}"
-  if exact && matches[1].size > PAGE_SIZE
-    view = Discordrb::Webhooks::View.new
-    interaction_add_button_navigation(view, pag[:page], pag[:pages])
-    send_message_with_interactions(event, str, view, !initial)
-  else
-    event << str
-  end
+
+  # Print list and optionally add navigation buttons
+  content = "#{name.capitalize}: #{matches[0]}\n#{format_level_list(list)}"
+  view = matches[1].size > PAGE_SIZE ? interaction_add_button_navigation(nil, pag[:page], pag[:pages]) : nil
+  send_message(event, content: content, components: view)
+  outte_next
 end
 
 # Header of outte messages
@@ -1185,7 +1195,7 @@ def send_message(dest, content: '', files: [], components: nil, spoiler: false, 
   # Save stuff already appended to message, and remove it to prevent autosend
   if dest.is_a?(Discordrb::Events::MessageEvent)
     # Grab message
-    content = dest.saved_message if content.empty?
+    content = dest.saved_message.dup if content.empty?
     dest.drain
 
     # Grab attachment
@@ -1194,8 +1204,17 @@ def send_message(dest, content: '', files: [], components: nil, spoiler: false, 
     dest.detach_file
   end
 
-  # Config attachments and return if no message
+  # Config and return if no message
+  content.strip!
   files.reject!{ |f| !f.is_a?(File) }
+  return if content.empty? && files.empty?
+
+  # Only update message if it's a component event (no need to log)
+  if dest.is_a?(Discordrb::Events::ComponentEvent)
+    return dest.update_message(content: content, components: components)
+  end
+
+  # Manually spoiler attachments if necessary
   files.map!{ |f|
     if !File.basename(f).start_with?('SPOILER_')
       new_name = File.join(File.dirname(f), 'SPOILER_' + File.basename(f))
@@ -1206,7 +1225,6 @@ def send_message(dest, content: '', files: [], components: nil, spoiler: false, 
       f
     end
   } if spoiler
-  return if content.empty? && files.empty?
 
   # Send message and log it in db
   user_id = dest.user.id if dest.respond_to?(:user)
@@ -1217,4 +1235,5 @@ def send_message(dest, content: '', files: [], components: nil, spoiler: false, 
   msg
 rescue => e
   lex(e, 'Failed to send message to Discord')
+  nil
 end

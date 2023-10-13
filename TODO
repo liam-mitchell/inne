@@ -1,6 +1,4 @@
 Ongoing:
-- Delete send_message_with_interactions and substitute by calls to send_message
-- Delete parameter "initial" wherever it's no longer necessary
 - Display names and implicit player parsing do not work for userlevels now. Merge userlevel_players with players:
   * Add metanet_id column to userlevel_scores
   * Merge userlevel_players (not already in players) with players
@@ -75,6 +73,8 @@ Ongoing:
 - Add "completions" after scores (easy for mappacks, littleninjathatcould for metanet)
 - Add function to update stars in scores table, since due to errors we could sporadicaly lose some of them, but we can rebuild them by looking at the archives table.
 - When we have multiple level matches, make parse_highscoreable print and navigate the list, rather than the other functions (which duplicates code). Adapt all functions using this, and do the same for player names.
+- Use average rank for tie-breaking rankings
+- For mappack ranking navigation, add button for HS/SR, and perhaps select menu for mappacks
 
 \\ ------------------------ mappacker -----------------------
 
@@ -191,7 +191,6 @@ Others:
 
 \\ ------------------------ General ------------------------
 
-- Tie breaker for rankings: Average rank, instead of alphabetical (benchmark).
 - Maybe change "total score" to default to TLS instead of TLS + TES, which doesn't make much sense.
 - SAVEFILE PARSER, ability to send inne your savefile and use it to elaborate completion leaderboards and whatnot (ask CCS if he ever finished it).
 - 0th/Top20 changes (new ones, and per player).

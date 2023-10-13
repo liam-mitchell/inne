@@ -13,7 +13,7 @@ require_relative 'messages.rb'
 require_relative 'userlevels.rb'
 
 # ActionRow builder with a Select Menu for the mode
-def interaction_add_select_menu_mode(view, mode = nil)
+def interaction_add_select_menu_mode(view = nil, mode = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.select_menu(custom_id: 'menu:mode', placeholder: 'Mode: All', max_values: 1){ |m|
@@ -23,11 +23,11 @@ def interaction_add_select_menu_mode(view, mode = nil)
     }
   }
 ensure
-  view
+  return view
 end
   
 # ActionRow builder with a Select Menu for the tab
-def interaction_add_select_menu_tab(view, tab = nil)
+def interaction_add_select_menu_tab(view = nil, tab = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab: All', max_values: 1){ |m|
@@ -37,11 +37,11 @@ def interaction_add_select_menu_tab(view, tab = nil)
     }
   }
 ensure
-  view
+  return view
 end
 
 # ActionRow builder with a Select Menu for the order
-def interaction_add_select_menu_order(view, order = nil)
+def interaction_add_select_menu_order(view = nil, order = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
@@ -51,12 +51,12 @@ def interaction_add_select_menu_order(view, order = nil)
     }
   }
 ensure
-  view
+  return view
 end
 
 # ActionRow builder with a Select Menu for the highscoreable type
 # (All, Level, Episode, Story)
-def interaction_add_select_menu_type(view, type = nil)
+def interaction_add_select_menu_type(view = nil, type = nil)
   type = 'overall' if type.nil? || type.empty?
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
@@ -68,12 +68,12 @@ def interaction_add_select_menu_type(view, type = nil)
     }
   }
 ensure
-  view
+  return view
 end
 
 # ActionRow builder with a Select menu for the highscorable tabs
 # (All, SI, S, SU, SL, SS, SS2)
-def interaction_add_select_menu_metanet_tab(view, tab = nil)
+def interaction_add_select_menu_metanet_tab(view = nil, tab = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab', max_values: 1){ |m|
@@ -87,14 +87,14 @@ def interaction_add_select_menu_metanet_tab(view, tab = nil)
     }
   }
 ensure
-  view
+  return view
 end
 
 # ActionRow builder with a Select menu for the ranking types
 # (0th, Top5, Top10, Top20, Average rank,
 # 0th (w/ ties), Tied 0ths, Singular 0ths, Plural 0ths, Average 0th lead
 # Maxed, Maxable, Score, Points, Average points)
-def interaction_add_select_menu_rtype(view, rtype = nil)
+def interaction_add_select_menu_rtype(view = nil, rtype = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.select_menu(custom_id: 'menu:rtype', placeholder: 'Ranking type', max_values: 1){ |m|
@@ -108,11 +108,11 @@ def interaction_add_select_menu_rtype(view, rtype = nil)
     }
   }
 ensure
-  view
+  return view
 end
 
 # ActionRow builder with a Select Menu for the alias type
-def interaction_add_select_menu_alias_type(view, type = nil)
+def interaction_add_select_menu_alias_type(view = nil, type = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.select_menu(custom_id: 'menu:alias', placeholder: 'Alias type', max_values: 1){ |m|
@@ -122,11 +122,11 @@ def interaction_add_select_menu_alias_type(view, type = nil)
     }
   }
 ensure
-  view
+  return view
 end
 
 # Template ActionRow builder with Buttons for navigation
-def interaction_add_navigation(view, labels: [], disabled: [], ids: [])
+def interaction_add_navigation(view = nil, labels: [], disabled: [], ids: [])
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     r.button(label: labels[0], style: :primary,   disabled: disabled[0], custom_id: ids[0])
@@ -136,16 +136,22 @@ def interaction_add_navigation(view, labels: [], disabled: [], ids: [])
     r.button(label: labels[4], style: :primary,   disabled: disabled[4], custom_id: ids[4])
   }
 ensure
-  view
+  return view
 end
 
 # ActionRow builder with Buttons for standard page navigation
 def interaction_add_button_navigation(view, page = 1, pages = 1, offset = 1000000000)
   interaction_add_navigation(
     view,
-    labels: ["❙❮", "❮", "#{page} / #{pages}", "❯", "❯❙"],
+    labels:   ["❙❮", "❮", "#{page} / #{pages}", "❯", "❯❙"],
     disabled: [page == 1, page == 1, true, page == pages, page == pages],
-    ids: ["button:nav:#{-offset}", "button:nav:-1", "button:nav:page", "button:nav:1", "button:nav:#{offset}"]
+    ids:      [
+      "button:nav:#{-offset}",
+      "button:nav:-1",
+      "button:nav:page",
+      "button:nav:1",
+      "button:nav:#{offset}"
+    ]
   )
 end
 
@@ -153,9 +159,15 @@ end
 def interaction_add_level_navigation(view, name)
   interaction_add_navigation(
     view,
-    labels: ["❮❮", "❮", name, "❯", "❯❯"],
+    labels:   ["❮❮", "❮", name, "❯", "❯❯"],
     disabled: [false, false, true, false, false],
-    ids: ["button:id:-2", "button:id:-1", "button:id:page", "button:id:1", "button:id:2"]
+    ids:      [
+      "button:id:-2", 
+      "button:id:-1",
+      "button:id:page",
+      "button:id:1",
+      "button:id:2"
+    ]
   )
 end
 
@@ -163,15 +175,21 @@ end
 def interaction_add_date_navigation(view, page = 1, pages = 1, date = 0, label = "")
   interaction_add_navigation(
     view,
-    labels: ["❙❮", "❮", label, "❯", "❯❙"],
+    labels:   ["❙❮", "❮", label, "❯", "❯❙"],
     disabled: [page == 1, page == 1, true, page == pages, page == pages],
-    ids: ["button:date:-1000000000", "button:date:-1", "button:date:#{date}", "button:date:1", "button:date:1000000000"]
+    ids:      [
+      "button:date:-1000000000",
+      "button:date:-1",
+      "button:date:#{date}",
+      "button:date:1",
+      "button:date:1000000000"
+    ]
   )
 end
 
 # ActionRow builder with Buttons to specify type (Level, Episode, Story)
 # in Rankings, also button to include ties.
-def interaction_add_type_buttons(view, types = [], ties = nil)
+def interaction_add_type_buttons(view = nil, types = [], ties = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
     TYPES.each{ |t, h|
@@ -184,42 +202,14 @@ def interaction_add_type_buttons(view, types = [], ties = nil)
     r.button(label: 'Ties', style: ties ? :success : :danger, custom_id: "button:ties:#{!ties}")
   }
 ensure
-  view
-end
-
-# Function to send or edit a message with components
-def send_message_with_interactions(event, msg, components = nil, edit = false, files = [])
-  if event.is_a?(Discordrb::Events::ComponentEvent)
-    event.update_message(content: msg, components: components)
-  else
-    send_message(event, content: msg, files: files, components: components)
-  end
-end
-
-def craft_userlevel_browse_msg(event, msg, page: 1, pages: 1, order: nil, tab: nil, mode: nil, edit: false, int: true)
-  # Normalize pars
-  order = "default" if order.nil? || order.empty?
-  order = order.downcase.split(" ").first
-  order = "date" if order == "id"
-  tab = "all" if !USERLEVEL_TABS.map{ |t, v| v[:name] }.include?(tab)
-  mode = "solo" if !MODES.values.include?(mode.to_s.downcase)
-  # Create and fill component collection (View)
-  view = Discordrb::Webhooks::View.new
-  if int
-    interaction_add_button_navigation(view, page, pages) unless pages == 1
-    interaction_add_select_menu_order(view, order)
-    interaction_add_select_menu_tab(view, tab)
-    interaction_add_select_menu_mode(view, mode)
-  end
-  # Send
-  send_message_with_interactions(event, msg, view, edit)
+  return view
 end
 
 # Important notes for parsing interaction components:
 #
 # 1) We determine the origin of the interaction (the bot's source message) based
 #    on the first word of the message. Therefore, we have to format this first
-#    word (and, often, the first sentence) properly so that the bot can parse it.
+#    word (and, often, the first sentence) properly for the bot to parse it.
 #
 # 2) We use the custom_id of the component (button, select menu) and of the
 #    component option (select menu option) to classify them and determine what
@@ -228,11 +218,12 @@ end
 #    IDs will be strings composed by a series of keywords separated by colons:
 #      The first keyword specifies the type of component (button, menu).
 #      The second keyword specifies the category of the component (up to you).
-#      The third keyword specifies the specific component (button, select menu option).
+#      The third keyword specifies the specific component.
+
 def respond_interaction_button(event)
-  keys = event.custom_id.to_s.split(':')                      # Component parameters
-  type = parse_message(event).strip.split(' ').first.downcase # Source message type
-  return if keys[0] != 'button' # Only listen to components of type "Button"
+  keys = event.custom_id.to_s.split(':')       # Component parameters
+  type = parse_message(event)[/\w+/i].downcase # Source message type
+  return if keys[0] != 'button'                # Only listen to buttons
 
   case type
   when 'browsing'
@@ -252,7 +243,7 @@ def respond_interaction_button(event)
     when 'date'
       send_nav_scores(event, date: keys[2])
     end
-  when 'search'
+  when 'results'
     case keys[1]
     when 'nav'
       send_query(event, page: keys[2])
@@ -270,10 +261,10 @@ def respond_interaction_button(event)
 end
 
 def respond_interaction_menu(event)
-  keys   = event.custom_id.to_s.split(':')                      # Component parameters
-  values = event.values.map{ |v| v.split(':') }                 # Component option parameters
-  type   = parse_message(event).strip.split(' ').first.downcase # Source message type
-  return if keys[0] != 'menu' # Only listen to components of type "Select Menu"
+  keys   = event.custom_id.to_s.split(':')       # Component parameters
+  values = event.values.map{ |v| v.split(':') }  # Component option parameters
+  type   = parse_message(event)[/\w+/i].downcase # Source message type
+  return if keys[0] != 'menu'                    # Only listen to select menus
   
   case type
   when 'browsing' # Select Menus for the userlevel browse function

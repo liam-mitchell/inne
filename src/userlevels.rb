@@ -463,7 +463,7 @@ class Userlevel < ActiveRecord::Base
     return "" if !order.is_a?(Symbol)
     # sorting by date and id is equivalent, sans the direction
     str = order == :date ? "id" : fields[order][0]
-    if inverted.include?(order) ^ invert then str += " DESC" end
+    str += " DESC" if inverted.include?(order) ^ invert
     str
   end
 
@@ -773,7 +773,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   bench(:start) if BENCHMARK
   # Determine whether this is the initial query (new post) or an interaction
   # query (edit post).
-  initial = page.nil? && order.nil? && tab.nil? && mode.nil?
+  initial = parse_initial(event)
   reset_page = page.nil? && !initial
   if !socket.nil?
     msg = socket
@@ -851,17 +851,21 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
 
   # <------ SEND message ------>
 
-  craft_userlevel_browse_msg(
-    event,
-    output,
-    page:  pag[:page],
-    pages: pag[:pages],
-    order: order_str,
-    tab:   USERLEVEL_TABS[cat][:name],
-    mode:  MODES[mode],
-    edit:  !initial,
-    int:   !(initial && count == 0)
-  )
+  # Normalize pars
+  order_str = "default" if order_str.nil? || order_str.empty?
+  order_str = order_str.downcase.split(" ").first
+  order_str = "date" if order_str == "id"
+
+  # Create and fill component collection (View)
+  view = Discordrb::Webhooks::View.new
+  if !(initial && count == 0)
+    interaction_add_button_navigation(view, pag[:page], pag[:pages]) unless pag[:pages] == 1
+    interaction_add_select_menu_order(view, order_str)
+    interaction_add_select_menu_tab(view, USERLEVEL_TABS[cat][:name])
+    interaction_add_select_menu_mode(view, MODES[mode])
+  end
+
+  send_message(event, content: output, components: view)
 rescue => e
   if !socket.nil?
     lex(e, 'Socketing of userlevel query failed.')

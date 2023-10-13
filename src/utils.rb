@@ -265,22 +265,31 @@ def ld    (msg)              Log.discord(msg, kwargs)       end
 # <------                     EXCEPTION HANDLING                         ------>
 # <---------------------------------------------------------------------------->
 
-# Custom exception class. Importantly, these exception messages are posted
-# to Discord, in response to a command not working or being understood.
-# Therefore, it's important to always use user-friendly messages that do not
-# leak private data.
-#
-# Note: We inherit from Exception, rather than StandardError, because that
-# way they will go past "rescue" and into Discord
+# Custom exception classes.
+#   Note: We inherit from Exception, rather than StandardError, because that
+#   way they will go past "rescue" and into Discord
+
+# Used when there is user error, its message gets sent to Discord.
 class OutteError < Exception
   def initialize(msg = 'Unknown outte error')
     super
   end
 end
 
-# Raises an OutteError, which will be printed out to Discord
-def perror(msg)
-  raise OutteError.new msg
+# Used when we want to stop responding to one command mid-way (send what we
+# have so far, but don't go on with the rest)
+class OutteNext < Exception
+  def initialize(msg = 'Skipping rest of command')
+    super
+  end
+end
+
+def perror(msg = '')
+  raise OutteError.new msg.to_s
+end
+
+def outte_next
+  raise OutteNext.new
 end
 
 # <---------------------------------------------------------------------------->

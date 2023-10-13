@@ -224,6 +224,51 @@ rescue => e
   exit
 end
 
+# Prepare response to a command (new message / edit message)
+def craft_response(event, func)
+  func.call(event)
+rescue OutteError => e
+  # These exceptions are user error, so send the message out to the channel
+  if event.is_a?(Discordrb::Events::Respondable)
+    event << e
+  else
+    send_message(event.channel, content: e.message)
+  end
+rescue OutteNext
+rescue => e
+  # These exceptions are internal errors, so send warning to the channel and
+  # log full trace to the terminal/log file
+  lex(e, "Error parsing message.", event: event)
+end
+
+# Handle a new command, by crafting a response and sending it appropriately
+def handle_command(event, log: true, &func)
+  # Return if responding is disabled, unless we're the botmaster
+  return if !RESPOND && event.user.id != BOTMASTER_ID
+
+  # Parse the command
+  msg = parse_message(event)
+  remove_mentions!(msg)
+  special = msg[0] == '!' && event.user.id == BOTMASTER_ID
+
+  # Log to the terminal
+  if special
+    log_msg = "Special command: #{msg}"
+  elsif event.channel.type == 1
+    log_msg = "DM by #{event.user.name}: #{msg}"
+  else
+    log_msg = "Mention by #{event.user.name} in #{event.channel.name}: #{msg}"
+  end
+  special ? succ(log_msg) : msg(log_msg) if log
+
+  # Write up response and send it
+  func = special ? -> (e) { respond_special(e) } : -> (e) { respond(e) } if !func
+  craft_response(event, func)
+  send_message(event)
+ensure
+  release_connection
+end
+
 # Setup triggers for DMs, mentions, messages and interactions.
 # Discordrb creates a new thread for each of these, so we must either take
 # a db connection from the pool or remember to disconnect at the end to prevent
@@ -231,56 +276,24 @@ end
 def setup_bot
   # Respond to DMs
   $bot.private_message do |event|
-    next if !RESPOND && event.user.id != BOTMASTER_ID
-
-    # Log
-    msg = parse_message(event)
-    remove_mentions!(msg)
-    next if msg[0] == '!' && event.user.id == BOTMASTER_ID
-    msg("DM by #{event.user.name}: #{msg}")
-
-    # Respond
-    respond(event)
-    send_message(event)
+    handle_command(event)
   rescue => e
     lex(e, 'Failed to handle Discord DM')
-  ensure
-    release_connection
   end
 
   # Respond to pings
   $bot.mention do |event|
-    next if !RESPOND && event.user.id != BOTMASTER_ID || event.channel.type == 1
-
-    # Log
-    msg = parse_message(event)
-    remove_mentions!(msg)
-    next if msg[0] == '!' && event.user.id == BOTMASTER_ID
-    msg("Mention by #{event.user.name} in #{event.channel.name}: #{msg}")
-
-    # Respond
-    respond(event)
-    send_message(event)
+    handle_command(event) unless event.channel.type == 1
   rescue => e
     lex(e, 'Failed to handle Discord ping')
-  ensure
-    release_connection
   end
 
   # Parse all messages, and optionally respond
   $bot.message do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID
-
-    # Special commands
     msg = parse_message(event)
     remove_mentions!(msg)
-    if msg[0] == '!' && event.user.id == BOTMASTER_ID
-      succ("Special command: #{msg}")
-      respond_special(event)
-      send_message(event)
-    end
 
-    # Others
     if event.channel == $nv2_channel
       $last_potato = Time.now.to_i
       $potato = 0
@@ -289,8 +302,20 @@ def setup_bot
     robot(event) if !!msg[/eddy\s*is\s*a\s*robot/i]
   rescue => e
     lex(e, 'Failed to handle Discord message')
-  ensure
-    release_connection
+  end
+
+  # Respond to button interactions
+  $bot.button do |event|
+    handle_command(event, log: false) { |e| respond_interaction_button(e) }
+  rescue => e
+    lex(e, 'Failed to handle Discord button interaction')
+  end
+
+  # Respond to select menu interactions
+  $bot.select_menu do |event|
+    handle_command(event, log: false) { |e| respond_interaction_menu(e) }
+  rescue => e
+    lex(e, 'Failed to handle Discord select menu interaction')
   end
 
   # Parse new reactions
@@ -305,28 +330,6 @@ def setup_bot
     msg.delete
   rescue => e
     lex(e, 'Failed to handle Discord reaction')
-  ensure
-    release_connection
-  end
-
-  # Respond to button interactions
-  $bot.button do |event|
-    next if !RESPOND && event.user.id != BOTMASTER_ID
-    respond_interaction_button(event)
-    send_message(event)
-  rescue => e
-    lex(e, 'Failed to handle Discord button interaction')
-  ensure
-    release_connection
-  end
-
-  # Respond to select menu interactions
-  $bot.select_menu do |event|
-    next if !RESPOND && event.user.id != BOTMASTER_ID
-    respond_interaction_menu(event)
-    send_message(event)
-  rescue => e
-    lex(e, 'Failed to handle Discord select menu interaction')
   ensure
     release_connection
   end
@@ -362,8 +365,6 @@ end
 # a trap context (see run_bot)
 def shutdown
   log("Shutting down...")
-  # We need to perform the shutdown in a new thread, because this method
-  # gets called from within a trap context
   Thread.new {
     Sock.off
     stop_bot
