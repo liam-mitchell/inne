@@ -195,7 +195,7 @@ def interaction_add_type_buttons(view = nil, types = [], ties = nil)
     TYPES.each{ |t, h|
       r.button(
         label: h[:name].capitalize.pluralize,
-        style: types.include?(h[:name].capitalize.constantize) ? :success : :danger,
+        style: types.include?(h[:name].capitalize) ? :success : :danger,
         custom_id: "button:type:#{h[:name].downcase}"
       )
     }
