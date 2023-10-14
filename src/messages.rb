@@ -401,6 +401,8 @@ def send_scores(event, map = nil, ret = false)
   end
 
   # Add cleanliness if it's an episode or a story
+  res << "\n" if full
+  res << "Scores: #{h.completions}. " if h.completions
   res << send_clean_one(event, true) if (h.is_a?(Episodish) || h.is_a?(Storyish)) && board != 'gm'
 
   # If it's an episode, update all 5 level scores in the background
@@ -695,13 +697,10 @@ def send_clean_one(event, ret = false)
   clean_round = round_score(clean)
   fmt = clean.is_a?(Integer) ? '%df' : '%.3f (%df)'
   args = clean.is_a?(Integer) ? [clean_round] : [clean_round, (60 * clean_round).round]
-  res = "The cleanliness of #{h.name}'s #{format_board(board)} #{rank.ordinalize} is #{fmt % args}."
-
-  # Return immediately if we're using this function auxiliary
-  return res if ret
+  return "Cleanliness: #{fmt % args}." if ret
 
   # Compute extra info for the dedicated function
-  event << res
+  event << "The cleanliness of #{h.name}'s #{format_board(board)} #{rank.ordinalize} is #{fmt % args}."
 
   clean_round = clean_round.to_f / 5
   fmt = clean.is_a?(Integer) ? '%.1ff' : '%.3f (%.1ff)'
@@ -2079,6 +2078,16 @@ rescue => e
   lex(e, "Error preparing userlevel CSV.", event: event)
 end
 
+def send_mappack_completions(event)
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
+  MappackScore.update_completions(mappack: mappack)
+  event << "Updated #{mappack ? mappack.code.upcase + ' ' : ''}mappack completions."
+rescue => e
+  lex(e, "Error updating mappack completions.", event: event)
+end
+
 def send_ul_plot_day(event)
   counts = Userlevel.group('date(date)').count
   dates = (counts.keys.first .. counts.keys.last).to_a
@@ -2415,27 +2424,28 @@ def respond_special(event)
   return if cmd.nil?
   cmd.downcase!
 
-  return send_reaction(event)           if cmd == 'react'
-  return send_unreaction(event)         if cmd == 'unreact'
-  return send_mappack_seed(event)       if cmd == 'mappack_seed'
-  return send_mappack_patch(event)      if cmd == 'mappack_patch'
-  return send_mappack_info(event)       if cmd == 'mappack_info'
-  return send_mappack_digest(event)     if cmd == 'mappack_digest'
-  return send_mappack_read(event)       if cmd == 'mappack_read'
-  return send_mappack_ranks(event)      if cmd == 'mappack_ranks'
-  return send_ul_csv(event)             if cmd == 'userlevel_csv'
-  return send_ul_plot(event)            if cmd == 'userlevel_plot'
-  return send_log_config(event)         if cmd == 'log'
-  return send_meminfo(event)            if cmd == 'meminfo'
-  return send_restart(event)            if cmd == 'restart'
-  return send_test(event)               if cmd == 'test'
-  return send_gold_check(event)         if cmd == 'gold_check'
-  return send_hash(event)               if cmd == 'hash'
-  return send_hashes(event)             if cmd == 'hashes'
-  return send_nprofile_gen(event)       if cmd == 'nprofile_gen'
-  return sanitize_archives(event)       if cmd == 'sanitize_archives'
-  return sanitize_users(event)          if cmd == 'sanitize_users'
-  return set_user_id(event)             if cmd == 'set_user_id'
+  return send_reaction(event)            if cmd == 'react'
+  return send_unreaction(event)          if cmd == 'unreact'
+  return send_mappack_seed(event)        if cmd == 'mappack_seed'
+  return send_mappack_patch(event)       if cmd == 'mappack_patch'
+  return send_mappack_info(event)        if cmd == 'mappack_info'
+  return send_mappack_digest(event)      if cmd == 'mappack_digest'
+  return send_mappack_read(event)        if cmd == 'mappack_read'
+  return send_mappack_ranks(event)       if cmd == 'mappack_ranks'
+  return send_mappack_completions(event) if cmd == 'mappack_completions'
+  return send_ul_csv(event)              if cmd == 'userlevel_csv'
+  return send_ul_plot(event)             if cmd == 'userlevel_plot'
+  return send_log_config(event)          if cmd == 'log'
+  return send_meminfo(event)             if cmd == 'meminfo'
+  return send_restart(event)             if cmd == 'restart'
+  return send_test(event)                if cmd == 'test'
+  return send_gold_check(event)          if cmd == 'gold_check'
+  return send_hash(event)                if cmd == 'hash'
+  return send_hashes(event)              if cmd == 'hashes'
+  return send_nprofile_gen(event)        if cmd == 'nprofile_gen'
+  return sanitize_archives(event)        if cmd == 'sanitize_archives'
+  return sanitize_users(event)           if cmd == 'sanitize_users'
+  return set_user_id(event)              if cmd == 'set_user_id'
 
   event << "Unsupported special command."
 end

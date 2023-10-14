@@ -141,16 +141,17 @@ module Log
 
   # Main function to log text
   def self.write(
-    text,           # The text to log
-    mode,           # The type of log (info, error, debug, etc)
-    app = 'BOT',    # The origin of the log (outte, discordrb, webrick, etc)
-    newline: true,  # Add a newline at the end or not
-    pad:     false, # Pad each line of the text to a fixed width
-    fancy:   nil,   # Use rich logs (color, bold, etc)
-    console: true,  # Log to the console
-    file:    true,  # Log to the log file
-    discord: false, # Log to the botmaster's DMs in Discord
-    event:   nil    # Log to the Discord's channel, if any
+    text,            # The text to log
+    mode,            # The type of log (info, error, debug, etc)
+    app = 'BOT',     # The origin of the log (outte, discordrb, webrick, etc)
+    newline:  true,  # Add a newline at the end or not
+    pad:      false, # Pad each line of the text to a fixed width
+    progress: false, # Progress log line (pad + no newline)
+    fancy:    nil,   # Use rich logs (color, bold, etc)
+    console:  true,  # Log to the console
+    file:     true,  # Log to the log file
+    discord:  false, # Log to the botmaster's DMs in Discord
+    event:    nil    # Log to the Discord's channel, if any
   )
     # Return if we don't need to log anything
     mode = :info if !MODES.key?(mode)
@@ -164,6 +165,7 @@ module Log
     fancy = false if !LOG_FANCY
     stream = STDOUT
     stream = STDERR if [:fatal, :error, :warn].include?(mode)
+    pad, newline = true, false if progress
     m = MODES[mode] || MODES[:info]
 
     # Message prefixes (timestamp, symbol, source app)

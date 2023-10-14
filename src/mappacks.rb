@@ -1664,15 +1664,10 @@ class MappackScore < ActiveRecord::Base
       # Warn if the score submitted failed the map data integrity checks, and save it
       # to analyze it later (and possibly polish the hash algorithm)
       if !legit
-        begin
-          BadHash.find_or_create_by(id: id).update(
-            npp_hash: query['ninja_check'],
-            score: score_hs_orig
-          )
-        rescue => e
-          lex(e, 'Failed to save bad hash')
-          nil
-        end
+        BadHash.find_or_create_by(id: id).update(
+          npp_hash: query['ninja_check'],
+          score: score_hs_orig
+        )
         _thread do
           warn("Score submitted by #{name} to #{h.name} has invalid security hash", discord: true)
         end
@@ -1688,9 +1683,10 @@ class MappackScore < ActiveRecord::Base
       end
     end
 
-    # Update ranks if necessary
+    # Update ranks and completions if necessary
     h.update_ranks('hs') if hs
     h.update_ranks('sr') if sr
+    h.update(completions: h.scores.where.not(rank_hs: nil).count) if hs || sr
 
     # Delete redundant scores of the player in the highscoreable
     # We delete all the scores that aren't keepies (were never a hs/sr PB),
@@ -1925,6 +1921,23 @@ class MappackScore < ActiveRecord::Base
   rescue => e
     lex(e, 'Failed to compute gold check.')
     [['Error', 'Error', 'Error', 'Error', 'Error', 'Error']]
+  end
+
+  def self.update_completions(mappack: nil)
+    bench(:start) if BENCHMARK
+    [MappackLevel, MappackEpisode, MappackStory].each{ |type|
+      self.where(highscoreable_type: type).where.not(rank_hs: nil)
+          .where(mappack ? "mappack_id = #{mappack.id}" : '')
+          .group(:highscoreable_id)
+          .order('count(highscoreable_id)', 'highscoreable_id')
+          .count(:highscoreable_id)
+          .group_by{ |id, count| count }
+          .map{ |count, ids| [count, ids.map(&:first)] }
+          .each{ |count, ids|
+            type.where(id: ids).update_all(completions: count)
+          }
+    }
+    bench(:step) if BENCHMARK
   end
 
   def archive

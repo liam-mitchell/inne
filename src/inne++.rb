@@ -235,6 +235,7 @@ rescue OutteError => e
     send_message(event.channel, content: e.message)
   end
 rescue OutteNext
+  # These exceptions are just used to skip to the end of execution of a command
 rescue => e
   # These exceptions are internal errors, so send warning to the channel and
   # log full trace to the terminal/log file
