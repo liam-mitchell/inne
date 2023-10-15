@@ -246,12 +246,12 @@ class Userlevel < ActiveRecord::Base
   #   objects      - Object data compressed in zlib, stored in userlevel_data
   # Note: For details about how map data is stored, see the encode_ and decode_ methods below.
 
+  # TODO: Optimize this in a single query
   def self.dump_csv
     count = self.count
     csv = "id,author_id,author,title,favs,date,mode\n"
     csv << self.all.each_with_index.map{ |m, i|
       dbg("Dumping userlevel #{"%6d" % [i + 1]} / #{count}...", pad: true, newline: false)
-      #print("\rDumping userlevel #{"%6d" % [i + 1]} / #{count}...")
       "#{m.id},#{m.author_id},#{m.author.name.tr(',', ';')},#{m.title.tr(',', ';')},#{m.favs},#{m.date.strftime(DATE_FORMAT_OUTTE)},#{m.mode.to_i}"
     }.join("\n")
     Log.clear
@@ -660,13 +660,17 @@ class Userlevel < ActiveRecord::Base
     scores
   end
 
-  # technical
+  # Technical
   def self.sanitize(string, par)
     sanitize_sql_for_conditions([string, par])
   end
 
   # For compatibility
   def map
+    self
+  end
+
+  def vanilla
     self
   end
 

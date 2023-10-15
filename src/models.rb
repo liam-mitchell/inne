@@ -672,11 +672,6 @@ module Downloadable
   end
 
   def submit_score(score, replays, player = nil)
-    if self.is_a?(Userlevel)
-      err("Userlevel score submission is not yet supported.")
-      return
-    end
-
     # Fetch player
     player = Player.find_by(metanet_id: OUTTE_ID) if !player
     if !player
@@ -686,11 +681,13 @@ module Downloadable
 
     # Construct replay data
     replays = replays.map{ |replay| replay.pack('C*') }
-    replays = self.map.dump_demo(replays)
+    replays = self.dump_demo(replays)
     replays = Zlib::Deflate.deflate(replays, 9)
 
     # Compute request parts
-    qt = TYPES[self.class.to_s][:qt] rescue 0
+    klass = self.class.to_s.downcase
+    klass = 'level' if klass == 'userlevel'
+    qt = TYPES[klass.capitalize][:qt]
     score = (1000 * round_score(score)).round.to_s
     hash = self.map.hash(c: true)
     if !hash
@@ -701,9 +698,9 @@ module Downloadable
 
     parts = [
       { name: 'user_id',     binary: false, value: player.metanet_id },
-      { name: 'level_id',    binary: false, value: self.id           },
+      { name: "#{klass}_id", binary: false, value: self.id           },
       { name: 'qt',          binary: false, value: qt                },
-      { name: 'size',        binary: false, value: replay.size       },
+      { name: 'size',        binary: false, value: replays.size      },
       { name: 'score',       binary: false, value: score             },
       { name: 'ninja_check', binary: true , value: hash              },
       { name: 'replay_data', binary: true , value: replays           }
@@ -1177,7 +1174,7 @@ module Highscoreable
   end
 end
 
-# Implemented by Level and MappackLevel
+# Implemented by Level, MappackLevel and Userlevel
 module Levelish
   # Return the Map object (containing map data), if it exists
   def map
@@ -1205,6 +1202,34 @@ module Levelish
   def format_challenges
     pad = challenges.map{ |c| c.count }.max
     challenges.map{ |c| c.format(pad) }.join("\n")
+  end
+
+  # Dump demo header for communications with N++
+  def demo_header(framecount)
+    # Precompute some values
+    n = mode == 1 ? 2 : 1
+    framecount /= n
+    size = framecount * n + 26 + 4 * n
+    h_id = self.is_a?(MappackHighscoreable) ? inner_id : id
+
+    # Build header
+    header = [0].pack('C')                  # Type (0 lvl, 1 lvl in ep, 2 lvl in sty)
+    header << [size].pack('L<')             # Data length
+    header << [1].pack('L<')                # Replay version
+    header << [framecount].pack('L<')       # Data size in bytes
+    header << [h_id].pack('L<')             # Level ID
+    header << [mode].pack('L<')             # Mode (0-2)
+    header << [0].pack('L<')                # ?
+    header << (mode == 1 ? "\x03" : "\x01") # Ninja mask (1,3)
+    header << [-1, -1].pack("l<#{n}")       # ?
+
+    # Return
+    header
+  end
+
+  # Dumps the level's demo in the format N++ uses for server communications
+  def dump_demo(demos)
+    demo_header(demos[0].size) + demos[0]
   end
 end
 
@@ -1286,6 +1311,24 @@ module Episodish
   rescue => e
     lex(e, 'Failed to compute splits')
     nil
+  end
+
+  # Header of an episode demo:
+  #   4B - Magic number (0xffc0038e)
+  #  20B - Block length for each level demo (5 * 4B)
+  def demo_header(framecounts)
+    header_size = 26 + 4 * (mode == 1 ? 2 : 1)
+    replay = [MAGIC_EPISODE_VALUE].pack('L<')
+    replay << framecounts.map{ |f| f + header_size }.pack('L<5')
+  end
+
+  # Dumps the episodes's demo in the format N++ uses for server communications
+  def dump_demo(demos)
+    replay = demo_header(demos.map(&:size))
+    levels.each_with_index{ |l, i|
+      replay << l.demo_header(demos[i].size)
+      replay << demos[i]
+    }
   end
 end
 
@@ -1379,6 +1422,29 @@ module Storyish
   rescue => e
     lex(e, "Failed to compute cleanliness of episode #{self.name}")
     nil
+  end
+
+  # Header of a story demo:
+  #   4B - Magic number (0xff3800ce)
+  #   4B - Demo data block total size
+  # 100B - Block length for each level demo (25 * 4B)
+  def demo_header(framecounts)
+    header_size = 26 + 4 * (mode == 1 ? 2 : 1)
+    replay = [MAGIC_STORY_VALUE].pack('L<')
+    replay << [framecounts.sum + 25 * header_size].pack('L<')
+    replay << framecounts.map{ |f| f + header_size }.pack('L<25')
+  end
+
+  # Dumps the story's demo in the format N++ uses for server communications
+  def dump_demo(demos)
+    replay = demo_header(demos.map(&:size))
+    episodes.each_with_index{ |e, j|
+      e.levels.each_with_index{ |l, i|
+        replay << l.demo_header(demos[5 * j + i].size)
+        replay << demos[5 * j + i]
+      }
+    }
+    replay
   end
 end
 

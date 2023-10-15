@@ -372,12 +372,10 @@ rescue => e
 end
 
 # Send a multipart post-form to N++'s servers.
-#   path:  Server request path.
 #   args:  Hash with additional URL-encoded query arguments.
-#   parts: Array of body parts, each being a hash with 3 name, value, binary.
-def post_form(path: '', args: {}, parts: [])
+#   parts: Array of body parts, each being a hash with 3 keys: name, value, binary.
+def post_form(host: 'dojo.nplusplus.ninja', path: '', args: {}, parts: [])
   # Create request
-  host = 'dojo.nplusplus.ninja'
   def_args = {
     app_id:     APP_ID,
     steam_auth: ''
