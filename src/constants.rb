@@ -354,6 +354,7 @@ HASH_OUTPUT_FN   = 'hash_out'      # Filename for SHA1 util to write
 # <------                       GAME VARIABLES                          ------>
 # <--------------------------------------------------------------------------->
 
+APP_ID              = 230270     # N++'s Steam app ID
 MIN_REPLAY_ID       = 131072     # Minimum replay ID for the game to perform the HTTP request
 MAGIC_EPISODE_VALUE = 0xffc0038e # First 4 bytes of a decompressed episode replay
 MAGIC_STORY_VALUE   = 0xff3800ce # First 4 bytes of a decompressed story replay
