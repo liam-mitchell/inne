@@ -258,8 +258,11 @@ module Map
   # misimplementation in N++, which instead of just hashing the map data,
   # overflows and copies object data from the next level before doing so.
   #
-  # Returns false if we ran out of objects
+  # Returns false if we ran out of objects, or true if we completed the data
+  # successfully. Userlevels aren't completed (their hashes aren't checked
+  # by the server anyways).
   def complete_object_data(data, n)
+    return true if self.is_a?(Userlevel)
     successor = next_h(tab: false)
     if successor == self
       return false

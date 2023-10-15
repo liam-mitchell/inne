@@ -387,7 +387,7 @@ def post_form(host: 'dojo.nplusplus.ninja', path: '', args: {}, parts: [])
   # Generate boundary
   blen = 8
   boundary = ''
-  while parts.any?{ |p| p[:name].include?(boundary) || p[:value].include?(boundary) }
+  while parts.any?{ |p| p[:name].to_s.include?(boundary) || p[:value].to_s.include?(boundary) }
     boundary = blen.times.map{ rand(36).to_s(36) }.join
   end
 
@@ -414,7 +414,7 @@ def post_form(host: 'dojo.nplusplus.ninja', path: '', args: {}, parts: [])
 
   # Execute request
   res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 5){ |http|
-    http.request(new_req)
+    http.request(post)
   }
   res.code.to_i < 200 || res.code.to_i > 299 ? nil : res.body.to_s
 rescue => e

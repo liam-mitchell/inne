@@ -2405,6 +2405,29 @@ rescue => e
   lex(e, "Error setting user ID.", event: event)
 end
 
+# TODO: Extend with flags for score/player/...
+def submit_score(event)
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  perror("You must provide a downloadable.") if !flags[:h]
+  if is_num(flags[:h])
+    h = Userlevel.find_by(id: flags[:h].to_i)
+    perror("No userlevel with ID #{flags[:h]}.") if !h
+  else
+    h = parse_highscoreable(event)
+  end
+  res = h.submit_zero_score(log: true)
+  if res
+    score = '%.3f' % round_score(res['score'].to_i / 1000.0)
+    str = "Submitted zero score to #{verbatim(h.name)}: "
+    str << "replay ID #{res['replay_id']}, rank: #{res['rank']}, score: #{score}"
+    str << (res['better'] == 1 ? ' [IMPROVED].' : '.')
+    succ(str, event: event)
+  end
+rescue => e
+  lex(e, 'Failed to submit score.', event: event)
+end
+
 # Special commands can only be executed by the botmaster, and are intended to
 # manage the bot on the fly without having to restart it, or to print sensitive
 # information.
@@ -2446,6 +2469,7 @@ def respond_special(event)
   return sanitize_archives(event)        if cmd == 'sanitize_archives'
   return sanitize_users(event)           if cmd == 'sanitize_users'
   return set_user_id(event)              if cmd == 'set_user_id'
+  return submit_score(event)             if cmd == 'submit'
 
   event << "Unsupported special command."
 end

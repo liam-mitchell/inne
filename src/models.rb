@@ -671,13 +671,16 @@ module Downloadable
     return -1
   end
 
-  def submit_score(score, replays, player = nil)
+  def submit_score(score, replays, player = nil, log: false)
+    fname = verbatim(self.name.remove('`'))
+
     # Fetch player
     player = Player.find_by(metanet_id: OUTTE_ID) if !player
     if !player
-      err("No player to submit score to #{self.name}.")
+      err("No player to submit score to #{fname}.", discord: log)
       return
     end
+    pname = verbatim(player.name.remove('`'))
 
     # Construct replay data
     replays = replays.map{ |replay| replay.pack('C*') }
@@ -691,7 +694,7 @@ module Downloadable
     score = (1000 * round_score(score)).round.to_s
     hash = self.map.hash(c: true)
     if !hash
-      err("Couldn't compute #{self.name}'s hash, not submitting #{player.name}'s score.")
+      err("Couldn't compute #{fname}'s hash, not submitting #{pname}'s score.", discord: log)
       return
     end
     hash = sha1(hash + score, c: true)
@@ -712,17 +715,25 @@ module Downloadable
       args: { user_id: player.metanet_id, steam_id: player.steam_id },
       parts: parts
     )
-    err("Failed to submit score by #{player.name} to #{self.name} (bad post-form).") if !res
+    if !res
+      err("Failed to submit score by #{pname} to #{fname} (bad post-form).", discord: log)
+      return
+    elsif res == INVALID_RESP
+      err("Failed to submit score by #{pname} to #{fname} (invalid response).", discord: log)
+      return
+    end
+    JSON.parse(res)
   rescue => e
-    lex(e, "Failed to submit score by #{player.name} to #{self.name}.")
+    lex(e, "Failed to submit score by #{pname} to #{fname}.", discord: log)
+    nil
   end
 
-  def submit_zero_score
+  def submit_zero_score(log: false)
     score = 0
     replay_count = TYPES[self.class.to_s][:size] rescue 1
     replays = [[]] * replay_count
     player = Player.find_by(metanet_id: OUTTE_ID)
-    submit_score(score, replays, player)
+    submit_score(score, replays, player, log: log)
   end
 
   def correct_ties(score_hash)
@@ -1207,21 +1218,22 @@ module Levelish
   # Dump demo header for communications with N++
   def demo_header(framecount)
     # Precompute some values
-    n = mode == 1 ? 2 : 1
+    m = mode.to_i
+    n = m == 1 ? 2 : 1
     framecount /= n
     size = framecount * n + 26 + 4 * n
     h_id = self.is_a?(MappackHighscoreable) ? inner_id : id
 
     # Build header
-    header = [0].pack('C')                  # Type (0 lvl, 1 lvl in ep, 2 lvl in sty)
-    header << [size].pack('L<')             # Data length
-    header << [1].pack('L<')                # Replay version
-    header << [framecount].pack('L<')       # Data size in bytes
-    header << [h_id].pack('L<')             # Level ID
-    header << [mode].pack('L<')             # Mode (0-2)
-    header << [0].pack('L<')                # ?
-    header << (mode == 1 ? "\x03" : "\x01") # Ninja mask (1,3)
-    header << [-1, -1].pack("l<#{n}")       # ?
+    header = [0].pack('C')               # Type (0 lvl, 1 lvl in ep, 2 lvl in sty)
+    header << [size].pack('L<')          # Data length
+    header << [1].pack('L<')             # Replay version
+    header << [framecount].pack('L<')    # Data size in bytes
+    header << [h_id].pack('L<')          # Level ID
+    header << [m].pack('L<')             # Mode (0-2)
+    header << [0].pack('L<')             # ?
+    header << (m == 1 ? "\x03" : "\x01") # Ninja mask (1,3)
+    header << [-1, -1].pack("l<#{n}")    # ?
 
     # Return
     header
@@ -1329,6 +1341,7 @@ module Episodish
       replay << l.demo_header(demos[i].size)
       replay << demos[i]
     }
+    replay
   end
 end
 
