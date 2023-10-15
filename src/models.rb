@@ -671,6 +671,63 @@ module Downloadable
     return -1
   end
 
+  def submit_score(score, replays, player = nil)
+    if self.is_a?(Userlevel)
+      err("Userlevel score submission is not yet supported.")
+      return
+    end
+
+    # Fetch player
+    player = Player.find_by(metanet_id: OUTTE_ID) if !player
+    if !player
+      err("No player to submit score to #{self.name}.")
+      return
+    end
+
+    # Construct replay data
+    replays = replays.map{ |replay| replay.pack('C*') }
+    replays = self.map.dump_demo(replays)
+    replays = Zlib::Deflate.deflate(replays, 9)
+
+    # Compute request parts
+    qt = TYPES[self.class.to_s][:qt] rescue 0
+    score = (1000 * round_score(score)).round.to_s
+    hash = self.map.hash(c: true)
+    if !hash
+      err("Couldn't compute #{self.name}'s hash, not submitting #{player.name}'s score.")
+      return
+    end
+    hash = sha1(hash + score, c: true)
+
+    parts = [
+      { name: 'user_id',     binary: false, value: player.metanet_id },
+      { name: 'level_id',    binary: false, value: self.id           },
+      { name: 'qt',          binary: false, value: qt                },
+      { name: 'size',        binary: false, value: replay.size       },
+      { name: 'score',       binary: false, value: score             },
+      { name: 'ninja_check', binary: true , value: hash              },
+      { name: 'replay_data', binary: true , value: replays           }
+    ]
+
+    # Perform HTTP POST request
+    res = post_form(
+      path: '/prod/steam/submit_score',
+      args: { user_id: player.metanet_id, steam_id: player.steam_id },
+      parts: parts
+    )
+    err("Failed to submit score by #{player.name} to #{self.name} (bad post-form).") if !res
+  rescue => e
+    lex(e, "Failed to submit score by #{player.name} to #{self.name}.")
+  end
+
+  def submit_zero_score
+    score = 0
+    replay_count = TYPES[self.class.to_s][:size] rescue 1
+    replays = [[]] * replay_count
+    player = Player.find_by(metanet_id: OUTTE_ID)
+    submit_score(score, replays, player)
+  end
+
   def correct_ties(score_hash)
     score_hash.sort_by{ |s| [-s['score'], s['replay_id']] }
   end

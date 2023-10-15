@@ -375,12 +375,12 @@ end
 #   path:  Server request path.
 #   args:  Hash with additional URL-encoded query arguments.
 #   parts: Array of body parts, each being a hash with 3 name, value, binary.
-def post_form_body(path: '', args: {}, parts: [])
+def post_form(path: '', args: {}, parts: [])
   # Create request
   host = 'dojo.nplusplus.ninja'
   def_args = {
-    'app_id'     => APP_ID,
-    'steam_auth' => ''
+    app_id:     APP_ID,
+    steam_auth: ''
   }
   query = def_args.merge(args).map{ |k, v| "#{k}=#{v}" }.join('&')
   uri = URI.parse("https://#{host}#{path}?#{query}")

@@ -355,6 +355,7 @@ HASH_OUTPUT_FN   = 'hash_out'      # Filename for SHA1 util to write
 # <--------------------------------------------------------------------------->
 
 APP_ID              = 230270     # N++'s Steam app ID
+OUTTE_ID            = 361131     # outte's N++ player ID
 MIN_REPLAY_ID       = 131072     # Minimum replay ID for the game to perform the HTTP request
 MAGIC_EPISODE_VALUE = 0xffc0038e # First 4 bytes of a decompressed episode replay
 MAGIC_STORY_VALUE   = 0xff3800ce # First 4 bytes of a decompressed story replay
@@ -373,6 +374,7 @@ MODES = {
 #   min_scores - Max-min amount of scores to be taken into consideration for average rankings
 #   qt         - Query type, index used by the game for server communications
 #   rt         - Replay type, used for replay headers
+#   size       - How many levels this type contains
 TYPES = {
   'Level' => {
     id:         0,
@@ -380,7 +382,8 @@ TYPES = {
     slots:      20000,
     min_scores: 100,
     qt:         0,
-    rt:         0
+    rt:         0,
+    size:       1
   },
   'Episode' => {
     id:         1,
@@ -388,7 +391,8 @@ TYPES = {
     slots:      4000,
     min_scores: 50,
     qt:         1,
-    rt:         1
+    rt:         1,
+    size:       5
   },
   'Story' => {
     id:         2,
@@ -396,7 +400,8 @@ TYPES = {
     slots:      800,
     min_scores: 10,
     qt:         4,
-    rt:         0
+    rt:         0,
+    size:       25
   }
 }
 

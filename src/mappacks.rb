@@ -1406,10 +1406,15 @@ class MappackLevel < ActiveRecord::Base
     header << [mode].pack('L<')             # Mode (0-2)
     header << [0].pack('L<')                # ?
     header << (mode == 1 ? "\x03" : "\x01") # Ninja mask (1,3)
-    header << [-1, -1].pack("l<#{n}")   # ?
+    header << [-1, -1].pack("l<#{n}")       # ?
 
     # Return
     header
+  end
+
+  # Dumps the level's demo in the format N++ uses for server communications
+  def dump_demo(demos)
+    demo_header(demos[0].size) + demos[0]
   end
 end
 
@@ -1448,6 +1453,15 @@ class MappackEpisode < ActiveRecord::Base
     header_size = 26 + 4 * (mode == 1 ? 2 : 1)
     replay = [MAGIC_EPISODE_VALUE].pack('L<')
     replay << framecounts.map{ |f| f + header_size }.pack('L<5')
+  end
+
+  # Dumps the episodes's demo in the format N++ uses for server communications
+  def dump_demo(demos)
+    replay = demo_header(demos.map(&:size))
+    levels.each_with_index{ |l, i|
+      replay << l.demo_header(demos[i].size)
+      replay << demos[i]
+    }
   end
 end
 
@@ -1489,6 +1503,18 @@ class MappackStory < ActiveRecord::Base
     replay = [MAGIC_STORY_VALUE].pack('L<')
     replay << [framecounts.sum + 25 * header_size].pack('L<')
     replay << framecounts.map{ |f| f + header_size }.pack('L<25')
+  end
+
+  # Dumps the story's demo in the format N++ uses for server communications
+  def dump_demo(demos)
+    replay = demo_header(demos.map(&:size))
+    episodes.each_with_index{ |e, j|
+      e.levels.each_with_index{ |l, i|
+        replay << l.demo_header(demos[5 * j + i].size)
+        replay << demos[5 * j + i]
+      }
+    }
+    replay
   end
 end
 
@@ -1952,35 +1978,13 @@ class MappackScore < ActiveRecord::Base
     self.class.verify_gold(gold_count)
   end
 
-  # Dumps demo data in the format N++ users for server communications
+  # Dumps demo data in the format N++ uses for server communications
   def dump_demo
-    h = highscoreable
-    type = TYPES[h.class.to_s.remove('Mappack')]
     demos = Demo.decode(demo.demo, true)
-
-    case type[:name]
-    when 'Level'
-      replay = highscoreable.demo_header(demos[0].size) + demos[0]
-    when 'Episode'
-      replay = highscoreable.demo_header(demos.map(&:size))
-      highscoreable.levels.each_with_index.map{ |l, i|
-        replay << l.demo_header(demos[i].size)
-        replay << demos[i]
-      }
-    when 'Story'
-      replay = highscoreable.demo_header(demos.map(&:size))
-      highscoreable.episodes.each_with_index{ |e, j|
-        e.levels.each_with_index{ |l, i|
-          replay << l.demo_header(demos[5 * j + i].size)
-          replay << demos[5 * j + i]
-        }
-      }
-    end
-    
-    replay
+    highscoreable.dump_demo(demos)
   rescue => e
     lex(e, "Failed to dump demo with ID #{id}")
-    return
+    nil
   end
 
   # Dumps replay data (header + compressed demo data) in format used by N++
