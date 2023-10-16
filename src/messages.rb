@@ -2008,8 +2008,12 @@ rescue => e
   lex(e, "Error removing reaction.", event: event)
 end
 
+# TODO: Add params to specify mappack, and even version
 def send_mappack_seed(event)
-  Mappack.seed
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  update = flags.key?(:update)
+  Mappack.seed(update: update)
   event << "Seeded new mappacks, there're now #{Mappack.count}."
 rescue => e
   lex(e, "Error seeding new mappacks.", event: event)
@@ -2057,7 +2061,7 @@ def send_mappack_info(event)
   mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
   perror("You need to provide a mappack.") if !mappack
   channels = flags[:channels].split.map(&:strip) if flags.key?(:channels)
-  mappack.set_info(name: flags[:name], author: flags[:author], date: flags[:date], channel: channels)
+  mappack.set_info(name: flags[:name], author: flags[:author], date: flags[:date], channel: channels, version: flags[:version])
   flags.delete(:mappack)
   flags = flags.map{ |k, v| "#{k} to #{verbatim(v)}" unless v.nil? }.compact.to_sentence
   event << "Set mappack #{verbatim(mappack.code)} #{flags}."

@@ -123,11 +123,11 @@ module Map
   # and differs from the standard userlevel format
   def self.parse_metanet_map(data, index = nil, file = nil, pack = nil)
     name =  ''
-    name += " #{index}"       if !index.nil?
-    name += " from '#{file}'" if !file.nil?
-    name += " for '#{pack}'"  if !pack.nil?
-    error = "Failed to parse Metanet formatted map#{name}"
-    warning = "Abnormality found parsing Metanet formatted map#{name}"
+    name += " #{index}"     if !index.nil?
+    name += " from #{file}" if !file.nil?
+    name += " for #{pack}"  if !pack.nil?
+    error = "Failed to parse map#{name}"
+    warning = "Abnormality found parsing map#{name}"
 
     # Ensure format is "$map_name#map_data#", with map data being hex chars
     if data !~ /^\$(.*)\#(\h+)\#$/
@@ -215,22 +215,14 @@ module Map
     maps = File.binread(file).split("\n").take(limit)
     count = maps.count
     maps = maps.each_with_index.map{ |m, i|
-      dbg("Parsing map #{"%-3d" % (i + 1)} / #{count} from '#{fn}' for '#{pack}'...", newline: false)
-      parse_metanet_map(m, i, fn, pack)
+      dbg("Parsing map #{"%-3d" % (i + 1)} / #{count} from #{fn} for #{pack}...", newline: false)
+      parse_metanet_map(m.strip, i, fn, pack)
     }
     Log.clear
     maps
   rescue => e
-    lex(e, "Error parsing Metanet map file '#{fn}' for '#{pack}'")
+    lex(e, "Error parsing Metanet map file #{fn} for #{pack}")
     nil
-  end
-
-  def tiles
-    Map.decode_tiles(data.tile_data)
-  end
-
-  def objects
-    Map.decode_objects(data.object_data)
   end
 
   def print_scores
@@ -246,12 +238,12 @@ module Map
     end
   end
 
-  def dump_tiles
-    Zlib::Inflate.inflate(data.tile_data)
+  def tiles(version: nil)
+    Map.decode_tiles(tile_data)
   end
 
-  def dump_objects
-    dec = Zlib::Inflate.inflate(data.object_data)
+  def objects(version: nil)
+    Map.decode_objects(object_data)
   end
 
   # This is used for computing the hash of a level. It's required due to a
@@ -304,7 +296,7 @@ module Map
     header << _pack(0, 2)            # Padding
 
     # MAP DATA
-    tile_data = dump_tiles
+    tile_data = Zlib::Inflate.inflate(tile_data)
     object_counts = [0] * 40
     objs.each{ |o| object_counts[o[0]] += 1 }
     object_counts[7] = 0 unless hash
@@ -972,19 +964,22 @@ class Mappack < ActiveRecord::Base
 
   # Parse all mappacks in the mappack directory into the database
   # Only reads the newly added mappacks, unless 'update' is true
-  def self.seed(update = false)
+  def self.seed(update: false)
     if !Dir.exist?(DIR_MAPPACKS)
       err("Mappacks directory not found, not seeding")
       return
     end
 
     Dir.entries(DIR_MAPPACKS).select{ |d| !!d[/\d+_.+/] }.sort.each{ |d|
-      id, code = d.split('_')
+      id, code, version = d.split('_')
+      id = id.to_i
+      version = version.to_i
       mappack = Mappack.find_by(code: code)
       if mappack.nil?
-        Mappack.create(id: id.to_i, code: code, version: 1).read
+        Mappack.create(id: id, code: code, version: version).read(v: version)
       elsif update
-        mappack.read
+        mappack.update(version: version) if version > mappack.version
+        mappack.read(v: version)
       end
     }
 
@@ -1007,8 +1002,9 @@ class Mappack < ActiveRecord::Base
   end
 
   # Return the folder that contains this mappack's files
-  def folder
-    dir = File.join(DIR_MAPPACKS, "#{"%03d" % [id]}_#{code}")
+  def folder(v: nil)
+    v = version || 1 if !v
+    dir = File.join(DIR_MAPPACKS, "#{"%03d" % [id]}_#{code}_#{v}")
     Dir.exist?(dir) ? dir : nil
   end
 
@@ -1016,12 +1012,15 @@ class Mappack < ActiveRecord::Base
   # which is also called from the general seed and read functions.
 
   # Parses map files corresponding to this mappack, and updates the database
-  def read
+  def read(v: nil)
+    v = version || 1 if !v
+    name_str = "#{code.upcase} v#{v}"
+    
     # Check for mappack directory
-    log("Parsing mappack '#{code}'...")
-    dir = folder
+    log("Parsing mappack #{name_str}...")
+    dir = folder(v: v)
     if !dir
-      err("Directory for mappack '#{code}' not found, not reading")
+      err("Directory for mappack #{name_str} not found, not reading")
       return
     end
 
@@ -1030,7 +1029,7 @@ class Mappack < ActiveRecord::Base
       path = File.join(dir, f)
       File.file?(path) && File.extname(path) == ".txt"
     }.sort
-    warn("No appropriate files found in directory for mappack '#{code}'") if files.count == 0
+    warn("No appropriate files found in directory for mappack #{name_str}") if files.count == 0
 
     # Delete old database records
     MappackLevel.where(mappack_id: id).delete_all
@@ -1045,12 +1044,12 @@ class Mappack < ActiveRecord::Base
       tab_code = f[0..-5]
       tab = TABS_NEW.find{ |tab, att| att[:files].key?(tab_code) }
       if tab.nil?
-        warn("Unrecognized file '#{tab_code}' parsing mappack '#{code}'")
+        warn("Unrecognized file #{tab_code} parsing mappack #{name_str}")
         next
       end
 
       # Parse file
-      maps = Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code], code)
+      maps = Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code], name_str)
       if maps.nil?
         file_errors += 1
         next
@@ -1065,7 +1064,7 @@ class Mappack < ActiveRecord::Base
       # Create new database records
       count = maps.count
       maps.each_with_index{ |map, map_offset|
-        dbg("Creating record #{"%-3d" % (map_offset + 1)} / #{count} from '#{f}' for '#{code}'...", newline: false)
+        dbg("Creating record #{"%-3d" % (map_offset + 1)} / #{count} from #{f} for mappack #{name_str}...", newline: false)
         if map.nil?
           map_errors += 1
           next
@@ -1074,8 +1073,9 @@ class Mappack < ActiveRecord::Base
         inner_id = tab_offset     + tab_id     # ID of level within mappack
         level_id = mappack_offset + inner_id   # ID of level in database
 
-        # Create mappack level and data
-        MappackLevel.find_or_create_by(id: level_id).update(
+        # Create mappack level
+        level = MappackLevel.find_or_create_by(id: level_id)
+        level.update(
           inner_id:   inner_id,
           mappack_id: id,
           mode:       tab[1][:mode],
@@ -1084,10 +1084,15 @@ class Mappack < ActiveRecord::Base
           name:       code.upcase + '-' + compute_name(inner_id, 0),
           longname:   map[:title].strip,
         )
-        MappackData.find_or_create_by(id: level_id).update(
-          tile_data:   Map.encode_tiles(map[:tiles]),
-          object_data: Map.encode_objects(map[:objects])
-        )
+
+        # Create mappack data (tiles and objects), if they're different from previous version
+        data = MappackData.find_or_create_by(highscoreable_id: level_id, version: v)
+        prev_tiles = level.tile_data(version: v - 1)
+        new_tiles = Map.encode_tiles(map[:tiles])
+        data.update(tile_data: new_tiles) if prev_tiles != new_tiles
+        prev_objects = level.object_data(version: v - 1)
+        new_objects = Map.encode_objects(map[:objects])
+        data.update(object_data: new_objects) if prev_objects != new_objects
 
         # Create corresponding mappack episode, except for secret tabs.
         next if tab[1][:secret]
@@ -1119,25 +1124,27 @@ class Mappack < ActiveRecord::Base
       count = maps.count(nil)
       map_errors += count
       if count == 0
-        dbg("Parsed file '#{tab_code}' for '#{code}' without errors")
+        dbg("Parsed file #{tab_code} for mappack #{name_str} without errors", pad: true)
       else
-        warn("Parsed file '#{tab_code}' for '#{code}' with #{count} errors")
+        warn("Parsed file #{tab_code} for mappack #{name_str} with #{count} errors", pad: true)
       end
     }
 
     if file_errors + map_errors == 0
-      succ("Successfully parsed mappack '#{code}'")
+      succ("Successfully parsed mappack #{name_str}")
     else
-      warn("Parsed mappack '#{code}' with #{file_errors} file errors and #{map_errors} map errors")
+      warn("Parsed mappack #{name_str} with #{file_errors} file errors and #{map_errors} map errors")
     end
   rescue => e
-    lex(e, "Error reading mappack '#{code}'")
+    lex(e, "Error reading mappack #{name_str}")
   end
 
   # Read the author list and write to the db
-  def read_authors
+  def read_authors(v: nil)
+    v = version || 1 if !v
+
     # Integrity checks
-    dir = folder
+    dir = folder(v: v)
     if !dir
       err("Directory for mappack #{verbatim(code)} not found")
       return
@@ -1198,9 +1205,10 @@ class Mappack < ActiveRecord::Base
   end
 
   # Set some of the mappack's info on command, which isn't parsed from the files
-  def set_info(name: nil, author: nil, date: nil, channel: nil)
+  def set_info(name: nil, author: nil, date: nil, channel: nil, version: nil)
     self.update(name: name) if name
     self.update(authors: author) if author
+    self.update(version: version) if version
     self.update(date: Time.strptime(date, '%Y/%m/%d').strftime(DATE_FORMAT_MYSQL)) if date
     channel.each{ |c|
       if is_num(c)
@@ -1221,7 +1229,7 @@ end
 
 class MappackData < ActiveRecord::Base
   alias_attribute :level, :mappack_level
-  belongs_to :mappack_level, foreign_key: :id
+  belongs_to :mappack_level, foreign_key: :highscoreable_id
 end
 
 module MappackHighscoreable
@@ -1361,10 +1369,8 @@ class MappackLevel < ActiveRecord::Base
   include Map
   include MappackHighscoreable
   include Levelish
-  alias_attribute :data, :mappack_data
   alias_attribute :scores, :mappack_scores
   alias_attribute :episode, :mappack_episode
-  has_one :mappack_data, foreign_key: :id
   has_many :mappack_scores, as: :highscoreable
   belongs_to :mappack
   belongs_to :mappack_episode, foreign_key: :episode_id
@@ -1376,6 +1382,30 @@ class MappackLevel < ActiveRecord::Base
 
   def self.vanilla
     Level
+  end
+
+  # Return the tile data, optionally specify a version, otherwise pick last
+  def tile_data(version: mappack.version)
+    data = MappackData.where(highscoreable_id: id)
+                      .where("version <= #{version}")
+                      .where.not(tile_data: nil)
+                      .order(version: :desc)
+                      .first
+    data ? data.tile_data : nil
+  rescue
+    nil
+  end
+
+  # Return the object data, optionally specify a version, otherwise pick last
+  def object_data(version: mappack.version)
+    data = MappackData.where(highscoreable_id: id)
+                      .where("version <= #{version}")
+                      .where.not(object_data: nil)
+                      .order(version: :desc)
+                      .first
+    data ? data.object_data : nil
+  rescue
+    nil
   end
 
   # Compare hashes generated by Ruby and STB

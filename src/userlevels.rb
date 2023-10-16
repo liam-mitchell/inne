@@ -301,7 +301,7 @@ class Userlevel < ActiveRecord::Base
       count:   _unpack(levels[16...20]), # Map count in this collection (<= 500)
       page:    _unpack(levels[20...24]), # Page number (>= 0)
       type:    _unpack(levels[24...28]), # Playable type (always 0, i.e., Level)
-      qt:      _unpack(levels[28...32]), # Query type (0-36)
+      qt:      _unpack(levels[28...32]), # Query type (0-37)
       mode:    _unpack(levels[32...36]), # Game mode (0 = Solo, 1 = Coop, 2 = Race, 3 = HC)
       cache:   _unpack(levels[36...40]), # Cache duration in seconds (usually 1200 or 5)
       max:     _unpack(levels[40...44]), # Max page size (usually 500 or 25)
@@ -353,11 +353,13 @@ class Userlevel < ActiveRecord::Base
             mode:       header[:mode],
             map_update: Time.now.strftime(DATE_FORMAT_MYSQL)
           )
+
           # Userlevel author
           UserlevelAuthor.find_or_create_by(id: map[:author_id]).rename(map[:author], map[:date])
+
           # Userlevel map data
           UserlevelData.find_or_create_by(id: map[:id]).update(
-            tile_data: Map.encode_tiles(map[:tiles]),
+            tile_data:   Map.encode_tiles(map[:tiles]),
             object_data: Map.encode_objects(map[:objects])
           )
         else
@@ -676,6 +678,14 @@ class Userlevel < ActiveRecord::Base
 
   def data
     UserlevelData.find(self.id)
+  end
+
+  def tile_data(**kwargs)
+    data.tile_data
+  end
+
+  def object_data(**kwargs)
+    data.object_data
   end
 
   # Generate compressed map dump in the format the game uses when browsing
