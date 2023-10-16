@@ -735,7 +735,7 @@ end
 # or an integer if an ID is found.
 # Also, if 'full' is true, when a name is found the entire msg will be considered the name
 def parse_userlevel_title(msg, remove: false, full: true)
-  name, msg = parse_string_or_id(msg, quoted: ['for', 'title'], final: ['for'], remove: true)
+  name, msg = parse_string_or_id(msg, quoted: ['for', 'of', 'title'], final: ['for', 'of'], remove: true)
   name.strip! if name.is_a?(String)
   if name.is_a?(String) && name.empty? && full
     name, msg = msg, ''

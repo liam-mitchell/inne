@@ -2428,6 +2428,22 @@ rescue => e
   lex(e, 'Failed to submit score.', event: event)
 end
 
+def submit_all_scores(event)
+  [Level, Episode, Story].each{ |type|
+    type.where(completions: nil).each{ |h|
+      res = h.submit_zero_score
+      if !res
+        err("Failed to submit zero score to #{h.name}.", event: event)
+        sleep(5)
+      elsif res.key?('rank')
+        h.update(completions: res['rank'].to_i)
+        dbg("Submitted zero score to #{h.name}: rank #{res['rank']}", progress: true)
+      end
+    }
+  }
+  succ("Finished submitting all remaining zero scores.", event: event)
+end
+
 # Special commands can only be executed by the botmaster, and are intended to
 # manage the bot on the fly without having to restart it, or to print sensitive
 # information.
@@ -2470,6 +2486,7 @@ def respond_special(event)
   return sanitize_users(event)           if cmd == 'sanitize_users'
   return set_user_id(event)              if cmd == 'set_user_id'
   return submit_score(event)             if cmd == 'submit'
+  return submit_all_scores(event)        if cmd == 'submit_all'
 
   event << "Unsupported special command."
 end

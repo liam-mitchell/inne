@@ -216,13 +216,7 @@ module Log
 
     # Log to Discord DMs, if specified
     discord(text) if log_to_discord
-    if event
-      if event.is_a?(Discordrb::Events::Respondable)
-        event << text
-      else
-        send_message(event, content: text)
-      end
-    end
+    send_message(event, content: text) if event
 
     # Return original text
     text
@@ -365,7 +359,7 @@ def forward(req)
   res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 5){ |http|
     http.request(new_req)
   }
-  res.code.to_i != 200 ? nil : res.body
+  res.code.to_i < 200 || res.code.to_i > 299 ? nil : res.body.to_s
 rescue => e
   lex(e, 'Failed to forward request to Metanet')
   nil

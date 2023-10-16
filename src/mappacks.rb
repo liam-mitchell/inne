@@ -262,7 +262,7 @@ module Map
   # successfully. Userlevels aren't completed (their hashes aren't checked
   # by the server anyways).
   def complete_object_data(data, n)
-    return true if self.is_a?(Userlevel)
+    return true if n == 0 || self.is_a?(Userlevel)
     successor = next_h(tab: false)
     if successor == self
       return false

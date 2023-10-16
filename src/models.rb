@@ -694,7 +694,7 @@ module Downloadable
     score = (1000 * round_score(score)).round.to_s
     hash = self.map.hash(c: true)
     if !hash
-      err("Couldn't compute #{fname}'s hash, not submitting #{pname}'s score.", discord: log)
+      err("Couldn't compute #{fname} hash, not submitting #{pname} score.", discord: log)
       return
     end
     hash = sha1(hash + score, c: true)
