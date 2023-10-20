@@ -1003,17 +1003,33 @@ class Mappack < ActiveRecord::Base
 
   # Return the folder that contains this mappack's files
   def folder(v: nil)
-    v = version || 1 if !v
+    if !v
+      err("The mappack version needs to be provided.")
+      return
+    end
+
     dir = File.join(DIR_MAPPACKS, "#{"%03d" % [id]}_#{code}_#{v}")
     Dir.exist?(dir) ? dir : nil
   end
 
   # TODO: Parse challenge files, in a separate function with its own command,
   # which is also called from the general seed and read functions.
+  # TODO: For hard update, perhaps delete the corresponding mappack data for
+  # the last version. For soft update, perhaps print report of changes
+  # (supposedly, there shouldn't be many, since otherwise a hard one would
+  # be used instead, so this way we can check).
 
   # Parses map files corresponding to this mappack, and updates the database
-  def read(v: nil)
+  #   v    - Specifies the version of the mappack
+  #   hard - Wipe all preexisting mappack highscoreables
+  def read(v: nil, hard: false)
+    # Integrity check for mappack version
     v = version || 1 if !v
+    if v < version
+      err("Cannot update an older mappack version (#{v} vs #{version}).")
+      return
+    end
+
     name_str = "#{code.upcase} v#{v}"
     
     # Check for mappack directory
@@ -1032,9 +1048,11 @@ class Mappack < ActiveRecord::Base
     warn("No appropriate files found in directory for mappack #{name_str}") if files.count == 0
 
     # Delete old database records
-    MappackLevel.where(mappack_id: id).delete_all
-    MappackEpisode.where(mappack_id: id).delete_all
-    MappackStory.where(mappack_id: id).delete_all
+    if hard
+      MappackLevel.where(mappack_id: id).delete_all
+      MappackEpisode.where(mappack_id: id).delete_all
+      MappackStory.where(mappack_id: id).delete_all
+    end
 
     # Parse mappack files
     file_errors = 0
@@ -1056,13 +1074,20 @@ class Mappack < ActiveRecord::Base
       end
 
       # Precompute some indices for the database
-      index          = tab[1][:files].keys.index(tab_code)
       mappack_offset = TYPES['Level'][:slots] * id
+      file_index     = tab[1][:files].keys.index(tab_code)
+      file_offset    = tab[1][:files].values.take(file_index).sum
       tab_offset     = tab[1][:start]
-      file_offset    = tab[1][:files].values.take(index).sum
+      tab_index      = tab[1][:mode] * 7 + tab[1][:tab]
 
-      # Create new database records
+      # Integrity check
       count = maps.count
+      if !hard && count != levels.where(tab: tab_index).count
+        err("Map count in #{f} differs between #{code.upcase} versions, must do hard update.")
+        return
+      end
+      
+      # Create new database records
       maps.each_with_index{ |map, map_offset|
         dbg("Creating record #{"%-3d" % (map_offset + 1)} / #{count} from #{f} for mappack #{name_str}...", newline: false)
         if map.nil?
@@ -1751,7 +1776,7 @@ class MappackScore < ActiveRecord::Base
     h = "Mappack#{type[:name]}".constantize.find_by(mappack: mappack, inner_id: sid)
     if h.nil?
       return forward(req) if CLE_FORWARD
-      warn("Getting scores: #{type[:name]} ID:#{sid} for mappack '#{code}' not found")
+      warn("Getting scores: #{type[:name]} #{name} for mappack '#{code}' not found")
       return
     end
     name = h.name
@@ -1824,6 +1849,10 @@ class MappackScore < ActiveRecord::Base
     return
   end
 
+  # Manually change a score, given either:
+  # - A player and a highscoreable, in which case, his current hs PB will be taken
+  # - An ID, in which case that specific score will be chosen
+  # It performs score validation via gold check before changing it
   def self.patch_score(id, highscoreable, player, score)
     # Find score
     if !id.nil? # If ID has been provided
@@ -1914,6 +1943,9 @@ class MappackScore < ActiveRecord::Base
     [['Error', 'Error', 'Error', 'Error', 'Error', 'Error']]
   end
 
+  # Update the completion count for each mappack highscoreable, should only
+  # need to be executed once, or occasionally, to seed them for the first
+  # time. From then on, the score submission function updates the figure.
   def self.update_completions(mappack: nil)
     bench(:start) if BENCHMARK
     [MappackLevel, MappackEpisode, MappackStory].each{ |type|

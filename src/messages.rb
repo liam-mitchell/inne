@@ -1695,7 +1695,7 @@ def send_help2(event)
 end
 
 def send_help(event)
-  if (event.channel.type != 1) then
+  if (event.channel.type != 1)
     event << "Hi! I'm **outte++**, the N++ Highscoring Bot and inne++'s evil cousin. I can do many tasks, like:\n"
     event << "- Fetching **scores** and **screenshots** for any level or episode."
     event << "- Performing highscore **rankings** of many sorts."
@@ -2092,6 +2092,38 @@ rescue => e
   lex(e, "Error updating mappack completions.", event: event)
 end
 
+def send_highscore_plot(event)
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
+
+  counts = MappackScore.where('id > ?', MIN_REPLAY_ID)
+  counts = counts.where(mappack: mappack) if mappack
+  total_counts = counts.group('date(date)').count
+  dates = (total_counts.keys.first .. total_counts.keys.last).to_a
+  total_counts = dates.map{ |date| total_counts[date].to_i }
+
+  labels = dates.map{ |date|
+    [1, 10, 20].include?(date.day) ? date.strftime("%b %d") : ''
+  }
+
+  create_svg(
+    filename: "#{mappack ? mappack.code : 'mappack'}_highscores_by_day.svg",
+    title:    "#{mappack ? mappack.code.upcase : 'Mappack'} highscores by day\n (Total: #{total_counts.sum} highscores in #{total_counts.size} days)",
+    x_name:   'Date',
+    y_name:   'Count',
+    x_res:    1000,
+    y_res:    500,
+    data:     [total_counts],
+    names:    ['Highscores'],
+    labels:   labels,
+    fmt:      '%d'
+  )
+  event << 'Generated highscore plot.'
+rescue => e
+  lex(e, "Error generating highscore plot.", event: event)
+end
+
 def send_ul_plot_day(event)
   counts = Userlevel.group('date(date)').count
   dates = (counts.keys.first .. counts.keys.last).to_a
@@ -2476,6 +2508,7 @@ def respond_special(event)
   return send_mappack_read(event)        if cmd == 'mappack_read'
   return send_mappack_ranks(event)       if cmd == 'mappack_ranks'
   return send_mappack_completions(event) if cmd == 'mappack_completions'
+  return send_highscore_plot(event)      if cmd == 'highscores_plot'
   return send_ul_csv(event)              if cmd == 'userlevel_csv'
   return send_ul_plot(event)             if cmd == 'userlevel_plot'
   return send_log_config(event)          if cmd == 'log'
