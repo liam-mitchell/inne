@@ -964,12 +964,9 @@ class Mappack < ActiveRecord::Base
 
   # Parse all mappacks in the mappack directory into the database
   #   update - Update preexisting mappacks (otherwise, only parses newly added ones)
-  #   level  - Update level for those mappacks that will be parsed:
-  #              0: Parse all versions, all hard.
-  #              1: Parse all versions, first one hard, others soft.
-  #              2: Parse only last version, hard.
-  #              3: Parse only last version, soft.
-  def self.seed(update: false, level: 1)
+  #   all    - Update all versions of each mappack
+  #   hard   - Perform a hard update (see self.read)
+  def self.seed(update: false, all: true, hard: false)
     # Fetch mappacks
     halt("Mappacks directory not found, not seeding") if !Dir.exist?(DIR_MAPPACKS)
     mappacks = {}
@@ -997,13 +994,19 @@ class Mappack < ActiveRecord::Base
       versions = atts[:versions].sort
 
       versions.each{ |version|
-        next if level > 1 && version < versions.max
+        next if !all && version < versions.max
         mappack = Mappack.find_by(id: id)
         if mappack
           next unless update
           halt("Mappack with ID #{id} already belongs to #{mappack.code.upcase}.") if mappack.code.upcase != code.upcase
-          halt("Cannot update #{code.upcase} to v#{version} (already at v#{mappack.version}).") if version < mappack.version
-          hard = level % 2 == 0 || version == 1
+          if version < mappack.version
+            if hard
+              MappackData.joins('mappack_levels ON mappack_levels.id = highscoreable_id')
+                         .where("mappack_id = #{id} AND version >= #{version}").delete_all
+            else
+              halt("Cannot soft update #{code.upcase} to v#{version} (already at v#{mappack.version}).")
+            end
+          end
           mappack.update(version: version)
           mappack.read(v: version, hard: hard)
         else
