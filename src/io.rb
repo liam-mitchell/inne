@@ -1161,7 +1161,7 @@ def format_level_matches(event, msg, page, matches, name)
   content = "#{name.capitalize}: #{matches[0]}\n#{format_level_list(list)}"
   view = matches[1].size > PAGE_SIZE ? interaction_add_button_navigation(nil, pag[:page], pag[:pages]) : nil
   send_message(event, content: content, components: view)
-  outte_next
+  halt
 end
 
 # Header of outte messages

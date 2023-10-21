@@ -963,35 +963,65 @@ class Mappack < ActiveRecord::Base
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
   # Parse all mappacks in the mappack directory into the database
-  # Only reads the newly added mappacks, unless 'update' is true
-  def self.seed(update: false)
-    if !Dir.exist?(DIR_MAPPACKS)
-      err("Mappacks directory not found, not seeding")
-      return
-    end
-
-    Dir.entries(DIR_MAPPACKS).select{ |d| !!d[/\d+_.+/] }.sort.each{ |d|
+  #   update - Update preexisting mappacks (otherwise, only parses newly added ones)
+  #   level  - Update level for those mappacks that will be parsed:
+  #              0: Parse all versions, all hard.
+  #              1: Parse all versions, first one hard, others soft.
+  #              2: Parse only last version, hard.
+  #              3: Parse only last version, soft.
+  def self.seed(update: false, level: 1)
+    # Fetch mappacks
+    halt("Mappacks directory not found, not seeding") if !Dir.exist?(DIR_MAPPACKS)
+    mappacks = {}
+    Dir.entries(DIR_MAPPACKS).select{ |d| !!d[/\d+_.+/] }.sort.map{ |d|
       id, code, version = d.split('_')
-      id = id.to_i
-      version = version.to_i
-      mappack = Mappack.find_by(code: code)
-      if mappack.nil?
-        Mappack.create(id: id, code: code, version: version).read(v: version)
-      elsif update
-        mappack.update(version: version) if version > mappack.version
-        mappack.read(v: version)
-      end
+      mappacks[code] = { id: id.to_i, versions: [] } if !mappacks.key?(code)
+      mappacks[code][:id] = id.to_i
+      mappacks[code][:versions] << version.to_i
     }
 
+    # Integrity checks:
+    # - Ensure no ID conflicts
+    # - Ensure all versions are present
+    mappacks.group_by{ |code, atts| atts[:id] }.each{ |id, packs|
+      halt("Mappack ID conflict: #{packs.map{ |p| p[0].upcase }.join(', ')}.") if packs.size > 1
+    }
+    mappacks.each{ |code, atts|
+      missing = (1 .. atts[:versions].max).to_a - atts[:versions]
+      halt("#{code.upcase} missing versions #{missing.join(', ')}.") unless missing.empty?
+    }
+
+    # Read mappacks
+    mappacks.each{ |code, atts|
+      id       = atts[:id]
+      versions = atts[:versions].sort
+
+      versions.each{ |version|
+        next if level > 1 && version < versions.max
+        mappack = Mappack.find_by(id: id)
+        if mappack
+          next unless update
+          halt("Mappack with ID #{id} already belongs to #{mappack.code.upcase}.") if mappack.code.upcase != code.upcase
+          halt("Cannot update #{code.upcase} to v#{version} (already at v#{mappack.version}).") if version < mappack.version
+          hard = level % 2 == 0 || version == 1
+          mappack.update(version: version)
+          mappack.read(v: version, hard: hard)
+        else
+          halt("#{code.upcase} v1 should exist (trying to create v#{version}).") if version != 1
+          Mappack.create(id: id, code: code, version: 1).read(v: 1, hard: true)
+        end
+      }
+    }
+
+    # Update mappack digest
     digest
   rescue => e
     lex(e, "Error seeding mappacks to database")
   end
 
-  # Update the digest file, which summarizes mappack info into a file
-  # that can be queried via the internet, containing
-  # mappack_id mappack_code mappack_version
-  # for each mappack, one per line
+  # Update the digest file, which summarizes mappack info into a file that can
+  # be queried via the internet, containing the ID, code and version for each
+  # mappack, one per line.
   def self.digest
     dig = Mappack.all.order(:id).pluck(:id, :code, :version).map{ |m|
       m.join(' ') + "\n"
@@ -1014,31 +1044,23 @@ class Mappack < ActiveRecord::Base
 
   # TODO: Parse challenge files, in a separate function with its own command,
   # which is also called from the general seed and read functions.
-  # TODO: For hard update, perhaps delete the corresponding mappack data for
-  # the last version. For soft update, perhaps print report of changes
-  # (supposedly, there shouldn't be many, since otherwise a hard one would
-  # be used instead, so this way we can check).
 
   # Parses map files corresponding to this mappack, and updates the database
   #   v    - Specifies the version of the mappack
-  #   hard - Wipe all preexisting mappack highscoreables
+  #   hard - A hard update is aimed at versions with significant changes,
+  #          e.g., different amount of maps. In this case, the highscoreables
+  #          are deleted. For soft updates, checks of similarity are enforced,
+  #          and a report of changes is printed.
   def read(v: nil, hard: false)
     # Integrity check for mappack version
     v = version || 1 if !v
-    if v < version
-      err("Cannot update an older mappack version (#{v} vs #{version}).")
-      return
-    end
-
+    halt("Cannot update an older mappack version (#{v} vs #{version}).") if v < version
     name_str = "#{code.upcase} v#{v}"
     
     # Check for mappack directory
     log("Parsing mappack #{name_str}...")
     dir = folder(v: v)
-    if !dir
-      err("Directory for mappack #{name_str} not found, not reading")
-      return
-    end
+    halt("Directory for mappack #{name_str} not found, not reading") if !dir
 
     # Fetch mappack files
     files = Dir.entries(dir).select{ |f|
@@ -1047,44 +1069,55 @@ class Mappack < ActiveRecord::Base
     }.sort
     warn("No appropriate files found in directory for mappack #{name_str}") if files.count == 0
 
-    # Delete old database records
-    if hard
-      MappackLevel.where(mappack_id: id).delete_all
-      MappackEpisode.where(mappack_id: id).delete_all
-      MappackStory.where(mappack_id: id).delete_all
+    # If we're doing a soft update, ensure the new tabs will replace the old ones precisely
+    if !hard
+      tabs_old = MappackLevel.where(mappack_id: id).distinct.pluck('tab AS tab_int').sort
+      tabs_new = files.map{ |f|
+        tab = TABS_NEW.values.find{ |att| att[:files].key?(f[0..-5]) }
+        tab ? tab[:mode] * 7 + tab[:tab] : nil
+      }.compact.sort
+      halt("Tabs for mappack #{code.upcase} do not coincide, cannot do hard update.") if tabs_old != tabs_new
     end
 
     # Parse mappack files
     file_errors = 0
     map_errors = 0
+    changes = { name: 0, tiles: 0, objects: 0 } if !hard
     files.each{ |f|
       # Find corresponding tab
       tab_code = f[0..-5]
-      tab = TABS_NEW.find{ |tab, att| att[:files].key?(tab_code) }
+      tab = TABS_NEW.values.find{ |att| att[:files].key?(tab_code) }
       if tab.nil?
         warn("Unrecognized file #{tab_code} parsing mappack #{name_str}")
         next
       end
 
       # Parse file
-      maps = Map.parse_metanet_file(File.join(dir, f), tab[1][:files][tab_code], name_str)
+      maps = Map.parse_metanet_file(File.join(dir, f), tab[:files][tab_code], name_str)
       if maps.nil?
         file_errors += 1
+        halt("Parsing of #{name_str} #{f} failed, ending soft update.") if !hard
         next
       end
 
       # Precompute some indices for the database
       mappack_offset = TYPES['Level'][:slots] * id
-      file_index     = tab[1][:files].keys.index(tab_code)
-      file_offset    = tab[1][:files].values.take(file_index).sum
-      tab_offset     = tab[1][:start]
-      tab_index      = tab[1][:mode] * 7 + tab[1][:tab]
+      file_index     = tab[:files].keys.index(tab_code)
+      file_offset    = tab[:files].values.take(file_index).sum
+      tab_offset     = tab[:start]
+      tab_index      = tab[:mode] * 7 + tab[:tab]
 
-      # Integrity check
       count = maps.count
-      if !hard && count != levels.where(tab: tab_index).count
-        err("Map count in #{f} differs between #{code.upcase} versions, must do hard update.")
-        return
+      if !hard
+        # In soft updates, map count must be the same
+        halt("Map count in #{f} differs between #{code.upcase} versions, must do hard update.") if count != levels.where(tab: tab_index).count
+      else
+        # In hard updates, remove old highscoreables and map data
+        MappackData.joins('mappack_levels ON mappack_levels.id = highscoreable_id')
+                   .where(mappack_id: id, version: v).delete_all
+        levels.delete_all
+        episodes.delete_all
+        stories.delete_all
       end
       
       # Create new database records
@@ -1092,6 +1125,7 @@ class Mappack < ActiveRecord::Base
         dbg("Creating record #{"%-3d" % (map_offset + 1)} / #{count} from #{f} for mappack #{name_str}...", newline: false)
         if map.nil?
           map_errors += 1
+          halt("Parsing of #{name_str} #{f} map #{map_offset} failed, ending soft update.") if !hard
           next
         end
         tab_id   = file_offset    + map_offset # ID of level within tab
@@ -1099,47 +1133,80 @@ class Mappack < ActiveRecord::Base
         level_id = mappack_offset + inner_id   # ID of level in database
 
         # Create mappack level
-        level = MappackLevel.find_or_create_by(id: level_id)
+        if hard
+          level = MappackLevel.create(id: level_id)
+        else
+          level = MappackLevel.find_by(id: level_id)
+          halt("#{code.upcase} level with ID #{level_id} should exist.") if !level
+          changes[:name] += 1 if map[:title].strip != level.longname
+        end
+        
         level.update(
           inner_id:   inner_id,
           mappack_id: id,
-          mode:       tab[1][:mode],
-          tab:        tab[0],
+          mode:       tab[:mode],
+          tab:        tab_index,
           episode_id: level_id / 5,
           name:       code.upcase + '-' + compute_name(inner_id, 0),
           longname:   map[:title].strip,
         )
 
-        # Create mappack data (tiles and objects), if they're different from previous version
+        # Save new mappack data (tiles and objects) if:
+        #   Hard update - Always
+        #   Soft update - Only when the map data is different
         data = MappackData.find_or_create_by(highscoreable_id: level_id, version: v)
+
         prev_tiles = level.tile_data(version: v - 1)
         new_tiles = Map.encode_tiles(map[:tiles])
-        data.update(tile_data: new_tiles) if prev_tiles != new_tiles
+        if hard || prev_tiles != new_tiles
+          data.update(tile_data: new_tiles)
+          changes[:tiles] += 1 if !hard
+        end
+
         prev_objects = level.object_data(version: v - 1)
         new_objects = Map.encode_objects(map[:objects])
-        data.update(object_data: new_objects) if prev_objects != new_objects
+        if hard || prev_objects != new_objects
+          data.update(object_data: new_objects)
+          changes[:objects] += 1 if !hard
+        end
 
         # Create corresponding mappack episode, except for secret tabs.
-        next if tab[1][:secret]
-        story = tab[1][:mode] == 0 && (!tab[1][:x] || map_offset < 5 * tab[1][:files][tab_code] / 6)
-        MappackEpisode.find_or_create_by(id: level_id / 5).update(
+        next if tab[:secret]
+        story = tab[:mode] == 0 && (!tab[:x] || map_offset < 5 * tab[:files][tab_code] / 6)
+
+        if hard
+          episode = MappackEpisode.create(id: level_id / 5)
+        else
+          episode = MappackEpisode.find_by(id: level_id / 5)
+          halt("#{code.upcase} episode with ID #{level_id / 5} should exist.") if !episode
+        end
+
+        episode.update(
           id:         level_id / 5,
           inner_id:   inner_id / 5,
           mappack_id: id,
-          mode:       tab[1][:mode],
-          tab:        tab[0],
+          mode:       tab[:mode],
+          tab:        tab_index,
           story_id:   story ? level_id / 25 : nil,
           name:       code.upcase + '-' + compute_name(inner_id / 5, 1)
         )
 
         # Create corresponding mappack story, only for non-X-Row Solo.
         next if !story
+
+        if hard
+          story = MappackStory.create(id: level_id / 25)
+        else
+          story = MappackStory.find_by(id: level_id / 25)
+          halt("#{code.upcase} story with ID #{level_id / 25} should exist.") if !story
+        end
+
         MappackStory.find_or_create_by(id: level_id / 25).update(
           id:         level_id / 25,
           inner_id:   inner_id / 25,
           mappack_id: id,
-          mode:       tab[1][:mode],
-          tab:        tab[0],
+          mode:       tab[:mode],
+          tab:        tab_index,
           name:       code.upcase + '-' + compute_name(inner_id / 25, 2)
         )
       }
@@ -1160,6 +1227,7 @@ class Mappack < ActiveRecord::Base
     else
       warn("Parsed mappack #{name_str} with #{file_errors} file errors and #{map_errors} map errors")
     end
+    dbg("Soft update: #{changes[:name]} name changes, #{changes[:tiles]} tile changes, #{changes[:objects]} object changes.") if !hard
   rescue => e
     lex(e, "Error reading mappack #{name_str}")
   end

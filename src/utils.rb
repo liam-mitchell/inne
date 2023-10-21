@@ -284,8 +284,8 @@ def perror(msg = '')
   raise OutteError.new msg.to_s
 end
 
-def outte_next
-  raise OutteNext.new
+def halt(msg = '')
+  raise OutteNext.new msg.to_s
 end
 
 # <---------------------------------------------------------------------------->
