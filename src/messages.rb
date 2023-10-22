@@ -2013,7 +2013,9 @@ def send_mappack_seed(event)
   msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   update = flags.key?(:update)
-  Mappack.seed(update: update)
+  hard = flags.key?(:hard)
+  all = flags.key?(:all)
+  Mappack.seed(update: update, hard: hard, all: all)
   event << "Seeded new mappacks, there're now #{Mappack.count}."
 rescue => e
   lex(e, "Error seeding new mappacks.", event: event)

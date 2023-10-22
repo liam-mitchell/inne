@@ -1078,8 +1078,8 @@ class Mappack < ActiveRecord::Base
       tabs_new = files.map{ |f|
         tab = TABS_NEW.values.find{ |att| att[:files].key?(f[0..-5]) }
         tab ? tab[:mode] * 7 + tab[:tab] : nil
-      }.compact.sort
-      halt("Tabs for mappack #{code.upcase} do not coincide, cannot do hard update.") if tabs_old != tabs_new
+      }.compact.uniq.sort
+      halt("Tabs for mappack #{code.upcase} do not coincide, cannot do soft update.") if tabs_old != tabs_new
     end
 
     # Parse mappack files
@@ -1113,7 +1113,7 @@ class Mappack < ActiveRecord::Base
       count = maps.count
       if !hard
         # In soft updates, map count must be the same
-        halt("Map count in #{f} differs between #{code.upcase} versions, must do hard update.") if count != levels.where(tab: tab_index).count
+        halt("Map count in #{code.upcase} #{f} exceeds database ones, must do hard update.") if count > levels.where(tab: tab_index).count
       else
         # In hard updates, remove old highscoreables and map data
         MappackData.joins('mappack_levels ON mappack_levels.id = highscoreable_id')
@@ -1136,12 +1136,17 @@ class Mappack < ActiveRecord::Base
         level_id = mappack_offset + inner_id   # ID of level in database
 
         # Create mappack level
+        change_level = false
         if hard
-          level = MappackLevel.create(id: level_id)
+          level = MappackLevel.find_or_create_by(id: level_id)
+          change_level = true
         else
           level = MappackLevel.find_by(id: level_id)
           halt("#{code.upcase} level with ID #{level_id} should exist.") if !level
-          changes[:name] += 1 if map[:title].strip != level.longname
+          if map[:title].strip != level.longname
+            changes[:name] += 1
+            change_level = true
+          end
         end
         
         level.update(
@@ -1152,7 +1157,7 @@ class Mappack < ActiveRecord::Base
           episode_id: level_id / 5,
           name:       code.upcase + '-' + compute_name(inner_id, 0),
           longname:   map[:title].strip,
-        )
+        ) if change_level
 
         # Save new mappack data (tiles and objects) if:
         #   Hard update - Always
@@ -1178,40 +1183,36 @@ class Mappack < ActiveRecord::Base
         story = tab[:mode] == 0 && (!tab[:x] || map_offset < 5 * tab[:files][tab_code] / 6)
 
         if hard
-          episode = MappackEpisode.create(id: level_id / 5)
+          MappackEpisode.find_or_create_by(id: level_id / 5).update(
+            id:         level_id / 5,
+            inner_id:   inner_id / 5,
+            mappack_id: id,
+            mode:       tab[:mode],
+            tab:        tab_index,
+            story_id:   story ? level_id / 25 : nil,
+            name:       code.upcase + '-' + compute_name(inner_id / 5, 1)
+          )
         else
           episode = MappackEpisode.find_by(id: level_id / 5)
-          halt("#{code.upcase} episode with ID #{level_id / 5} should exist.") if !episode
+          halt("#{code.upcase} episode with ID #{level_id / 5} should exist, stopping soft update.") if !episode
         end
-
-        episode.update(
-          id:         level_id / 5,
-          inner_id:   inner_id / 5,
-          mappack_id: id,
-          mode:       tab[:mode],
-          tab:        tab_index,
-          story_id:   story ? level_id / 25 : nil,
-          name:       code.upcase + '-' + compute_name(inner_id / 5, 1)
-        )
 
         # Create corresponding mappack story, only for non-X-Row Solo.
         next if !story
 
         if hard
-          story = MappackStory.create(id: level_id / 25)
+          MappackStory.find_or_create_by(id: level_id / 25).update(
+            id:         level_id / 25,
+            inner_id:   inner_id / 25,
+            mappack_id: id,
+            mode:       tab[:mode],
+            tab:        tab_index,
+            name:       code.upcase + '-' + compute_name(inner_id / 25, 2)
+          )
         else
           story = MappackStory.find_by(id: level_id / 25)
-          halt("#{code.upcase} story with ID #{level_id / 25} should exist.") if !story
+          halt("#{code.upcase} story with ID #{level_id / 25} should exist, stopping soft update.") if !story
         end
-
-        MappackStory.find_or_create_by(id: level_id / 25).update(
-          id:         level_id / 25,
-          inner_id:   inner_id / 25,
-          mappack_id: id,
-          mode:       tab[:mode],
-          tab:        tab_index,
-          name:       code.upcase + '-' + compute_name(inner_id / 25, 2)
-        )
       }
       Log.clear
 
