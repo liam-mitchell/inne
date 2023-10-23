@@ -440,15 +440,9 @@ end
 # TODO:
 # - Add QueryResult class that handles keeping track of the results,
 #       formatting them, etc. Adjust functions and comments accordingly.
-# - Add a parameter that tells this function whether multiple results should be
-#   formatted automatically or the list/QueryResult should be returned instead
 
 # Parse a highscoreable (Level, Episode, Story, or the corresponding Mappack ones)
-# Returns
-#   [String, Array<Level>]
-# if partial is enabled, with the array of results and a header, or
-#   Highscoreable || nil
-# if partial is disabled, with the single result, if it exists.
+# Returns it if a single result is found, or prints the list if multiple (see params).
 def parse_highscoreable(
     event,          # Event whose content contains the highscoreable to parse
     list:    false, # Force to print list, even if there's a single match
@@ -472,23 +466,23 @@ def parse_highscoreable(
   # No results
   pack_str = pack && pack.id != 0 ? pack.code.upcase + ' ' : ''
   if ret[1].empty?
-    if array
-      return ["No #{pack_str}results found.", []]
+    if list
+      perror("No #{pack_str}results found.")
     else
       perror("Couldn't find the #{pack_str}level, episode or story you were looking for :(")
     end
   end
 
-  # Transform to vanilla and single result if appropriate
+  # Transform to vanilla or map if appropriate
   ret[1].map!{ |m| m.vanilla } if vanilla
   ret[1].map!{ |m| m.map } if map
+
+  # Return single highscoreable or print list of results
   if !list && ret[1].size == 1
-    ret = ret[1].first
+    return ret[1].first
   else
     format_level_matches(event, msg, page, ret, 'results')
   end
-  
-  ret
 rescue => e
   lex(e, 'Failed to parse highscoreable')
   nil
@@ -1161,7 +1155,7 @@ def format_level_matches(event, msg, page, matches, name)
   content = "#{name.capitalize}: #{matches[0]}\n#{format_level_list(list)}"
   view = matches[1].size > PAGE_SIZE ? interaction_add_button_navigation(nil, pag[:page], pag[:pages]) : nil
   send_message(event, content: content, components: view)
-  halt
+  perror('', log: false, discord: false)
 end
 
 # Header of outte messages

@@ -1,8 +1,8 @@
 class AddOuttePlayer < ActiveRecord::Migration[5.1]
   def change
-    Player.find_or_create_by(metanet_id: 361131).update(
+    Player.find_or_create_by(metanet_id: OUTTE_ID).update(
       name:     'outte++',
-      steam_id: '76561199562076498'
+      steam_id: OUTTE_STEAM_ID
     )
   end
 end

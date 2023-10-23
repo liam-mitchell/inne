@@ -402,7 +402,7 @@ def send_scores(event, map = nil, ret = false)
 
   # Add cleanliness if it's an episode or a story
   res << "\n" if full
-  res << "Scores: #{h.completions}. " if h.completions
+  res << "Scores: #{h.completions}. " if h.completions && h.completions > 0
   res << send_clean_one(event, true) if (h.is_a?(Episodish) || h.is_a?(Storyish)) && board != 'gm'
 
   # If it's an episode, update all 5 level scores in the background
@@ -2484,6 +2484,67 @@ def submit_all_scores(event)
     }
   }
   succ("Finished submitting all remaining zero scores.", event: event)
+rescue => e
+  lex(e, 'Failed to submit all zero scores.', event: event)
+end
+
+# Update how many completions a Metanet highscoreable (or all) has
+def update_completions(event)
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+
+  if !flags.key?(:all)
+    # Update completion count for individual highscoreable
+    h = parse_highscoreable(event)
+    perror("This highscoreable is not downloadable.") if !h.is_a?(Downloadable)
+    count_old = h.completions.to_i
+    count_new = h.update_completions(log: true, discord: true, retries: 0, stop: true)
+    if count_new
+      count_new = count_new.to_i
+      diff = count_new - count_old
+      event << "Updated #{h.name} completions from #{count_old} to #{count_new} (+#{diff})."
+    else
+      event << "Failed to fetch completions for #{h.name}."
+    end
+  else
+    # Update completion count for all highscoreables
+    # TODO: Make Discord logging optional, for when we manage to automate Steam
+     # authentification, leading to automating this function in the background
+    delta = 0
+    type = parse_type(flags[:type].to_s)
+    tabs = parse_tabs(flags[:tabs].to_s)
+    retries = flags[:retries].to_i
+    msg = [nil]
+    (type ? [type] : [Level, Episode, Story]).each{ |t|
+      list = t
+      list = list.where(tab: tabs) if !tabs.empty?
+      count = list.count
+      list.all.each_with_index do |h, i|
+        attempt = 0
+        current = "#{h.name} [#{t.to_s.downcase} #{i} / #{count}]"
+        count_old = h.completions.to_i
+        count_new = h.update_completions
+
+        while !count_new
+          if retries == 0 || attempt < retries
+            concurrent_edit(event, msg, "Stopped updating at #{current} (waiting for outte++, attempt #{attempt + 1} / #{retries}).")
+            attempt += 1
+            sleep(5)
+            count_new = h.update_completions
+          else
+            concurrent_edit(event, msg, "Stopped updating at #{current} (timed out waiting for outte++).")
+            return
+          end
+        end
+
+        delta += [count_new - count_old, 0].max
+        concurrent_edit(event, msg, "Updated #{current} (Gained: #{delta})...") if i % 5 == 0
+      end
+    }
+    concurrent_edit(event, msg, "Finished updating completions, gained #{delta} ones.")
+  end
+rescue => e
+  lex(e, 'Failed to update completions.', event: event)
 end
 
 # Special commands can only be executed by the botmaster, and are intended to
@@ -2530,6 +2591,7 @@ def respond_special(event)
   return set_user_id(event)              if cmd == 'set_user_id'
   return submit_score(event)             if cmd == 'submit'
   return submit_all_scores(event)        if cmd == 'submit_all'
+  return update_completions(event)       if cmd == 'update_completions'
 
   event << "Unsupported special command."
 end

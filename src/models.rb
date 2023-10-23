@@ -543,16 +543,78 @@ end
 # Common functionality for all highscoreables whose leaderboards we download from
 # N++'s server (level, episode, story, userlevel).
 module Downloadable
-  def scores_uri(steam_id)
+  def scores_uri(steam_id, qt: 0)
     klass = self.class == Userlevel ? "level" : self.class.to_s.downcase
-    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}")
+    URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}&qt=#{qt}")
   end
 
+  # Download the highscoreable's scores from Metanet's server
   def get_scores(fast: false)
     uri  = Proc.new { |steam_id| scores_uri(steam_id) }
     data = Proc.new { |data| correct_ties(clean_scores(JSON.parse(data)['scores'])) }
     err  = "error getting scores for #{self.class.to_s.downcase} with id #{self.id.to_s}"
     get_data(uri, data, err, fast: fast)
+  end
+
+  # Get number of completions (basically a simpler get_scores query)
+  #   global  - Use global boards rather than around mine
+  #   log     - Log download errors to the terminal
+  #   discord - Log download errors to Discord (since this function may be executed manually)
+  #   retries - Number of retries before giving up
+  #   stop    - Throw exception if all retries fail (otherwise, return nil)
+  def get_completions(global: false, log: false, discord: false, retries: 0, stop: false)
+    res = nil
+
+    # Make several attempts at retrieving the scores with outte++'s account
+    while !res && retries >= 0
+      # Fetch scores
+      res = Net::HTTP.get_response(scores_uri(OUTTE_STEAM_ID, qt: global ? 0 : 1))
+
+      # Received incorrect HTTP response
+      if !res || !(200..299).include?(res.code.to_i)
+        if retries != 0 || !stop
+          res = nil
+        else
+          perror("Unsuccessful HTTP request.", log: log, discord: discord)
+        end
+      end
+
+      # outte++'s isn't active
+      if res && res.body == INVALID_RESP
+        if retries != 0 || !stop
+          res = nil
+        else
+          perror("outte++'s Steam ID not active.", log: log, discord: discord)
+        end
+      end
+
+      retries -= 1
+    end
+
+    # Parse result (no result, no scores, or success)
+    return nil if !res
+    hash = JSON.parse(res.body)
+    pb = hash['userInfo']
+    if !pb
+      if !stop
+        return -1
+      else
+        perror("outte++ doesn't have a score in #{name}.", log: log, discord: discord)
+      end
+    end
+
+    # Return max rank between personal and whole leaderboard
+    # Notes:
+    #  - Returned ranks in the sores list might be null
+    #  - The personal rank is sometimes incorrect. For example, for stories,
+    #    it may actually incorrectly equal the episode rank instead.
+    max_rank = hash['scores'].map{ |s| s['rank'].to_i }.max.to_i
+    my_rank = pb['my_rank'].to_i
+    my_rank = 0 if self.class == Story && my_rank + 1 >= Episode.find_by(id: id).completions rescue nil
+    [max_rank, my_rank].max + 1
+  rescue => e
+    lex(e, "Failed to get completions for #{name}.")
+    nil
   end
 
   # Sanitize received leaderboard data:
@@ -669,6 +731,22 @@ module Downloadable
   rescue => e
     lex(e, "Error updating database with #{self.class.to_s.downcase} #{self.id}: #{e}")
     return -1
+  end
+
+  # Update how many completions this highscoreable has, by downloading the scores
+  # using outte++'s N++ account, which has a score of 0.000 in all of them
+  def update_completions(log: false, discord: false, retries: 0, stop: false)
+    count = get_completions(global: false, log: log, discord: discord, retries: retries, stop: stop)
+    count = get_completions(global: true, log: log, discord: discord, retries: retries, stop: stop) if count && completions && count < completions
+    if count
+      self.update(completions: count) if count > completions.to_i
+      count
+    else
+      nil
+    end
+  rescue => e
+    lex(e, "Failed to update the completions for #{name}.")
+    nil
   end
 
   def submit_score(score, replays, player = nil, log: false)

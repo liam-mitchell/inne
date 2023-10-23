@@ -228,17 +228,22 @@ end
 def craft_response(event, func)
   func.call(event)
 rescue OutteError => e
-  # These exceptions are user error, so send the message out to the channel
-  if !e.discord
-    err(e.message.strip) unless e.message.strip.empty?
-  elsif event.is_a?(Discordrb::Events::Respondable)
-    event << e
-  else
-    send_message(event.channel, content: e.message)
+  # These exceptions are manually triggered errors, usually user errors that
+  # we may want to log back to Discord
+  
+  err(e.message.strip) if e.log && !e.message.strip.empty?
+
+  if e.discord
+    if event.is_a?(Discordrb::Events::Respondable)
+      event << e
+    else
+      send_message(event.channel, content: e.message)
+    end
   end
 rescue => e
   # These exceptions are internal errors, so send warning to the channel and
   # log full trace to the terminal/log file
+  
   lex(e, "Error parsing message.", event: event)
 end
 

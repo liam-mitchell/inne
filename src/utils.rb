@@ -263,23 +263,23 @@ def ld    (msg)              Log.discord(msg, kwargs)       end
 
 # Custom exception classes.
 #   Note: We inherit from Exception, rather than StandardError, because that
-#   way they will go past "rescue" and into Discord
+#   way they will go past normal "rescues"
 
 # Used when there is user error, its message gets sent to Discord by default.
+#   log     - Log message to terminal
+#   discord - Log message to Discord
 class OutteError < Exception
-  attr_reader :discord
-  def initialize(msg = 'Unknown outte error', discord = true)
+  attr_reader :log, :discord
+
+  def initialize(msg = 'Unknown outte error', log: false, discord: true)
     @discord = discord
+    @log = log
     super(msg)
   end
 end
 
-def perror(msg = '', discord = true)
-  raise OutteError.new(msg.to_s, discord)
-end
-
-def halt(msg = '')
-  perror(msg.to_s, false)
+def perror(msg = '', log: false, discord: true)
+  raise OutteError.new(msg.to_s, log: log, discord: discord)
 end
 
 # <---------------------------------------------------------------------------->
