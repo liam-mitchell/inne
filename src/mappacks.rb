@@ -966,9 +966,9 @@ class Mappack < ActiveRecord::Base
   #   update - Update preexisting mappacks (otherwise, only parses newly added ones)
   #   all    - Update all versions of each mappack
   #   hard   - Perform a hard update (see self.read)
-  def self.seed(update: false, all: true, hard: false)
+  def self.seed(update: false, all: true, hard: false, log: false)
     # Fetch mappacks
-    halt("Mappacks directory not found, not seeding") if !Dir.exist?(DIR_MAPPACKS)
+    perror("Mappacks directory not found, not seeding.", log) if !Dir.exist?(DIR_MAPPACKS)
     mappacks = {}
     Dir.entries(DIR_MAPPACKS).select{ |d| !!d[/\d+_.+/] }.sort.map{ |d|
       id, code, version = d.split('_')
@@ -981,11 +981,11 @@ class Mappack < ActiveRecord::Base
     # - Ensure no ID conflicts
     # - Ensure all versions are present
     mappacks.group_by{ |code, atts| atts[:id] }.each{ |id, packs|
-      halt("Mappack ID conflict: #{packs.map{ |p| p[0].upcase }.join(', ')}.") if packs.size > 1
+      perror("Mappack ID conflict: #{packs.map{ |p| p[0].upcase }.join(', ')}.", log) if packs.size > 1
     }
     mappacks.each{ |code, atts|
       missing = (1 .. atts[:versions].max).to_a - atts[:versions]
-      halt("#{code.upcase} missing versions #{missing.join(', ')}.") unless missing.empty?
+      perror("#{code.upcase} missing versions #{missing.join(', ')}.", log) unless missing.empty?
     }
 
     # Read mappacks
@@ -998,20 +998,20 @@ class Mappack < ActiveRecord::Base
         mappack = Mappack.find_by(id: id)
         if mappack
           next unless update
-          halt("Mappack with ID #{id} already belongs to #{mappack.code.upcase}.") if mappack.code.upcase != code.upcase
+          perror("Mappack with ID #{id} already belongs to #{mappack.code.upcase}.", log) if mappack.code.upcase != code.upcase
           if version < mappack.version
             if hard
               MappackData.joins('mappack_levels ON mappack_levels.id = highscoreable_id')
                          .where("mappack_id = #{id} AND version >= #{version}").delete_all
             else
-              halt("Cannot soft update #{code.upcase} to v#{version} (already at v#{mappack.version}).")
+              perror("Cannot soft update #{code.upcase} to v#{version} (already at v#{mappack.version}).", log)
             end
           end
           mappack.update(version: version)
-          mappack.read(v: version, hard: hard)
+          mappack.read(v: version, hard: hard, log: log)
         else
-          halt("#{code.upcase} v1 should exist (trying to create v#{version}).") if version != 1
-          Mappack.create(id: id, code: code, version: 1).read(v: 1, hard: true)
+          perror("#{code.upcase} v1 should exist (trying to create v#{version}).", log) if version != 1
+          Mappack.create(id: id, code: code, version: 1).read(v: 1, hard: true, log: log)
         end
       }
     }
@@ -1054,16 +1054,17 @@ class Mappack < ActiveRecord::Base
   #          e.g., different amount of maps. In this case, the highscoreables
   #          are deleted. For soft updates, checks of similarity are enforced,
   #          and a report of changes is printed.
-  def read(v: nil, hard: false)
+  #   log  - Log errors back to Discord.
+  def read(v: nil, hard: false, log: false)
     # Integrity check for mappack version
     v = version || 1 if !v
-    halt("Cannot update an older mappack version (#{v} vs #{version}).") if v < version
+    perror("Cannot soft update an older mappack version (#{v} vs #{version}).", log) if v < version && !hard
     name_str = "#{code.upcase} v#{v}"
     
     # Check for mappack directory
     log("Parsing mappack #{name_str}...")
     dir = folder(v: v)
-    halt("Directory for mappack #{name_str} not found, not reading") if !dir
+    perror("Directory for mappack #{name_str} not found, not reading", log) if !dir
 
     # Fetch mappack files
     files = Dir.entries(dir).select{ |f|
@@ -1072,14 +1073,25 @@ class Mappack < ActiveRecord::Base
     }.sort
     warn("No appropriate files found in directory for mappack #{name_str}") if files.count == 0
 
-    # If we're doing a soft update, ensure the new tabs will replace the old ones precisely
     if !hard
+      # Soft updates: Delete map data from current version only
+      MappackData.joins('INNER JOIN mappack_levels ON mappack_levels.id = highscoreable_id')
+                 .where("mappack_id = #{id} AND version = #{v}").delete_all
+
+      # Also ensure the new tabs will replace the old ones precisely
       tabs_old = MappackLevel.where(mappack_id: id).distinct.pluck('tab AS tab_int').sort
       tabs_new = files.map{ |f|
         tab = TABS_NEW.values.find{ |att| att[:files].key?(f[0..-5]) }
         tab ? tab[:mode] * 7 + tab[:tab] : nil
       }.compact.uniq.sort
-      halt("Tabs for mappack #{code.upcase} do not coincide, cannot do soft update.") if tabs_old != tabs_new
+      perror("Tabs for mappack #{code.upcase} do not coincide, cannot do soft update.", log) if tabs_old != tabs_new
+    else
+      # Hard updates: Delete map data from current version and all newer ones, also highscoreables
+      MappackData.joins('INNER JOIN mappack_levels ON mappack_levels.id = highscoreable_id')
+                 .where("mappack_id = #{id} AND version >= #{v}").delete_all
+      levels.delete_all
+      episodes.delete_all
+      stories.delete_all
     end
 
     # Parse mappack files
@@ -1099,7 +1111,7 @@ class Mappack < ActiveRecord::Base
       maps = Map.parse_metanet_file(File.join(dir, f), tab[:files][tab_code], name_str)
       if maps.nil?
         file_errors += 1
-        halt("Parsing of #{name_str} #{f} failed, ending soft update.") if !hard
+        perror("Parsing of #{name_str} #{f} failed, ending soft update.", log) if !hard
         next
       end
 
@@ -1113,14 +1125,9 @@ class Mappack < ActiveRecord::Base
       count = maps.count
       if !hard
         # In soft updates, map count must be the same
-        halt("Map count in #{code.upcase} #{f} exceeds database ones, must do hard update.") if count > levels.where(tab: tab_index).count
+        perror("Map count in #{code.upcase} #{f} exceeds database ones, must do hard update.", log) if count > levels.where(tab: tab_index).count
       else
-        # In hard updates, remove old highscoreables and map data
-        MappackData.joins('mappack_levels ON mappack_levels.id = highscoreable_id')
-                   .where(mappack_id: id, version: v).delete_all
-        levels.delete_all
-        episodes.delete_all
-        stories.delete_all
+
       end
       
       # Create new database records
@@ -1128,7 +1135,7 @@ class Mappack < ActiveRecord::Base
         dbg("Creating record #{"%-3d" % (map_offset + 1)} / #{count} from #{f} for mappack #{name_str}...", newline: false)
         if map.nil?
           map_errors += 1
-          halt("Parsing of #{name_str} #{f} map #{map_offset} failed, ending soft update.") if !hard
+          perror("Parsing of #{name_str} #{f} map #{map_offset} failed, ending soft update.", log) if !hard
           next
         end
         tab_id   = file_offset    + map_offset # ID of level within tab
@@ -1142,7 +1149,7 @@ class Mappack < ActiveRecord::Base
           change_level = true
         else
           level = MappackLevel.find_by(id: level_id)
-          halt("#{code.upcase} level with ID #{level_id} should exist.") if !level
+          perror("#{code.upcase} level with ID #{level_id} should exist.", log) if !level
           if map[:title].strip != level.longname
             changes[:name] += 1
             change_level = true
@@ -1194,7 +1201,7 @@ class Mappack < ActiveRecord::Base
           )
         else
           episode = MappackEpisode.find_by(id: level_id / 5)
-          halt("#{code.upcase} episode with ID #{level_id / 5} should exist, stopping soft update.") if !episode
+          perror("#{code.upcase} episode with ID #{level_id / 5} should exist, stopping soft update.", log) if !episode
         end
 
         # Create corresponding mappack story, only for non-X-Row Solo.
@@ -1211,7 +1218,7 @@ class Mappack < ActiveRecord::Base
           )
         else
           story = MappackStory.find_by(id: level_id / 25)
-          halt("#{code.upcase} story with ID #{level_id / 25} should exist, stopping soft update.") if !story
+          perror("#{code.upcase} story with ID #{level_id / 25} should exist, stopping soft update.", log) if !story
         end
       }
       Log.clear
@@ -1228,6 +1235,7 @@ class Mappack < ActiveRecord::Base
 
     if file_errors + map_errors == 0
       succ("Successfully parsed mappack #{name_str}")
+      self.update(version: v)
     else
       warn("Parsed mappack #{name_str} with #{file_errors} file errors and #{map_errors} map errors")
     end

@@ -2008,7 +2008,6 @@ rescue => e
   lex(e, "Error removing reaction.", event: event)
 end
 
-# TODO: Add params to specify mappack, and even version
 def send_mappack_seed(event)
   msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
@@ -2021,14 +2020,19 @@ rescue => e
   lex(e, "Error seeding new mappacks.", event: event)
 end
 
-def send_mappack_read(event)
+def send_mappack_update(event)
   msg = remove_command(parse_message(event))
-  mappack = parse_mappack(msg, explicit: true, vanilla: false)
+  flags = parse_flags(msg)
+  mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
   perror("Mappack not found.") if mappack.nil?
-  mappack.read
-  event << "Read mappack #{verbatim(mappack.name)}."
+  version = flags.key?(:version) ? flags[:version].to_i : mappack.version
+  hard = flags.key?(:hard)
+  name = "#{hard ? 'hard' : 'soft'} update for mappack #{mappack.code.upcase} v#{version}"
+  send_message(event, content: "Performing #{name}.")
+  mappack.read(v: version, hard: hard, log: true)
+  event << "Finished #{name}."
 rescue => e
-  lex(e, "Error reading mappack.", event: event)
+  lex(e, "Error updating mappack.", event: event)
 end
 
 def send_mappack_patch(event)
@@ -2507,7 +2511,7 @@ def respond_special(event)
   return send_mappack_patch(event)       if cmd == 'mappack_patch'
   return send_mappack_info(event)        if cmd == 'mappack_info'
   return send_mappack_digest(event)      if cmd == 'mappack_digest'
-  return send_mappack_read(event)        if cmd == 'mappack_read'
+  return send_mappack_update(event)      if cmd == 'mappack_update'
   return send_mappack_ranks(event)       if cmd == 'mappack_ranks'
   return send_mappack_completions(event) if cmd == 'mappack_completions'
   return send_highscore_plot(event)      if cmd == 'highscores_plot'

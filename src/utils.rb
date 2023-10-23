@@ -265,27 +265,21 @@ def ld    (msg)              Log.discord(msg, kwargs)       end
 #   Note: We inherit from Exception, rather than StandardError, because that
 #   way they will go past "rescue" and into Discord
 
-# Used when there is user error, its message gets sent to Discord.
+# Used when there is user error, its message gets sent to Discord by default.
 class OutteError < Exception
-  def initialize(msg = 'Unknown outte error')
-    super
+  attr_reader :discord
+  def initialize(msg = 'Unknown outte error', discord = true)
+    @discord = discord
+    super(msg)
   end
 end
 
-# Used when we want to stop responding to one command mid-way (send what we
-# have so far, but don't go on with the rest)
-class OutteNext < Exception
-  def initialize(msg = 'Skipping rest of command')
-    super
-  end
-end
-
-def perror(msg = '')
-  raise OutteError.new msg.to_s
+def perror(msg = '', discord = true)
+  raise OutteError.new(msg.to_s, discord)
 end
 
 def halt(msg = '')
-  raise OutteNext.new msg.to_s
+  perror(msg.to_s, false)
 end
 
 # <---------------------------------------------------------------------------->

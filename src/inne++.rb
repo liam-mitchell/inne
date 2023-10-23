@@ -229,14 +229,13 @@ def craft_response(event, func)
   func.call(event)
 rescue OutteError => e
   # These exceptions are user error, so send the message out to the channel
-  if event.is_a?(Discordrb::Events::Respondable)
+  if !e.discord
+    err(e.message.strip) unless e.message.strip.empty?
+  elsif event.is_a?(Discordrb::Events::Respondable)
     event << e
   else
     send_message(event.channel, content: e.message)
   end
-rescue OutteNext => e
-  # These exceptions are just used to skip to the end of execution of a command
-  err(e.message.strip) unless e.message.strip.empty?
 rescue => e
   # These exceptions are internal errors, so send warning to the channel and
   # log full trace to the terminal/log file
