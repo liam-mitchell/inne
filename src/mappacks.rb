@@ -149,7 +149,7 @@ module Map
       err("#{error}: Header missing.")
       return
     end
-    
+
     # Parse tiles. Warning if invalid ones are found
     tiles = [map_data[8...1940]].pack('h*').bytes
     invalid_count = tiles.count{ |t| t > 33 }
@@ -185,7 +185,7 @@ module Map
       }
       offset += 4 + 2 * count * type[:att]
     }
-    
+
     # Sort objects by ID, but:
     #   1) In a stable way, i.e., maintaining the order of tied elements
     #   2) The pairs 6/7 and 8/9 are not sorted, but maintained staggered
@@ -306,7 +306,7 @@ module Map
     object_counts = object_counts.pack('S<*')
 
     # TODO: Perhaps optimize the commented code below, in case it's useful in the future
-    
+
 =begin # Don't remove, as this is the code that works if objects aren't already sorted in the database
     OBJECTS.sort_by{ |id, entity| id }.each{ |id, entity|
       if ![7,9].include?(id) # ignore door switches for counting
@@ -507,7 +507,7 @@ module Map
         m.each{ |o|
           # Skip if this object is already initialized
           next if object.key?(o[0]) && object[o[0]].key?(o[3])
-          
+
           # Initialize base object image
           s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
           base = s ? 1 : 0
@@ -671,7 +671,7 @@ module Map
             coord.map!{ |c| (ppu * c).round }
           }
         }
-        
+
         # Plot lines
         sizes = coords.map(&:size)
         frames = sizes.max
@@ -693,7 +693,7 @@ module Map
         end
         bench(:step, 'Routes    ') if BENCH_IMAGES
       end
-      
+
 
       # rb_p(rb_str_new_cstr("Hello, world!"));
       # rb_p(rb_sprintf("x0 = %ld", x0));
@@ -1060,7 +1060,7 @@ class Mappack < ActiveRecord::Base
     v = version || 1 if !v
     perror("Cannot soft update an older mappack version (#{v} vs #{version}).", discord: discord) if v < version && !hard
     name_str = "#{code.upcase} v#{v}"
-    
+
     # Check for mappack directory
     log("Parsing mappack #{name_str}...")
     dir = folder(v: v)
@@ -1074,11 +1074,7 @@ class Mappack < ActiveRecord::Base
     warn("No appropriate files found in directory for mappack #{name_str}") if files.count == 0
 
     if !hard
-      # Soft updates: Delete map data from current version only
-      MappackData.joins('INNER JOIN mappack_levels ON mappack_levels.id = highscoreable_id')
-                 .where("mappack_id = #{id} AND version = #{v}").delete_all
-
-      # Also ensure the new tabs will replace the old ones precisely
+      # Soft updates: Ensure the new tabs will replace the old ones precisely
       tabs_old = MappackLevel.where(mappack_id: id).distinct.pluck('tab AS tab_int').sort
       tabs_new = files.map{ |f|
         tab = TABS_NEW.values.find{ |att| att[:files].key?(f[0..-5]) }
@@ -1086,13 +1082,15 @@ class Mappack < ActiveRecord::Base
       }.compact.uniq.sort
       perror("Tabs for mappack #{code.upcase} do not coincide, cannot do soft update.", discord: discord) if tabs_old != tabs_new
     else
-      # Hard updates: Delete map data from current version and all newer ones, also highscoreables
-      MappackData.joins('INNER JOIN mappack_levels ON mappack_levels.id = highscoreable_id')
-                 .where("mappack_id = #{id} AND version >= #{v}").delete_all
+      # Hard updates: Delete highscoreables
       levels.delete_all
       episodes.delete_all
       stories.delete_all
     end
+
+    # Delete map data from newer versions
+    MappackData.joins('INNER JOIN mappack_levels ON mappack_levels.id = highscoreable_id')
+               .where("mappack_id = #{id} AND version >= #{v}").delete_all
 
     # Parse mappack files
     file_errors = 0
@@ -1123,16 +1121,13 @@ class Mappack < ActiveRecord::Base
       tab_index      = tab[:mode] * 7 + tab[:tab]
 
       count = maps.count
-      if !hard
-        # In soft updates, map count must be the same
-        perror("Map count in #{code.upcase} #{f} exceeds database ones, must do hard update.", discord: discord) if count > levels.where(tab: tab_index).count
-      else
+      # In soft updates, map count must be the same (or smaller, if tab is
+      # partitioned in multiple files, but never higher)
+      perror("Map count in #{code.upcase} #{f} exceeds database ones, must do hard update.", discord: discord) if !hard && count > levels.where(tab: tab_index).count
 
-      end
-      
       # Create new database records
       maps.each_with_index{ |map, map_offset|
-        dbg("Creating record #{"%-3d" % (map_offset + 1)} / #{count} from #{f} for mappack #{name_str}...", newline: false)
+        dbg("#{hard ? 'Creating' : 'Updating'} record #{"%-3d" % (map_offset + 1)} / #{count} from #{f} for mappack #{name_str}...", newline: false)
         if map.nil?
           map_errors += 1
           perror("Parsing of #{name_str} #{f} map #{map_offset} failed, ending soft update.", discord: discord) if !hard
@@ -1155,7 +1150,7 @@ class Mappack < ActiveRecord::Base
             change_level = true
           end
         end
-        
+
         level.update(
           inner_id:   inner_id,
           mappack_id: id,
@@ -1674,7 +1669,7 @@ class MappackScore < ActiveRecord::Base
     score_hs = (60.0 * query['score'].to_i / 1000.0).round
     score_sr = demos.map(&:size).sum
     score_sr /= 2 if h.mode == 1 # Coop demos contain 2 sets of inputs
-    
+
     # Tweak level scores submitted within episode runs
     score_hs_orig = score_hs
     if type[:name] == 'Level'

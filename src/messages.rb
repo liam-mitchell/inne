@@ -464,13 +464,13 @@ def send_screenshot(event, map = nil, ret = false)
   hash = parse_palette(event)
   msg  = hash[:msg]
   h    = map.nil? ? parse_highscoreable(event, mappack: true) : map
-  
+
   # Retrieve screenshot
   h = h.map
   spoiler = h.is_mappack? && h.mappack.code == 'ctp' && !(event.channel.type == 1 || event.channel.id == CHANNEL_CTP_SECRETS)
   screenshot = Map.screenshot(hash[:palette], file: true, h: h, spoiler: spoiler)
   perror("Failed to generate screenshot!") if screenshot.nil?
-  
+
   # Send response
   str = "#{hash[:error]}Screenshot for #{h.format_name} in palette #{verbatim(hash[:palette])}:"
   return [screenshot, str, spoiler] if ret
@@ -653,7 +653,7 @@ def send_cleanliness(event)
   perror("Cleanliness is only available for episodes or stories.") if type == Level
   perror("Cleanliness is only supported for highscore or speedrun mode.") if !['hs', 'sr'].include?(board)
   perror("Metanet only supports highscore mode for now.") if mappack.nil? && board != 'hs'
-  
+
   # Retrieve episodes and cleanliness
   list = Highscoreable.cleanliness(type, tabs, rank, mappack, board)
                       .sort_by{ |e| (clean ? e[1] : -e[1]) }
@@ -756,7 +756,7 @@ def send_worst(event, worst = true)
   mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   board   = parse_board(msg, 'hs')
   perror("This function is only available for highscore and speedrun mode.") if !['hs', 'sr'].include?(board)
-  perror("Speedrun mode is not yet available for Metanet levels.") if board == 'sr' && !mappack 
+  perror("Speedrun mode is not yet available for Metanet levels.") if board == 'sr' && !mappack
 
   # Retrieve and format most improvable scores
   list = player.score_gaps(type, tabs, worst, full, mappack, board)
@@ -913,7 +913,7 @@ def send_table(event)
     event << "You specified an empty range! (#{format_range(range[0], range[1])})"
     return
   end
-  
+
   # Retrieve table (a matrix, first index is type, second index is tab)
   table = player.table(rtype, ties, range[0], range[1], cool, star)
 
@@ -1195,7 +1195,6 @@ def send_analysis(event)
         b / 4 % 2 == 1 ? "<" : " ",
         b     % 2 == 1 ? "^" : " ",
         b / 2 % 2 == 1 ? ">" : " "
-        
       ].push("|")
     }
     while table.size < length do table.push([" ", " ", " ", "|"]) end
@@ -1691,7 +1690,7 @@ def send_help2(event)
   (1..cols - 1).each{ |i| row.zip(commands[i * col_s .. (i + 1) * col_s - 1]) }
   rows = row.flatten.compact.each_slice(cols).to_a
   event << format_block(make_table(rows, "COMMAND LIST"))
-  
+
 end
 
 def send_help(event)
@@ -1751,7 +1750,7 @@ def send_lotd(event, type = Level)
     time1 = "#{(next_h / (24 * 60 * 60)).to_i} days"
     time2 = "#{(next_h / (60 * 60)).to_i - (next_h / (24 * 60 * 60)).to_i * 24} hours"
   end
-  
+
   # Send messages
   if !curr_h.nil?
     event << "The current #{ctp ? 'CTP ' : ''}#{type.to_s.downcase} of the #{period} is #{curr_h.format_name}."
@@ -1956,7 +1955,7 @@ def mishnub(event)
   fellas  = [" fellas", " boys", " guys", " lads", " fellow ninjas", " friends", " ninjafarians"]
   laugh   = [" :joy:", " lmao", " hahah", " lul", " rofl", "  <:moleSmirk:336271943546306561>", " <:Kappa:237591190357278721>", " :laughing:", " rolfmao"]
   if rand < 0.05 && (event.channel.type == 1 || $last_mishu.nil? || !$last_mishu.nil? && Time.now.to_i - $last_mishu >= MISHU_COOLDOWN)
-    send_message(event, content: youmean.sample + mishu.sample + amirite.sample + fellas.sample + laugh.sample, removable: false) 
+    send_message(event, content: youmean.sample + mishu.sample + amirite.sample + fellas.sample + laugh.sample, removable: false)
     $last_mishu = Time.now.to_i unless event.channel.type == 1
   end
 end
@@ -2312,7 +2311,7 @@ def send_hash(event)
 
   # Parse score ID, if provided
   if flags[:id]
-    score = MappackScore.find(flags[:id]) rescue nil 
+    score = MappackScore.find(flags[:id]) rescue nil
     perror("Mappack score with ID #{flags[:id]} not found.") if !score
     eq = score.compare_hashes
     event << "The hashes are #{eq ? 'equal' : 'different'}."
@@ -2492,13 +2491,16 @@ end
 def update_completions(event)
   msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
+  global = flags.key?(:global)
+  mine = flags.key?(:mine)
+  global = global ? true : mine ? false : nil
 
   if !flags.key?(:all)
     # Update completion count for individual highscoreable
     h = parse_highscoreable(event)
     perror("This highscoreable is not downloadable.") if !h.is_a?(Downloadable)
     count_old = h.completions.to_i
-    count_new = h.update_completions(log: true, discord: true, retries: 0, stop: true)
+    count_new = h.update_completions(log: true, discord: true, retries: 0, stop: true, global: global)
     if count_new
       count_new = count_new.to_i
       diff = count_new - count_old
@@ -2523,7 +2525,7 @@ def update_completions(event)
         attempt = 0
         current = "#{h.name} [#{t.to_s.downcase} #{i} / #{count}]"
         count_old = h.completions.to_i
-        count_new = h.update_completions
+        count_new = h.update_completions(global: global)
 
         while !count_new
           if retries == 0 || attempt < retries
@@ -2650,7 +2652,7 @@ def respond(event)
   return send_list(event, hm, true)  if msg =~ /missing/i
   return send_list(event, false)     if msg =~ /how many/i
   return send_list(event)            if msg =~ /\blist\b/i
-  return send_list(event, false, false, true) if msg =~ /how cool/i 
+  return send_list(event, false, false, true) if msg =~ /how cool/i
   return send_comparison(event)      if msg =~ /\bcompare\b/i || msg =~ /\bcomparison\b/i
   return send_stats(event)           if msg =~ /\bstat/i
   return send_worst(event, true)     if msg =~ /\bworst\b/i

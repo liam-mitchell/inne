@@ -174,7 +174,7 @@ module MonkeyPatches
         frac_e = (128 * d).to_i
 
         # Compute new border shades, and specify if we rolled over
-        new_frac_a = (frac_a + frac_e) & 0xFF        
+        new_frac_a = (frac_a + frac_e) & 0xFF
         inc_a = new_frac_a < frac_a
         new_frac_b = (frac_b + frac_e) & 0xFF
         inc_b = new_frac_b < frac_b
@@ -482,7 +482,7 @@ class Gif
     # Main GIF elements
     @frames     = []
     @extensions = []
-    
+
     # If we want the GIF to loop, then add the Netscape Extension
     if @loops != 0
       loops = @loops == -1 ? 0 : @loops
@@ -596,11 +596,8 @@ module Downloadable
     hash = JSON.parse(res.body)
     pb = hash['userInfo']
     if !pb
-      if !stop
-        return -1
-      else
-        perror("outte++ doesn't have a score in #{name}.", log: log, discord: discord)
-      end
+      return -1 if !stop
+      perror("outte++ doesn't have a score in #{name}.", log: log, discord: discord)
     end
 
     # Return max rank between personal and whole leaderboard
@@ -735,15 +732,17 @@ module Downloadable
 
   # Update how many completions this highscoreable has, by downloading the scores
   # using outte++'s N++ account, which has a score of 0.000 in all of them
-  def update_completions(log: false, discord: false, retries: 0, stop: false)
-    count = get_completions(global: false, log: log, discord: discord, retries: retries, stop: stop)
-    count = get_completions(global: true, log: log, discord: discord, retries: retries, stop: stop) if count && completions && count < completions
-    if count
-      self.update(completions: count) if count > completions.to_i
-      count
+  def update_completions(log: false, discord: false, retries: 0, stop: false, global: nil)
+    if !global.nil?
+      count = get_completions(global: global, log: log, discord: discord, retries: retries, stop: stop)
     else
-      nil
+      count = get_completions(global: false, log: log, discord: discord, retries: retries, stop: stop)
+      count = get_completions(global: true, log: log, discord: discord, retries: retries, stop: stop) if count && completions && count < completions
     end
+
+    return nil if !count
+    self.update(completions: count) if count > completions.to_i
+    completions ? completions : count
   rescue => e
     lex(e, "Failed to update the completions for #{name}.")
     nil
@@ -870,7 +869,7 @@ module Highscoreable
     lnames = type.where(id: ret.keys)
                  .pluck(:id, :name)
                  .to_h
-    
+
     # Retrieve player names
     pnames = klass.where(highscoreable_type: type.to_s, highscoreable_id: ret.keys, rfield => 0)
                   .joins("INNER JOIN players ON players.id = player_id")
@@ -2165,7 +2164,7 @@ class Player < ActiveRecord::Base
       board   = 'hs'   # Leaderboard type
     )
     return missing(type, tabs, a, b, ties, tied, mappack, board) if missing && !cool && !star
-    
+
     # Return highscoreable names rather than scores
     high = !mappack.nil? && board == 'gm'
 
@@ -2421,13 +2420,13 @@ class GlobalProperty < ActiveRecord::Base
     return nil if name.nil?
     klass.find_by(name: name)
   end
-  
+
   # Set (change) current lotd/eotw/cotm
   def self.set_current(type, curr, ctp = false)
     key = "current_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}"
     self.find_or_create_by(key: key).update(value: curr.name)
   end
-  
+
   # Select a new lotd/eotw/cotm at random, and mark the current one as done
   # When all have been done, clear the marks to be able to start over
   def self.get_next(type, ctp = false)
@@ -2437,26 +2436,26 @@ class GlobalProperty < ActiveRecord::Base
     ret.update(completed: true)
     ret
   end
-  
+
   # Get datetime for the next update of some property (e.g. new lotd, new
   # database score update, etc)
   def self.get_next_update(type, ctp = false)
     key = "next_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_update"
     Time.parse(self.find_by(key: key).value)
   end
-  
+
   # Set datetime for the next update of some property
   def self.set_next_update(type, time, ctp = false)
     key = "next_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_update"
     self.find_or_create_by(key: key).update(value: time.to_s)
   end
-  
+
   # Get the old saved scores for lotd/eotw/cotm (to compare against current scores)
   def self.get_saved_scores(type, ctp = false)
     key = "saved_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_scores"
     JSON.parse(self.find_by(key: key).value)
   end
-  
+
   # Save the current lotd/eotw/cotm scores (to see changes later)
   def self.set_saved_scores(type, curr, ctp = false)
     key = "saved_#{ctp ? 'ctp_' : ''}#{type.to_s.downcase}_scores"
@@ -2475,12 +2474,12 @@ class GlobalProperty < ActiveRecord::Base
   def self.get_last_steam_id
     self.find_or_create_by(key: "last_steam_id").value
   end
-  
+
   # Set currently active Steam ID
   def self.set_last_steam_id(id)
     self.find_or_create_by(key: "last_steam_id").update(value: id)
   end
-  
+
   # Select a new Steam ID to set (we do it in order, so that we can loop the list)
   # If 'fast', we only try the recently active Steam IDs
   def self.update_last_steam_id(fast = false)
@@ -2490,7 +2489,7 @@ class GlobalProperty < ActiveRecord::Base
     next_player = (query.where('id > ?', current).first || query.first) rescue nil
     set_last_steam_id(next_player.steam_id) if !next_player.nil?
   end
-  
+
   # Mark date of when current Steam ID was active
   def self.activate_last_steam_id
     p = Player.find_by(steam_id: get_last_steam_id)
@@ -2508,7 +2507,7 @@ class GlobalProperty < ActiveRecord::Base
   def self.get_avatar
     self.find_by(key: 'avatar').value
   end
-  
+
   def self.set_avatar(str)
     self.find_by(key: 'avatar').update(value: str)
   end
@@ -3149,7 +3148,7 @@ module Sock extend self
   def self.off
     @@servers.keys.each{ |s| Sock.stop(s) }
   end
-  
+
   # Start a basic HTTP server at the specified port
   def start(port, name)
     # Create WEBrick HTTP server
