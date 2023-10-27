@@ -2446,45 +2446,51 @@ rescue => e
   lex(e, "Error setting user ID.", event: event)
 end
 
-# TODO: Extend with flags for score/player/...
 def submit_score(event)
   msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
-  perror("You must provide a downloadable.") if !flags[:h]
-  if is_num(flags[:h])
-    h = Userlevel.find_by(id: flags[:h].to_i)
-    perror("No userlevel with ID #{flags[:h]}.") if !h
+  hashes = flags.key?(:hashes)
+
+  if !flags.key?(:all)
+    # Submit a score to an individual highscoreable
+    # TODO: Extend with flags for score/player/...
+    perror("You must provide a downloadable.") if !flags[:h]
+    if is_num(flags[:h])
+      h = Userlevel.find_by(id: flags[:h].to_i)
+      perror("No userlevel with ID #{flags[:h]}.") if !h
+    else
+      h = parse_highscoreable(event)
+    end
+    res = h.submit_zero_score(log: true)
+    if res
+      if res['better'] == 0
+        str = "Already had a zero score in #{verbatim(h.name)}: "
+      else
+        str = "Submitted zero score to #{verbatim(h.name)}: "
+      end
+      score = '%.3f' % round_score(res['score'].to_i / 1000.0)
+      str << "replay ID #{res['replay_id']}, rank: #{res['rank']}, score: #{score}."
+      succ(str, event: event)
+    end
   else
-    h = parse_highscoreable(event)
-  end
-  res = h.submit_zero_score(log: true)
-  if res
-    score = '%.3f' % round_score(res['score'].to_i / 1000.0)
-    str = "Submitted zero score to #{verbatim(h.name)}: "
-    str << "replay ID #{res['replay_id']}, rank: #{res['rank']}, score: #{score}"
-    str << (res['better'] == 1 ? ' [IMPROVED].' : '.')
-    succ(str, event: event)
+    [Level, Episode, Story].each{ |type|
+      type.where(completions: nil).each{ |h|
+        res = h.submit_zero_score
+        if !res
+          err("Failed to submit zero score to #{h.name} (outte++ inactive?).", event: event)
+          sleep(5)
+        elsif res.key?('rank') && !res['rank'].nil? && res['rank'].to_i >= 0
+          h.update(completions: res['rank'].to_i + 1) if !h.completions || h.completions < res['rank'].to_i + 1
+          dbg("Submitted zero score to #{h.name}: rank #{res['rank']}", progress: true)
+        else
+          err("Failed to submit zero score to #{h.name} (wrong hash?).", event: event)
+        end
+      }
+    }
+    succ("Finished submitting all remaining zero scores.", event: event)
   end
 rescue => e
   lex(e, 'Failed to submit score.', event: event)
-end
-
-def submit_all_scores(event)
-  [Level, Episode, Story].each{ |type|
-    type.where(completions: nil).each{ |h|
-      res = h.submit_zero_score
-      if !res
-        err("Failed to submit zero score to #{h.name}.", event: event)
-        sleep(5)
-      elsif res.key?('rank')
-        h.update(completions: res['rank'].to_i)
-        dbg("Submitted zero score to #{h.name}: rank #{res['rank']}", progress: true)
-      end
-    }
-  }
-  succ("Finished submitting all remaining zero scores.", event: event)
-rescue => e
-  lex(e, 'Failed to submit all zero scores.', event: event)
 end
 
 # Update how many completions a Metanet highscoreable (or all) has
@@ -2592,7 +2598,6 @@ def respond_special(event)
   return sanitize_users(event)           if cmd == 'sanitize_users'
   return set_user_id(event)              if cmd == 'set_user_id'
   return submit_score(event)             if cmd == 'submit'
-  return submit_all_scores(event)        if cmd == 'submit_all'
   return update_completions(event)       if cmd == 'update_completions'
 
   event << "Unsupported special command."

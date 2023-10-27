@@ -796,7 +796,7 @@ module Downloadable
       err("Failed to submit score by #{pname} to #{fname} (bad post-form).", discord: log)
       return
     elsif res == INVALID_RESP
-      err("Failed to submit score by #{pname} to #{fname} (invalid response).", discord: log)
+      err("Failed to submit score by #{pname} to #{fname} (#{pname} inactive).", discord: log)
       return
     end
     JSON.parse(res)

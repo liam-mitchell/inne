@@ -101,20 +101,20 @@ module Map
   #       the decoding when dumping
   # TODO: Or better yet, store the entire map data in a single field, Zlibbed, for
   #       instantaneous dumps
-  def self.encode_tiles(tiles)
-    Zlib::Deflate.deflate(tiles.map{ |a| a.pack('C*') }.join, 9)
+  def self.encode_tiles(data)
+    Zlib::Deflate.deflate(data.map{ |a| a.pack('C*') }.join, 9)
   end
 
-  def self.encode_objects(objects)
-    Zlib::Deflate.deflate(objects.transpose.map{ |a| a.pack('C*') }.join, 9)
+  def self.encode_objects(data)
+    Zlib::Deflate.deflate(data.transpose.map{ |a| a.pack('C*') }.join, 9)
   end
 
-  def self.decode_tiles(tile_data)
-    Zlib::Inflate.inflate(tile_data).bytes.each_slice(42).to_a
+  def self.decode_tiles(data)
+    Zlib::Inflate.inflate(data).bytes.each_slice(42).to_a
   end
 
-  def self.decode_objects(object_data)
-    dec = Zlib::Inflate.inflate(object_data)
+  def self.decode_objects(data)
+    dec = Zlib::Inflate.inflate(data)
     dec.bytes.each_slice((dec.size / 5).round).to_a.transpose
   end
 
@@ -239,11 +239,11 @@ module Map
   end
 
   def tiles(version: nil)
-    Map.decode_tiles(tile_data)
+    Map.decode_tiles(tile_data(version: version))
   end
 
   def objects(version: nil)
-    Map.decode_objects(object_data)
+    Map.decode_objects(object_data(version: version))
   end
 
   # This is used for computing the hash of a level. It's required due to a
@@ -271,10 +271,11 @@ module Map
   end
 
   # Generate a file with the usual userlevel format
-  #   - query: The format for userlevel query files is used (shorter header)
-  #   - hash:  Recursively fetches object data from next level to compute hash later
-  def dump_level(query: false, hash: false)
-    objs = self.objects
+  #   - query:   The format for userlevel query files is used (shorter header)
+  #   - hash:    Recursively fetches object data from next level to compute hash later
+  #   - version: Version of the map (for mappacks we may hold multiple edits)
+  def dump_level(query: false, hash: false, version: nil)
+    objs = self.objects(version: version)
     # HEADER
     header = ""
     if !query
@@ -296,7 +297,7 @@ module Map
     header << _pack(0, 2)            # Padding
 
     # MAP DATA
-    tile_data = Zlib::Inflate.inflate(tile_data)
+    tile_data = Zlib::Inflate.inflate(tile_data(version: version))
     object_counts = [0] * 40
     objs.each{ |o| object_counts[o[0]] += 1 }
     object_counts[7] = 0 unless hash
@@ -327,8 +328,8 @@ module Map
   end
 
   # Computes the level's hash, which the game uses for integrity verifications
-  def hash(c: false)
-    map_data = dump_level(hash: true)
+  def hash(c: false, version: nil)
+    map_data = dump_level(hash: true, version: version)
     return nil if map_data.nil?
     sha1(PWD + map_data[0xB8..-1], c: c)
   end
@@ -1485,9 +1486,9 @@ class MappackLevel < ActiveRecord::Base
   end
 
   # Return the tile data, optionally specify a version, otherwise pick last
-  def tile_data(version: mappack.version)
+  def tile_data(version: nil)
     data = MappackData.where(highscoreable_id: id)
-                      .where("version <= #{version}")
+                      .where(version ? "version <= #{version}" : '')
                       .where.not(tile_data: nil)
                       .order(version: :desc)
                       .first
@@ -1497,9 +1498,9 @@ class MappackLevel < ActiveRecord::Base
   end
 
   # Return the object data, optionally specify a version, otherwise pick last
-  def object_data(version: mappack.version)
+  def object_data(version: nil)
     data = MappackData.where(highscoreable_id: id)
-                      .where("version <= #{version}")
+                      .where(version ? "version <= #{version}" : '')
                       .where.not(object_data: nil)
                       .order(version: :desc)
                       .first
