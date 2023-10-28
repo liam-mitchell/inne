@@ -2463,8 +2463,9 @@ def submit_score(event)
     end
     res = h.submit_zero_score(log: true)
     if res
+      perror("Failed to submit zero score to #{verbatim(h.name)} (incorrect hash?)") if res['rank'].to_i < 0
       if res['better'] == 0
-        str = "Already had a zero score in #{verbatim(h.name)}: "
+        str = "Already had a better score in #{verbatim(h.name)}: "
       else
         str = "Submitted zero score to #{verbatim(h.name)}: "
       end

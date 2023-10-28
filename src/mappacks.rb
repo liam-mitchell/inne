@@ -248,26 +248,22 @@ module Map
 
   # This is used for computing the hash of a level. It's required due to a
   # misimplementation in N++, which instead of just hashing the map data,
-  # overflows and copies object data from the next level before doing so.
-  #
-  # Returns false if we ran out of objects, or true if we completed the data
+  # overflows and copies object data from the next levels before doing so.
+  #   Returns false if we ran out of objects, or true if we completed the data
   # successfully. Userlevels aren't completed (their hashes aren't checked
   # by the server anyways).
+  #  Params:
+  # - data: Current object data
+  # - n:    Count of remaining objects needed to complete data
   def complete_object_data(data, n)
     return true if n == 0 || self.is_a?(Userlevel)
     successor = next_h(tab: false)
-    if successor == self
-      return false
-    else
-      objs = successor.objects.take(n).map{ |o| o.pack('C5') }
-      count = objs.count
-      data << objs.join
-      if count < n
-        return successor.complete_object_data(data, n - count)
-      else
-        return true
-      end
-    end
+    return false if successor == self
+    objs = successor.objects.take(n).map{ |o| o.pack('C5') }
+    count = objs.count
+    data << objs.join
+    return true if count == n
+    successor.complete_object_data(data, n - count)
   end
 
   # Generate a file with the usual userlevel format
@@ -328,8 +324,8 @@ module Map
   end
 
   # Computes the level's hash, which the game uses for integrity verifications
-  def hash(c: false, version: nil)
-    map_data = dump_level(hash: true, version: version)
+  def hash(c: false, v: nil)
+    map_data = dump_level(hash: true, version: v)
     return nil if map_data.nil?
     sha1(PWD + map_data[0xB8..-1], c: c)
   end
@@ -1548,8 +1544,8 @@ class MappackEpisode < ActiveRecord::Base
   end
 
   # Computes the episode's hash, which the game uses for integrity verifications
-  def hash(c: false)
-    hashes = levels.order(:id).map{ |l| l.hash(c: c) }.compact
+  def hash(c: false, v: nil)
+    hashes = levels.order(:id).map{ |l| l.hash(c: c, v: v) }.compact
     hashes.size < 5 ? nil : hashes.join
   end
 end
@@ -1573,8 +1569,8 @@ class MappackStory < ActiveRecord::Base
   end
 
   # Computes the story's hash, which the game uses for integrity verifications
-  def hash(c: false)
-    hashes = episodes.map{ |e| e.levels.map{ |l| l.hash(c: c) } }.flatten.compact
+  def hash(c: false, v: nil)
+    hashes = episodes.map{ |e| e.levels.map{ |l| l.hash(c: c, v: v) } }.flatten.compact
     return nil if hashes.size < 25
     work = 0.chr * 20
     25.times.each{ |i|

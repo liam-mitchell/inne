@@ -769,7 +769,7 @@ module Downloadable
     klass = 'level' if klass == 'userlevel'
     qt = TYPES[klass.capitalize][:qt]
     score = (1000 * round_score(score)).round.to_s
-    hash = self.map.hash(c: true)
+    hash = self.map.hash(c: true, v: 1)
     if !hash
       err("Couldn't compute #{fname} hash, not submitting #{pname} score.", discord: log)
       return
@@ -796,7 +796,7 @@ module Downloadable
       err("Failed to submit score by #{pname} to #{fname} (bad post-form).", discord: log)
       return
     elsif res == INVALID_RESP
-      err("Failed to submit score by #{pname} to #{fname} (#{pname} inactive).", discord: log)
+      err("Failed to submit score by #{pname} to #{fname} (inactive Steam ID).", discord: log)
       return
     end
     JSON.parse(res)
