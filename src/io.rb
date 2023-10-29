@@ -10,7 +10,7 @@ require_relative 'models.rb'
 
 # Fetch message from an event. Depending on the event that was triggered, this
 # may accessed and handled in a different way.
-def parse_message(event)
+def parse_message(event, clean: true)
   # Integrity checks
   is_message = event.is_a?(Discordrb::Events::MessageEvent)
   is_component = event.is_a?(Discordrb::Events::ComponentEvent)
@@ -18,22 +18,23 @@ def parse_message(event)
 
   # Extract message
   msg = event.message.content
-  msg = msg.split("```").first if is_component # Only header
+  msg = msg.gsub(/```.*```/m, '') if is_component && clean # Exclude text blocks
 
   msg
 end
 
 # This is used mainly for page navigation. We determine the current page,
 # and we also determine whether we need to add an offset to it (to navigate)
-# or reset it (when a different component, e.g. a select menu) was activated.
+# or reset it (when a different component, e.g. a select menu, was activated).
 def parse_page(msg, offset = 0, reset = false, components = nil)
+  return 1 if reset
   page = nil
   components.to_a.each{ |row|
     row.each{ |component|
       page = component.label.to_s[/\d+/i].to_i if component.custom_id.to_s == 'button:nav:page'
     }
   }
-  reset ? 1 : (page || msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + offset.to_i
+  (page || msg[/page:?[\s\*]*(\d+)/i, 1] || 1).to_i + offset.to_i
 rescue
   1
 end

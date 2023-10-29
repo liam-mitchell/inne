@@ -3138,6 +3138,10 @@ end
 # That way, the user may request to delete the message later by any mechanism
 # we decide to devise
 class Message < ActiveRecord::Base
+  # Clear expired message logs
+  def self.clean
+    where("date < ?", Time.now - DELETE_TIMELIMIT).delete_all
+  end
 end
 
 # See "Socket Variables" in constants.rb for docs

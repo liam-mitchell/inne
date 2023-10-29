@@ -402,7 +402,7 @@ def send_scores(event, map = nil, ret = false)
 
   # Add cleanliness if it's an episode or a story
   res << "\n" if full
-  res << "Scores: #{h.completions}. " if h.completions && h.completions > 0
+  res << "Scores: **#{h.completions}**. " if h.completions && h.completions > 0
   res << send_clean_one(event, true) if (h.is_a?(Episodish) || h.is_a?(Storyish)) && board != 'gm'
 
   # If it's an episode, update all 5 level scores in the background
@@ -697,7 +697,7 @@ def send_clean_one(event, ret = false)
   clean_round = round_score(clean)
   fmt = clean.is_a?(Integer) ? '%df' : '%.3f (%df)'
   args = clean.is_a?(Integer) ? [clean_round] : [clean_round, (60 * clean_round).round]
-  return "Cleanliness: #{fmt % args}." if ret
+  return "Cleanliness: **#{fmt % args}**." if ret
 
   # Compute extra info for the dedicated function
   event << "The cleanliness of #{h.name}'s #{format_board(board)} #{rank.ordinalize} is #{fmt % args}."
@@ -1983,12 +1983,7 @@ rescue => e
 end
 
 def send_test(event)
-  assert_permissions(event)
 
-#  maps = send_userlevel_browse(nil, socket: parse_message(event))
-#  Userlevel::dump_query(maps, 10, 0)
-#  p = UserlevelAuthor.parse(parse_userlevel_author(parse_message(event)))
-#  event << "Found: #{p.name}"
 end
 
 def send_reaction(event)

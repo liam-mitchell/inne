@@ -13,11 +13,13 @@ require_relative 'messages.rb'
 require_relative 'userlevels.rb'
 
 # ActionRow builder with a Select Menu for the mode
-def interaction_add_select_menu_mode(view = nil, mode = nil)
+#   mode: Name of mode that is currently selected
+#   all:  Whether to allow an "All" option
+def interaction_add_select_menu_mode(view = nil, mode = nil, all = true)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    r.select_menu(custom_id: 'menu:mode', placeholder: 'Mode: All', max_values: 1){ |m|
-      MODES.each{ |k, v|
+    r.select_menu(custom_id: 'menu:mode', placeholder: 'Mode', max_values: 1){ |m|
+      MODES.reject{ |k, v| all ? false : v == 'all' }.each{ |k, v|
         m.option(label: "Mode: #{v.capitalize}", value: "menu:mode:#{v}", default: v == mode)
       }
     }
@@ -30,7 +32,7 @@ end
 def interaction_add_select_menu_tab(view = nil, tab = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab: All', max_values: 1){ |m|
+    r.select_menu(custom_id: 'menu:tab', placeholder: 'Tab', max_values: 1){ |m|
       USERLEVEL_TABS.each{ |t, v|
         m.option(label: "Tab: #{v[:fullname]}", value: "menu:tab:#{v[:name]}", default: v[:name] == tab)
       }
@@ -41,11 +43,13 @@ ensure
 end
 
 # ActionRow builder with a Select Menu for the order
-def interaction_add_select_menu_order(view = nil, order = nil)
+#   order:   The name of the current ordering
+#   default: Whether to plug "Default" option at the top
+def interaction_add_select_menu_order(view = nil, order = nil, default = true)
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    r.select_menu(custom_id: 'menu:order', placeholder: 'Sort by: Default', max_values: 1){ |m|
-      ["default", "title", "date", "favs"].each{ |b|
+    r.select_menu(custom_id: 'menu:order', placeholder: 'Order', max_values: 1){ |m|
+      ["default", "title", "date", "favs"][(default ? 0 : 1) .. -1].each{ |b|
         m.option(label: "Sort by: #{b.capitalize}", value: "menu:order:#{b}", default: b == order)
       }
     }
@@ -126,14 +130,21 @@ ensure
 end
 
 # Template ActionRow builder with Buttons for navigation
-def interaction_add_navigation(view = nil, labels: [], disabled: [], ids: [])
+def interaction_add_navigation(
+    view = nil,
+    labels:   ['First', 'Previous', 'Current', 'Next', 'Last'],
+    disabled: [false, false, true, false, false],
+    ids:      ['button:nav:first', 'button:nav:prev', 'button:nav:cur', 'button:nav:next', 'button:nav:last'],
+    styles:   [:primary, :primary, :secondary, :primary, :primary],
+    emojis:   [nil, nil, nil, nil, nil]
+  )
   view = Discordrb::Webhooks::View.new if view.nil?
   view.row{ |r|
-    r.button(label: labels[0], style: :primary,   disabled: disabled[0], custom_id: ids[0])
-    r.button(label: labels[1], style: :primary,   disabled: disabled[1], custom_id: ids[1])
-    r.button(label: labels[2], style: :secondary, disabled: disabled[2], custom_id: ids[2])
-    r.button(label: labels[3], style: :primary,   disabled: disabled[3], custom_id: ids[3])
-    r.button(label: labels[4], style: :primary,   disabled: disabled[4], custom_id: ids[4])
+    r.button(label: labels[0], style: styles[0], disabled: disabled[0], custom_id: ids[0], emoji: emojis[0])
+    r.button(label: labels[1], style: styles[1], disabled: disabled[1], custom_id: ids[1], emoji: emojis[1])
+    r.button(label: labels[2], style: styles[2], disabled: disabled[2], custom_id: ids[2], emoji: emojis[2])
+    r.button(label: labels[3], style: styles[3], disabled: disabled[3], custom_id: ids[3], emoji: emojis[3])
+    r.button(label: labels[4], style: styles[4], disabled: disabled[4], custom_id: ids[4], emoji: emojis[4])
   }
 ensure
   return view
@@ -151,6 +162,26 @@ def interaction_add_button_navigation(view, page = 1, pages = 1, offset = 100000
       "button:nav:page",
       "button:nav:1",
       "button:nav:#{offset}"
+    ]
+  )
+end
+
+# ActionRow builder with Buttons for page navigation, together with center action button
+def interaction_add_action_navigation(view, page = 1, pages = 1, action = '', text = '', emoji = nil)
+  text = "#{page} / #{pages}" if text.empty?
+  emoji = find_emoji(emoji).id rescue nil if emoji && emoji.ascii_only?
+  interaction_add_navigation(
+    view,
+    labels:   ["❙❮", "❮", text, "❯", "❯❙"],
+    disabled: [page == 1, page == 1, false, page == pages, page == pages],
+    styles:   [:primary, :primary, :success, :primary, :primary],
+    emojis:   [nil, nil, emoji, nil, nil],
+    ids:      [
+      "button:nav:-1000000",
+      "button:nav:-1",
+      "button:#{action}:",
+      "button:nav:1",
+      "button:nav:1000000"
     ]
   )
 end
@@ -230,6 +261,8 @@ def respond_interaction_button(event)
     case keys[1]
     when 'nav'
       send_userlevel_browse(event, page: keys[2])
+    when 'play'
+      send_userlevel_cache(event)
     end
   when 'aliases'
     case keys[1]

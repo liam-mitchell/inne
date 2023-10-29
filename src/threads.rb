@@ -9,24 +9,32 @@ require_relative 'constants.rb'
 require_relative 'utils.rb'
 require_relative 'models.rb'
 
-# Periodically perform several useful tasks:
-# - Update scores for lotd, eotw and cotm.
-# - Update database with newest userlevels from all playing modes.
-# - Update bot's status (it only lasts so much).
-# - Clear old message logs
+# Periodically (every ~5 mins) perform several useful tasks.
 def update_status
   while(true)
-    sleep(WAIT) # prevent crazy loops
+    sleep(WAIT)
     $active_tasks[:status] = true
+
     if !OFFLINE_STRICT
-      (0..2).each do |mode| Userlevel.browse(10, 0, mode, true) rescue next end
-      $status_update = Time.now.to_i
+      # Download newest userlevels from all 3 modes
+      [MODE_SOLO, MODE_COOP, MODE_RACE].each do |mode|
+        Userlevel.browse(mode: mode, update: true) rescue next
+      end
+
+      # Update scores for lotd, eotw and cotm
       GlobalProperty.get_current(Level).update_scores
       GlobalProperty.get_current(Episode).update_scores
       GlobalProperty.get_current(Story).update_scores
     end
+
+    # Update bot's status and activity (it only lasts so much)
     update_bot_status
-    Message.where("date < ?", Time.now - DELETE_TIMELIMIT).delete_all
+
+    # Clear old message logs and userlevel query cache
+    Message.clean
+    UserlevelCache.clean
+
+    $status_update = Time.now.to_i
     $active_tasks[:status] = false
     sleep(STATUS_UPDATE_FREQUENCY)
   end
@@ -508,19 +516,13 @@ end
 def update_userlevel_tabs
   log("Downloading userlevel tabs")
   $active_tasks[:tabs] = true
-  ["solo", "coop", "race"].each_with_index{ |mode, m|
-    [7, 8, 9, 11].each { |qt|
-      tab = USERLEVEL_TABS[qt][:name]
-      page = -1
-      while true
-        page += 1
-        break if !Userlevel::update_relationships(qt, page, m)
-      end
-      if USERLEVEL_TABS[qt][:size] != -1
-        ActiveRecord::Base.transaction do
-          UserlevelTab.where(mode: m, qt: qt).where("`index` >= #{USERLEVEL_TABS[qt][:size]}").delete_all
-        end
-      end
+  [MODE_SOLO, MODE_COOP, MODE_RACE].each{ |m|
+    USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.each { |qt|
+      page = 0
+      page += 1 while Userlevel::update_relationships(qt, page, m)
+      UserlevelTab.where(mode: m, qt: qt)
+                  .where("`index` >= #{USERLEVEL_TABS[qt][:size]}")
+                  .delete_all unless USERLEVEL_TABS[qt][:size] == -1
     }
   }
   $active_tasks[:tabs] = false

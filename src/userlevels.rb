@@ -25,6 +25,45 @@ end
 class UserlevelTab < ActiveRecord::Base
 end
 
+# Cache for userlevel queries made using outte's browser which may be sent
+# to N++ players via the socket
+class UserlevelCache < ActiveRecord::Base
+  # Compute the key for a query result based on the IDs, which is used to key the cache
+  def self.key(ids)
+    str = ids.map{ |id| id.to_s.rjust(7, '0') }.join
+    sha1(str, c: false, hex: true)
+  end
+
+  # Remove entries from cache that are either expired or over the allowable limit,
+  # which are not currently assigned to any user
+  def self.clean
+    # Fetch caches not currently assigned to any user
+    not_used = self.joins('LEFT JOIN users ON userlevel_caches.id = users.query')
+                   .where('query IS NULL')
+
+    # Date of last cache as per cache limit
+    last_cache = not_used.order(date: :desc).offset(OUTTE_CACHE_LIMIT).first
+    max_date_1 = last_cache ? last_cache.date : Time.now
+
+    # Date of last cache as per expiration date
+    max_date_2 = Time.now - OUTTE_CACHE_DURATION
+
+    # Wipe caches below this max date
+    not_used.where("date <= ?", [max_date_1, max_date_2].max).delete_all
+    true
+  rescue => e
+    lex(e, 'Failed to clean userlevel query cache.')
+    false
+  end
+
+  # Assign this query to a user, implying it will be sent to his game
+  # The same query may be assigned to any number of users
+  def assign(user)
+    user.update(query: id)
+    update(date: Time.now)
+  end
+end
+
 class UserlevelAuthor < ActiveRecord::Base
   alias_attribute :akas, :userlevel_akas
   has_many :userlevels, foreign_key: :author_id
@@ -265,11 +304,11 @@ class Userlevel < ActiveRecord::Base
   def self.tab(qt, mode = -1)
     query = Userlevel::mode(mode)
     query = query.joins('INNER JOIN userlevel_tabs ON userlevel_tabs.userlevel_id = userlevels.id')
-                 .where("userlevel_tabs.qt = #{qt}") if qt != 10
+                 .where("userlevel_tabs.qt = #{qt}") if qt != QT_NEWEST
     query
   end
 
-  def self.levels_uri(steam_id, qt = 10, page = 0, mode = 0)
+  def self.levels_uri(steam_id, qt = QT_NEWEST, page = 0, mode = MODE_SOLO)
     URI("https://dojo.nplusplus.ninja/prod/steam/query_levels?steam_id=#{steam_id}&steam_auth=&qt=#{qt}&mode=#{mode}&page=#{page}")
   end
 
@@ -285,7 +324,7 @@ class Userlevel < ActiveRecord::Base
     }
   end
 
-  def self.get_levels(qt = 10, page = 0, mode = 0)
+  def self.get_levels(qt = QT_NEWEST, page = 0, mode = MODE_SOLO)
     uri  = Proc.new { |steam_id, qt, page, mode| Userlevel::levels_uri(steam_id, qt, page, mode) }
     data = Proc.new { |data| data }
     err  = "error querying page #{page} of userlevels from category #{qt}"
@@ -375,17 +414,26 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Dump 48 byte header used by the game for userlevel queries
-  def self.query_header(count, cat, mode)
-    mcount  = QUERY_LIMIT_SOFT
-    header  = Time.now.strftime(DATE_FORMAT_NPP) # Date of query  (16B)
-    header += _pack(count,  4)                   # Map count      ( 4B)
-    header += _pack(0,      4)                   # Query page     ( 4B)
-    header += _pack(0,      4)                   # Type           ( 4B)
-    header += _pack(cat,    4)                   # Query category ( 4B)
-    header += _pack(mode,   4)                   # Game mode      ( 4B)
-    header += _pack(5,      4)                   # Cache duration ( 4B)
-    header += _pack(mcount, 4)                   # Max page size  ( 4B)
-    header += _pack(0,      4)                   # ?              ( 4B)
+  def self.query_header(
+      count,
+      page:  0,                  # Query page
+      type:  TYPE_LEVEL,         # Type (0 = levels, 1 = episodes, 2 = stories)
+      qt:    QT_SEARCH_BY_TITLE, # Query type (36 = search by title)
+      mode:  MODE_SOLO,          # Mode (0 = solo, 1 = coop, 2 = race, 3 = hc)
+      cache: NPP_CACHE_DURATION, # Cache duration in seconds (def. 5, unused for searches)
+      max:   QUERY_LIMIT_HARD    # Max results per page (def. 500)
+    )
+    date_str = Time.now.strftime(DATE_FORMAT_NPP).b
+
+    header  = date_str        # Date of query  (16B)
+    header += _pack(count, 4) # Map count      ( 4B)
+    header += _pack(page,  4) # Query page     ( 4B)
+    header += _pack(type,  4) # Type           ( 4B)
+    header += _pack(qt,    4) # Query category ( 4B)
+    header += _pack(mode,  4) # Game mode      ( 4B)
+    header += _pack(cache, 4) # Cache duration ( 4B)
+    header += _pack(max,   4) # Max page size  ( 4B)
+    header += _pack(0,     4) # ?              ( 4B)
     header
   end
 
@@ -393,19 +441,22 @@ class Userlevel < ActiveRecord::Base
   # of query results that the game utilizes
   # (see self.parse for documentation of this format)
   # TODO: Add more integrity checks (category...)
-  def self.dump_query(maps, cat, mode)
-    perror("Some of the queried userlevels have an incorrect game mode.") if !maps.index{ |m| MODES.invert[m.mode] != mode }.nil?
-    perror("Too many queried userlevels.") if maps.size > QUERY_LIMIT_HARD
-    header  = query_header(maps.size, cat, mode)
+  def self.dump_query(maps, mode, qt: QT_SEARCH_BY_TITLE)
+    # Integrity checks
+    perror("Some of the queried userlevels have an incorrect game mode.") if maps.any?{ |m| MODES.invert[m.mode] != mode }
+    if maps.size > QUERY_LIMIT_HARD
+      maps = maps.take(QUERY_LIMIT_HARD)
+      warn("Too many queried userlevels, truncated to #{QUERY_LIMIT_HARD} maps.")
+    end
+
+    # Compose query result
+    header  = query_header(maps.size, mode: mode, qt: qt)
     headers = maps.map{ |m| m.dump_header }.join
     data    = maps.map{ |m| m.dump_data }.join
     header + headers + data
   end
 
   # Updates position of userlevels in several lists (best, top weekly, featured, hardest...)
-  # For this, one field per list is used, and most userlevels have a value of NULL here
-  # A different table to store these relationships would be better storage-wise, but would
-  # severely limit querying flexibility.
   def self.parse_tabs(levels)
     return false if levels.nil? || levels.size < 48
     count  = _unpack(levels[16..19])
@@ -431,13 +482,13 @@ class Userlevel < ActiveRecord::Base
   end
 
   # Returns true if the page is full, indicating there are more pages
-  def self.update_relationships(qt = 11, page = 0, mode = 0)
+  def self.update_relationships(qt = QT_HARDEST, page = 0, mode = MODE_SOLO)
     return false if !USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(qt)
     levels = get_levels(qt, page, mode)
     return parse_tabs(levels) && _unpack(levels[16..19]) == PART_SIZE
   end
 
-  def self.browse(qt = 10, page = 0, mode = 0, update = false)
+  def self.browse(qt: QT_NEWEST, page: 0, mode: MODE_SOLO, update: false)
     levels = get_levels(qt, page, mode)
     parse(levels, update) unless levels.nil?
   end
@@ -693,6 +744,7 @@ class Userlevel < ActiveRecord::Base
     block  = self.dump_level(query: true)
     dblock = Zlib::Deflate.deflate(block, 9)
     ocount = (block.size - 0xB0 - 966 - 80) / 5
+
     data  = _pack(dblock.size + 6, 4) # Length of full data block (4B)
     data += _pack(ocount,          2) # Object count              (2B)
     data += dblock                    # Zlib-compressed map data  (?B)
@@ -701,11 +753,14 @@ class Userlevel < ActiveRecord::Base
 
   # Generate 44 byte map header of the dump above
   def dump_header
-    header  = _pack(id, 4)                                          # Userlevel ID ( 4B)
-    header += _pack(author_id, 4)                                   # User ID      ( 4B)
-    header += (author.name.to_s[0..15] rescue "").ljust(16, "\x00") # User name    (16B)
-    header += _pack(favs, 4)                                        # Map ++'s     ( 4B)
-    header += date.strftime(DATE_FORMAT_NPP).ljust(16, "\x00")      # Map date     (16B)
+    author_str = (author.name.to_s[0...16] rescue "").ljust(16, "\x00").b
+    date_str   = date.strftime(DATE_FORMAT_NPP).ljust(16, "\x00").b
+
+    header  = _pack(id, 4)        # Userlevel ID ( 4B)
+    header += _pack(author_id, 4) # User ID      ( 4B)
+    header +=  author_str         # User name    (16B)
+    header += _pack(favs, 4)      # Map ++'s     ( 4B)
+    header += date_str            # Map date     (16B)
     header
   end
 end
@@ -754,7 +809,7 @@ def format_userlevels(maps, page)
         if m[k].is_a?(Integer)
           line += "%#{padding[k]}.#{padding[k]}s " % m[k].to_s
         else
-          line += "%-#{padding[k]}.#{padding[k]}s " % m[k].to_s
+          line += "%-#{padding[k]}.#{padding[k]}s " % m[k].to_s.gsub('```', '')
         end
       }
       output << line + "\n"
@@ -775,33 +830,27 @@ end
 #
 #   Therefore, be CAREFUL when modifying the header of the message. It must still
 #   be a valid regex command containing all necessary info.
-#
-# Socket:
-#   The socket parameter is an exception to the above. It's used when the query has
-#   been received from CUSE rather than Discord, in which case, instead of printing
-#   the map list, we return the maps so they can be dumped and sent back to CUSE.
-def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, query: nil, socket: nil)
+def send_userlevel_browse(
+    event,       # Calling event
+    page:   nil, # Page offset, for button page navigation
+    order:  nil, # Chosen orden from select menu
+    tab:    nil, # Chosen tab from select menu
+    mode:   nil, # Chosen mode from select menu
+    query:  nil  # Full query, to execute this rather than parse the message
+  )
   
   # <------ PARSE all message elements ------>
 
   bench(:start) if BENCHMARK
   # Determine whether this is the initial query (new post) or an interaction
   # query (edit post).
-  initial = parse_initial(event)
+  initial    = parse_initial(event)
   reset_page = page.nil? && !initial
-  if !socket.nil?
-    msg = socket
-  else
-    if !query.nil?
-      msg = ""
-    else
-      msg = parse_message(event)
-    end
-  end
-  h      = parse_order(msg, order) # Updates msg
-  msg    = h[:msg]
-  order  = h[:order]
-  invert = h[:invert]
+  msg        = query.nil? ? parse_message(event) : ''
+  h          = parse_order(msg, order) # Updates msg
+  msg        = h[:msg]
+  order      = h[:order]
+  invert     = h[:invert]
   if query.nil?
     search, author, msg = parse_title_and_author(msg, false)
     search = search.to_s # Prev func might return int
@@ -813,16 +862,16 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
     author = UserlevelAuthor.parse(query[:author])
   end
   page = parse_page(msg, page, reset_page, !event.nil? ? event.message.components : nil)
-  mode = MODES.select{ |k, v| v == (mode || parse_mode(msg, !socket.nil?)) }.keys.first
+  mode = MODES.select{ |k, v| v == (mode || parse_mode(msg, true)) }.keys.first
 
   # Determine the category / tab
-  cat = 10 # newest
+  cat = QT_NEWEST
   USERLEVEL_TABS.each{ |qt, v| cat = qt if tab.nil? ? !!(msg =~ /#{v[:name]}/i) : tab == v[:name] }
   is_tab = USERLEVEL_TABS.select{ |k, v| v[:update] }.keys.include?(cat)
 
   #<------ FETCH userlevels ------>
 
-  pagesize = !socket.nil? ? QUERY_LIMIT_SOFT : PAGE_SIZE
+  pagesize = PAGE_SIZE
 
   # Filter userlevels
   if query.nil?
@@ -844,7 +893,6 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # Fetch userlevels
   ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
   maps      = query.where(id: ids).all.to_a
-  return { maps: maps, mode: mode, cat: cat } if !socket.nil?
 
   # <------ FORMAT message ------>
 
@@ -860,7 +908,7 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   output += " for #{verbatim(search[0...64])}" if !search.empty?
   output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}."
   output += format_userlevels(maps, pag[:page])
-  output += count == 0 ? "\nNo results :shrug:" : "Total results: **#{count}**."
+  output += count == 0 ? "\nNo results :shrug:" : "Page: **#{pag[:page]}** / **#{pag[:pages]}**. Results: **#{count}**."
   bench(:step) if BENCHMARK
 
   # <------ SEND message ------>
@@ -868,24 +916,52 @@ def send_userlevel_browse(event, page: nil, order: nil, tab: nil, mode: nil, que
   # Normalize pars
   order_str = "default" if order_str.nil? || order_str.empty?
   order_str = order_str.downcase.split(" ").first
-  order_str = "date" if order_str == "id"
+  order_str = "date" if order_str == "id" || order_str == 'default' && cat == QT_NEWEST
 
   # Create and fill component collection (View)
   view = Discordrb::Webhooks::View.new
   if !(initial && count == 0)
-    interaction_add_button_navigation(view, pag[:page], pag[:pages]) unless pag[:pages] == 1
-    interaction_add_select_menu_order(view, order_str)
+    interaction_add_action_navigation(view, pag[:page], pag[:pages], 'play', 'Play in N++', 'ninjajump')
+    interaction_add_select_menu_order(view, order_str, cat != QT_NEWEST)
     interaction_add_select_menu_tab(view, USERLEVEL_TABS[cat][:name])
-    interaction_add_select_menu_mode(view, MODES[mode])
+    interaction_add_select_menu_mode(view, MODES[mode], false)
   end
 
   send_message(event, content: output, components: view)
 rescue => e
-  if !socket.nil?
-    lex(e, 'Socketing of userlevel query failed.')
-  else
-    lex(e, 'Error browsing userlevels.', event: event)
+  lex(e, 'Error browsing userlevels.', event: event)
+end
+
+# Add an existing userlevel query result to the cache, so that it can be sent
+# via the socket to those players which specify so
+# Returns whether the cache creation and assignment was successful
+# TODO: Find a way to parse the mode directly from the select menu
+def send_userlevel_cache(event)
+  # Parse message for userlevel IDs and mode
+  msg    = parse_message(event, clean: false)
+  header = msg.split('```')[0].gsub(/(for|by) .*/, '')
+  ids    = msg[/```(.*)```/m, 1].strip.split("\n")[1..-1].map{ |l| l[/\d+\s+(\d+)/, 1].to_i }
+  mode   = MODES.invert[parse_mode(header, true)]
+  user   = parse_user(event.user)
+
+  # If query is already cached, assign it to this user
+  key = UserlevelCache.key(ids)
+  cache = UserlevelCache.find_by(key: key)
+  if cache
+    cache.assign(user)
+    return true
   end
+
+  # If query wasn't cached, fetch userlevels and build response
+  maps   = Userlevel.where(id: ids).order("FIND_IN_SET(id, '#{ids.join(',')}')")
+  result = Userlevel.dump_query(maps, mode)
+
+  # Store query result in cache
+  UserlevelCache.create(key: key, result: result).assign(user)
+  true
+rescue => e
+  lex(e, 'Error updating userlevel cache.', event: event)
+  false
 end
 
 # Wrapper for functions that need to be execute in a single userlevel
@@ -956,7 +1032,11 @@ def send_userlevel_scores(event)
     output += "with ID #{verbatim(map[:query].id.to_s)} "
     output += "by #{verbatim(map[:query].author.name)} "
     output += "on #{Time.now.to_s}"
-    event << format_header(output) + format_block(map[:query].print_scores)
+    count = map[:query].completions
+    header = format_header(output)
+    boards = format_block(map[:query].print_scores)
+    footer = count && count > 0 ? "Scores: **#{count}**" : ''
+    event << header + boards + footer
   }
 rescue => e
   lex(e, 'Error sending userlevel scores.', event: event)

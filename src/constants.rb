@@ -224,20 +224,65 @@ MIN_G_SCORES = 500   # Minimum number of userlevel highscores to appear in globa
 PAGE_SIZE    = 10    # Number of userlevels to show when browsing
 PART_SIZE    = 500   # Number of userlevels per file returned by the server when querying levels
 MIN_ID       = 22715 # ID of the very first userlevel, to exclude Metanet levels
-#   Mapping of the qt (query type) to each userlevel tab.
+
+# Userlevel query types
+QT_SI                                  =  0 # (Metanet only)
+QT_S                                   =  1 # (Metanet only)
+QT_SL                                  =  2 # (Metanet only)
+QT_SS                                  =  3 # (Metanet only)
+QT_SU                                  =  4 # (Metanet only)
+QT_SS2                                 =  5 # (Metanet only)
+QT_DLC                                 =  6 # (Metanet only) (Not used)
+QT_BEST                                =  7
+QT_FEATURED                            =  8
+QT_TOP_WEEKLY                          =  9
+QT_NEWEST                              = 10
+QT_HARDEST                             = 11
+QT_MINE_BY_FAVS                        = 12
+QT_MINE_BY_DATE                        = 13
+QT_FAVED_BY_DATE                       = 14
+QT_FAVED_BY_FAVS                       = 15
+QT_POPULAR                             = 16 # (Not used)
+QT_PLAYED_RECENTLY                     = 17 # (Not used)
+QT_MADE_BY_FRIENDS_BY_DATE             = 18
+QT_MADE_BY_FRIENDS_BY_FAVS             = 19
+QT_PLAYED_BY_FRIENDS                   = 20 # (Not used)
+QT_FAVED_BY_FRIENDS                    = 21
+QT_TRACKED_BY_FRIENDS_BY_DATE          = 22
+QT_TRACKED_BY_FRIENDS_BY_RANK          = 23
+QT_TRACKED_BY_FRIENDS_BY_RANK_SCORED   = 24
+QT_TRACKED_BY_FRIENDS_BY_RANK_UNSCORED = 25
+QT_TRACKED_BY_DATE                     = 26
+QT_TRACKED_BY_RANK                     = 27 # (Not used)
+QT_TRACKED_BY_RANK_SCORED              = 28 # (Not used)
+QT_TRACKED_BY_RANK_UNSCORED            = 29 # (Not used)
+QT_FOLLOWING_BY_DATE                   = 30
+QT_FOLLOWING_BY_FAVS                   = 31
+QT_SEARCH_BY_AUTHOR_1                  = 32 # (Not used)
+QT_SEARCH_BY_AUTHOR_2                  = 33 # (Not used)
+QT_SEARCH_BY_AUTHOR_3                  = 34 # (Not used)
+QT_SEARCH_BY_AUTHOR_4                  = 35 # (Not used)
+QT_SEARCH_BY_TITLE                     = 36
+
+# Mapping for each QT we care about
 #     'name'     - Internal name used to identify each tab.
 #     'fullname' - Display name of tab 
 #     'update'   - Determines whether we update our db's tab info.
 #     'size'     - Determines how many maps from each tab to update.
 USERLEVEL_TABS = {
-  10 => { name: 'all',      fullname: 'All',        size: -1,   update: false }, # keep first
-  7  => { name: 'best',     fullname: 'Best',       size: 1000, update: true  },
-  8  => { name: 'featured', fullname: 'Featured',   size: -1,   update: true  },
-  9  => { name: 'top',      fullname: 'Top Weekly', size: 1000, update: true  },
-  11 => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
+  QT_NEWEST     => { name: 'all',      fullname: 'All',        size:   -1, update: false }, # keep first
+  QT_BEST       => { name: 'best',     fullname: 'Best',       size: 1000, update: true  },
+  QT_FEATURED   => { name: 'featured', fullname: 'Featured',   size:   -1, update: true  },
+  QT_TOP_WEEKLY => { name: 'top',      fullname: 'Top Weekly', size: 1000, update: true  },
+  QT_HARDEST    => { name: 'hardest',  fullname: 'Hardest',    size: 1000, update: true  }
 }
-USERLEVEL_REPORT_SIZE = 500 # Number of userlevels to include in daily rankings
+
+USERLEVEL_REPORT_SIZE = 500       # Number of userlevels to include in daily rankings
 INVALID_NAMES = [nil, "null", ""] # Names that correspond to invalid players
+
+NPP_CACHE_DURATION   = 5            # N++'s cache duration in seconds for userlevel queries
+OUTTE_CACHE_DURATION = 24 * 60 * 60 # Ditto, but the one outte uses in its database
+OUTTE_CACHE_LIMIT    = 1024         # Max entries in outte's userlevel cache
 
 # <--------------------------------------------------------------------------->
 # <------                       JOKE VARIABLES                          ------>
@@ -361,12 +406,23 @@ MIN_REPLAY_ID       = 131072     # Minimum replay ID for the game to perform the
 MAGIC_EPISODE_VALUE = 0xffc0038e # First 4 bytes of a decompressed episode replay
 MAGIC_STORY_VALUE   = 0xff3800ce # First 4 bytes of a decompressed story replay
 
+# Mode stuff
+MODE_SOLO = 0
+MODE_COOP = 1
+MODE_RACE = 2
+MODE_HC   = 3
 MODES = {
-  -1 => "all",
-   0 => "solo",
-   1 => "coop",
-   2 => "race"
+  -1        => "all",
+  MODE_SOLO => "solo",
+  MODE_COOP => "coop",
+  MODE_RACE => "race"
 }
+
+
+# Type stuff
+TYPE_LEVEL   = 0
+TYPE_EPISODE = 1
+TYPE_STORY   = 2
 
 # Properties of the different playing types
 #   id         - Internal game index for the type
@@ -378,7 +434,7 @@ MODES = {
 #   size       - How many levels this type contains
 TYPES = {
   'Level' => {
-    id:         0,
+    id:         TYPE_LEVEL,
     name:       'Level',
     slots:      20000,
     min_scores: 100,
@@ -387,7 +443,7 @@ TYPES = {
     size:       1
   },
   'Episode' => {
-    id:         1,
+    id:         TYPE_EPISODE,
     name:       'Episode',
     slots:      4000,
     min_scores: 50,
@@ -396,7 +452,7 @@ TYPES = {
     size:       5
   },
   'Story' => {
-    id:         2,
+    id:         TYPE_STORY,
     name:       'Story',
     slots:      800,
     min_scores: 10,
@@ -405,6 +461,15 @@ TYPES = {
     size:       25
   }
 }
+
+# Tab stuff
+TAB_INTRO           = 0
+TAB_NPP             = 1
+TAB_LEGACY          = 2
+TAB_SECRET          = 3
+TAB_ULTIMATE        = 4
+TAB_SECRET_ULTIMATE = 5
+TAB_DLC             = 6
 
 # @par1: ID ranges for levels and episodes
 # @par2: Score limits to filter new hacked scores
@@ -439,8 +504,8 @@ TABS = {
 TABS_NEW = {
   SI: {
     code:   'SI',
-    mode:   0,
-    tab:    0,
+    mode:   MODE_SOLO,
+    tab:    TAB_INTRO,
     index:  0,
     name:   'Intro',
     start:  0,
@@ -451,8 +516,8 @@ TABS_NEW = {
   },
   S: {
     code:   'S',
-    mode:   0,
-    tab:    1,
+    mode:   MODE_SOLO,
+    tab:    TAB_NPP,
     index:  1,
     name:   'Solo',
     start:  600,
@@ -463,8 +528,8 @@ TABS_NEW = {
   },
   SL: {
     code:   'SL',
-    mode:   0,
-    tab:    2,
+    mode:   MODE_SOLO,
+    tab:    TAB_LEGACY,
     index:  3,
     name:   'Legacy',
     start:  1200,
@@ -475,8 +540,8 @@ TABS_NEW = {
   },
   SS: {
     code:   '?',
-    mode:   0,
-    tab:    3,
+    mode:   MODE_SOLO,
+    tab:    TAB_SECRET,
     index:  4,
     name:   'Secret',
     start:  1800,
@@ -487,8 +552,8 @@ TABS_NEW = {
   },
   SU: {
     code:   'SU',
-    mode:   0,
-    tab:    4,
+    mode:   MODE_SOLO,
+    tab:    TAB_ULTIMATE,
     index:  2,
     name:   'Ultimate',
     start:  2400,
@@ -499,8 +564,8 @@ TABS_NEW = {
   },
   SS2: {
     code:   '!',
-    mode:   0,
-    tab:    5,
+    mode:   MODE_SOLO,
+    tab:    TAB_SECRET_ULTIMATE,
     index:  5,
     name:   'Ultimate Secret',
     start:  3000,
@@ -511,8 +576,8 @@ TABS_NEW = {
   },
   CI: {
     code:   'CI',
-    mode:   1,
-    tab:    0,
+    mode:   MODE_COOP,
+    tab:    TAB_INTRO,
     index:  0,
     name:   'Coop Intro',
     start:  4200,
@@ -523,8 +588,8 @@ TABS_NEW = {
   },
   C: {
     code:   'C',
-    mode:   1,
-    tab:    1,
+    mode:   MODE_COOP,
+    tab:    TAB_NPP,
     index:  1,
     name:   'Coop',
     start:  4800,
@@ -535,8 +600,8 @@ TABS_NEW = {
   },
   CL: {
     code:   'CL',
-    mode:   1,
-    tab:    2,
+    mode:   MODE_COOP,
+    tab:    TAB_LEGACY,
     index:  2,
     name:   'Coop Legacy',
     start:  5400,
@@ -547,8 +612,8 @@ TABS_NEW = {
   },
   RI: {
     code:   'RI',
-    mode:   2,
-    tab:    0,
+    mode:   MODE_RACE,
+    tab:    TAB_INTRO,
     index:  0,
     name:   'Race Intro',
     start:  8400,
@@ -559,8 +624,8 @@ TABS_NEW = {
   },
   R: {
     code:   'R',
-    mode:   2,
-    tab:    1,
+    mode:   MODE_RACE,
+    tab:    TAB_NPP,
     index:  1,
     name:   'Race',
     start:  9000,
@@ -571,8 +636,8 @@ TABS_NEW = {
   },
   RL: {
     code:   'RL',
-    mode:   2,
-    tab:    2,
+    mode:   MODE_RACE,
+    tab:    TAB_LEGACY,
     index:  2,
     name:   'Race Legacy',
     start:  9600,
