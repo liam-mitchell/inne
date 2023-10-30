@@ -16,7 +16,7 @@ BENCHMARK      = false # Benchmark and log functions (for optimization)
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
 DO_EVERYTHING  = false # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
-BYEBUG         = false # Breakpoint right after loading the bot
+DEBUG          = false # Breakpoint right after loading the bot
 
 # Test specific features
 TEST_REPORT    = false # Produces the report immediately once
@@ -364,8 +364,8 @@ TWITCH_BLACKLIST = [           # Should probably use IDs instead of usernames he
 # <------                      SOCKET VARIABLES                         ------>
 # <--------------------------------------------------------------------------->
 
-# Variables that control the different TCP servers that outte starts in order
-# to provide custom functionality to N++ players:
+# Variables that control the TCP server that outte starts in order to provide
+# custom functionality to N++ players:
 #
 # 1) CUSE - Custom Userlevel Search Engine
 #    Generates custom userlevel searches that users with the corresponding tool
@@ -377,10 +377,7 @@ TWITCH_BLACKLIST = [           # Should probably use IDs instead of usernames he
 #    mappacks.
 
 SOCKET      = true  # Whether to open sockets or not
-CUSE_SOCKET = false # Open CUSE socket
-CLE_SOCKET  = true  # Open CLE socket
-CUSE_PORT   = 8125  # Port for CUSE's TCP server
-CLE_PORT    = 8126  # Port for CLE's TCP server
+SOCKET_PORT = 8126  # Port for CLE's TCP server
 SOCKET_LOG  = false # Log request and response details
 
 # CUSE-specific variables

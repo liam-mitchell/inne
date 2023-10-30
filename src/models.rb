@@ -2085,6 +2085,15 @@ class Player < ActiveRecord::Base
     return nil
   end
 
+  def users(array: true)
+    list = User.where(player_id: id)
+    array ? list.to_a : list
+  end
+
+  def user
+    users.first
+  end
+
   def add_alias(a)
     PlayerAlias.find_or_create_by(player: self, alias: a)
   end
@@ -3183,40 +3192,11 @@ module Sock extend self
   end
 end
 
-module Cuse extend self
+module Server extend self
   extend Sock
 
   def on
-    start(CUSE_PORT, 'CUSE')
-  end
-
-  def off
-    stop('CUSE')
-  end
-
-  def handle(req, res)
-    # Build response
-    ret = send_userlevel_browse(nil, socket: req.body)
-    response = Userlevel::dump_query(ret[:maps], ret[:cat], ret[:mode])
-
-    # Set up response parameters
-    if response.nil?
-      res.status = 400
-      res.body = ''
-    else
-      res.status = 200
-      res.body = response
-    end
-  rescue => e
-    lex(e, 'CUSE socket failed')
-  end
-end
-
-module Cle extend self
-  extend Sock
-
-  def on
-    start(CLE_PORT, 'CLE')
+    start(SOCKET_PORT, 'CLE')
   end
 
   def off
@@ -3242,6 +3222,8 @@ module Cle extend self
           response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
         when 'get_replay'
           response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
+        when 'levels'
+          response = Userlevel.search(req)
         else
           response = CLE_FORWARD ? forward(req) : nil
         end

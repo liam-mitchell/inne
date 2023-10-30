@@ -488,9 +488,36 @@ class Userlevel < ActiveRecord::Base
     return parse_tabs(levels) && _unpack(levels[16..19]) == PART_SIZE
   end
 
+  # Browse userlevels in N++'s server
   def self.browse(qt: QT_NEWEST, page: 0, mode: MODE_SOLO, update: false)
     levels = get_levels(qt, page, mode)
     parse(levels, update) unless levels.nil?
+  end
+
+  # Handle intercepted N++'s userlevel queries via the socket
+  def self.search(req)
+    # Parse request parameters
+    params = req.query.map{ |k, v| [k, v.to_s] }.to_h
+    search = params['search'].tr('+', '').strip
+    mode = params['mode'].to_i
+
+    # Integrity checks
+    return (CLE_FORWARD ? forward(req) : nil) if search != 'outte'
+    player = Player.find_by(steam_id: params['steam_id'])
+    return (CLE_FORWARD ? forward(req) : nil) if !player
+    user = player.users(array: false).where.not(query: nil).first
+    return (CLE_FORWARD ? forward(req) : nil) if !user
+    query = UserlevelCache.find_by(id: user.query)
+    return (CLE_FORWARD ? forward(req) : nil) if !query
+    res = query.result
+    m = res[32...36].unpack('l<')[0]
+    return (CLE_FORWARD ? forward(req) : nil) if mode != m
+
+    # Return saved userlevel query
+    res
+  rescue => e
+    lex(e, 'Failed to socket userlevel query.')
+    nil
   end
 
   # Produces the SQL order string, used when fetching maps from the db

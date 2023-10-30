@@ -19,7 +19,7 @@ source 'https://rubygems.org' do
   end
 
   group :debug, :test do
-    gem 'byebug'
+    gem 'pry-byebug'
     gem 'memory_profiler'
   end
 

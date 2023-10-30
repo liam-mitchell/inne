@@ -93,12 +93,12 @@ require 'bundler/setup'
 
 # Gems useful throughout the entire program
 # (each source file might contain further specific gems)
-require 'byebug'
 require 'discordrb'
 require 'fileutils'
 require 'json'
 require 'memory_profiler'
 require 'net/http'
+require 'pry-byebug'
 require 'rbconfig'
 require 'time'
 require 'yaml'
@@ -394,5 +394,5 @@ setup_bot
 run_bot
 set_channels
 start_threads
-byebug if BYEBUG
+binding.pry if DEBUG
 block_threads

@@ -749,8 +749,7 @@ end
 def start_threads
   $threads = []
   $threads << Thread.new { monitor_memory                } if $linux
-  $threads << Thread.new { Cuse::on                      } if SOCKET && CUSE_SOCKET && !DO_NOTHING
-  $threads << Thread.new { Cle::on                       } if SOCKET && CLE_SOCKET && !DO_NOTHING
+  $threads << Thread.new { Server::on                    } if SOCKET && !DO_NOTHING
   $threads << Thread.new { update_status                 } if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { update_twitch                 } if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
   $threads << Thread.new { start_high_scores             } if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
