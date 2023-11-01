@@ -245,7 +245,7 @@ class UserlevelPlayer < ActiveRecord::Base
   end
 end
 
-class UserlevelHistory < ActiveRecord::Base  
+class UserlevelHistory < ActiveRecord::Base
   alias_attribute :player, :userlevel_player
   belongs_to :userlevel_player, foreign_key: :player_id
 
@@ -571,7 +571,7 @@ class Userlevel < ActiveRecord::Base
     when :avg_points
       20
     when :avg_rank
-      0  
+      0
     when :maxable
       self.ties(nil, false, global, true, mode, author_id)
     when :maxed
@@ -580,7 +580,7 @@ class Userlevel < ActiveRecord::Base
       query = UserlevelScore.retrieve_scores(global, mode, author_id)
       query.where(rank: 0).sum(:score).to_f / 60.0
     else
-      query = global ? self.global : self.newest       
+      query = global ? self.global : self.newest
       query = query.where(mode: mode) if !mode.nil?
       query = query.where(author_id: author_id) if !author_id.nil?
       query = query.count
@@ -704,7 +704,7 @@ class Userlevel < ActiveRecord::Base
                      .sum(ties ? "20 - tied_rank" : "20 - rank")
     when :avg_points
       scores = scores.select("count(player_id)")
-                     .group(:player_id)   
+                     .group(:player_id)
                      .having("count(player_id) >= #{find_min(global, nil, author_id)}")
                      .order("avg(#{ties ? "20 - tied_rank" : "20 - rank"}) desc")
                      .average(ties ? "20 - tied_rank" : "20 - rank")
@@ -714,7 +714,7 @@ class Userlevel < ActiveRecord::Base
                      .having("count(player_id) >= #{find_min(global, nil, author_id)}")
                      .order("avg(#{ties ? "tied_rank" : "rank"})")
                      .average(ties ? "tied_rank" : "rank")
-    when :avg_lead 
+    when :avg_lead
       scores = scores.where(rank: [0, 1])
                      .pluck(:player_id, :userlevel_id, :score)
                      .group_by{ |s| s[1] }
@@ -848,7 +848,7 @@ end
 # The next function queries userlevels from the database based on a number of
 # parameters, like the title, the author, the tab and the mode, as well as
 # allowing for arbitrary orders.
-# 
+#
 # Parameters:
 #   The parameters are only used when the function has been called by interacting
 #   with a pre-existing post, in which case we parse the header of the message as
@@ -865,7 +865,7 @@ def send_userlevel_browse(
     mode:   nil, # Chosen mode from select menu
     query:  nil  # Full query, to execute this rather than parse the message
   )
-  
+
   # <------ PARSE all message elements ------>
 
   bench(:start) if BENCHMARK
@@ -878,6 +878,7 @@ def send_userlevel_browse(
   msg        = h[:msg]
   order      = h[:order]
   invert     = h[:invert]
+  order_str  = Userlevel::sort(order, invert)
   if query.nil?
     search, author, msg = parse_title_and_author(msg, false)
     search = search.to_s # Prev func might return int
@@ -898,28 +899,26 @@ def send_userlevel_browse(
 
   #<------ FETCH userlevels ------>
 
-  pagesize = PAGE_SIZE
+  pagesize = event.channel.type == Discordrb::Channel::TYPES[:dm] ? 20 : 10
 
   # Filter userlevels
   if query.nil?
-    query   = Userlevel::tab(cat, mode)
-    query   = query.where(author: author) if !author.nil?
-    query   = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0...128] + "%")) if !search.empty?
+    query = Userlevel::tab(cat, mode)
+    query = query.where(author: author) if !author.nil?
+    query = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0...128] + "%")) if !search.empty?
   else
-    query   = query[:query]
+    query = query[:query]
   end
 
   # Compute count, page number, total pages, and offset
-  count     = query.count
-  pag       = compute_pages(count, page, pagesize)
+  count = query.count
+  pag   = compute_pages(count, page, pagesize)
 
   # Order userlevels
-  order_str = Userlevel::sort(order, invert)
-  query     = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
-  
+  query = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
+
   # Fetch userlevels
-  ids       = query.offset(pag[:offset]).limit(pagesize).pluck(:id)
-  maps      = query.where(id: ids).all.to_a
+  maps = query.offset(pag[:offset]).limit(pagesize).to_a
 
   # <------ FORMAT message ------>
 
@@ -976,6 +975,7 @@ def send_userlevel_cache(event)
   cache = UserlevelCache.find_by(key: key)
   if cache
     cache.assign(user)
+    send_message(event, content: event.message.content, components: to_builder(event.message.components))
     return true
   end
 
@@ -1408,7 +1408,7 @@ def send_random_userlevel(event)
 
   maps = maps.where(mode: mode.to_sym)
   maps = maps.where(author_id: author_id) if !author_id.nil?
-  maps = maps.sample(amount)  
+  maps = maps.sample(amount)
 
   if amount > 1
     event << format_header("Random selection of #{amount} #{mode} #{format_global(full)} userlevels #{!author.nil? ? "by #{author.name}" : ""}")

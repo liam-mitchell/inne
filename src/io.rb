@@ -219,7 +219,7 @@ def parse_players(event, userlevel = false)
 end
 
 def parse_many_players(msg, userlevel = false)
-  msg = msg[/without (.*)/i, 1] || ""  
+  msg = msg[/without (.*)/i, 1] || ""
   players = msg.split(/,|\band\b|\bor\b/i).flatten.map(&:strip).reject(&:empty?)
   players.map{ |name| parse_player_explicit(name) }
 end
@@ -335,7 +335,7 @@ end
 # 3) Then parse columns (no ambiguity as they don't have row letter).
 def parse_highscoreable_by_id(msg, user = nil, channel = nil, mappack: false)
   ret = ['', []]
-  
+
   # Mappack variants, if allowed
   matches = []
   if mappack
@@ -378,7 +378,7 @@ def parse_highscoreable_by_code(msg, user = nil, channel = nil, mappack: false)
   eotw = !!msg[/(episode of the week|eotw)/i]
   cotm = !!msg[/(column of the month|cotm)/i]
   return ['', []] if !lotd && !eotw && !cotm
-  
+
   klass = lotd ? Level : eotw ? Episode : Story
   type = lotd ? 'level of the day' : eotw ? 'episode of the week' : 'column of the month'
 
@@ -819,7 +819,7 @@ def parse_userlevel(msg, userlevel = nil)
       errs << "with title #{verbatim(title[0...128])}"
     end
     if !author.nil?
-      query = query.where(author: author) 
+      query = query.where(author: author)
       errs << "by author #{verbatim(author.name)}"
     end
     err = "No userlevel #{errs.join(' ')} found."
@@ -860,7 +860,7 @@ def parse_palette(event, dflt = Map::DEFAULT_PALETTE, pal: nil, fallback: true)
       # Look for partial matches
       matches = themes.select{ |t| !!t[/#{pal}/i] }
       if matches.size == 1
-        ret[:palette] = matches.first 
+        ret[:palette] = matches.first
         return ret
       end
       match_limit = 10
@@ -1011,7 +1011,7 @@ end
 
 # 'empty' means we print nothing
 # This is used for when the calling function actually has other parameters
-# that make is unnecessary to actually print the range 
+# that make is unnecessary to actually print the range
 def format_range(bott, rank, empty = false)
   return '' if empty
   if bott == rank - 1
@@ -1093,7 +1093,7 @@ end
 
 def format_tabs(tabs)
   tabs.map { |t| format_tab(t) }.to_sentence
-end   
+end
 
 def format_time
   Time.now.strftime("on %A %B %-d at %H:%M:%S (%z)")

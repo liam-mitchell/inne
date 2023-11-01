@@ -1046,12 +1046,12 @@ class Mappack < ActiveRecord::Base
   # which is also called from the general seed and read functions.
 
   # Parses map files corresponding to this mappack, and updates the database
-  #   v    - Specifies the version of the mappack
-  #   hard - A hard update is aimed at versions with significant changes,
-  #          e.g., different amount of maps. In this case, the highscoreables
-  #          are deleted. For soft updates, checks of similarity are enforced,
-  #          and a report of changes is printed.
-  #   log  - Log errors back to Discord.
+  #   v       - Specifies the version of the mappack
+  #   hard    - A hard update is aimed at versions with significant changes,
+  #             e.g., different amount of maps. In this case, the highscoreables
+  #             are deleted. For soft updates, checks of similarity are enforced,
+  #             and a report of changes is printed.
+  #   discord - Log errors back to Discord.
   def read(v: nil, hard: false, discord: false)
     # Integrity check for mappack version
     v = version || 1 if !v

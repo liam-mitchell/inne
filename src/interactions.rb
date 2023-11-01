@@ -27,7 +27,7 @@ def interaction_add_select_menu_mode(view = nil, mode = nil, all = true)
 ensure
   return view
 end
-  
+
 # ActionRow builder with a Select Menu for the tab
 def interaction_add_select_menu_tab(view = nil, tab = nil)
   view = Discordrb::Webhooks::View.new if view.nil?
@@ -193,7 +193,7 @@ def interaction_add_level_navigation(view, name)
     labels:   ["❮❮", "❮", name, "❯", "❯❯"],
     disabled: [false, false, true, false, false],
     ids:      [
-      "button:id:-2", 
+      "button:id:-2",
       "button:id:-1",
       "button:id:page",
       "button:id:1",
@@ -234,6 +234,50 @@ def interaction_add_type_buttons(view = nil, types = [], ties = nil)
   }
 ensure
   return view
+end
+
+# Get a new builder based on a pre-existing component collection (i.e., for
+# messages that have already been sent, so that we can send the same components
+# back automatically).
+def to_builder(components)
+  view = Discordrb::Webhooks::View.new
+  components.each{ |row|
+    view.row{ |r|
+      row.components.each{ |c|
+        case c
+        when Discordrb::Components::Button
+          r.button(
+            label:     c.label,
+            style:     c.style,
+            emoji:     c.emoji,
+            custom_id: c.custom_id,
+            disabled:  c.disabled,
+            url:       c.url
+          )
+        when Discordrb::Components::SelectMenu
+          r.select_menu(
+            custom_id:   c.custom_id,
+            min_values:  c.min_values,
+            max_values:  c.max_values,
+            placeholder: c.placeholder
+          ) { |m|
+            c.options.each{ |o|
+              m.option(
+                value:       o.value,
+                label:       o.label,
+                emoji:       o.emoji,
+                description: o.description
+              )
+            }
+          }
+        end
+      }
+    }
+  }
+  #binding.pry
+  view
+rescue
+  Discordrb::Webhooks::View.new
 end
 
 # Important notes for parsing interaction components:
@@ -298,7 +342,7 @@ def respond_interaction_menu(event)
   values = event.values.map{ |v| v.split(':') }  # Component option parameters
   type   = parse_message(event)[/\w+/i].downcase # Source message type
   return if keys[0] != 'menu'                    # Only listen to select menus
-  
+
   case type
   when 'browsing' # Select Menus for the userlevel browse function
     case keys[1]
