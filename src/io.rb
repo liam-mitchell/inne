@@ -1186,7 +1186,15 @@ end
 # Send a message to a destination (typically a respondable event or a Discord channel)
 # If the parameters are empty, then the content/file already appended to the event will
 # be used, if any. Register msg in db at the end.
-def send_message(dest, content: '', files: [], components: nil, spoiler: false, removable: true)
+def send_message(
+    dest,              # Destination (respondable event, or channel)
+    content:    '',    # Message text
+    files:      [],    # Message attachments
+    components: nil,   # Message components (buttons, select menus...)
+    spoiler:    false, # Whether to spoiler the attachments
+    removable:  true,  # Whether we should register this msg in the db
+    edit:       true   # Whether a component event should edit or send a new msg
+  )
   # Save stuff already appended to message, and remove it to prevent autosend
   if dest.is_a?(Discordrb::Events::MessageEvent)
     # Grab message
@@ -1205,7 +1213,7 @@ def send_message(dest, content: '', files: [], components: nil, spoiler: false, 
   return if content.empty? && files.empty?
 
   # Only update message if it's a component event (no need to log)
-  if dest.is_a?(Discordrb::Events::ComponentEvent)
+  if edit && dest.is_a?(Discordrb::Events::ComponentEvent)
     return dest.update_message(content: content, components: components)
   end
 

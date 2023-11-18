@@ -863,7 +863,8 @@ def send_userlevel_browse(
     order:  nil, # Chosen orden from select menu
     tab:    nil, # Chosen tab from select menu
     mode:   nil, # Chosen mode from select menu
-    query:  nil  # Full query, to execute this rather than parse the message
+    query:  nil, # Full query, to execute this rather than parse the message
+    exec:   true # Execute query (otherwise, for interactions, the text will remain)
   )
 
   # <------ PARSE all message elements ------>
@@ -872,7 +873,7 @@ def send_userlevel_browse(
   # Determine whether this is the initial query (new post) or an interaction
   # query (edit post).
   initial    = parse_initial(event)
-  reset_page = page.nil? && !initial
+  reset_page = page.nil? && exec && !initial
   msg        = query.nil? ? parse_message(event) : ''
   h          = parse_order(msg, order) # Updates msg
   msg        = h[:msg]
@@ -889,7 +890,7 @@ def send_userlevel_browse(
     search = query[:title]
     author = UserlevelAuthor.parse(query[:author])
   end
-  page = parse_page(msg, page, reset_page, !event.nil? ? event.message.components : nil)
+  page = parse_page(msg, page, reset_page)
   mode = MODES.select{ |k, v| v == (mode || parse_mode(msg, true)) }.keys.first
 
   # Determine the category / tab
@@ -901,24 +902,29 @@ def send_userlevel_browse(
 
   pagesize = event.channel.type == Discordrb::Channel::TYPES[:dm] ? 20 : 10
 
-  # Filter userlevels
-  if query.nil?
-    query = Userlevel::tab(cat, mode)
-    query = query.where(author: author) if !author.nil?
-    query = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0...128] + "%")) if !search.empty?
+  if exec
+    # Filter userlevels
+    if query.nil?
+      query = Userlevel::tab(cat, mode)
+      query = query.where(author: author) if !author.nil?
+      query = query.where(Userlevel.sanitize("title LIKE ?", "%" + search[0...128] + "%")) if !search.empty?
+    else
+      query = query[:query]
+    end
+
+    # Compute count, page number, total pages, and offset
+    count = query.count
+    pag   = compute_pages(count, page, pagesize)
+
+    # Order userlevels
+    query = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
+
+    # Fetch userlevels
+    maps = query.offset(pag[:offset]).limit(pagesize).to_a
   else
-    query = query[:query]
+    count = msg[/Results:?[\s\*]*(\d+)/i, 1].to_i
+    pag   = compute_pages(count, page, pagesize)
   end
-
-  # Compute count, page number, total pages, and offset
-  count = query.count
-  pag   = compute_pages(count, page, pagesize)
-
-  # Order userlevels
-  query = !order_str.empty? ? query.order(order_str) : (is_tab ? query.order("`index` ASC") : query.order("id DESC"))
-
-  # Fetch userlevels
-  maps = query.offset(pag[:offset]).limit(pagesize).to_a
 
   # <------ FORMAT message ------>
 
@@ -929,12 +935,17 @@ def send_userlevel_browse(
   # the original query was, by parsing it exactly as though it were a user
   # message, so it needs to have a format compatible with the regex we use to
   # parse commands. I know, genius implementation.
-  output = "Browsing #{USERLEVEL_TABS[cat][:name]}#{mode == -1 ? '' : ' ' + MODES[mode]} maps"
-  output += " by #{verbatim(author.name[0...64])}" if !author.nil?
-  output += " for #{verbatim(search[0...64])}" if !search.empty?
-  output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}."
-  output += format_userlevels(maps, pag[:page])
-  output += count == 0 ? "\nNo results :shrug:" : "Page: **#{pag[:page]}** / **#{pag[:pages]}**. Results: **#{count}**."
+  if exec
+    output = "Browsing #{USERLEVEL_TABS[cat][:name]}#{mode == -1 ? '' : ' ' + MODES[mode]} maps"
+    output += " by #{verbatim(author.name[0...64])}" if !author.nil?
+    output += " for #{verbatim(search[0...64])}" if !search.empty?
+    output += " sorted by #{invert ? "-" : ""}#{!order_str.empty? ? order : (is_tab ? "default" : "date")}."
+    output += format_userlevels(maps, pag[:page])
+    output += count == 0 ? "\nNo results :shrug:" : "Page: **#{pag[:page]}** / **#{pag[:pages]}**. Results: **#{count}**."
+  else
+    output = event.message.content
+  end
+
   bench(:step) if BENCHMARK
 
   # <------ SEND message ------>
@@ -970,12 +981,18 @@ def send_userlevel_cache(event)
   mode   = MODES.invert[parse_mode(header, true)]
   user   = parse_user(event.user)
 
+  # User must be identified
+  if !user.player
+    event.send_message(content: "I don't know who you are, you need to identify with #{verbatim('my name is ...')}.", ephemeral: true)
+    return false
+  end
+
   # If query is already cached, assign it to this user
   key = UserlevelCache.key(ids)
   cache = UserlevelCache.find_by(key: key)
   if cache
     cache.assign(user)
-    send_message(event, content: event.message.content, components: to_builder(event.message.components))
+    send_userlevel_browse(event, exec: false)
     return true
   end
 
@@ -985,6 +1002,7 @@ def send_userlevel_cache(event)
 
   # Store query result in cache
   UserlevelCache.create(key: key, result: result).assign(user)
+  send_userlevel_browse(event, exec: false)
   true
 rescue => e
   lex(e, 'Error updating userlevel cache.', event: event)

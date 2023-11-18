@@ -2412,6 +2412,7 @@ class User < ActiveRecord::Base
 
   # TODO: Change this by a proper Rails association
   def player(userlevel: false)
+    return nil if !player_id
     (userlevel ? UserlevelPlayer : Player).find_by(id: player_id)
   end
 

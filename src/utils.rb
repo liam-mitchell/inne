@@ -216,7 +216,7 @@ module Log
 
     # Log to Discord DMs, if specified
     discord(text) if log_to_discord
-    send_message(event, content: text) if event
+    send_message(event, content: text, edit: false) if event
 
     # Return original text
     text
