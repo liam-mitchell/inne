@@ -324,6 +324,13 @@ def setup_bot
     lex(e, 'Failed to handle Discord select menu interaction')
   end
 
+  # Respond to text input interactions
+  $bot.modal_submit do |event|
+    handle_command(event, log: false) { |e| respond_interaction_modal(e) }
+  rescue => e
+    lex(e, 'Failed to handle Discord text input interaction')
+  end
+
   # Parse new reactions
   $bot.reaction_add do |event|
     next if !RESPOND && event.user.id != BOTMASTER_ID

@@ -523,9 +523,10 @@ end
 
 # Convert a string to strict ASCII, replacing all invalid characters to underscores
 # Optionally, also remove non-printable characters
-def to_ascii(str, printable = true)
+def to_ascii(str, printable = true, extended: false)
+  charset = extended ? 'ISO-8859-1' : 'ASCII'
   str = str.to_s
-  str = str.encode('ASCII', invalid: :replace, undef: :replace, replace: "_")
+  str = str.encode(charset, invalid: :replace, undef: :replace, replace: "_")
   str = str.bytes.reject{ |b| b < 32 || b > 126 }.map(&:chr).join if printable
   str
 rescue

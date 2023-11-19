@@ -2513,7 +2513,7 @@ def update_completions(event)
   else
     # Update completion count for all highscoreables
     # TODO: Make Discord logging optional, for when we manage to automate Steam
-     # authentification, leading to automating this function in the background
+    # authentification, leading to automating this function in the background
     delta = 0
     type = parse_type(flags[:type].to_s)
     tabs = parse_tabs(flags[:tabs].to_s)

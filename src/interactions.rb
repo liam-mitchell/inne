@@ -236,6 +236,34 @@ ensure
   return view
 end
 
+def modal(
+    event,
+    title:      'Modal',
+    custom_id:  'modal:test',
+    style:      :short,
+    label:      'Enter text:',
+    min_length:  0,
+    max_length:  64,
+    required:    false,
+    value:       nil,
+    placeholder: 'Placeholder'
+  )
+  event.show_modal(title: title, custom_id: custom_id) do |modal|
+    modal.row do |row|
+      row.text_input(
+        style:       style,
+        custom_id:   'name',
+        label:       label,
+        min_length:  min_length,
+        max_length:  max_length,
+        required:    required,
+        value:       value,
+        placeholder: placeholder
+      )
+    end
+  end
+end
+
 # Get a new builder based on a pre-existing component collection (i.e., for
 # messages that have already been sent, so that we can send the same components
 # back automatically).
@@ -274,10 +302,24 @@ def to_builder(components)
       }
     }
   }
-  #binding.pry
   view
 rescue
   Discordrb::Webhooks::View.new
+end
+
+def modal_identify(event, name: '')
+  name.strip!
+  user = parse_user(event.user)
+  player = Player.find_by(name: name)
+
+  if !player
+    user.player = nil
+    event.respond(content: "No player found by the name #{verbatim(name)}, did you write it correctly?", ephemeral: true)
+    return false
+  end
+
+  user.player = player
+  event.respond(content: "Identified correctly, you are #{verbatim(name)}.", ephemeral: true)
 end
 
 # Important notes for parsing interaction components:
@@ -286,7 +328,7 @@ end
 #    on the first word of the message. Therefore, we have to format this first
 #    word (and, often, the first sentence) properly for the bot to parse it.
 #
-# 2) We use the custom_id of the component (button, select menu) and of the
+# 2) We use the custom_id of the component (button, select menu, modal) and of the
 #    component option (select menu option) to classify them and determine what
 #    they do. Therefore, they must ALL follow a specific pattern:
 #
@@ -365,5 +407,15 @@ def respond_interaction_menu(event)
     when 'tab'    # Change highscoreable tab (all, si, s, su, sl, ss, ss2)
       send_rankings(event, tab: values.first.last)
     end
+  end
+end
+
+def respond_interaction_modal(event)
+  keys = event.custom_id.to_s.split(':') # Component parameters
+  return if keys[0] != 'modal'           # Only listen to modals
+
+  case keys.last
+  when 'identify'
+    modal_identify(event, name: event.value('name'))
   end
 end

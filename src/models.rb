@@ -2417,7 +2417,7 @@ class User < ActiveRecord::Base
   end
 
   def player=(player)
-    self.update(player_id: player.id)
+    self.update(player_id: player ? player.id : nil)
   end
 end
 

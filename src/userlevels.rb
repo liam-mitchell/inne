@@ -780,7 +780,7 @@ class Userlevel < ActiveRecord::Base
 
   # Generate 44 byte map header of the dump above
   def dump_header
-    author_str = (author.name.to_s[0...16] rescue "").ljust(16, "\x00").b
+    author_str = (to_ascii(author.name.to_s)[0...16] rescue "").ljust(16, "\x00").b
     date_str   = date.strftime(DATE_FORMAT_NPP).ljust(16, "\x00").b
 
     header  = _pack(id, 4)        # Userlevel ID ( 4B)
@@ -983,7 +983,7 @@ def send_userlevel_cache(event)
 
   # User must be identified
   if !user.player
-    event.send_message(content: "I don't know who you are, you need to identify with #{verbatim('my name is ...')}.", ephemeral: true)
+    modal(event, title: "I don't know who you are.", custom_id: 'modal:identify', label: 'Enter your N++ player name:', required: true)
     return false
   end
 
