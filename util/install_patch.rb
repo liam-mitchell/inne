@@ -1,6 +1,6 @@
 require 'rbconfig'
 
-TEST = true
+TEST = false
 TARGET = "https://dojo.nplusplus.ninja"
 HOST_TEST = "127.0.0.1"
 HOST = "45.32.150.168"

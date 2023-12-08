@@ -104,7 +104,7 @@ def interaction_add_select_menu_rtype(view = nil, rtype = nil)
     r.select_menu(custom_id: 'menu:rtype', placeholder: 'Ranking type', max_values: 1){ |m|
       RTYPES.each{ |t|
         m.option(
-          label:   "#{format_rtype(t).titleize}",
+          label:   "#{format_rtype(t).gsub(/\b(\w)/){ $1.upcase }}",
           value:   "menu:rtype:#{t}",
           default: t == rtype
         )

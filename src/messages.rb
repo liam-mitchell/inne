@@ -117,16 +117,24 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     'cool',
     'star',
     'maxed',
-    'maxable'
+    'maxable',
+    'G++',
+    'G--'
   ].include?(rtype) # default rank is top20, not top1 (0th)
   range = !parse_rank(rtype).nil? ? [0, parse_rank(rtype), true] : parse_range(rtype2.nil? ? msg : '', whole)
   rtype = fix_rtype(rtype, range[1])
-  type  = parse_type(msg, type: type, multiple: true, initial: initial, default: rtype == 'score' ? Level : nil)
+  def_level = [
+    'score',
+    'G++',
+    'G--'
+  ].include?(rtype) # default type is Level
+  type  = parse_type(msg, type: type, multiple: true, initial: initial, default: def_level ? Level : nil)
   mappack = parse_mappack(msg, parse_user(event.user), event.channel)
   board = parse_board(msg, 'hs')
+  board = 'hs' if !['hs', 'sr'].include?(board)
 
   perror("Speedrun mode isn't available for Metanet levels yet.") if board == 'sr' && !mappack
-  perror("#{format_board(board)} rankings aren't available yet.") if ['gm', 'dual'].include?(board)
+  perror("Gold rankings aren't available for Metanet levels yet.") if ['G++', 'G--'].include?(rtype) && !mappack
 
   # The range must make sense
   if !range[2]
@@ -169,6 +177,12 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   when 'maxable'
     rtag  = :maxable
     max   = find_max(:maxable, type, tabs, !initial, mappack, board)
+  when 'G++'
+    rtag  = :gp
+    max   = find_max(:gp, type, tabs, !initial, mappack, board)
+  when 'G--'
+    rtag  = :gm
+    max   = find_max(:gm, type, tabs, !initial, mappack, board)
   else
     rtag  = :rank
     max   = find_max(:rank, type, tabs, !initial, mappack, board)
@@ -195,41 +209,54 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   pag  = compute_pages(rank.size, page, pagesize)
 
   # FORMAT message
-  min   = "Minimum number of scores required: #{min_scores(type, tabs, !initial, range[0], range[1], star, mappack)}" if ['average_rank', 'average_point'].include?(rtype)
+  min = "Minimum number of scores required: #{min_scores(type, tabs, !initial, range[0], range[1], star, mappack)}" if ['average_rank', 'average_point'].include?(rtype)
   # --- Header
-  prange = ![ # Don't print range for these rankings
+  no_range = [ # Don't print range for these rankings
     'tied_top1',
     'singular_top1',
     'plural_top1',
     'average_top1_lead',
-    'score'
+    'score',
+    'G++',
+    'G--'
   ].include?(rtype)
-  full    = format_full(full)
+  no_board = [ # Don't print board for these rankings
+    'G++',
+    'G--'
+  ].include?(rtype)
+  use_min = [ # Situations in which to display MIN rather than MAX
+    rtype == 'average_rank',
+    board == 'sr' && rtype == 'score',
+    rtype == 'G--'
+  ].any?
+  fullB   = format_full(full)
   cool    = format_cool(cool)
   maxed   = format_maxed(maxed)
   maxable = format_maxable(maxable)
   tabs    = format_tabs(tabs)
   typeB   = format_type(type, true).downcase
-  range   = format_range(range[0], range[1], !prange)
+  range   = no_range ? '' : format_range(range[0], range[1])
   star    = format_star(star)
   rtypeB  = format_rtype(rtype, ties: ties, range: false, basic: true)
-  max     = format_max(max, rtype == 'average_rank' || board == 'sr' && rtype == 'score')
+  max     = format_max(max, use_min)
+  board   = !mappack.nil? && !no_board ? format_board(board) : ''
   mappack = format_mappack(mappack)
-  board   = !mappack.nil? ? format_board(board) : ''
   play    = !play.empty? ? ' without ' + play.map{ |p| "#{verbatim(p.print_name)}" }.to_sentence : ''
-  header  = "#{full} #{cool} #{maxed} #{maxable} #{board} #{tabs} #{typeB}"
+  header  = "#{fullB} #{cool} #{maxed} #{maxable} #{board} #{tabs} #{typeB}"
   header << " #{range}#{star} #{rtypeB} #{mappack} #{max} #{play} #{format_time}"
   header  = "Rankings - #{format_header(header)}"
   # --- Rankings
   if rank.empty?
-    rank = format_block('These boards are empty!')
+    rank  = format_block('These boards are empty!')
+    count = 0
   else
-    rank = rank[pag[:offset]...pag[:offset] + pagesize] if full.empty? || nav
-    pad1 = rank.map{ |r| r[1].to_i.to_s.length }.max
-    pad2 = rank.map{ |r| r[0].length }.max
-    pad3 = rank.map{ |r| r[2].to_i.to_s.length }.max
-    fmt  = rank[0][1].is_a?(Integer) ? "%#{pad1}d" : "%#{pad1 + 4}.3f"
-    rank = rank.each_with_index.map{ |r, i|
+    rank  = rank[pag[:offset]...pag[:offset] + pagesize] if !full || nav
+    count = rank.size
+    pad1  = rank.map{ |r| r[1].to_i.to_s.length }.max
+    pad2  = rank.map{ |r| r[0].length }.max
+    pad3  = rank.map{ |r| r[2].to_i.to_s.length }.max
+    fmt   = rank[0][1].is_a?(Integer) ? "%#{pad1}d" : "%#{pad1 + 4}.3f"
+    rank  = rank.each_with_index.map{ |r, i|
       line = "#{Highscoreable.format_rank(pag[:offset] + i)}: #{format_string(r[0], pad2)} - #{fmt % r[1]}"
       line += " (%#{pad3}d)" % [r[2]] if !r[2].nil?
       line
@@ -237,7 +264,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
     rank = format_block(rank)
   end
   # --- Footer
-  rank.concat(min) if !min.nil? && (full.empty? || nav)
+  rank.concat(min) if !min.nil? && (!full || nav)
 
   # SEND message
   if nav
@@ -250,7 +277,7 @@ def send_rankings(event, page: nil, type: nil, tab: nil, rtype: nil, ties: nil)
   else
     length = header.length + rank.length
     event << header
-    length < DISCORD_CHAR_LIMIT && full.empty? ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
+    count <= 20 ? event << rank : send_file(event, rank[4..-4], 'rankings.txt')
   end
 rescue => e
   lex(e, 'Failed to perform the rankings.', event: event)

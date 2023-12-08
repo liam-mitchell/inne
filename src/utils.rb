@@ -9,7 +9,7 @@
 #       whenever raised. Intended for user errors.
 #  3) Networking:
 #       Getting arbitrary data from N++'s server using Steam IDs, forwarding
-#       requests and acting as a middleman (used for CLE), etc.
+#       requests and acting as a middleman, building multipart POSTs, ...
 #  4) System operations:
 #       Forking, threading, inkoving the shell, getting memory information for
 #       maintenance, etc.
@@ -68,12 +68,12 @@ module Log
   MODES = {
     fatal: { long: 'FATAL', short: 'F', fmt: "\x1B[41m" }, # Red background
     error: { long: 'ERROR', short: '✗', fmt: "\x1B[31m" }, # Red
-    warn:  { long: 'WARN ', short: '!', fmt: "\x1B[33m" }, # Yellow
-    good:  { long: 'GOOD ', short: '✓', fmt: "\x1B[32m" }, # Green
-    info:  { long: 'INFO ', short: 'i', fmt: ""         }, # Normal
-    msg:   { long: 'MSG  ', short: 'm', fmt: "\x1B[34m" }, # Blue
-    in:    { long: 'IN   ', short: '←', fmt: "\x1B[35m" }, # Magenta
-    out:   { long: 'OUT  ', short: '→', fmt: "\x1B[36m" }, # Cyan
+    warn:  { long: 'WARN' , short: '!', fmt: "\x1B[33m" }, # Yellow
+    good:  { long: 'GOOD' , short: '✓', fmt: "\x1B[32m" }, # Green
+    info:  { long: 'INFO' , short: 'i', fmt: ""         }, # Normal
+    msg:   { long: 'MSG'  , short: 'm', fmt: "\x1B[34m" }, # Blue
+    in:    { long: 'IN'   , short: '←', fmt: "\x1B[35m" }, # Magenta
+    out:   { long: 'OUT'  , short: '→', fmt: "\x1B[36m" }, # Cyan
     debug: { long: 'DEBUG', short: 'D', fmt: "\x1B[90m" }  # Gray
   }
 
@@ -91,6 +91,14 @@ module Log
   @fancy = LOG_FANCY
   @modes = LEVELS[LOG_LEVEL] || LEVELS[:normal]
   @modes_file = LEVELS[LOG_LEVEL_FILE] || LEVELS[:quiet]
+
+  def self.fmt(str, mode)
+    "#{MODES[mode][:fmt]}#{str}#{RESET}"
+  end
+
+  def self.bold(str)
+    "#{BOLD}#{str}#{RESET}"
+  end
 
   def self.level(l)
    return dbg("Logging level #{l} does not exist") if !LEVELS.key?(l)
@@ -171,12 +179,12 @@ module Log
     # Message prefixes (timestamp, symbol, source app)
     date = Time.now.strftime(DATE_FORMAT_LOG)
     type = {
-      fancy: "#{m[:fmt]}#{BOLD}#{m[:short]}#{RESET}",
+      fancy: bold(fmt(m[:short], mode)),
       plain: "[#{m[:long]}]".ljust(7, ' ')
     }
     app = " (#{app.ljust(3, ' ')[0...3]})"
     app = {
-      fancy: LOG_APPS ? "#{BOLD}#{app}#{RESET}" : '',
+      fancy: LOG_APPS ? bold(app) : '',
       plain: LOG_APPS ? app : ''
     }
 
@@ -186,7 +194,7 @@ module Log
       plain: "[#{date}] #{type[:plain]}#{app[:plain]} ",
     }
     lines = {
-      fancy: text.split("\n").map{ |l| (header[:fancy] + "#{m[:fmt]}#{l}#{RESET}").strip },
+      fancy: text.split("\n").map{ |l| (header[:fancy] + fmt(l, mode)).strip },
       plain: text.split("\n").map{ |l| (header[:plain] + l).strip }
     }
     lines = {
@@ -1071,13 +1079,9 @@ end
 # find the optimal score / amount of whatever rankings or stat
 def find_max_type(rank, type, tabs, mappack = nil, board = 'hs')
   # Filter scores by type and tabs
-  basetype = type
-  if !mappack.nil?
-    type = "Mappack#{type.to_s}".constantize unless type.to_s[0..6] == 'Mappack'
-    query = type.where(mappack: mappack)
-  else
-    query = type
-  end
+  type = Level if rank == :gm
+  type = mappack || rank == :gp ? type.mappack : type.vanilla
+  query = mappack || rank == :gp ? type.where(mappack: mappack) : type
   query = query.where(tab: tabs) if !tabs.empty?
 
   # Distinguish ranking type
@@ -1089,20 +1093,32 @@ def find_max_type(rank, type, tabs, mappack = nil, board = 'hs')
   when :avg_rank
     0
   when :maxable
-    Highscoreable.ties(basetype, tabs, nil, false, true, mappack, board).size
+    Highscoreable.ties(type, tabs, nil, false, true, mappack, board).size
   when :maxed
-    Highscoreable.ties(basetype, tabs, nil, true, true, mappack, board).size
+    Highscoreable.ties(type, tabs, nil, true, true, mappack, board).size
+  when :gp
+    query.sum(:gold)
+  when :gm
+    klass = mappack.nil? ? Score : MappackScore.where(mappack: mappack)
+    query = klass.where(highscoreable_type: type)
+    query = query.where(tab: tabs) if !tabs.empty?
+    # query.group(:highscoreable_id).minimum(:gold).values.sum
+    MappackScore.from(
+      query.group(:highscoreable_id).select('MIN(gold) AS gold'),
+      :t
+    ).sum('t.gold')
   when :clean
     0.0
   when :score
-    klass = mappack.nil? ? Score : MappackScore.where(mappack: mappack)
-    rfield = mappack.nil? ? :rank : "rank_#{board}".to_sym
-    sfield = mappack.nil? ? :score : "score_#{board}".to_sym
-    scale  = !mappack.nil? && board == 'hs' ? 60.0 : 1.0
-    query = klass.where(highscoreable_type: type.to_s, rfield => 0)
+    klass  = !mappack ? Score  : MappackScore.where(mappack: mappack)
+    rfield = !mappack ? :rank  : "rank_#{board}".to_sym
+    sfield = !mappack ? :score : "score_#{board}".to_sym
+    scale  = mappack && board == 'hs' ? 60.0 : 1.0
+
+    query = klass.where(highscoreable_type: type, rfield => 0)
     query = query.where(tab: tabs) if !tabs.empty?
     query = query.sum(sfield) / scale
-    !mappack.nil? && board == 'sr' ? query.to_i : query.to_f
+    mappack && board == 'sr' ? query.to_i : query.to_f
   else
     query.count
   end

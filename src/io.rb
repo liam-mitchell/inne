@@ -635,6 +635,10 @@ def parse_rtype(msg)
     'cool'
   elsif parse_star(msg)
     'star'
+  elsif parse_gp(msg)
+    'G++'
+  elsif parse_gm(msg)
+    'G--'
   else
     'top'
   end
@@ -923,6 +927,14 @@ def parse_singular(msg)
   end
 end
 
+def parse_gm(msg)
+  !!msg[/\bG--/i] || !!msg[/\bng\b/i]
+end
+
+def parse_gp(msg)
+  !!msg[/\bG\+\+/i] || !!msg[/\bag\b/i]
+end
+
 # 'strict' means the emoji must be separated from text
 # intended to ignore users with it in the name
 def parse_cool(msg, strict = false)
@@ -974,7 +986,7 @@ end
 # Formats a ranking type. These can include the range in some default cases
 # (e.g. Top10 Rankings), unless the 'range' parameter is false.
 # 'range' Includes the range (e.g. Top10) or not
-# 'rank'  Overrule whatever the rank in the rtype is
+# 'rank'  Override whatever the rank in the rtype is
 # 'ties'  Adds "w/ ties" or something
 # 'basic' Doesn't print words which are now parameters (e.g. cool)
 def format_rtype(rtype, range: true, rank: nil, ties: false, basic: false)
@@ -986,7 +998,7 @@ def format_rtype(rtype, range: true, rank: nil, ties: false, basic: false)
     end
   end
   rtype = rtype.gsub('top1', '0th').gsub('star', '*').tr('_', ' ')
-  rtype.remove!('cool', '*', 'maxed', 'maxed') if basic
+  rtype.remove!('cool', '*', 'maxed', 'maxable') if basic
   "#{rtype} rankings #{format_ties(ties)}".squish
 end
 

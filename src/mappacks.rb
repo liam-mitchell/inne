@@ -225,6 +225,12 @@ module Map
     nil
   end
 
+  def self.object_counts(objects)
+    object_counts = [0] * 40
+    objects.each{ |o| object_counts[o[0]] += 1 }
+    object_counts
+  end
+
   def print_scores
     update_scores if !OFFLINE_STRICT
     if scores.count == 0
@@ -238,12 +244,28 @@ module Map
     end
   end
 
+  # Return iiles as a matrix of integer
   def tiles(version: nil)
     Map.decode_tiles(tile_data(version: version))
   end
 
+  # Return objects as an array of 5-tuples of ints
   def objects(version: nil)
     Map.decode_objects(object_data(version: version))
+  end
+
+  # Return object counts
+  def object_counts(version: nil)
+    Map.object_counts(objects(version: version))
+  end
+
+  # Shortcuts for some object counts
+  def gold(version: nil)
+    object_counts(version: version)[2]
+  end
+
+  def mines(version: nil)
+    object_counts(version: version)[1]
   end
 
   # This is used for computing the hash of a level. It's required due to a
@@ -281,7 +303,7 @@ module Map
     mode = self.is_a?(MappackLevel) ? self.mode : Userlevel.modes[self.mode]
     author_id = query ? self.author_id : -1
     title = self.is_a?(MappackLevel) ? self.longname : self.title
-    title = title[0..126].ljust(128, "\x00")
+    title = to_ascii(title.to_s)[0...127].ljust(128, "\x00")
     header << _pack(-1, 'l<')        # Level ID (unset)
     header << _pack(mode, 4)         # Game mode
     header << _pack(37, 4)           # QT (unset, max is 36)
@@ -294,8 +316,7 @@ module Map
 
     # MAP DATA
     tile_data = Zlib::Inflate.inflate(tile_data(version: version))
-    object_counts = [0] * 40
-    objs.each{ |o| object_counts[o[0]] += 1 }
+    object_counts = Map.object_counts(objs)
     object_counts[7] = 0 unless hash
     object_counts[9] = 0 unless hash
     object_data = objs.map{ |o| o.pack('C5') }.join
