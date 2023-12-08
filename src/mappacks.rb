@@ -1764,7 +1764,7 @@ class MappackScore < ActiveRecord::Base
       MappackDemo.create(id: id, demo: Demo.encode(demos))
 
       # Verify hs score integrity by checking calculated gold count
-      if !MappackScore.verify_gold(goldf) && type[:name] != 'Story'
+      if (!MappackScore.verify_gold(goldf) && type[:name] != 'Story') || (h.gold && gold > h.gold)
         _thread do
           warn("Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})", discord: true)
         end

@@ -74,6 +74,8 @@ Ongoing:
 - Add function to update stars in scores table, since due to errors we could sporadicaly lose some of them, but we can rebuild them by looking at the archives table.
 - Use average rank for tie-breaking rankings
 - For mappack ranking navigation, add button for HS/SR, and perhaps select menu for mappacks
+- Add other most/least gold functions apart from rankings: how many, missing, etc
+- Player comparison for mappacks (add speedrun, G++/G--, ...)
 
 \\ ------------------------ mappacker -----------------------
 
