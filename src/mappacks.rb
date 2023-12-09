@@ -161,6 +161,7 @@ module Map
     # Parse objects
     offset = 1940
     objects = []
+    gold = 0
     OBJECTS.reject{ |id, o| o[:old] == -1 }.sort_by{ |id, o| o[:old] }.each{ |id, type|
       # Parse object count
       if size < offset + 4
@@ -168,6 +169,7 @@ module Map
         return
       end
       count = map_data[offset...offset + 4].scan(/../m).map(&:reverse).join.to_i(16)
+      gold = count if id == 2
 
       # Parse entities of this type
       if size < offset + 4 + 2 * count * type[:att]
@@ -200,7 +202,7 @@ module Map
     end
 
     # Return map elements
-    { title: title, tiles: tiles, objects: objects }
+    { title: title, tiles: tiles, objects: objects, gold: gold }
   end
 
   # Parse a text file containing maps in Metanet format, one per line
@@ -215,7 +217,7 @@ module Map
     maps = File.binread(file).split("\n").take(limit)
     count = maps.count
     maps = maps.each_with_index.map{ |m, i|
-      dbg("Parsing map #{"%-3d" % (i + 1)} / #{count} from #{fn} for #{pack}...", newline: false)
+      dbg("Parsing map #{"%-3d" % (i + 1)} / #{count} from #{fn} for #{pack}...", progress: true)
       parse_metanet_map(m.strip, i, fn, pack)
     }
     Log.clear
@@ -1101,9 +1103,9 @@ class Mappack < ActiveRecord::Base
       perror("Tabs for mappack #{code.upcase} do not coincide, cannot do soft update.", discord: discord) if tabs_old != tabs_new
     else
       # Hard updates: Delete highscoreables
-      levels.delete_all
-      episodes.delete_all
-      stories.delete_all
+      levels.delete_all(:delete_all)
+      episodes.delete_all(:delete_all)
+      stories.delete_all(:delete_all)
     end
 
     # Delete map data from newer versions
@@ -1177,6 +1179,7 @@ class Mappack < ActiveRecord::Base
           episode_id: level_id / 5,
           name:       code.upcase + '-' + compute_name(inner_id, 0),
           longname:   map[:title].strip,
+          gold:       map[:gold]
         ) if change_level
 
         # Save new mappack data (tiles and objects) if:
@@ -1199,11 +1202,12 @@ class Mappack < ActiveRecord::Base
         end
 
         # Create corresponding mappack episode, except for secret tabs.
-        next if tab[:secret]
+        next if tab[:secret] || level_id % 5 > 0
         story = tab[:mode] == 0 && (!tab[:x] || map_offset < 5 * tab[:files][tab_code] / 6)
 
         if hard
-          MappackEpisode.find_or_create_by(id: level_id / 5).update(
+          episode = MappackEpisode.find_by(id: level_id / 5)
+          MappackEpisode.create(
             id:         level_id / 5,
             inner_id:   inner_id / 5,
             mappack_id: id,
@@ -1211,24 +1215,25 @@ class Mappack < ActiveRecord::Base
             tab:        tab_index,
             story_id:   story ? level_id / 25 : nil,
             name:       code.upcase + '-' + compute_name(inner_id / 5, 1)
-          )
+          ) unless episode
         else
           episode = MappackEpisode.find_by(id: level_id / 5)
           perror("#{code.upcase} episode with ID #{level_id / 5} should exist, stopping soft update.", discord: discord) if !episode
         end
 
         # Create corresponding mappack story, only for non-X-Row Solo.
-        next if !story
+        next if !story || level_id % 25 > 0
 
         if hard
-          MappackStory.find_or_create_by(id: level_id / 25).update(
+          story = MappackStory.find_by(id: level_id / 25)
+          MappackStory.create(
             id:         level_id / 25,
             inner_id:   inner_id / 25,
             mappack_id: id,
             mode:       tab[:mode],
             tab:        tab_index,
             name:       code.upcase + '-' + compute_name(inner_id / 25, 2)
-          )
+          ) unless story
         else
           story = MappackStory.find_by(id: level_id / 25)
           perror("#{code.upcase} story with ID #{level_id / 25} should exist, stopping soft update.", discord: discord) if !story
@@ -1236,7 +1241,7 @@ class Mappack < ActiveRecord::Base
       }
       Log.clear
 
-      # Log results
+      # Log results for this file
       count = maps.count(nil)
       map_errors += count
       if count == 0
@@ -1246,6 +1251,21 @@ class Mappack < ActiveRecord::Base
       end
     }
 
+    # Fill in episode and story gold counts based on their corresponding levels
+    episode_count = episodes.size
+    episodes.find_each.with_index{ |e, i|
+      dbg("Setting gold count for #{name_str} episode #{i + 1} / #{episode_count}...", progress: true)
+      e.update(gold: MappackLevel.where(episode: e).sum(:gold))
+    }
+    Log.clear
+    story_count = stories.size
+    stories.find_each.with_index{ |s, i|
+      dbg("Setting gold count for #{name_str} story #{i + 1} / #{story_count}...", progress: true)
+      s.update(gold: MappackEpisode.where(story: s).sum(:gold))
+    }
+    Log.clear
+
+    # Log final results for entire mappack
     if file_errors + map_errors == 0
       succ("Successfully parsed mappack #{name_str}")
       self.update(version: v)

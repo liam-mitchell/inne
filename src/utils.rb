@@ -248,7 +248,7 @@ module Log
 
   # Clear the current terminal line
   def self.clear
-    write('', :info, newline: false, pad: true)
+    write(' ' * LOG_PAD, :info, newline: false, pad: true)
   end
 end
 

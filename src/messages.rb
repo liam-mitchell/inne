@@ -2050,7 +2050,7 @@ def send_mappack_update(event)
   hard = flags.key?(:hard)
   name = "#{hard ? 'hard' : 'soft'} update for mappack #{mappack.code.upcase} v#{version}"
   send_message(event, content: "Performing #{name}.")
-  mappack.read(v: version, hard: hard, log: true)
+  mappack.read(v: version, hard: hard, discord: true)
   event << "Finished #{name}."
 rescue => e
   lex(e, "Error updating mappack.", event: event)
