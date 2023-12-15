@@ -867,7 +867,10 @@ def find_emoji(key, server = nil)
   if key.is_a?(Integer)
     server.emojis[key]
   elsif key.is_a?(String)
-    server.emojis.find{ |id, e| e.name.downcase.include?(key.downcase) }[1]
+    res = server.emojis.find{ |id, e| e.name == key }
+    res = server.emojis.find{ |id, e| e.name.downcase == key.downcase } unless res
+    res = server.emojis.find{ |id, e| e.name.downcase.include?(key.downcase) } unless res
+    res ? res[1] : nil
   else
     nil
   end

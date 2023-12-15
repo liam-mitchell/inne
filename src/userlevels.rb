@@ -958,7 +958,8 @@ def send_userlevel_browse(
   # Create and fill component collection (View)
   view = Discordrb::Webhooks::View.new
   if !(initial && count == 0)
-    interaction_add_action_navigation(view, pag[:page], pag[:pages], 'play', 'Play in N++', 'ninjajump')
+    cur_emoji = initial ? nil : get_emoji(event, 'button:play:')
+    interaction_add_action_navigation(view, pag[:page], pag[:pages], 'play', 'Play', (EMOJIS_FOR_PLAY - [cur_emoji]).sample)
     interaction_add_select_menu_order(view, order_str, cat != QT_NEWEST)
     interaction_add_select_menu_tab(view, USERLEVEL_TABS[cat][:name])
     interaction_add_select_menu_mode(view, MODES[mode], false)
@@ -983,7 +984,14 @@ def send_userlevel_cache(event)
 
   # User must be identified
   if !user.player
-    modal(event, title: "I don't know who you are.", custom_id: 'modal:identify', label: 'Enter your N++ player name:', required: true)
+    modal(
+      event,
+      title:       'I don\'t know who you are.',
+      custom_id:   'modal:identify',
+      label:       'Enter your N++ player name:',
+      placeholder: 'Player name',
+      required:    true
+    )
     return false
   end
 

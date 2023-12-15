@@ -3234,52 +3234,56 @@ module Server extend self
   def handle(req, res)
     # Parse request parameters
     mappack = req.path.split('/')[1][/\D+/i]
-    query = req.path.split('/')[-1]
+    method  = req.request_method
+    query   = req.path.split('/')[-1]
 
-    # Build response
-    response = nil
-    if ['rdx'].include?(mappack)
-      # Automatically forward requests for certain mappacks that lack custom boards
-      response = CLE_FORWARD ? forward(req) : nil
-    else
-      # Parse request
-      case req.request_method
-      when 'GET'
-        case query
-        when 'get_scores'
-          response = MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
-        when 'get_replay'
-          response = MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
-        when 'levels'
-          response = Userlevel.search(req)
-        else
-          response = CLE_FORWARD ? forward(req) : nil
-        end
-      when 'POST'
-        req.continue # Respond to "Expect: 100-continue"
-        case query
-        when 'submit_score'
-          response = MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req)
-        when 'login'
-          response = Player.login(mappack, req)
-        else
-          response = CLE_FORWARD ? forward(req) : nil
-        end
-      else
-        response = CLE_FORWARD ? forward(req) : nil
+    # Automatically forward requests for certain mappacks that lack custom boards
+    return fwd(req, res) if ['rdx'].include?(mappack)
+
+    # CUSE requests only affect userlevel searching
+    if mappack == 'cuse'
+      return fwd(req, res) unless method == 'GET' && query == 'levels'
+      return respond(res, Userlevel.search(req))
+    end
+
+    # Parse request
+    case method
+    when 'GET'
+      case query
+      when 'get_scores'
+        return respond(res, MappackScore.get_scores(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req))
+      when 'get_replay'
+        return respond(res, MappackScore.get_replay(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req))
+      when 'levels'
+        return respond(res, Userlevel.search(req))
+      end
+    when 'POST'
+      req.continue # Respond to "Expect: 100-continue"
+      case query
+      when 'submit_score'
+        return respond(res, MappackScore.add(mappack, req.query.map{ |k, v| [k, v.to_s] }.to_h, req))
+      when 'login'
+        return respond(res, Player.login(mappack, req))
       end
     end
 
-    # Set up response parameters
-    if response.nil?
+    fwd(req, res)
+  rescue => e
+    lex(e, "CLE socket failed to parse request for: #{req.path}")
+    nil
+  end
+
+  def respond(res, body = nil)
+    if body.nil?
       res.status = 400
       res.body = ''
     else
       res.status = 200
-      res.body = response
+      res.body = body
     end
-  rescue => e
-    lex(e, "CLE socket failed to parse request for: #{req.path}")
-    nil
+
+    def fwd(req, res)
+      respond(res, CLE_FORWARD ? forward(req) : nil)
+    end
   end
 end

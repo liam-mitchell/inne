@@ -168,8 +168,8 @@ end
 
 # ActionRow builder with Buttons for page navigation, together with center action button
 def interaction_add_action_navigation(view, page = 1, pages = 1, action = '', text = '', emoji = nil)
-  text = "#{page} / #{pages}" if text.empty?
   emoji = find_emoji(emoji).id rescue nil if emoji && emoji.ascii_only?
+  text = "#{page} / #{pages}" if text.empty? && emoji.nil?
   interaction_add_navigation(
     view,
     labels:   ["❙❮", "❮", text, "❯", "❯❙"],
@@ -314,7 +314,10 @@ def modal_identify(event, name: '')
 
   if !player
     user.player = nil
-    event.respond(content: "No player found by the name #{verbatim(name)}, did you write it correctly?", ephemeral: true)
+    event.respond(
+      content:   "No player found by the name #{verbatim(name)}, did you write it correctly?",
+      ephemeral: true
+    )
     return false
   end
 

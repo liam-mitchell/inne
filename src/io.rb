@@ -39,6 +39,19 @@ rescue
   1
 end
 
+# Get an emoji from a button given the label
+def get_emoji(event, label)
+  emoji = nil
+  event.message.components.each{ |row|
+    row.each{ |c|
+      emoji = c.emoji.name if c.custom_id == label
+    }
+  }
+  event.message.components.first.to_a[2].emoji.name
+rescue
+  nil
+end
+
 # Given an amount and a page number, will make sure that it is a valid
 # page number (given the page size), or clamp it otherwise, as well as
 # find the offset index where the page begins.

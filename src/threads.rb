@@ -662,17 +662,22 @@ def start_level_of_the_day(ctp = false)
     # Wait until post time
     delay = next_level_update - Time.now
     sleep(delay) unless delay < 0
+
+    # Start and post whatever is enabled
     $active_tasks[:lotd] = true
-    log("Starting #{ctp ? 'CTP ' : ''}level of the day...")
+    level_cond   = ((ctp ? UPDATE_CTP_LEVEL   : UPDATE_LEVEL)   || DO_EVERYTHING) && !DO_NOTHING
+    episode_cond = ((ctp ? UPDATE_CTP_EPISODE : UPDATE_EPISODE) || DO_EVERYTHING) && !DO_NOTHING
+    story_cond   = ((ctp ? UPDATE_CTP_STORY   : UPDATE_STORY)   || DO_EVERYTHING) && !DO_NOTHING
+    log("Starting #{ctp ? 'CTP ' : ''}level of the day...") if level_cond || episode_cond || story_cond
 
     # Post lotd, if enabled
-    if ((ctp ? UPDATE_CTP_LEVEL : UPDATE_LEVEL) || DO_EVERYTHING) && !DO_NOTHING
+    if level_cond
       send_channel_next(Level, ctp)
       succ("Sent #{ctp ? 'CTP ' : ''}level of the day")
     end
 
     # Post eotw, if enabled
-    if ((ctp ? UPDATE_CTP_EPISODE : UPDATE_EPISODE) || DO_EVERYTHING) && !DO_NOTHING && next_episode_update < Time.now
+    if episode_cond && next_episode_update < Time.now
       sleep(0.25)
       send_channel_next(Episode, ctp)
       succ("Sent #{ctp ? 'CTP ' : ''}episode of the week")
@@ -680,20 +685,20 @@ def start_level_of_the_day(ctp = false)
     end
 
     # Post cotm, if enabled
-    if ((ctp ? UPDATE_CTP_STORY : UPDATE_STORY) || DO_EVERYTHING) && !DO_NOTHING && next_story_update < Time.now
+    if story_cond && next_story_update < Time.now
       sleep(0.25)
       send_channel_next(Story, ctp)
       succ("Sent #{ctp ? 'CTP ' : ''}story of the month")
       story_day = true
     end
 
-    # Post reminders and finish
-    cond = ((ctp ? UPDATE_CTP_LEVEL : UPDATE_LEVEL) || DO_EVERYTHING) && !DO_NOTHING
-    if !episode_day && cond
+    # Post reminders
+    if !episode_day && level_cond
       sleep(0.25)
       send_channel_episode_reminder(ctp)
     end
-    if !story_day && cond
+
+    if !story_day && level_cond
       sleep(0.25)
       send_channel_story_reminder(ctp)
     end
