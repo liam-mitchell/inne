@@ -1783,7 +1783,7 @@ class Score < ActiveRecord::Base
     ret = scores.map{ |s| [players[s[0]], s[1], s[2]] }
 
     # Zeroes are only permitted in a few rankings, and negatives nowhere
-    ret.reject!{ |s| s[1] <= 0  } unless [:avg_rank, :avg_lead].include?(ranking)
+    ret.reject!{ |s| s[1] <= 0  } unless [:avg_rank, :avg_lead, :gp, :gm].include?(ranking)
 
     # Sort ONLY ties alphabetically by player
     ret.sort!{ |a, b| (a[1] <=> b[1]) != 0 ? 0 : a[0].downcase <=> b[0].downcase }

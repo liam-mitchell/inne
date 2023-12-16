@@ -229,7 +229,7 @@ module Map
 
   def self.object_counts(objects)
     object_counts = [0] * 40
-    objects.each{ |o| object_counts[o[0]] += 1 }
+    objects.each{ |o| object_counts[o[0]] += 1 if o[0] < 40 }
     object_counts
   end
 
@@ -246,7 +246,7 @@ module Map
     end
   end
 
-  # Return iiles as a matrix of integer
+  # Return tiles as a matrix of integer
   def tiles(version: nil)
     Map.decode_tiles(tile_data(version: version))
   end
@@ -566,7 +566,7 @@ module Map
           r = object[o[0]].key?(o[3]) ? o[3] : object[o[0]].keys.first
           next if r.nil?
           obj = object[o[0]][r]
-          image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2)
+          image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2) rescue nil
         end
 
         # Adjust offsets
