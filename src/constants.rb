@@ -400,6 +400,7 @@ HASH_OUTPUT_FN   = 'hash_out'      # Filename for SHA1 util to write
 # <--------------------------------------------------------------------------->
 
 APP_ID              = 230270     # N++'s Steam app ID
+BOTMASTER_NPP_ID    = 54303      # Botmaster's N++ player ID
 OUTTE_ID            = 361131     # outte's N++ player ID
 OUTTE_STEAM_ID      = '76561199562076498'
 MIN_REPLAY_ID       = 131072     # Minimum replay ID for the game to perform the HTTP request

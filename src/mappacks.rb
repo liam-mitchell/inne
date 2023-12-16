@@ -1379,14 +1379,31 @@ module MappackHighscoreable
 
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
-  # Optionally sort by score and date instead of rank (used for computing the rank)
-  def leaderboard(m = 'hs', score = false, truncate: 20, pluck: true, aliases: false)
+  # Optionally 
+  def leaderboard(
+      m         = 'hs',  # Playing mode (hs, sr, gm)
+      score     = false, # Sort by score and date instead of rank (used for computing the rank)
+      truncate:   20,    # How many scores to take (0 = all)
+      pluck:      true,  # Pluck or keep Rails relation
+      aliases:    false, # Use player names or display names
+      metanet_id: nil    # Player making the request if coming from CLE
+    )
     m = 'hs' if !['hs', 'sr', 'gm'].include?(m)
     names = aliases ? 'IF(display_name IS NOT NULL, display_name, name)' : 'name'
     attr_names = %W[id score_#{m} name metanet_id]
 
+    # Check if a manual replay ID has been set, so that we only select that one
+    manual = GlobalProperty.find_by(key: 'replay_id').value rescue nil
+    use_manual = manual && metanet_id == BOTMASTER_NPP_ID
+
+    # Handle manual board
+    if use_manual
+      attrs = %W[mappack_scores.id score_#{m} #{names} metanet_id]
+      board = scores.where(id: manual)
+    end
+
     # Handle standard boards
-    if ['hs', 'sr'].include?(m)
+    if ['hs', 'sr'].include?(m) && !use_manual
       attrs = %W[mappack_scores.id score_#{m} #{names} metanet_id]
       board = scores.where("rank_#{m} IS NOT NULL")
       if score
@@ -1397,7 +1414,7 @@ module MappackHighscoreable
     end
 
     # Handle gold boards
-    if m == 'gm'
+    if m == 'gm' && !use_manual
       attrs = [
         'MIN(subquery.id) AS id',
         'MIN(score_gm) AS score_gm',
@@ -1430,7 +1447,7 @@ module MappackHighscoreable
     m = qt == 2 ? 'sr' : 'hs'
 
     # Fetch scores
-    board = leaderboard(m)
+    board = leaderboard(m, metanet_id: metanet_id)
 
     # Build response
     res = {}

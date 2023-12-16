@@ -2491,6 +2491,21 @@ rescue => e
   lex(e, "Error setting user ID.", event: event)
 end
 
+# Manually set the ID of the replay that will be sent by CLE to the botmaster
+# in the next get_replay queries
+def set_replay_id(event)
+  msg = remove_command(parse_message(event))
+  if msg =~ /\d+/
+    GlobalProperty.find_by(key: 'replay_id').update(value: msg[/\d+/].to_i)
+    event << "Set manual replay ID to #{msg[/\d+/]}."
+  else
+    GlobalProperty.find_by(key: 'replay_id').update(value: nil)
+    event << "Unset manual replay ID."
+  end
+rescue => e
+  lex(e, "Error changing manual replay ID.", event: event)
+end
+
 def submit_score(event)
   msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
@@ -2644,6 +2659,7 @@ def respond_special(event)
   return sanitize_archives(event)        if cmd == 'sanitize_archives'
   return sanitize_users(event)           if cmd == 'sanitize_users'
   return set_user_id(event)              if cmd == 'set_user_id'
+  return set_replay_id(event)            if cmd == 'set_replay_id'
   return submit_score(event)             if cmd == 'submit'
   return update_completions(event)       if cmd == 'update_completions'
 
