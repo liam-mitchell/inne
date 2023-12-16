@@ -2261,6 +2261,29 @@ rescue => e
   lex(e, "Error performing gold check.", event: event)
 end
 
+def fill_gold_counts(event)
+  level_count   = MappackLevel.count
+  episode_count = MappackEpisode.count
+  story_count   = MappackStory.count
+  MappackLevel.find_each.with_index{ |l, i|
+    dbg("Setting gold count for level #{i + 1} / #{level_count}...", progress: true)
+    l.update(gold: l.gold)
+  }
+  Log.clear
+  MappackEpisode.find_each.with_index{ |e, i|
+    dbg("Setting gold count for episode #{i + 1} / #{episode_count}...", progress: true)
+    e.update(gold: MappackLevel.where(episode: e).sum(:gold))
+  }
+  Log.clear
+  MappackStory.find_each.with_index{ |s, i|
+    dbg("Setting gold count for story #{i + 1} / #{story_count}...", progress: true)
+    s.update(gold: MappackEpisode.where(story: s).sum(:gold))
+  }
+  Log.clear
+  succ("Filled gold fields.", event: event)
+rescue => e
+  lex(e, "Error performing gold check.", event: event)
+end
 
 def send_log_config(event)
   msg = remove_command(parse_message(event))
@@ -2614,6 +2637,7 @@ def respond_special(event)
   return send_restart(event)             if cmd == 'restart'
   return send_test(event)                if cmd == 'test'
   return send_gold_check(event)          if cmd == 'gold_check'
+  return fill_gold_counts(event)         if cmd == 'fill_gold'
   return send_hash(event)                if cmd == 'hash'
   return send_hashes(event)              if cmd == 'hashes'
   return send_nprofile_gen(event)        if cmd == 'nprofile_gen'

@@ -3237,6 +3237,9 @@ module Server extend self
     method  = req.request_method
     query   = req.path.split('/')[-1]
 
+    # Always log players in, regardless of mappack
+    return respond(res, Player.login(mappack, req)) if method == 'POST' && query == 'login'
+
     # Automatically forward requests for certain mappacks that lack custom boards
     return fwd(req, res) if ['rdx'].include?(mappack)
 
@@ -3281,9 +3284,9 @@ module Server extend self
       res.status = 200
       res.body = body
     end
+  end
 
-    def fwd(req, res)
-      respond(res, CLE_FORWARD ? forward(req) : nil)
-    end
+  def fwd(req, res)
+    respond(res, CLE_FORWARD ? forward(req) : nil)
   end
 end
