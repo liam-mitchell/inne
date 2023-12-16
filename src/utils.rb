@@ -53,8 +53,14 @@ require_relative 'models.rb'
 # <---------------------------------------------------------------------------->
 
 if LOG_SQL
-  ActiveRecord::Base.logger = Logger.new(STDOUT)
-  ActiveRecord::Base.logger = Logger.new(PATH_LOG_SQL) if LOG_TO_FILE
+  ActiveRecord::Base.logger = ActiveSupport::Logger.new(STDOUT)
+  if LOG_SQL_TO_FILE
+    ActiveRecord::Base.logger.extend(
+      ActiveSupport::Logger.broadcast(
+        ActiveSupport::Logger.new(PATH_LOG_SQL)
+      )
+    )
+  end
 end
 
 # Custom logging class, that supports:

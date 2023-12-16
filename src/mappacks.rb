@@ -1386,7 +1386,8 @@ module MappackHighscoreable
       truncate:   20,    # How many scores to take (0 = all)
       pluck:      true,  # Pluck or keep Rails relation
       aliases:    false, # Use player names or display names
-      metanet_id: nil    # Player making the request if coming from CLE
+      metanet_id: nil,   # Player making the request if coming from CLE
+      page:       0      # Index of page to fetch
     )
     m = 'hs' if !['hs', 'sr', 'gm'].include?(m)
     names = aliases ? 'IF(display_name IS NOT NULL, display_name, name)' : 'name'
@@ -1434,7 +1435,8 @@ module MappackHighscoreable
       board = MappackScore.from(subquery).group(:metanet_id).order('score_gm', 'id')
     end
 
-    # Truncate, fetch player names, and convert to hash
+    # Paginate (offset and truncate), fetch player names, and convert to hash
+    board = board.offset(20 * page) if page > 0
     board = board.limit(truncate) if truncate > 0
     return board if !pluck
     board.joins("INNER JOIN players ON players.id = player_id")
@@ -1444,13 +1446,23 @@ module MappackHighscoreable
   # Return scores in JSON format expected by N++
   def get_scores(qt = 0, metanet_id = nil)
     # Determine leaderboard type
-    m = qt == 2 ? 'sr' : 'hs'
+    page = 0
+    case qt
+    when 0
+      m = 'hs'
+    when 1
+      m = 'sr'
+      #page = 1 if metanet_id == BOTMASTER_NPP_ID
+    when 2
+      m = 'sr'
+    end
 
     # Fetch scores
-    board = leaderboard(m, metanet_id: metanet_id)
+    board = leaderboard(m, metanet_id: metanet_id, page: page)
 
     # Build response
     res = {}
+
     #score = board.find_by(metanet_id: metanet_id) if !metanet_id.nil?
     #res["userInfo"] = {
     #  "my_score"        => m == 'hs' ? (1000 * score["score_#{m}"].to_i / 60.0).round : 1000 * score["score_#{m}"].to_i,
@@ -1458,15 +1470,17 @@ module MappackHighscoreable
     #  "my_replay_id"    => score.id.to_i,
     #  "my_display_name" => score.player.name.to_s.remove("\\")
     #} if !score.nil?
+
     res["scores"] = board.each_with_index.map{ |s, i|
       {
         "score"     => m == 'hs' ? (1000 * s["score_#{m}"].to_i / 60.0).round : 1000 * s["score_#{m}"].to_i,
-        "rank"      => i,
+        "rank"      => 20 * page + i,
         "user_id"   => s['metanet_id'].to_i,
         "user_name" => s['name'].to_s.remove("\\"),
         "replay_id" => s['id'].to_i
       }
     }
+
     res["query_type"] = qt
     res["#{self.class.to_s.remove("Mappack").downcase}_id"] = self.inner_id
 

@@ -96,12 +96,13 @@ EMOJIS_FOR_PLAY = [
 # <--------------------------------------------------------------------------->
 
 # General
-LOG_TO_CONSOLE = true  # Log stuff to the terminal
-LOG_TO_FILE    = true  # Export logs to a file
-LOG_TO_DISCORD = true  # Log select stuff to the botmaster's Discord DMs
-LOG_SQL        = false # Log _all_ SQL queries
-LOG_REPORT     = true  # Export new weekly scores to a file
-LOG_FILE_MAX   = 10 * 1024 ** 2 # Max log file size (10 MB)
+LOG_TO_CONSOLE  = true  # Log stuff to the terminal
+LOG_TO_FILE     = true  # Export logs to a file
+LOG_TO_DISCORD  = true  # Log select stuff to the botmaster's Discord DMs
+LOG_SQL         = false # Log _all_ SQL queries
+LOG_SQL_TO_FILE = false # Log SQL queries to the logfile
+LOG_REPORT      = true  # Export new weekly scores to a file
+LOG_FILE_MAX    = 10 * 1024 ** 2 # Max log file size (10 MB)
 
 # Log format (can be set on the fly as well)
 LOG_FANCY      = true    # Use rich terminal logs (bold, colors...)
