@@ -494,7 +494,7 @@ def send_screenshot(event, map = nil, ret = false)
 
   # Retrieve screenshot
   h = h.map
-  spoiler = h.is_mappack? && h.mappack.code == 'ctp' && !(event.channel.type == 1 || event.channel.id == CHANNEL_CTP_SECRETS)
+  spoiler = h.is_mappack? && event.channel.type != 1 && (h.mappack.code == 'asc' || h.mappack.code == 'ctp' && event.channel.id != CHANNEL_CTP_SECRETS)
   screenshot = Map.screenshot(hash[:palette], file: true, h: h, spoiler: spoiler)
   perror("Failed to generate screenshot!") if screenshot.nil?
 

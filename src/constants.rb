@@ -11,10 +11,10 @@
 # <--------------------------------------------------------------------------->
 
 # General
-TEST           = true  # Switch to the local test bot
+TEST           = false # Switch to the local test bot
 BENCHMARK      = false # Benchmark and log functions (for optimization)
 DO_NOTHING     = false # Don't execute any threads (see below for ind flags)
-DO_EVERYTHING  = false # Execute all threads
+DO_EVERYTHING  = true  # Execute all threads
 RESPOND        = true  # Respond to pings / DMs (for testing)
 DEBUG          = false # Breakpoint right after loading the bot
 
@@ -692,6 +692,7 @@ BLACKLIST = {
    72791 => ["Jett Altair"],
    75839 => ["vorcazm", "Treagus"],
    76223 => ["TylerDC"],
+  107118 => ["Tabby_Cxt"],
   115572 => ["Mishu"],
   122681 => ["nietske"],
   128613 => ["cock unsucker"],
