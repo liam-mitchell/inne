@@ -3232,6 +3232,9 @@ module Server extend self
   end
 
   def handle(req, res)
+    # Ignore empty requests
+    return respond(res) if req.path.strip == '/'
+
     # Parse request parameters
     mappack = req.path.split('/')[1][/\D+/i]
     method  = req.request_method

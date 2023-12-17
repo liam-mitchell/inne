@@ -3,88 +3,64 @@ import math
 import os.path
 import zlib
 
+'''
+    Configure ntrace's input and output.
+    They must be True when using with outte!
+'''
+OUTTE_MODE        = True # Format output for outte's usage.
+COMPRESSED_INPUTS = True # Inputs are Zlibbed.
 
-outte_mode = True #Only set to False when manually running the script. Changes what the output of the tool is.
-compressed_inputs = True #Only set to False when manually running the script and using regular uncompressed input files.
+# Filenames. Keep original names when running with outte.
+FILE_INPUTS_LEVEL   = "inputs_%d"
+FILE_INPUTS_EPISODE = "inputs_episode"
+FILE_MAP_LEVEL      = "map_data"
+FILE_MAP_EPISODE    = "map_data_%d"
+MAP_IMG             = "screenshot.PNG" # Only needed for manual execution
 
-#Required names for files. Only change values if running manually.
-raw_inputs_0 = "inputs_0"
-raw_inputs_1 = "inputs_1"
-raw_inputs_2 = "inputs_2"
-raw_inputs_3 = "inputs_3"
-raw_map_data = "map_data"
-raw_inputs_episode = "inputs_episode"
-raw_map_data_0 = "map_data_0"
-raw_map_data_1 = "map_data_1"
-raw_map_data_2 = "map_data_2"
-raw_map_data_3 = "map_data_3"
-raw_map_data_4 = "map_data_4"
-map_img = "screenshot.PNG" #This one is only needed for manual execution
+# Other constants
+MAX_PLAYERS  = 4
+INPUT_SEP    = b'&'
+INPUT_OFFSET = 215
 
-#Import inputs.
+# Import inputs
 inputs_list = []
-if os.path.isfile(raw_inputs_episode):
+if os.path.isfile(FILE_INPUTS_EPISODE):
     tool_mode = "splits"
-    with open(raw_inputs_episode, "rb") as f:
-        inputs_episode = zlib.decompress(f.read()).split(b"&")
+    with open(FILE_INPUTS_EPISODE, "rb") as f:
+        inputs_episode = zlib.decompress(f.read()).split(INPUT_SEP)
         for inputs_level in inputs_episode:
             inputs_list.append([int(b) for b in inputs_level])
 else:
     tool_mode = "trace"
-if os.path.isfile(raw_inputs_0):
-    with open(raw_inputs_0, "rb") as f:
-        if compressed_inputs:
-            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
-        else:
-            inputs_list.append([int(b) for b in f.read()][215:])
-if os.path.isfile(raw_inputs_1):
-    with open(raw_inputs_1, "rb") as f:
-        if compressed_inputs:
-            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
-        else:
-            inputs_list.append([int(b) for b in f.read()][215:])
-if os.path.isfile(raw_inputs_2):
-    with open(raw_inputs_2, "rb") as f:
-        if compressed_inputs:
-            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
-        else:
-            inputs_list.append([int(b) for b in f.read()][215:])
-if os.path.isfile(raw_inputs_3):
-    with open(raw_inputs_3, "rb") as f:
-        if compressed_inputs:
-            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
-        else:
-            inputs_list.append([int(b) for b in f.read()][215:])
+    for i in range(MAX_PLAYERS):
+        if not os.path.isfile(FILE_INPUTS_LEVEL % i): break
+        with open(FILE_INPUTS_LEVEL % i, "rb") as f:
+            if COMPRESSED_INPUTS:
+                inputs_list.append([int(b) for b in zlib.decompress(f.read())])
+            else:
+                inputs_list.append([int(b) for b in f.read()[INPUT_OFFSET:]])
 
-#import map data
+# Import map data
 mdata_list = []
 if tool_mode == "trace":
-    with open(raw_map_data, "rb") as f:
+    with open(FILE_MAP_LEVEL, "rb") as f:
         mdata = [int(b) for b in f.read()]
-    for i in range(len(inputs_list)):
-        mdata_list.append(mdata)
+    mdata_list = [mdata] * len(inputs_list)
 elif tool_mode == "splits":
-    with open(raw_map_data_0, "rb") as f:
-        mdata_list.append([int(b) for b in f.read()])
-    with open(raw_map_data_1, "rb") as f:
-        mdata_list.append([int(b) for b in f.read()])
-    with open(raw_map_data_2, "rb") as f:
-        mdata_list.append([int(b) for b in f.read()])
-    with open(raw_map_data_3, "rb") as f:
-        mdata_list.append([int(b) for b in f.read()])
-    with open(raw_map_data_4, "rb") as f:
-        mdata_list.append([int(b) for b in f.read()])
+    for i in range(5):
+        with open(FILE_MAP_EPISODE % i, "rb") as f:
+            mdata_list.append([int(b) for b in f.read()])
 
-#defining physics constants
-gravity = 0.06666666666666665
-gravity_held = 0.01111111111111111
-ground_accel = 0.06666666666666665
-air_accel = 0.04444444444444444
-drag = 0.9933221725495059 # 0.99^(2/3)
-friction_ground = 0.9459290248857720 # 0.92^(2/3)
+# Defining physics constants
+gravity              = 0.06666666666666665
+gravity_held         = 0.01111111111111111
+ground_accel         = 0.06666666666666665
+air_accel            = 0.04444444444444444
+drag                 = 0.9933221725495059 # 0.99^(2/3)
+friction_ground      = 0.9459290248857720 # 0.92^(2/3)
 friction_ground_slow = 0.8617738760127536 # 0.80^(2/3)
-friction_wall = 0.9113380468927672 # 0.87^(2/3)
-max_xspeed = 3.333333333333333 
+friction_wall        = 0.9113380468927672 # 0.87^(2/3)
+max_xspeed           = 3.333333333333333 
 
 class Ninja:
     """This class is responsible for updating and storing the positions and velocities of each ninja.
@@ -1007,13 +983,13 @@ for i in range(len(inputs_list)):
                 valid_replay = True
     validlog.append(valid_replay)
 
-    if not outte_mode:
+    if not OUTTE_MODE:
         print(p1.speedlog)
         #print(p1.poslog)
         print(valid_replay)
 
 #Plot the route. Only ran in manual mode.
-if tool_mode == "trace" and outte_mode == False:
+if tool_mode == "trace" and OUTTE_MODE == False:
     if len(inputs_list) >= 4:
         mpl.plot(xposlog[3], yposlog[3], "#910A46")
     if len(inputs_list) >= 3:
@@ -1025,13 +1001,13 @@ if tool_mode == "trace" and outte_mode == False:
     mpl.axis("off")
     ax = mpl.gca()
     ax.set_aspect("equal", adjustable="box")
-    if map_img:
-        img = mpl.imread(map_img)
+    if MAP_IMG:
+        img = mpl.imread(MAP_IMG)
         ax.imshow(img, extent=[0, 1056, 600, 0])
     mpl.show()
 
 #For each replay, write to file whether it is valid or not, then write the series of coordinates for each frame. Only ran in outte mode and in trace mode.
-if tool_mode == "trace" and outte_mode == True:
+if tool_mode == "trace" and OUTTE_MODE == True:
     with open("output.txt", "w") as f:
         for i in range(len(inputs_list)):
             print(validlog[i], file=f)
@@ -1039,7 +1015,7 @@ if tool_mode == "trace" and outte_mode == True:
                 print(round(xposlog[i][frame], 2), round(yposlog[i][frame], 2), file=f)
 
 #Print episode splits and other info to the console. Only ran in manual mode and splits mode.
-if tool_mode == "splits" and outte_mode == False:
+if tool_mode == "splits" and OUTTE_MODE == False:
     print("SI-A-00 0th replay analysis:")
     split = 90*60
     for i in range(5):
@@ -1048,7 +1024,7 @@ if tool_mode == "splits" and outte_mode == False:
         print(f"{i}:-- Is replay valid?: {validlog[i]} | Gold collected: {goldlog[i][0]}/{goldlog[i][1]} | Replay length: {frameslog[i]} frames | Split score: {split_score:.3f}")
 
 #For each level of the episode, write to file whether the replay is valid, then write the score split. Only ran in outte mode and in splits mode.
-if tool_mode == "splits" and outte_mode == True:
+if tool_mode == "splits" and OUTTE_MODE == True:
     split = 90*60
     with open("output.txt", "w") as f:
         for i in range(5):

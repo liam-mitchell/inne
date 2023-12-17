@@ -1570,7 +1570,6 @@ rescue => e
 end
 
 def send_userlevel_trace(event)
-  assert_permissions(event, ['ntracer'])
   perror("Sorry, tracing is disabled.") if !FEATURE_NTRACE
   wait_msg = send_message(event, content: 'Waiting for another trace to finish...', removable: false) if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do

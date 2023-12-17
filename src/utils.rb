@@ -476,11 +476,13 @@ rescue => e
 end
 
 # Execute a shell command
-def shell(command, output: false)
-  command += ' > /dev/null 2>&1' if !output
-  system(command)
+#   stream - Show or hide whatever is sent to STDOUT/STDERR
+#   output - Return the output as a string
+def shell(cmd, stream: LOG_SHELL, output: false)
+  cmd += ' > /dev/null 2>&1' if !stream
+  output ? `#{cmd}` : system(cmd)
 rescue => e
-  lex(e, "Failed to execute shell command: #{command}")
+  lex(e, "Failed to execute shell command: #{cmd}")
 end
 
 # Return system's memory info in MB as a hash (Linux only)

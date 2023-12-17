@@ -103,6 +103,7 @@ LOG_SQL         = false # Log _all_ SQL queries
 LOG_SQL_TO_FILE = false # Log SQL queries to the logfile
 LOG_REPORT      = true  # Export new weekly scores to a file
 LOG_FILE_MAX    = 10 * 1024 ** 2 # Max log file size (10 MB)
+LOG_SHELL       = false # Redirect STDOUT/STDERR to outte when we call the shell
 
 # Log format (can be set on the fly as well)
 LOG_FANCY      = true    # Use rich terminal logs (bold, colors...)

@@ -1315,7 +1315,6 @@ end
 # Use SimVYo's tool to trace the replay of a run based on the map data and
 # the demo data.
 def send_trace(event)
-  assert_permissions(event, ['ntracer'])
   perror("Sorry, tracing is disabled.") if !FEATURE_NTRACE
   wait_msg = send_message(event, content: "Queued...", removable: false) if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
@@ -2717,6 +2716,7 @@ def respond(event)
   return send_total_score(event)     if msg =~ /total\b/i && msg !~ /history/i && msg !~ /rank/i
   return send_maxable(event)         if msg =~ /maxable/i
   return send_maxed(event)           if msg =~ /maxed/i
+  return send_tally(event)           if msg =~ /\btally\b/i
   return send_list(event, hm, true)  if msg =~ /missing/i
   return send_list(event, false)     if msg =~ /how many/i
   return send_list(event)            if msg =~ /\blist\b/i
@@ -2725,7 +2725,6 @@ def respond(event)
   return send_stats(event)           if msg =~ /\bstat/i
   return send_worst(event, true)     if msg =~ /\bworst\b/i
   return send_worst(event, false)    if msg =~ /\bbest\b/i
-  return send_tally(event)           if msg =~ /\btally\b/i
   return send_splits(event)          if msg =~ /\bsplits\b/i
   return send_clean_one(event)       if msg =~ /cleanliness/i
   return identify(event)             if msg =~ /my name is/i
