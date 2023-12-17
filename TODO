@@ -79,8 +79,6 @@ Ongoing:
 
 \\ ------------------------ mappacker -----------------------
 
-- Use the pack code to also append a version (e.g. ctp1), being careful not to exceed the max length available. This way we can detect if an outdated version is being used, and try to report it to the user somehow.
-- For nprofile handling, rather than packing a fresh savefile, pack a preconfigured one (level submission on, numberwang...)
 
 \\ ------------------------ ntrace ------------------------
 
@@ -98,10 +96,9 @@ Ongoing:
 
 \\ ------------------------ HC ------------------------
 
-- Maxed and maxable
-
 
 \\ ------------------------ Art ------------------------
+
 - Use different objects for different colors.
 - Create a custom palette that best fits the image.
 - Dithering.

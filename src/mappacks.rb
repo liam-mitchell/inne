@@ -1451,7 +1451,7 @@ module MappackHighscoreable
     when 0
       m = 'hs'
     when 1
-      m = 'sr'
+      m = 'hs'
       #page = 1 if metanet_id == BOTMASTER_NPP_ID
     when 2
       m = 'sr'
