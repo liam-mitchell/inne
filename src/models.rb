@@ -607,7 +607,7 @@ module Downloadable
     #    it may actually incorrectly equal the episode rank instead.
     max_rank = hash['scores'].map{ |s| s['rank'].to_i }.max.to_i
     my_rank = pb['my_rank'].to_i
-    my_rank = 0 if self.class == Story && my_rank + 1 >= Episode.find_by(id: id).completions rescue nil
+    my_rank = 0 if self.class == Story && my_rank + 1 >= Episode.find_by(id: id).completions rescue 0
     [max_rank, my_rank].max + 1
   rescue => e
     lex(e, "Failed to get completions for #{name}.")

@@ -160,6 +160,24 @@ class UserlevelScore < ActiveRecord::Base
     scores
   end
 
+  # Count top20 scores for all userlevels and fill their completions field
+  # Delicate pure SQL, doable in Rails?
+  def self.seed_completions
+    query = %{
+      UPDATE
+        userlevels,
+        (
+          SELECT userlevel_id AS uid, COUNT(userlevel_id) AS cnt
+          FROM userlevel_scores
+          GROUP BY userlevel_id
+          ORDER BY uid ASC
+        ) t
+      SET userlevels.completions = t.cnt
+      WHERE userlevels.id = t.uid;
+    }.gsub(/\s+/, ' ').strip
+    sql(query)
+  end
+
   # Download demo on the fly
   def demo
     uri = "https://dojo.nplusplus.ninja/prod/steam/get_replay?steam_id=%s&steam_auth=&replay_id=#{replay_id}"

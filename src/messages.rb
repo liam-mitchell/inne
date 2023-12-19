@@ -1139,10 +1139,10 @@ def send_mappacks(event)
   list = Mappack.all.order(:date).map{ |m|
     fields = []
     fields << m.code.upcase
-    fields << m.name unless short
-    fields << m.authors unless short
-    fields << m.date.strftime('%Y/%b/%d')
-    fields << counts[m.id]
+    fields << m.name.to_s unless short
+    fields << m.authors.to_s unless short
+    fields << m.date.strftime('%Y/%b/%d') rescue ''
+    fields << counts[m.id].to_i
     fields
   }
   header = []
@@ -2615,6 +2615,13 @@ rescue => e
   lex(e, 'Failed to update completions.', event: event)
 end
 
+def userlevel_completions(event)
+  UserlevelScore.seed_completions
+  succ("Seeded userlevel completions.", event: event)
+rescue => e
+  lex(e, 'Failed to seed userlevel completions.', event: event)
+end
+
 # Special commands can only be executed by the botmaster, and are intended to
 # manage the bot on the fly without having to restart it, or to print sensitive
 # information.
@@ -2661,6 +2668,7 @@ def respond_special(event)
   return set_replay_id(event)            if cmd == 'set_replay_id'
   return submit_score(event)             if cmd == 'submit'
   return update_completions(event)       if cmd == 'update_completions'
+  return userlevel_completions(event)    if cmd == 'userlevel_completions'
 
   event << "Unsupported special command."
 end
