@@ -2533,21 +2533,19 @@ def submit_score(event)
       succ(str, event: event)
     end
   else
-    [Level, Episode, Story].each{ |type|
-      type.where(completions: nil).each{ |h|
-        res = h.submit_zero_score
-        if !res
-          err("Failed to submit zero score to #{h.name} (outte++ inactive?).", event: event)
-          sleep(5)
-        elsif res.key?('rank') && !res['rank'].nil? && res['rank'].to_i >= 0
-          h.update(completions: res['rank'].to_i + 1) if !h.completions || h.completions < res['rank'].to_i + 1
-          dbg("Submitted zero score to #{h.name}: rank #{res['rank']}", progress: true)
-        else
-          err("Failed to submit zero score to #{h.name} (wrong hash?).", event: event)
-        end
+    msgs = [nil]
+    if !flags.key?(:userlevels)
+      [Level, Episode, Story].each{ |type|
+        Downloadable.submit_zero_scores(type.where(completions: nil), event: event, msgs: msgs)
       }
-    }
-    succ("Finished submitting all remaining zero scores.", event: event)
+    else
+      Downloadable.submit_zero_scores(
+        Userlevel.where('submitted = 0 AND completions >= 20'),
+        event: event,
+        msgs: msgs
+      )
+    end
+    concurrent_edit(event, msgs, "Finished submitting all remaining zero scores.")
   end
 rescue => e
   lex(e, 'Failed to submit score.', event: event)
@@ -2616,7 +2614,9 @@ rescue => e
 end
 
 def userlevel_completions(event)
-  UserlevelScore.seed_completions
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  UserlevelScore.seed_completions(flags.key?(:full))
   succ("Seeded userlevel completions.", event: event)
 rescue => e
   lex(e, 'Failed to seed userlevel completions.', event: event)

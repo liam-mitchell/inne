@@ -543,6 +543,34 @@ end
 # Common functionality for all highscoreables whose leaderboards we download from
 # N++'s server (level, episode, story, userlevel).
 module Downloadable
+  # Submit zero scores to all the Downloadables present in the list
+  #   event: Send msgs to Discord if not nil
+  #   log:   Log more detailed error msgs also to Discord
+  def self.submit_zero_scores(list, event: nil, msgs: [nil], log: false)
+    ul = list.first.is_a?(Userlevel)
+    count = list.count
+    good = 0
+    bad = 0
+    list.find_each{ |h|
+      name = ul ? "userlevel #{h.id}" : h.name
+      res = h.submit_zero_score
+      if !res
+        bad += 1
+        concurrent_edit(event, msgs, "Failed to submit zero score to #{name} (outte++ inactive?).")
+        sleep(5)
+      elsif res.key?('rank') && !res['rank'].nil? && res['rank'].to_i >= 0
+        h.update(completions: res['rank'].to_i + 1) if !h.completions || h.completions < res['rank'].to_i + 1
+        h.update(submitted: true) if ul
+        good += 1
+        dbg("Submitted zero score to #{name}: rank #{res['rank']}", progress: true)
+        concurrent_edit(event, msgs, "Submitted #{good} / #{count} zero scores (#{bad} failed)...") if good % 5 == 0
+      else
+        bad += 1
+        concurrent_edit(event, msgs, "Failed to submit zero score to #{name} (wrong hash?).")
+      end
+    }
+  end
+
   def scores_uri(steam_id, qt: 0)
     klass = self.class == Userlevel ? "level" : self.class.to_s.downcase
     URI.parse("https://dojo.nplusplus.ninja/prod/steam/get_scores?steam_id=#{steam_id}&steam_auth=&#{klass}_id=#{self.id.to_s}&qt=#{qt}")

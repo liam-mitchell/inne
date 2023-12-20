@@ -8,7 +8,8 @@ import zlib
 
     - Since all bytes from the map data are casted to integers individually,
       the 2-byte object counts aren't read correctly, so this will fail for
-      levels with over 256 exit doors, for example. 
+      levels with over 256 exit doors, for example.
+    - Generalize to more than 4 players (only Mpl left to adapt)
 '''
 
 '''
