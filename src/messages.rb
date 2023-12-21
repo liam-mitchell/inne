@@ -2597,7 +2597,7 @@ def update_completions(event)
       }
     else
       delta += Downloadable.update_completions(
-        Userlevel.where('(submitted = 1 OR completions >= 20) AND id > 100000').limit(10),
+        Userlevel.where('submitted = 1 OR completions >= 20'),
         event: event, msgs: msgs, retries: retries, global: global
       )
     end
