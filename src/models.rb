@@ -543,10 +543,10 @@ end
 # Common functionality for all highscoreables whose leaderboards we download from
 # N++'s server (level, episode, story, userlevel).
 module Downloadable
-  # Submit zero scores to all the Downloadables present in the list
+  # Submit zero scores to a list of Downloadables
   #   event: Send msgs to Discord if not nil
-  #   log:   Log more detailed error msgs also to Discord
-  def self.submit_zero_scores(list, event: nil, msgs: [nil], log: false)
+  #   msgs:  Discord message to edit for progress report
+  def self.submit_zero_scores(list, event: nil, msgs: [nil])
     ul = list.first.is_a?(Userlevel)
     count = list.count
     good = 0
@@ -556,19 +556,54 @@ module Downloadable
       res = h.submit_zero_score
       if !res
         bad += 1
-        concurrent_edit(event, msgs, "Failed to submit zero score to #{name} (outte++ inactive?).")
+        concurrent_edit(event, msgs, "Failed to submit zero score to #{name} (outte++ inactive?).") unless !event
         sleep(5)
       elsif res.key?('rank') && !res['rank'].nil? && res['rank'].to_i >= 0
         h.update(completions: res['rank'].to_i + 1) if !h.completions || h.completions < res['rank'].to_i + 1
         h.update(submitted: true) if ul
         good += 1
         dbg("Submitted zero score to #{name}: rank #{res['rank']}", progress: true)
-        concurrent_edit(event, msgs, "Submitted #{good} / #{count} zero scores (#{bad} failed)...") if good % 5 == 0
+        concurrent_edit(event, msgs, "Submitted #{good} / #{count} zero scores (#{bad} failed)...") if good % 5 == 0 && event
       else
         bad += 1
-        concurrent_edit(event, msgs, "Failed to submit zero score to #{name} (wrong hash?).")
+        concurrent_edit(event, msgs, "Failed to submit zero score to #{name} (wrong hash?).") unless !event
       end
     }
+  end
+
+  # Update completions for a list of Downloadables
+  #   event:   Send msgs to Discord if not nil
+  #   msgs:    Discord message to edit for progress report
+  #   retries: Retries before moving on to next level (0 = infinite)
+  #   global:  Use global boards (true), around mine (false) or default (nil)
+  def self.update_completions(list, event: nil, msgs: [nil], retries: 0, global: nil)
+    type = list.first.class.to_s.downcase
+    ul = list.first.is_a?(Userlevel)
+    count = list.count
+    delta = 0
+    list.find_each.with_index{ |h, i|
+      name = ul ? "userlevel #{h.id}" : h.name
+      attempt = 0
+      current = "#{name} [#{type} #{i} / #{count}]"
+      count_old = h.completions.to_i
+      count_new = h.update_completions(log: false, discord: false, global: global)
+
+      while !count_new
+        if retries == 0 || attempt < retries
+          concurrent_edit(event, msgs, "Stopped updating at #{current} (waiting for outte++, attempt #{attempt + 1} / #{retries}).")
+          attempt += 1
+          sleep(5)
+          count_new = h.update_completions(log: false, discord: false, global: global)
+        else
+          concurrent_edit(event, msgs, "Stopped updating at #{current} (timed out waiting for outte++).")
+          return
+        end
+      end
+
+      delta += [count_new - count_old, 0].max
+      concurrent_edit(event, msgs, "Updated #{current} (Gained: #{delta})...") if i % 5 == 0
+    }
+    delta
   end
 
   def scores_uri(steam_id, qt: 0)
@@ -731,8 +766,10 @@ module Downloadable
 
       # Update timestamps, cools and stars
       if self.class == Userlevel
-        self.update(score_update: Time.now.strftime(DATE_FORMAT_MYSQL))
-        self.update(scored: true) if updated.size > 0
+        self.update(
+          score_update: Time.now.strftime(DATE_FORMAT_MYSQL),
+          scored:       updated.size > 0
+        )
       else
         scores.where("rank < #{find_coolness}").update_all(cool: true)
         scores.where(player_id: stars).update_all(star: true)
@@ -770,7 +807,7 @@ module Downloadable
 
     return nil if !count
     self.update(completions: count) if count > completions.to_i
-    completions ? completions : count
+    completions || count
   rescue => e
     lex(e, "Failed to update the completions for #{name}.")
     nil

@@ -2561,53 +2561,47 @@ def update_completions(event)
 
   if !flags.key?(:all)
     # Update completion count for individual highscoreable
-    h = parse_highscoreable(event)
-    perror("This highscoreable is not downloadable.") if !h.is_a?(Downloadable)
+    perror("You must provide a downloadable.") if !flags[:h]
+    if is_num(flags[:h])
+      h = Userlevel.find_by(id: flags[:h].to_i)
+      perror("No userlevel with ID #{flags[:h]}.") if !h
+    else
+      h = parse_highscoreable(event)
+      perror("This highscoreable is not downloadable.") if !h.is_a?(Downloadable)
+    end
     count_old = h.completions.to_i
     count_new = h.update_completions(log: true, discord: true, retries: 0, stop: true, global: global)
+    name = h.is_a?(Userlevel) ? "userlevel #{h.id}" : h.name
     if count_new
       count_new = count_new.to_i
       diff = count_new - count_old
-      event << "Updated #{h.name} completions from #{count_old} to #{count_new} (+#{diff})."
+      event << "Updated #{name} completions from #{count_old} to #{count_new} (+#{diff})."
     else
-      event << "Failed to fetch completions for #{h.name}."
+      event << "Failed to fetch completions for #{name}."
     end
   else
     # Update completion count for all highscoreables
     # TODO: Make Discord logging optional, for when we manage to automate Steam
     # authentification, leading to automating this function in the background
     delta = 0
-    type = parse_type(flags[:type].to_s)
-    tabs = parse_tabs(flags[:tabs].to_s)
     retries = flags[:retries].to_i
-    msg = [nil]
-    (type ? [type] : [Level, Episode, Story]).each{ |t|
-      list = t
-      list = list.where(tab: tabs) if !tabs.empty?
-      count = list.count
-      list.all.each_with_index do |h, i|
-        attempt = 0
-        current = "#{h.name} [#{t.to_s.downcase} #{i} / #{count}]"
-        count_old = h.completions.to_i
-        count_new = h.update_completions(global: global)
-
-        while !count_new
-          if retries == 0 || attempt < retries
-            concurrent_edit(event, msg, "Stopped updating at #{current} (waiting for outte++, attempt #{attempt + 1} / #{retries}).")
-            attempt += 1
-            sleep(5)
-            count_new = h.update_completions
-          else
-            concurrent_edit(event, msg, "Stopped updating at #{current} (timed out waiting for outte++).")
-            return
-          end
-        end
-
-        delta += [count_new - count_old, 0].max
-        concurrent_edit(event, msg, "Updated #{current} (Gained: #{delta})...") if i % 5 == 0
-      end
-    }
-    concurrent_edit(event, msg, "Finished updating completions, gained #{delta} ones.")
+    msgs = [nil]
+    if !flags.key?(:userlevels)
+      type = parse_type(flags[:type].to_s)
+      tabs = parse_tabs(flags[:tabs].to_s)
+      (type ? [type] : [Level, Episode, Story]).each{ |t|
+        delta += Downloadable.update_completions(
+          !tabs.empty? ? t.where(tab: tabs) : t,
+          event: event, msgs: msgs, retries: retries, global: global
+        )
+      }
+    else
+      delta += Downloadable.update_completions(
+        Userlevel.where('(submitted = 1 OR completions >= 20) AND id > 100000').limit(10),
+        event: event, msgs: msgs, retries: retries, global: global
+      )
+    end
+    concurrent_edit(event, msgs, "Finished updating completions, gained #{delta} ones.")
   end
 rescue => e
   lex(e, 'Failed to update completions.', event: event)
