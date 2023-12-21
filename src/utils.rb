@@ -1493,7 +1493,6 @@ def sha1(data, c: false, hex: false)
     return nil if !code
     hash = File.binread(File.join(DIR_UTILS, HASH_OUTPUT_FN))
     FileUtils.rm([File.join(DIR_UTILS, HASH_INPUT_FN), File.join(DIR_UTILS, HASH_OUTPUT_FN)])
-    puts hash.unpack('H*')[0]
   else
     hash = Digest::SHA1.digest(data)
   end
