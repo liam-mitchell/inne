@@ -1,4 +1,5 @@
 import matplotlib.pyplot as mpl
+from itertools import product
 import math
 import os.path
 import zlib
@@ -155,34 +156,16 @@ class Ninja:
         """Return a set containing all cells that the ninja overlaps.
         There can be either 1, 2 or 4 cells in the neighbourhood
         """
-        x_lower = math.floor((self.xpos - radius) / UNITS)
-        x_upper = math.floor((self.xpos + radius) / UNITS)
-        y_lower = math.floor((self.ypos - radius) / UNITS)
-        y_upper = math.floor((self.ypos + radius) / UNITS)
-        cell_set = set()
-        cell_set.add((x_lower, y_lower))
-        cell_set.add((x_lower, y_upper))
-        cell_set.add((x_upper, y_lower))
-        cell_set.add((x_upper, y_upper))
-        return cell_set
+        pairs = product((self.xpos, self.ypos), (-radius, radius))
+        x1, x2, y1, y2 = (math.floor((p + r) / UNITS) for p, r in pairs)
+        return set(product((x1, x2), (y1, y2)))
     
     def object_neighbour_cells(self):
         """Return a list that contains all the cells that could contain objects which the ninja could interact with.
         This list contains nine cells. The one containing the center of the ninja and the eight cells around it.
         """
-        center_cell = self.center_cell()
-        center_x = center_cell[0]
-        center_y = center_cell[1]
-        cell_list = [center_cell]
-        cell_list.append((center_x-1,center_y-1))
-        cell_list.append((center_x,center_y-1))
-        cell_list.append((center_x+1,center_y-1))
-        cell_list.append((center_x-1,center_y))
-        cell_list.append((center_x+1,center_y))
-        cell_list.append((center_x-1,center_y+1))
-        cell_list.append((center_x,center_y+1))
-        cell_list.append((center_x+1,center_y+1))
-        return cell_list
+        cx, cy = self.center_cell()
+        return product(range(cx - 1, cx + 2), range(cy - 1, cy + 2))
     
     def pre_collision(self):
         """Update the speeds and positions of the ninja before the collision phase."""
