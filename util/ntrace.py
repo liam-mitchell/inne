@@ -37,7 +37,13 @@ DRAG                 = 0.9933221725495059 # 0.99^(2/3)
 FRICTION_GROUND      = 0.9459290248857720 # 0.92^(2/3)
 FRICTION_GROUND_SLOW = 0.8617738760127536 # 0.80^(2/3)
 FRICTION_WALL        = 0.9113380468927672 # 0.87^(2/3)
-MAX_XSPEED           = 3.333333333333333
+MAX_XSPEED           = 3.333333333333333  # 5.00/(2/3)
+
+JUMP_POWER_X     = 2/3
+JUMP_POWER_Y     = 2
+LOW_JUMP_POWER_X = 0
+LOW_JUMP_POWER_Y = 1.4
+
 
 FPS = 60
 
@@ -194,27 +200,12 @@ class Ninja:
 
     def ground_jump(self):
         if self.pre_buffer and self.post_buffer in (1, 2, 3, 5) and not self.jumping and not self.wall_jumping:
-            if self.ground_normal == (0, -1):
-                jx = 0
-                jy = -2
+            gnx, gny = self.ground_normal
+            if gnx * self.hor_input >= 0:
+                jx, jy = (JUMP_POWER_X * gnx, JUMP_POWER_Y * gny) # Regular jump
+                if gnx * self.xspeed < 0: self.xspeed = 0         # Perp jump
             else:
-                gnx = self.ground_normal[0]
-                gny = self.ground_normal[1]
-                if self.xspeed * gnx > 0:
-                    if self.xspeed * self.hor_input >= 0:
-                        jx = 2/3 * gnx
-                        jy = 2 * gny
-                    else:
-                        jx = 0
-                        jy = -1.4
-                elif self.xspeed * gnx < 0:
-                    if self.xspeed * self.hor_input > 0:
-                        jx = 0
-                        jy = -1.4
-                    else:
-                        self.xspeed = 0
-                        jx = 2/3 * gnx
-                        jy = 2 * gny
+                jx, jy = (LOW_JUMP_POWER_X, -LOW_JUMP_POWER_Y)    # Low jump
             self.xspeed += jx
             self.yspeed = min(self.yspeed, 0)
             self.yspeed += jy
