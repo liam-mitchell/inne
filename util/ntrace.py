@@ -43,7 +43,10 @@ JUMP_POWER_X     = 2/3
 JUMP_POWER_Y     = 2
 LOW_JUMP_POWER_X = 0
 LOW_JUMP_POWER_Y = 1.4
-
+WALLJUMP_POWER_X = 1
+WALLJUMP_POWER_Y = 1.4
+SLIDE_WJ_POWER_X = 2/3
+SLIDE_WJ_POWER_Y = 1
 
 FPS = 60
 
@@ -199,45 +202,69 @@ class Ninja:
             self.gravity_held_time = 0
 
     def ground_jump(self):
+        """
+            Checks if a ground jump needs to be performed, and executes it.
+
+            There are 3 types of jump:
+            - Regular jump: If the horizontal input and the ground normal go in the same direction,
+                            or if either of them are null.
+            - Perp jump:    The same as before, when the horizontal speed opposes the ground normal.
+            - Low jump:     If the horizontal input opposes the ground normal.
+        """
         if self.pre_buffer and self.post_buffer in (1, 2, 3, 5) and not self.jumping and not self.wall_jumping:
+            # Compute jump vector
             gnx, gny = self.ground_normal
             if gnx * self.hor_input >= 0:
                 jx, jy = (JUMP_POWER_X * gnx, JUMP_POWER_Y * gny) # Regular jump
                 if gnx * self.xspeed < 0: self.xspeed = 0         # Perp jump
             else:
                 jx, jy = (LOW_JUMP_POWER_X, -LOW_JUMP_POWER_Y)    # Low jump
-            self.xspeed += jx
-            self.yspeed = min(self.yspeed, 0)
-            self.yspeed += jy
-            self.xpos += jx
-            self.ypos += jy
-            self.jumping = True
+            
+            # Update position, velocity, and others
+            self.yspeed            = min(self.yspeed, 0)
+            self.xspeed           += jx
+            self.yspeed           += jy
+            self.xpos             += jx
+            self.ypos             += jy
+            self.jumping           = True
             self.gravity_held_time = 1
-            self.pre_buffer = 0
-            self.post_buffer = 0
-            self.grounded = False
+            self.pre_buffer        = 0
+            self.post_buffer       = 0
+            self.grounded          = False
 
     def wall_jump(self):
+        """
+            Checks if a walljump needs to be performed, and executes it.
+
+            There are 2 types of walljump:
+            - Slide walljump:   If the ninja is sliding, and the horizontal input is towards the wall.
+            - Regular walljump: Any other case.
+            The regular walljump is 50% stronger horizontally and 40% stronger vertically.
+        """
         if self.pre_buffer and self.post_buffer_wall and not self.jumping and not self.wall_jumping and self.post_buffer != 4:
-            if self.xspeed * self.wall_normal < 0:
-                self.xspeed = 0
-            if self.wall_sliding and self.hor_input * self.wall_normal == -1:
-                self.xspeed += 2/3 * self.wall_normal
-                self.xpos += 2/3 * self.wall_normal
-                self.yspeed = -1
-                self.ypos -= 1
-            else:
-                self.xspeed += self.wall_normal
-                self.xpos += self.wall_normal
+            # Stop ninja when hitting a wall
+            if self.xspeed * self.wall_normal < 0: self.xspeed = 0
+
+            # Compute jump vector
+            n = self.wall_normal
+            if self.wall_sliding and self.hor_input * n == -1:     # Slide walljump
+                jx, jy = (SLIDE_WJ_POWER_X * n, -SLIDE_WJ_POWER_Y)
+                self.yspeed = 0
+            else:                                                  # Regular walljump
+                jx, jy = (WALLJUMP_POWER_X * n, -WALLJUMP_POWER_Y)
                 self.yspeed = min(self.yspeed, 0)
-                self.yspeed -= 1.4
-                self.ypos -= 1.4
-            self.wall_jumping = True
+            
+            # Update position, velocity, and others
+            self.xspeed           += jx
+            self.yspeed           += jy
+            self.xpos             += jx
+            self.ypos             += jy
+            self.wall_jumping      = True
             self.gravity_held_time = 1
-            self.pre_buffer = 0
-            self.post_buffer_wall = 0
-            self.walled = False
-            self.wall_sliding = 0
+            self.pre_buffer        = 0
+            self.post_buffer_wall  = 0
+            self.walled            = False
+            self.wall_sliding      = 0
 
     def post_collision(self):
         """Perform all physics operations after the collision phase"""
