@@ -39,6 +39,7 @@ FRICTION_GROUND_SLOW = 0.8617738760127536 # 0.80^(2/3)
 FRICTION_WALL        = 0.9113380468927672 # 0.87^(2/3)
 MAX_XSPEED           = 3.333333333333333  # 5.00/(2/3)
 
+# Ninja's movement
 JUMP_POWER_X     = 2/3
 JUMP_POWER_Y     = 2
 LOW_JUMP_POWER_X = 0
@@ -48,7 +49,12 @@ WALLJUMP_POWER_Y = 1.4
 SLIDE_WJ_POWER_X = 2/3
 SLIDE_WJ_POWER_Y = 1
 
-FPS = 60
+WALLED_TOLERANCE   = 0.1
+FRICTION_THRESHOLD = 0.1
+GRAVITY_THRESHOLD  = 46
+BUFFER_PRE_JUMP    = 6
+BUFFER_POST_JUMP   = 5
+BUFFER_POST_WJ     = 5
 
 # Map data parameters
 OFFSET_MODE    =   12
@@ -89,6 +95,7 @@ MAX_PLAYERS  = 4
 INPUT_SEP    = b'&'
 INPUT_OFFSET = 215
 INITIAL_TIME = 90
+FPS          = 60
 
 # Import inputs
 inputs_list = []
@@ -178,27 +185,25 @@ class Ninja:
     
     def pre_collision(self):
         """Update the speeds and positions of the ninja before the collision phase."""
-        self.xspeed_old = self.xspeed
-        self.yspeed_old = self.yspeed
-        self.xspeed *= DRAG
-        self.yspeed *= DRAG
-        self.yspeed += self.applied_gravity
-        self.xpos += self.xspeed
-        self.ypos += self.yspeed
-        self.grounded_old = self.grounded
-        self.grounded = False
-        self.walled = False
+        self.xspeed_old    = self.xspeed
+        self.yspeed_old    = self.yspeed
+        self.xspeed       *= DRAG
+        self.yspeed       *= DRAG
+        self.yspeed       += self.applied_gravity
+        self.xpos         += self.xspeed
+        self.ypos         += self.yspeed
+        self.grounded_old  = self.grounded
+        self.grounded      = False
+        self.walled        = False
 
         if self.jump_input:
             self.jump_held_time += 1
-            if self.jump_held_time == 1:
-                self.pre_buffer = 6
-            if self.gravity_held_time:
-                self.gravity_held_time += 1
+            if self.jump_held_time == 1: self.pre_buffer = BUFFER_PRE_JUMP
+            if self.gravity_held_time:   self.gravity_held_time += 1
         else:
-            self.jump_held_time = 0
-            self.jumping = False
-            self.wall_jumping = False
+            self.jump_held_time    = 0
+            self.jumping           = False
+            self.wall_jumping      = False
             self.gravity_held_time = 0
 
     def ground_jump(self):
@@ -267,87 +272,89 @@ class Ninja:
             self.wall_sliding      = 0
 
     def post_collision(self):
-        """Perform all physics operations after the collision phase"""
-        #Add player generated horizontal acceleration, if any. Make sure the x speed does not exceed max x speed.
-    
-        xspeed_pc = self.xspeed
-        self.xspeed += self.hor_input * (GROUND_ACCEL if self.grounded else AIR_ACCEL)
-        if abs(self.xspeed) > MAX_XSPEED:
-            self.xspeed = xspeed_pc
+        """
+            Last stage of each frame's execution.
 
-        #Check if walled
-        neighbour_cells = self.neighbour_cells(self.radius + 0.1)
-        for cell in neighbour_cells:
+            Performs all remaining physics operations after the collision phase:
+            - Add player acceleration.
+            - Update jump buffers.
+            - Perform jump / walljump, if applicable.
+            - Apply ground friction, if sliding.
+            - Apply wall friction, if wallsliding.
+            - Prepare other parameters for next frame (e.g. gravity).
+        """
+
+        # Add player generated horizontal acceleration if the max speed is not exceeded by this
+        a = self.hor_input * (GROUND_ACCEL if self.grounded else AIR_ACCEL)
+        if (abs(self.xspeed + a) <= MAX_XSPEED): self.xspeed += a
+
+        # Check if walled
+        for cell in self.neighbour_cells(self.radius + WALLED_TOLERANCE):
+            if self.walled: break
             for segment in segment_dic[cell]:
-                if segment.active:
-                    is_walled = segment.is_wall_intersecting(self) if segment.type == "linear" else False
-                    if is_walled:
-                        self.walled = True
+                if segment.active and segment.type == "linear" and segment.is_wall_intersecting(self):
+                    self.walled = True
+                    break
         
-            #Update all variables related to jump buffers
-        if self.pre_buffer:
-            self.pre_buffer -= 1
-        if self.post_buffer:
-            self.post_buffer -= 1
-        if self.post_buffer_wall:
-            self.post_buffer_wall -= 1
+        # Update all variables related to jump buffers
+        if self.pre_buffer:       self.pre_buffer       -= 1
+        if self.post_buffer:      self.post_buffer      -= 1
+        if self.post_buffer_wall: self.post_buffer_wall -= 1
+        if self.walled:           self.post_buffer_wall  = BUFFER_POST_WJ
         if self.grounded:
-            self.post_buffer = 5
-            self.jumping = 0
+            self.post_buffer       = BUFFER_POST_JUMP
+            self.jumping           = 0
             self.gravity_held_time = 0
-        if self.walled:
-            self.post_buffer_wall = 5
-        
-        #Perform jump/walljump if applicable
-        if self.grounded:
-            self.ground_jump()
-        self.wall_jump()
-        if not self.grounded:
-            self.ground_jump()
 
-        #Check if ground/wall sliding
-        if (self.hor_input == 0 or self.hor_input * self.xspeed < 0) and self.grounded:
-            self.ground_sliding += (1 if self.grounded_old else 2)
+        # Perform jump/walljump if applicable
+        if self.grounded:     self.ground_jump()
+        self.wall_jump()
+        if not self.grounded: self.ground_jump()
+
+        # Check if ground/wall sliding
+        if self.grounded and (self.hor_input == 0 or self.hor_input * self.xspeed < 0):
+            self.ground_sliding += 1 if self.grounded_old else 2
         else:
             self.ground_sliding = 0
+
         if self.walled and self.yspeed > 0 and self.post_buffer != 4:
             if self.wall_sliding:
                 if self.hor_input * self.wall_normal <= 0:
                     self.wall_sliding += 1
                 else:
                     self.wall_sliding = 0
-            else:
-                if self.hor_input * self.wall_normal == -1:
-                    self.wall_sliding = 1
+            elif self.hor_input * self.wall_normal == -1:
+                self.wall_sliding = 1
         else:
             self.wall_sliding = 0
 
-        #Apply ground friction if applicable
-        if self.grounded and self.ground_sliding > 1:
-            if abs(self.xspeed) <= 0.1 and (self.hor_input or abs(self.xspeed_old) > 0.1):
+        # Apply ground friction if applicable
+        if self.ground_sliding > 1:
+            if abs(self.xspeed) <= FRICTION_THRESHOLD and (self.hor_input or abs(self.xspeed_old) > FRICTION_THRESHOLD):
                 self.applied_friction = 1
-            if self.ground_normal == (0, -1): #regular friction formula for flat ground.
+            if self.ground_normal == (0, -1):        # Friction in flat ground
                 self.xspeed *= self.applied_friction
-            elif self.yspeed > 0: #friction going down a slope
+            elif self.yspeed > 0:                    # Friction down a slope
                 self.xspeed *= FRICTION_GROUND
-            elif self.yspeed < 0:
-            #This is the worst friction formula ever concieved. For when the ninja is sliding on a slope upwards.
-                speed_scalar = math.sqrt(self.xspeed**2 + self.yspeed**2)
-                fric_force = abs(self.xspeed * (1-FRICTION_GROUND) * self.ground_normal[1])
-                fric_force2 = speed_scalar - fric_force * self.ground_normal[1]**2
+            elif self.yspeed < 0:                    # Friction up a slope
+                # This is the worst friction formula ever concieved.
+                speed_scalar = math.sqrt(self.xspeed ** 2 + self.yspeed ** 2)
+                fric_force1 = abs(self.xspeed * (1 - FRICTION_GROUND) * self.ground_normal[1])
+                fric_force2 = speed_scalar - fric_force1 * self.ground_normal[1] ** 2
                 self.xspeed = self.xspeed / speed_scalar * fric_force2
                 self.yspeed = self.yspeed / speed_scalar * fric_force2
-            if abs(self.xspeed) <= 0.1:
-                self.applied_friction = (1 if self.hor_input else FRICTION_GROUND_SLOW)
-        if abs(self.xspeed) > 0.1:
+            if abs(self.xspeed) <= FRICTION_THRESHOLD:
+                self.applied_friction = 1 if self.hor_input else FRICTION_GROUND_SLOW
+
+        if abs(self.xspeed) > FRICTION_THRESHOLD:
             self.applied_friction = FRICTION_GROUND
 
-        #Apply wall friction if applicable
-        if self.wall_sliding > 1:
-            self.yspeed *= FRICTION_WALL
+        # Apply wall friction if applicable
+        if self.wall_sliding > 1: self.yspeed *= FRICTION_WALL
 
-        #If the ninja is in the state of jumping and holding the jump key, lower his applied gravity. Ignore held jump after 46 frames
-        self.applied_gravity = (GRAVITY_HELD if 1 <= self.gravity_held_time <= 46 else GRAVITY)
+        # If the ninja is in the state of jumping and holding the jump key, lower his applied gravity.
+        # This effect only lasts for 46 frames (a full jump).
+        self.applied_gravity = GRAVITY_HELD if 1 <= self.gravity_held_time <= GRAVITY_THRESHOLD else GRAVITY
         if not self.jump_input:
             self.jumping = False
             self.wall_jumping = False 
@@ -387,10 +394,10 @@ class GridSegmentLinear:
         """Return True only if the segment is a wall that is intersecting the ninja with an increased radius of 10.1
         Also store the wall normal into the ninja's wall_normal variable"""
         if self.x1 == self.x2:
-            if -(ninja.radius + 0.1) < ninja.xpos-self.x1 < 0 and self.y1 <= ninja.ypos <= self.y2:
+            if -(ninja.radius + WALLED_TOLERANCE) < ninja.xpos-self.x1 < 0 and self.y1 <= ninja.ypos <= self.y2:
                 ninja.wall_normal = -1
                 return True
-            if 0 < ninja.xpos-self.x1 < (ninja.radius + 0.1) and self.y1 <= ninja.ypos <= self.y2:
+            if 0 < ninja.xpos-self.x1 < (ninja.radius + WALLED_TOLERANCE) and self.y1 <= ninja.ypos <= self.y2:
                 ninja.wall_normal = 1
                 return True
         return False
