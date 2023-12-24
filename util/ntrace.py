@@ -184,7 +184,16 @@ class Ninja:
         return product(range(cx - 1, cx + 2), range(cy - 1, cy + 2))
     
     def pre_collision(self):
-        """Update the speeds and positions of the ninja before the collision phase."""
+        """
+            First stage of the ninja's logic, it happens before any collision
+            has taken place, but after the objects have been moved and thought.
+            
+            Integration (Ghidra: Ninja::integrate):
+            - Save old position.
+            - Apply drag to velocity.
+            - Apply gravity to vertical speed.
+            - Update position by adding velocity.
+        """
         self.xspeed_old    = self.xspeed
         self.yspeed_old    = self.yspeed
         self.xspeed       *= DRAG
@@ -362,21 +371,29 @@ class Ninja:
         self.hor_input_old = self.hor_input
 
 class GridSegmentLinear:
-    """Contains all the linear segments of tiles and doors that the ninja can interract with"""
+    """
+        Represents a solid linear segment with endpoints in the grid, defined by
+        the coordinates of its two endpoints.
+        
+        Both the ninja and enemies can collide with these. A segment may be part
+        of a tile, or also a door. A segment may or may not be active during
+        the course of the run (e.g. doors), so we need to store that info too.
+    """
     def __init__(self, p1, p2):
-        """Initiate an instance of a linear segment of a tile. 
-        Each segment is defined by the coordinates of its two end points.
-        """
-        self.x1 = p1[0]
-        self.y1 = p1[1]
-        self.x2 = p2[0]
-        self.y2 = p2[1]
+        self.x1     = p1[0]
+        self.y1     = p1[1]
+        self.x2     = p2[0]
+        self.y2     = p2[1]
         self.active = True
-        self.type = "linear"
+        self.type   = "linear"
 
     def collision_check(self, ninja):
-        """Check if the ninja is interesecting with the segment.
-        If so, calculate the penetration length and the closest point on the segment from the center of the ninja.
+        """
+            Check if the ninja is interesecting with the segment, and if so,
+            return the depenetration information:
+            - Closest segment point to the center of the ninja.
+            - Distance between these points (penetration length).
+            With this information, we can later depenetrate the ninja from the segment.
         """
         px = self.x2 - self.x1
         py = self.y2 - self.y1
