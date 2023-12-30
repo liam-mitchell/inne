@@ -4,6 +4,7 @@ Hashes:
   - What happens with 190076?
   - Ensure that with these things, no bad C hashes with positive score remain
   - Save all submissions with negative score it their entirety, figure them out
+  - Only have mappack_data row when either tile_data or object_data are not null, clean METv2 in this sense
 
 Ongoing:
 - Display names and implicit player parsing do not work for userlevels now. Merge userlevel_players with players:

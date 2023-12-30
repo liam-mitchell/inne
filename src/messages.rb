@@ -2466,6 +2466,22 @@ rescue => e
   lex(e, "Error sanitizing users.", event: event)
 end
 
+# Remove bad hashes missing their corresponding mappack score
+def sanitize_hashes(event)
+  count = BadHash.sanitize
+  event << "Sanitized bad hashes, removed #{count} orphans."
+rescue => e
+  lex(e, "Error sanitizing bad hashes.", event: event)
+end
+
+# Remove mappack demos missing their corresponding score
+def sanitize_demos(event)
+  count = MappackDemo.sanitize
+  event << "Sanitized mappack demos, removed #{count} orphans."
+rescue => e
+  lex(e, "Error sanitizing mappack demos.", event: event)
+end
+
 # Manually update the Discord ID of a user by name
 def set_user_id(event)
   msg = remove_command(parse_message(event))
@@ -2710,6 +2726,8 @@ def respond_special(event)
   return send_nprofile_gen(event)        if cmd == 'nprofile_gen'
   return sanitize_archives(event)        if cmd == 'sanitize_archives'
   return sanitize_users(event)           if cmd == 'sanitize_users'
+  return sanitize_hashes(event)          if cmd == 'sanitize_hashes'
+  return sanitize_demos(event)           if cmd == 'sanitize_demos'
   return set_user_id(event)              if cmd == 'set_user_id'
   return set_replay_id(event)            if cmd == 'set_replay_id'
   return submit_score(event)             if cmd == 'submit'

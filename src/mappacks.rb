@@ -2232,6 +2232,15 @@ class MappackDemo < ActiveRecord::Base
   alias_attribute :score, :mappack_score
   belongs_to :mappack_score, foreign_key: :id
 
+  # Delete orphaned demos (demos without a corresponding score)
+  def self.sanitize
+    orphans = joins('LEFT JOIN mappack_scores ON mappack_demos.id = mappack_scores.id')
+                .where('mappack_scores.id IS NULL')
+    count = orphans.count
+    orphans.delete_all
+    count
+  end
+
   def decode
     Demo.decode(demo)
   end
@@ -2301,6 +2310,14 @@ end
 # 2) Our SHA1 algo doesn't match the one used by N++, so we want to polish that.
 #    This is currently happening sometimes.
 class BadHash < ActiveRecord::Base
+  # Remove orphaned bad hashes (missing corresponding mappack score)
+  def self.sanitize
+    orphans = joins('LEFT JOIN mappack_scores ON bad_hashes.id = mappack_scores.id')
+                .where('mappack_scores.id IS NULL')
+    count = orphans.count
+    orphans.delete_all
+    count
+  end
 end
 
 # This table stores the Discord IDs for the channels that are dedicated to each
