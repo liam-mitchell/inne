@@ -563,7 +563,7 @@ module Downloadable
         h.update(submitted: true) if ul
         good += 1
         dbg("Submitted zero score to #{name}: rank #{res['rank']}", progress: true)
-        concurrent_edit(event, msgs, "Submitted #{good} / #{count} zero scores (#{bad} failed)...") if good % 5 == 0 && event
+        concurrent_edit(event, msgs, "Submitted #{good} / #{count} zero scores (#{bad} failed)...") if good % 100 == 0 && event
       else
         bad += 1
         concurrent_edit(event, msgs, "Failed to submit zero score to #{name} (wrong hash?).") unless !event
@@ -601,7 +601,7 @@ module Downloadable
       end
 
       delta += [count_new - count_old, 0].max
-      concurrent_edit(event, msgs, "Updated #{current} (Gained: #{delta})...") if i % 5 == 0
+      concurrent_edit(event, msgs, "Updated #{current} (Gained: #{delta})...") if i % 100 == 0
     }
     delta
   end

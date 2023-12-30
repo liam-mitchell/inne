@@ -1,3 +1,10 @@
+Hashes:
+  - Add CTP v2 map data
+  - Compute hashes with map data for all versions
+  - What happens with 190076?
+  - Ensure that with these things, no bad C hashes with positive score remain
+  - Save all submissions with negative score it their entirety, figure them out
+
 Ongoing:
 - Display names and implicit player parsing do not work for userlevels now. Merge userlevel_players with players:
   * Add metanet_id column to userlevel_scores
