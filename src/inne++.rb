@@ -258,14 +258,16 @@ def handle_command(event, log: true, &func)
   special = msg[0] == '!' && event.user.id == BOTMASTER_ID
 
   # Log to the terminal
-  if special
-    log_msg = "Special command: #{msg}"
-  elsif event.channel.type == 1
-    log_msg = "DM by #{event.user.name}: #{msg}"
-  else
-    log_msg = "Mention by #{event.user.name} in #{event.channel.name}: #{msg}"
+  if log
+    if special
+      log_msg = "Special command: #{msg}"
+    elsif event.channel.type == 1
+      log_msg = "DM by #{event.user.name}: #{msg}"
+    else
+      log_msg = "Mention by #{event.user.name} in #{event.channel.name}: #{msg}"
+    end
+    special ? succ(log_msg) : msg(log_msg)
   end
-  special ? succ(log_msg) : msg(log_msg) if log
 
   # Write up response and send it
   func = special ? -> (e) { respond_special(e) } : -> (e) { respond(e) } if !func
@@ -333,14 +335,7 @@ def setup_bot
 
   # Parse new reactions
   $bot.reaction_add do |event|
-    next if !RESPOND && event.user.id != BOTMASTER_ID
-    msg = event.message
-    next if msg.user.id != $config['discord_client']
-    next if !EMOJIS_TO_DELETE.include?(event.emoji.to_s)
-    next msg.delete if event.user.id == BOTMASTER_ID
-    next if Time.now - msg.timestamp > DELETE_TIMELIMIT
-    next if !Message.find_by(id: msg.id, user_id: event.user.id)
-    msg.delete
+    handle_command(event, log: false) { |e| respond_reaction(e) }
   rescue => e
     lex(e, 'Failed to handle Discord reaction')
   ensure

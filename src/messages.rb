@@ -2616,6 +2616,58 @@ rescue => e
   lex(e, 'Failed to seed userlevel completions.', event: event)
 end
 
+# Manually delete a score from the database
+def send_delete_score(event)
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+
+  # Fetch a score, either by ID, or by (player, highscoreable, board)
+  if flags.key?(:p) || flags.key?(:h) || flags.key?(:b)
+    perror("You need to specify a player.") if !flags[:p]
+    perror("You need to specify a highscoreable.") if !flags[:h]
+    perror("You need to specify a board.") if !flags[:b]
+    p = parse_player(event, false, true, true, flag: :p)
+    h = parse_highscoreable(event, mappack: true, map: true)
+    perror("Metanet scores cannot be deleted.") if h.mappack.code.downcase == 'met'
+    board = parse_board(flags[:b])
+    perror("The board needs to be hs/sr.") if !['hs', 'sr'].include?(board)
+    score = MappackScore.where(player: p, highscoreable: h)
+                        .where("rank_#{board} IS NOT NULL")
+                        .first
+    perror("#{p.name} doesn't have a score in #{h.name}.") if !score
+    id = score.id
+  else
+    id = msg[/\d+/]
+    perror("You need to specify a score ID") if !id
+    score = MappackScore.find_by(id: id.to_i)
+    perror("Score with ID #{id} not found.") if !score
+    h = score.highscoreable
+    p = score.player
+  end
+
+  # Send confirmation message with Yes/No buttons
+  # Response will be handled in delete_score@interactions, and buttons will be removed
+  send_message(
+    event,
+    content:    "Delete #{p.name}'s score (ID #{id}) in #{h.name}?",
+    components: interaction_add_confirmation_buttons
+  )
+rescue => e
+  lex(e, 'Failed to delete mappack score.', event: event)
+end
+
+# Deletes an outte message if it was sent by the reacting user recently
+# The botmaster can delete any message any time
+def delete_message(event)
+  msg = event.message
+  return msg.delete if event.user.id == BOTMASTER_ID
+  return if Time.now - msg.timestamp > DELETE_TIMELIMIT
+  return if !Message.find_by(id: msg.id, user_id: event.user.id)
+  msg.delete
+rescue => e
+  lex(e, 'Failed to delete outte message.', event: event)
+end
+
 # Special commands can only be executed by the botmaster, and are intended to
 # manage the bot on the fly without having to restart it, or to print sensitive
 # information.
@@ -2663,10 +2715,22 @@ def respond_special(event)
   return submit_score(event)             if cmd == 'submit'
   return update_completions(event)       if cmd == 'update_completions'
   return userlevel_completions(event)    if cmd == 'userlevel_completions'
+  return send_delete_score(event)             if cmd == 'delete_score'
 
   event << "Unsupported special command."
 end
 
+# Handle responses to new reactions
+def respond_reaction(event)
+  # Only have tasks for reactions to outte messages
+  msg = event.message
+  return if msg.user.id != $config['discord_client']
+
+  return delete_message(event) if EMOJIS_TO_DELETE.include?(event.emoji.to_s)
+end
+
+# Main function that coordinates responses to commands issues in Discord
+# via DMs or pings
 def respond(event)
   msg = parse_message(event)
   hm = !msg[/\bhow many\b/i]

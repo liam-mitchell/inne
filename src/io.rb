@@ -12,13 +12,14 @@ require_relative 'models.rb'
 # may accessed and handled in a different way.
 def parse_message(event, clean: true)
   # Integrity checks
-  is_message = event.is_a?(Discordrb::Events::MessageEvent)
+  is_message   = event.is_a?(Discordrb::Events::MessageEvent)
   is_component = event.is_a?(Discordrb::Events::ComponentEvent)
-  raise "Cannot parse message from a #{event.class.to_s}." if !is_message && !is_component
+  is_reaction  = event.is_a?(Discordrb::Events::ReactionEvent)
+  raise "Cannot parse message from a #{event.class.to_s}." if !is_message && !is_component && !is_reaction
 
   # Extract message
   msg = event.message.content
-  msg = msg.gsub(/```.*```/m, '') if is_component && clean # Exclude text blocks
+  msg = msg.gsub(/```.*```/m, '') if !is_message && clean # Exclude text blocks
 
   msg
 end
@@ -1218,7 +1219,8 @@ def send_message(
     components: nil,   # Message components (buttons, select menus...)
     spoiler:    false, # Whether to spoiler the attachments
     removable:  true,  # Whether we should register this msg in the db
-    edit:       true   # Whether a component event should edit or send a new msg
+    edit:       true,  # Whether a component event should edit or send a new msg
+    append:     false  # Whether to append content to preexisting message
   )
   # Save stuff already appended to message, and remove it to prevent autosend
   if dest.is_a?(Discordrb::Events::MessageEvent)
@@ -1239,6 +1241,7 @@ def send_message(
 
   # Only update message if it's a component event (no need to log)
   if edit && dest.is_a?(Discordrb::Events::ComponentEvent)
+    content = dest.message.content + "\n" + content if append
     return dest.update_message(content: content, components: components)
   end
 

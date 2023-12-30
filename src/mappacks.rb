@@ -1517,6 +1517,49 @@ module MappackHighscoreable
       s.update("rank_#{mode}".to_sym => i, "tied_rank_#{mode}".to_sym => tied_rank)
     }
     rank
+  rescue
+    -1
+  end
+
+  # Delete all the scores that aren't keepies (were never a hs/sr PB),
+  # and which no longer have the max/min amount of gold collected.
+  # If a player is not specified, do this operation for all players present
+  # in this highscoreable.
+  def delete_obsoletes(player = nil)
+    if player
+      ids = [player.id]
+    else
+      ids = scores.group(:player_id).pluck(:player_id)
+    end
+
+    ids.each{ |pid|
+      score_list = scores.where(player_id: pid)
+      gold_max = score_list.maximum(:gold)
+      gold_min = score_list.minimum(:gold)
+      pb_hs = nil # Highscore PB
+      pb_sr = nil # Speedrun PB
+      keepies = []
+      score_list.order(:id).each{ |s|
+        keepie = false
+        if pb_hs.nil? || s.score_hs > pb_hs
+          pb_hs = s.score_hs
+          keepie = true
+        end
+        if pb_sr.nil? || s.score_sr < pb_sr
+          pb_sr = s.score_sr
+          keepie = true
+        end
+        keepies << s.id if keepie
+      }
+      score_list.where(rank_hs: nil, rank_sr: nil)
+                .where("gold < #{gold_max} AND gold > #{gold_min}")
+                .where.not(id: keepies)
+                .each(&:wipe)
+    }
+    true
+  rescue => e
+    lex(e, 'Failed to delete obsolete scores.')
+    false
   end
 
   # Verifies the integrity of a replay by generating the security hash and
@@ -1848,28 +1891,8 @@ class MappackScore < ActiveRecord::Base
     h.update_ranks('sr') if sr
     h.update(completions: h.scores.where.not(rank_hs: nil).count) if hs || sr
 
-    # Delete redundant scores of the player in the highscoreable
-    # We delete all the scores that aren't keepies (were never a hs/sr PB),
-    # and which no longer have the max/min amount of gold collected.
-    pb_hs = nil # Highscore PB
-    pb_sr = nil # Speedrun PB
-    keepies = []
-    scores.order(:id).each{ |s|
-      keepie = false
-      if pb_hs.nil? || s.score_hs > pb_hs
-        pb_hs = s.score_hs
-        keepie = true
-      end
-      if pb_sr.nil? || s.score_sr < pb_sr
-        pb_sr = s.score_sr
-        keepie = true
-      end
-      keepies << s.id if keepie
-    }
-    scores.where(rank_hs: nil, rank_sr: nil)
-          .where("gold < #{gold_max} AND gold > #{gold_min}")
-          .where.not(id: keepies)
-          .each(&:wipe)
+    # Delete obsolete scores of the player in the highscoreable
+    h.delete_obsoletes(player)
 
     # Fetch player's best scores, to fill remaining response fields
     best_hs = MappackScore.where(highscoreable: h, player: player)
@@ -2026,8 +2049,8 @@ class MappackScore < ActiveRecord::Base
 
     # Update player's ranks
     scores.update_all(rank_hs: nil, tied_rank_hs: nil)
-    max = scores.find_by(score_hs: scores.pluck(:score_hs).max)
-    max.update(rank_hs: -1, tied_rank_hs: -1)
+    max = scores.where(score_hs: scores.pluck(:score_hs).max).order(:date).first
+    max.update(rank_hs: -1, tied_rank_hs: -1) if max
 
     # Update global ranks
     highscoreable.update_ranks('hs')
@@ -2148,9 +2171,39 @@ class MappackScore < ActiveRecord::Base
     return
   end
 
+  # Deletes a score, with the necessary cleanup (delete demo, and update ranks if necessary)
   def wipe
+    # Save attributes before destroying the object
+    hs = rank_hs != nil
+    sr = rank_sr != nil
+    h = highscoreable
+    p = player
+
+    # Destroy demo and score
     demo.destroy
     self.destroy
+
+    # Update rank fields, if the score was actually on the boards
+    scores = h.scores.where(player: p) if hs || sr
+
+    if hs
+      scores.update_all(rank_hs: nil, tied_rank_hs: nil)
+      max = scores.where(score_hs: scores.pluck(:score_hs).max).order(:date).first
+      max.update(rank_hs: -1, tied_rank_hs: -1) if max
+      h.update_ranks('hs')
+    end
+
+    if sr
+      scores.update_all(rank_sr: nil, tied_rank_sr: nil)
+      min = scores.where(score_sr: scores.pluck(:score_sr).min).order(:date).first
+      min.update(rank_sr: -1, tied_rank_sr: -1) if min
+      h.update_ranks('sr')
+    end
+
+    true
+  rescue => e
+    lex(e, 'Failed to wipe mappack score.')
+    false
   end
 
   def compare_hashes

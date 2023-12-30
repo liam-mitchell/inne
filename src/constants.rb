@@ -6,9 +6,9 @@
 # DATABASE...). Several others are useful to change during development as well
 # (TEST, BENCHMARK, DO_NOTHING, DO_EVERYTHING...).
 
-# <--------------------------------------------------------------------------->
-# <------                   DEVELOPMENT VARIABLES                       ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                    DEVELOPMENT VARIABLES                       ------>
+# <---------------------------------------------------------------------------->
 
 # General
 TEST           = true  # Switch to the local test bot
@@ -35,9 +35,9 @@ MEMORY_CRITICAL = 0.05    # Critical memory available ratio
 MEMORY_DELAY    = 60      # Seconds between memory checks during monitoring
 
 
-# <--------------------------------------------------------------------------->
-# <------                     NETWORK VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                      NETWORK VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 OFFLINE_MODE   = false   # Disables most intensive online functionalities
 OFFLINE_STRICT = false   # Disables all online functionalities of outte
@@ -50,9 +50,9 @@ FAST_PERIOD = 7    # Days old until a Steam ID is marked as inactive
 
 UPDATE_SCORES_ON_LOTD = true # Update scores right before lotd (may delay post)
 
-# <--------------------------------------------------------------------------->
-# <------                     DISCORD VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                      DISCORD VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 # IDs
 BOTMASTER_ID           = 204332624288677890  # User ID of the bot manager (Eddy)
@@ -91,9 +91,9 @@ EMOJIS_FOR_PLAY = [
   'Ninja', 'ninjajump', 'ninjavictory', 'nAight'
 ]
 
-# <--------------------------------------------------------------------------->
-# <------                     LOGGING VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                      LOGGING VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 # General
 LOG_TO_CONSOLE  = true  # Log stuff to the terminal
@@ -116,9 +116,9 @@ LOG_BACKTRACES = true    # Log exception backtraces
 # Log specific things
 LOG_DOWNLOAD_ERRORS = false # Too spammy if no Steam IDs are active
 
-# <--------------------------------------------------------------------------->
-# <------                        PATH VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                        PATH VARIABLES                          ------>
+# <---------------------------------------------------------------------------->
 
 DIR_DB            = './db'
 DIR_MIGRATION     = "#{DIR_DB}/migrate"
@@ -151,16 +151,16 @@ PATH_SHA1       = "#{DIR_UTILS}/sha1"
 
 FILENAME_MAPPACK_AUTHORS = 'AUTHORS'
 
-# <--------------------------------------------------------------------------->
-# <------                      FEATURE VARIABLES                        ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                      FEATURE VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 FEATURE_NTRACE  = true # Enable SimVYo's ntrace tool (required Python 3)
 FEATURE_ANIMATE = true # Enable animation for traces (requires FFmpeg)
 
-# <--------------------------------------------------------------------------->
-# <------                  MONKEY PATCHING VARIABLES                    ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                  MONKEY PATCHING VARIABLES                     ------>
+# <---------------------------------------------------------------------------->
 
 MONKEY_PATCH               = true # Enable monkey patches globally
 MONKEY_PATCH_CORE          = true # Enable Kernel patches (must!)
@@ -169,9 +169,9 @@ MONKEY_PATCH_DISCORDRB     = true # Enable Discordrb monkey patches (optional)
 MONKEY_PATCH_WEBRICK       = true # Enable WEBrick monkey patches (optional)
 MONKEY_PATCH_CHUNKYPNG     = true # Enable ChunkyPNG monkey patches (optional)
 
-# <--------------------------------------------------------------------------->
-# <------                       FORMAT VARIABLES                        ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                       FORMAT VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 # Highscoreable ID patterns
 LEVEL_PATTERN       = /([SCR][ILU]?-[ABCDEX]-[0-9][0-9]?-[0-9][0-9]?)|([?!]-[ABCDEX]-[0-9][0-9]?)/i
@@ -220,9 +220,9 @@ DATE_FORMAT_OUTTE = "%Y/%m/%d %H:%M"       # Date format used by outte
 DATE_FORMAT_MYSQL = "%Y-%m-%d %H:%M:%S"    # Date format required by MySQL
 DATE_FORMAT_LOG   = "%Y/%m/%d %H:%M:%S.%L" # Date format used for terminal logs
 
-# <--------------------------------------------------------------------------->
-# <------                   USERLEVEL VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                    USERLEVEL VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 MIN_U_SCORES = 20    # Minimum number of userlevel highscores to appear in average rankings
 MIN_G_SCORES = 500   # Minimum number of userlevel highscores to appear in global average rankings
@@ -289,9 +289,9 @@ NPP_CACHE_DURATION   = 5            # N++'s cache duration in seconds for userle
 OUTTE_CACHE_DURATION = 24 * 60 * 60 # Ditto, but the one outte uses in its database
 OUTTE_CACHE_LIMIT    = 1024         # Max entries in outte's userlevel cache
 
-# <--------------------------------------------------------------------------->
-# <------                       JOKE VARIABLES                          ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                        JOKE VARIABLES                          ------>
+# <---------------------------------------------------------------------------->
 
 POTATO         = true               # joke they have in the nv2 channel
 POTATO_RATE    = 1                  # seconds between potato checks
@@ -310,9 +310,9 @@ FRUITS         = [                  # Emojis for the potato joke
   ':cheese:'
 ]
 
-# <--------------------------------------------------------------------------->
-# <------                       TASK VARIABLES                          ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                        TASK VARIABLES                          ------>
+# <---------------------------------------------------------------------------->
 
 # Individual flags for each thread / task
 UPDATE_STATUS      = false # Thread to regularly update the bot's status
@@ -355,9 +355,9 @@ USERLEVEL_REPORT_FREQUENCY  =       24 * 60 * 60
 USERLEVEL_TAB_FREQUENCY     =       24 * 60 * 60
 USERLEVEL_DOWNLOAD_CHUNK    =                100
 
-# <--------------------------------------------------------------------------->
-# <------                      TWITCH VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                       TWITCH VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 TWITCH_ROLE      = "Voyeur"    # Discord role to ping when a new stream happens
 TWITCH_COOLDOWN  = 2 * 60 * 60 # Cooldown to ping stream by the same user
@@ -365,9 +365,9 @@ TWITCH_BLACKLIST = [           # Should probably use IDs instead of usernames he
   "eblan4ikof"
 ]
 
-# <--------------------------------------------------------------------------->
-# <------                      SOCKET VARIABLES                         ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                       SOCKET VARIABLES                         ------>
+# <---------------------------------------------------------------------------->
 
 # Variables that control the TCP server that outte starts in order to provide
 # custom functionality to N++ players:
@@ -397,9 +397,9 @@ LOCAL_LOGIN      = true            # Try to login user ourselves if Metanet fail
 HASH_INPUT_FN    = 'hash_in'       # Filename for SHA1 util to read
 HASH_OUTPUT_FN   = 'hash_out'      # Filename for SHA1 util to write
 
-# <--------------------------------------------------------------------------->
-# <------                       GAME VARIABLES                          ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                        GAME VARIABLES                          ------>
+# <---------------------------------------------------------------------------->
 
 APP_ID              = 230270     # N++'s Steam app ID
 BOTMASTER_NPP_ID    = 54303      # Botmaster's N++ player ID
@@ -651,9 +651,9 @@ TABS_NEW = {
   }
 }
 
-# <--------------------------------------------------------------------------->
-# <------                    HIGHSCORING VARIABLES                      ------>
-# <--------------------------------------------------------------------------->
+# <---------------------------------------------------------------------------->
+# <------                     HIGHSCORING VARIABLES                      ------>
+# <---------------------------------------------------------------------------->
 
 DEFAULT_TYPES  = ['Level', 'Episode'] # Default highscoreable types
 MAX_TRACES = 4 # Maximum amount of simultaneous replays to trace

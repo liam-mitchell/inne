@@ -236,6 +236,17 @@ ensure
   return view
 end
 
+# ActionRow builder with Yes/No buttons to confirm an action
+def interaction_add_confirmation_buttons(view = nil)
+  view = Discordrb::Webhooks::View.new if view.nil?
+  view.row{ |r|
+    r.button(label: 'Yes', style: :success, custom_id: 'button:confirm:yes')
+    r.button(label: 'No',  style: :danger,  custom_id: 'button:confirm:no')
+  }
+ensure
+  return view
+end
+
 def modal(
     event,
     title:      'Modal',
@@ -307,6 +318,8 @@ rescue
   Discordrb::Webhooks::View.new
 end
 
+# Modal shown to identify a player (i.e., assign a player to a Discord user),
+# if the player is found, otherwise respond with an error
 def modal_identify(event, name: '')
   name.strip!
   user = parse_user(event.user)
@@ -323,6 +336,21 @@ def modal_identify(event, name: '')
 
   user.player = player
   event.respond(content: "Identified correctly, you are #{verbatim(name)}.", ephemeral: true)
+end
+
+# Modal shown to confirm the deletion of a mappack score
+def delete_score(event, yes: false)
+  return send_message(event, content: 'Dismissed.', append: true) if !yes
+
+  id = event.message.content[/\(ID\s+(\d+)\)/i, 1]
+  perror("Score ID not found in source message.") if !id
+  score = MappackScore.find_by(id: id.to_i)
+  perror("Mappack score with ID #{id} not found.") if !score
+  deleted = score.wipe
+
+  msg = "#{score.player.name}'s score (ID #{id}) in #{score.highscoreable.name}"
+  msg = deleted ? "Deleted #{msg}." : "Failed to delete #{msg}."
+  send_message(event, content: msg, append: true)
 end
 
 # Important notes for parsing interaction components:
@@ -346,6 +374,11 @@ def respond_interaction_button(event)
   return if keys[0] != 'button'                # Only listen to buttons
 
   case type
+  when 'aliases'
+    case keys[1]
+    when 'nav'
+      send_aliases(event, page: keys[2])
+    end
   when 'browsing'
     case keys[1]
     when 'nav'
@@ -353,10 +386,10 @@ def respond_interaction_button(event)
     when 'play'
       send_userlevel_cache(event)
     end
-  when 'aliases'
+  when 'delete'
     case keys[1]
-    when 'nav'
-      send_aliases(event, page: keys[2])
+    when 'confirm'
+      delete_score(event, yes: keys[2] == 'yes')
     end
   when 'navigating'
     case keys[1]
@@ -364,11 +397,6 @@ def respond_interaction_button(event)
       send_nav_scores(event, offset: keys[2])
     when 'date'
       send_nav_scores(event, date: keys[2])
-    end
-  when 'results'
-    case keys[1]
-    when 'nav'
-      send_query(event, page: keys[2])
     end
   when 'rankings'
     case keys[1]
@@ -378,6 +406,11 @@ def respond_interaction_button(event)
       send_rankings(event, ties: keys[2] == 'true')
     when 'type'
       send_rankings(event, type: keys[2])
+    end
+  when 'results'
+    case keys[1]
+    when 'nav'
+      send_query(event, page: keys[2])
     end
   end
 end
@@ -417,7 +450,7 @@ def respond_interaction_modal(event)
   keys = event.custom_id.to_s.split(':') # Component parameters
   return if keys[0] != 'modal'           # Only listen to modals
 
-  case keys.last
+  case keys[1]
   when 'identify'
     modal_identify(event, name: event.value('name'))
   end
