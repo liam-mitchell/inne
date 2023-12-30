@@ -69,6 +69,7 @@ CHANNEL_CTP_SECRETS    = 1137794113475969034 # #ctp-secrets
 DISCORD_CHAR_LIMIT     = 2000                # Message character limit
 DISCORD_FILE_LIMIT     = 25 * 1000 ** 2      # Attachment size limit
 DELETE_TIMELIMIT       = 5 * 60              # Seconds to delete an outte post
+CONFIRM_TIMELIMIT      = 30                  # Seconds to confirm a dialog
 
 # Non-standard character widths in the monospaced font (for padding adjustments)
 WIDTH_EMOJI = 2

@@ -338,9 +338,11 @@ def modal_identify(event, name: '')
   event.respond(content: "Identified correctly, you are #{verbatim(name)}.", ephemeral: true)
 end
 
-# Modal shown to confirm the deletion of a mappack score
+# Called after clicking button to confirm the deletion of a mappack score
 def delete_score(event, yes: false)
+  expired = Time.now - event.message.timestamp > CONFIRM_TIMELIMIT
   return send_message(event, content: 'Dismissed.', append: true) if !yes
+  return send_message(event, content: 'Expired.',   append: true) if expired
 
   id = event.message.content[/\(ID\s+(\d+)\)/i, 1]
   perror("Score ID not found in source message.") if !id
