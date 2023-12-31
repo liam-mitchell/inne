@@ -393,8 +393,10 @@ load_config
 connect_db
 create_bot
 setup_bot
-run_bot
-set_channels
+Thread.new do
+  run_bot
+  set_channels
+end
 start_threads
 binding.pry if DEBUG
 block_threads

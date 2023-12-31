@@ -502,7 +502,7 @@ def send_screenshot(event, map = nil, ret = false)
   perror("Failed to generate screenshot!") if screenshot.nil?
 
   # Send response
-  v_str = h.is_mappack? ? " version #{version}" : ''
+  v_str = h.is_mappack? ? " v#{version}" : ''
   str = "#{hash[:error]}Screenshot for #{h.format_name}#{v_str} in palette #{verbatim(hash[:palette])}:"
   return [screenshot, str, spoiler] if ret
   event << str
@@ -2486,6 +2486,18 @@ rescue => e
   lex(e, "Error sanitizing mappack demos.", event: event)
 end
 
+# Update all SHA1 hashes for every mappack highscoreable (all versions too)
+def seed_hashes(event)
+  msg = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
+  send_message(event, content: 'Seeding mappack SHA1 hashes.')
+  count = MappackHash.seed(mappack: mappack)
+  event << "Seeded mappack hashes, updated #{count} hashes."
+rescue => e
+  lex(e, "Error seeding mappack hashes.", event: event)
+end
+
 # Manually update the Discord ID of a user by name
 def set_user_id(event)
   msg = remove_command(parse_message(event))
@@ -2732,12 +2744,13 @@ def respond_special(event)
   return sanitize_users(event)           if cmd == 'sanitize_users'
   return sanitize_hashes(event)          if cmd == 'sanitize_hashes'
   return sanitize_demos(event)           if cmd == 'sanitize_demos'
+  return seed_hashes(event)              if cmd == 'seed_hashes'
   return set_user_id(event)              if cmd == 'set_user_id'
   return set_replay_id(event)            if cmd == 'set_replay_id'
   return submit_score(event)             if cmd == 'submit'
   return update_completions(event)       if cmd == 'update_completions'
   return userlevel_completions(event)    if cmd == 'userlevel_completions'
-  return send_delete_score(event)             if cmd == 'delete_score'
+  return send_delete_score(event)        if cmd == 'delete_score'
 
   event << "Unsupported special command."
 end

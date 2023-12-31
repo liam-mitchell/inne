@@ -1383,6 +1383,19 @@ module MappackHighscoreable
     self.class.to_s
   end
 
+  def version
+    versions.max
+  end
+
+  # Recompute SHA1 hash for all available versions
+  def update_hashes
+    hashes.clear
+    versions.each{ |v|
+      hashes.create(version: v, sha1_hash: hash(c: true, v: v))
+    }
+    hashes.count
+  end
+
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
   # Optionally 
@@ -1588,8 +1601,10 @@ class MappackLevel < ActiveRecord::Base
   include MappackHighscoreable
   include Levelish
   alias_attribute :scores, :mappack_scores
+  alias_attribute :hashes, :mappack_hashes
   alias_attribute :episode, :mappack_episode
   has_many :mappack_scores, as: :highscoreable
+  has_many :mappack_hashes, as: :highscoreable, dependent: :delete_all
   belongs_to :mappack
   belongs_to :mappack_episode, foreign_key: :episode_id
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
@@ -1602,10 +1617,25 @@ class MappackLevel < ActiveRecord::Base
     Level
   end
 
-  def version
+  # Update all mappack level SHA1 hashes (for every version)
+  def self.update_hashes(mappack: nil)
+    total = 0
+    list = self.where(mappack ? "mappack_id = #{mappack.id}" : '')
+    count = list.count
+    list.find_each.with_index{ |l, i|
+      dbg("Updating mappack hashes for level #{i + 1} / #{count}...", progress: true)
+      total += l.update_hashes
+    }
+    Log.clear
+    total
+  end
+
+  def versions
     MappackData.where(highscoreable_id: id)
                .where("tile_data IS NOT NULL OR object_data IS NOT NULL")
-               .maximum(:version)
+               .distinct
+               .order(:version)
+               .pluck(:version)
   end
 
   # Return the tile data, optionally specify a version, otherwise pick last
@@ -1663,10 +1693,12 @@ class MappackEpisode < ActiveRecord::Base
   include Episodish
   alias_attribute :levels, :mappack_levels
   alias_attribute :scores, :mappack_scores
+  alias_attribute :hashes, :mappack_hashes
   alias_attribute :story, :mappack_story
   alias_attribute :tweaks, :mappack_scores_tweaks
   has_many :mappack_levels, foreign_key: :episode_id
   has_many :mappack_scores, as: :highscoreable
+  has_many :mappack_hashes, as: :highscoreable, dependent: :delete_all
   has_many :mappack_scores_tweaks, foreign_key: :episode_id
   belongs_to :mappack
   belongs_to :mappack_story, foreign_key: :story_id
@@ -1680,8 +1712,25 @@ class MappackEpisode < ActiveRecord::Base
     Episode
   end
 
-  def version
-    levels.map(&:version).max
+  # Update all mappack episode SHA1 hashes (for every version)
+  def self.update_hashes(mappack: nil)
+    total = 0
+    list = self.where(mappack ? "mappack_id = #{mappack.id}" : '')
+    count = list.count
+    list.find_each.with_index{ |e, i|
+      dbg("Updating mappack hashes for episode #{i + 1} / #{count}...", progress: true)
+      total += e.update_hashes
+    }
+    Log.clear
+    total
+  end
+
+  def versions
+    MappackData.where("highscoreable_id DIV 5 = #{id}")
+               .where("tile_data IS NOT NULL OR object_data IS NOT NULL")
+               .distinct
+               .order(:version)
+               .pluck(:version)
   end
 
   # Computes the episode's hash, which the game uses for integrity verifications
@@ -1696,8 +1745,10 @@ class MappackStory < ActiveRecord::Base
   include Storyish
   alias_attribute :episodes, :mappack_episodes
   alias_attribute :scores, :mappack_scores
+  alias_attribute :hashes, :mappack_hashes
   has_many :mappack_episodes, foreign_key: :story_id
   has_many :mappack_scores, as: :highscoreable
+  has_many :mappack_hashes, as: :highscoreable, dependent: :delete_all
   belongs_to :mappack
   enum tab: TABS_NEW.map{ |k, v| [k, v[:mode] * 7 + v[:tab]] }.to_h
 
@@ -1709,8 +1760,25 @@ class MappackStory < ActiveRecord::Base
     Story
   end
 
-  def version
-    levels.map(&:version).max
+  # Update all mappack story SHA1 hashes (for every version)
+  def self.update_hashes(mappack: nil)
+    total = 0
+    list = self.where(mappack ? "mappack_id = #{mappack.id}" : '')
+    count = list.count
+    list.find_each.with_index{ |s, i|
+      dbg("Updating mappack hashes for story #{i + 1} / #{count}...", progress: true)
+      total += s.update_hashes
+    }
+    Log.clear
+    total
+  end
+
+  def versions
+    MappackData.where("highscoreable_id DIV 25 = #{id}")
+               .where("tile_data IS NOT NULL OR object_data IS NOT NULL")
+               .distinct
+               .order(:version)
+               .pluck(:version)
   end
 
   # Computes the story's hash, which the game uses for integrity verifications
@@ -2355,4 +2423,19 @@ end
 # on this information
 class MappackChannel < ActiveRecord::Base
   belongs_to :mappack
+end
+
+# This table stores all the precomputed SHA1 hashes for all versions of every
+# mappack level, episode and story. This is used for replay integrity validation,
+# and is actually what takes the most time.
+class MappackHash < ActiveRecord::Base
+  belongs_to :highscoreable, polymorphic: true
+
+  # Update all hashes for all mappack highscoreables
+  def self.seed(mappack: nil)
+    total  = MappackLevel.update_hashes(mappack: mappack)
+    total += MappackEpisode.update_hashes(mappack: mappack)
+    total += MappackStory.update_hashes(mappack: mappack)
+    total
+  end
 end
