@@ -411,7 +411,8 @@ module Map
       h:       nil,             # Highscoreable to screenshot
       anim:    false,           # Whether to animate plotted coords or not
       coords:  [],              # Coordinates of routes to trace
-      spoiler: false            # Whether the screenshot should be spoilered in Discord
+      spoiler: false,           # Whether the screenshot should be spoilered in Discord
+      v:       nil              # Version of the map data to use (nil = latest)
     )
 
     bench(:start) if BENCHMARK
@@ -464,10 +465,11 @@ module Map
       bench(:step, 'Setup     ') if BENCH_IMAGES
 
       # Parse map
-      tiles = maps.map{ |m| m.tiles.map(&:dup) }
+      tiles = maps.map{ |m| m.tiles(version: v).map(&:dup) }
       objects = maps.map{ |m|
-        m.objects.reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
-         .sort_by{ |o| -OBJECTS[o[0]][:pref] }         # Sort objs by overlap preference
+        m.objects(version: v)
+         .reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
+         .sort_by{ |o| -OBJECTS[o[0]][:pref] } # Sort objs by overlap preference
       }
       objects.each{ |m|
         m.each{ |o|
@@ -737,8 +739,8 @@ module Map
     nil
   end
 
-  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, anim: false, coords: [], spoiler: false)
-    Map.screenshot(theme, file: file, blank: blank, anim: anim, coords: coords, h: self, ppc: anim ? 4 : 0, spoiler: spoiler)
+  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, anim: false, coords: [], spoiler: false, v: nil)
+    Map.screenshot(theme, file: file, blank: blank, anim: anim, coords: coords, h: self, ppc: anim ? 4 : 0, spoiler: spoiler, v: v)
   end
 
   # Plot routes and legend on top of an image (typically a screenshot)
@@ -1185,20 +1187,24 @@ class Mappack < ActiveRecord::Base
         # Save new mappack data (tiles and objects) if:
         #   Hard update - Always
         #   Soft update - Only when the map data is different
-        data = MappackData.find_or_create_by(highscoreable_id: level_id, version: v)
-
         prev_tiles = level.tile_data(version: v - 1)
-        new_tiles = Map.encode_tiles(map[:tiles])
-        if hard || prev_tiles != new_tiles
-          data.update(tile_data: new_tiles)
-          changes[:tiles] += 1 if !hard
-        end
+        new_tiles  = Map.encode_tiles(map[:tiles])
+        save_tiles = prev_tiles != new_tiles
 
         prev_objects = level.object_data(version: v - 1)
-        new_objects = Map.encode_objects(map[:objects])
-        if hard || prev_objects != new_objects
-          data.update(object_data: new_objects)
-          changes[:objects] += 1 if !hard
+        new_objects  = Map.encode_objects(map[:objects])
+        save_objects = prev_objects != new_objects
+
+        if hard || save_tiles || save_objects
+          data = MappackData.find_or_create_by(highscoreable_id: level_id, version: v)
+          if hard || save_tiles
+            data.update(tile_data: new_tiles)
+            changes[:tiles] += 1 if !hard
+          end
+          if hard || save_objects
+            data.update(object_data: new_objects)
+            changes[:objects] += 1 if !hard
+          end
         end
 
         # Create corresponding mappack episode, except for secret tabs.
@@ -1596,26 +1602,42 @@ class MappackLevel < ActiveRecord::Base
     Level
   end
 
+  def version
+    MappackData.where(highscoreable_id: id)
+               .where("tile_data IS NOT NULL OR object_data IS NOT NULL")
+               .maximum(:version)
+  end
+
   # Return the tile data, optionally specify a version, otherwise pick last
-  def tile_data(version: nil)
+  # Can also return all available versions as a hash
+  def tile_data(version: nil, all: false)
     data = MappackData.where(highscoreable_id: id)
                       .where(version ? "version <= #{version}" : '')
                       .where.not(tile_data: nil)
-                      .order(version: :desc)
-                      .first
-    data ? data.tile_data : nil
+    return nil if data.empty?
+
+    if all
+      data.pluck(:version, :tile_data).to_h
+    else
+      data.order(version: :desc).first.tile_data
+    end
   rescue
     nil
   end
 
   # Return the object data, optionally specify a version, otherwise pick last
-  def object_data(version: nil)
+  # Can also return all available versions as a hash
+  def object_data(version: nil, all: false)
     data = MappackData.where(highscoreable_id: id)
                       .where(version ? "version <= #{version}" : '')
                       .where.not(object_data: nil)
-                      .order(version: :desc)
-                      .first
-    data ? data.object_data : nil
+    return nil if data.empty?
+
+    if all
+      data.pluck(:version, :object_data).to_h
+    else
+      data.order(version: :desc).first.object_data
+    end
   rescue
     nil
   end
@@ -1658,6 +1680,10 @@ class MappackEpisode < ActiveRecord::Base
     Episode
   end
 
+  def version
+    levels.map(&:version).max
+  end
+
   # Computes the episode's hash, which the game uses for integrity verifications
   def hash(c: false, v: nil)
     hashes = levels.order(:id).map{ |l| l.hash(c: c, v: v) }.compact
@@ -1681,6 +1707,10 @@ class MappackStory < ActiveRecord::Base
 
   def self.vanilla
     Story
+  end
+
+  def version
+    levels.map(&:version).max
   end
 
   # Computes the story's hash, which the game uses for integrity verifications

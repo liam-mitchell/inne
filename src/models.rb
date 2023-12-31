@@ -834,7 +834,8 @@ module Downloadable
     klass = 'level' if klass == 'userlevel'
     qt = TYPES[klass.capitalize][:qt]
     score = (1000 * round_score(score)).round.to_s
-    hash = self.map.hash(c: true, v: 1)
+    version = [2842, 3009, 3096].include?(self.id) ? 1 : 2
+    hash = self.map.hash(c: true, v: version)
     if !hash
       err("Couldn't compute #{fname} hash, not submitting #{pname} score.", discord: log)
       return
@@ -1555,7 +1556,7 @@ module Storyish
   end
 
   def levels
-    episodes.map{ |e| e.levels }.flatten
+    episodes.map(&:levels).flatten
   end
 
   def cleanliness(rank = 0, board = 'hs')

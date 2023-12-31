@@ -487,19 +487,23 @@ end
 # Send a screenshot of a level/episode/story
 def send_screenshot(event, map = nil, ret = false)
   # Parse message parameters
-  msg  = parse_message(event)
-  hash = parse_palette(event)
-  msg  = hash[:msg]
-  h    = map.nil? ? parse_highscoreable(event, mappack: true) : map
+  msg     = parse_message(event)
+  hash    = parse_palette(event)
+  msg     = hash[:msg]
+  h       = map.nil? ? parse_highscoreable(event, mappack: true) : map
+  version = msg[/v(\d+)/i, 1]
 
   # Retrieve screenshot
   h = h.map
-  spoiler = h.is_mappack? && event.channel.type != 1 && (h.mappack.code == 'asc' || h.mappack.code == 'ctp' && event.channel.id != CHANNEL_CTP_SECRETS)
-  screenshot = Map.screenshot(hash[:palette], file: true, h: h, spoiler: spoiler)
+  max_v = h.version
+  spoiler = event.channel.type != 1 && (h.mappack.code == 'asc' || h.mappack.code == 'ctp' && event.channel.id != CHANNEL_CTP_SECRETS)
+  version = version ? [max_v, [1, version.to_i].max].min : max_v
+  screenshot = Map.screenshot(hash[:palette], file: true, h: h, spoiler: spoiler, v: version)
   perror("Failed to generate screenshot!") if screenshot.nil?
 
   # Send response
-  str = "#{hash[:error]}Screenshot for #{h.format_name} in palette #{verbatim(hash[:palette])}:"
+  v_str = h.is_mappack? ? " version #{version}" : ''
+  str = "#{hash[:error]}Screenshot for #{h.format_name}#{v_str} in palette #{verbatim(hash[:palette])}:"
   return [screenshot, str, spoiler] if ret
   event << str
   event.attach_file(screenshot, spoiler: spoiler)
