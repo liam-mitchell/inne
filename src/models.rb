@@ -1556,7 +1556,7 @@ module Storyish
   end
 
   def levels
-    episodes.map(&:levels).flatten
+    (is_mappack? ? MappackLevel : Level).where("id DIV 25 = #{id}").order(:id)
   end
 
   def cleanliness(rank = 0, board = 'hs')

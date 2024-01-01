@@ -347,7 +347,9 @@ module Map
   end
 
   # Computes the level's hash, which the game uses for integrity verifications
-  def hash(c: false, v: nil)
+  # Parameter 'pre' doesn't have any meaning, but is necessary for compatibility
+  # with the episode/story versions
+  def hash(c: false, v: nil, pre: false)
     map_data = dump_level(hash: true, version: v)
     return nil if map_data.nil?
     sha1(PWD + map_data[0xB8..-1], c: c)
@@ -1206,16 +1208,15 @@ class Mappack < ActiveRecord::Base
             data.update(object_data: new_objects)
             changes[:objects] += 1 if !hard
           end
-          level.update_hashes
         end
 
         # Create corresponding mappack episode, except for secret tabs.
         next if tab[:secret] || level_id % 5 > 0
         story = tab[:mode] == 0 && (!tab[:x] || map_offset < 5 * tab[:files][tab_code] / 6)
 
+        episode = MappackEpisode.find_by(id: level_id / 5)
         if hard
-          episode = MappackEpisode.find_by(id: level_id / 5)
-          MappackEpisode.create(
+          episode = MappackEpisode.create(
             id:         level_id / 5,
             inner_id:   inner_id / 5,
             mappack_id: id,
@@ -1225,18 +1226,15 @@ class Mappack < ActiveRecord::Base
             name:       code.upcase + '-' + compute_name(inner_id / 5, 1)
           ) unless episode
         else
-          episode = MappackEpisode.find_by(id: level_id / 5)
           perror("#{code.upcase} episode with ID #{level_id / 5} should exist, stopping soft update.", discord: discord) if !episode
         end
-
-        episode.update_hashes if new_data
 
         # Create corresponding mappack story, only for non-X-Row Solo.
         next if !story || level_id % 25 > 0
 
+        story = MappackStory.find_by(id: level_id / 25)
         if hard
-          story = MappackStory.find_by(id: level_id / 25)
-          MappackStory.create(
+          story = MappackStory.create(
             id:         level_id / 25,
             inner_id:   inner_id / 25,
             mappack_id: id,
@@ -1245,11 +1243,8 @@ class Mappack < ActiveRecord::Base
             name:       code.upcase + '-' + compute_name(inner_id / 25, 2)
           ) unless story
         else
-          story = MappackStory.find_by(id: level_id / 25)
           perror("#{code.upcase} story with ID #{level_id / 25} should exist, stopping soft update.", discord: discord) if !story
         end
-
-        story.update_hashes if new_data
       }
       Log.clear
 
@@ -1276,6 +1271,11 @@ class Mappack < ActiveRecord::Base
       s.update(gold: MappackEpisode.where(story: s).sum(:gold))
     }
     Log.clear
+
+    # Update precomputed SHA1 hashes
+    MappackLevel.update_hashes(mappack: self)
+    MappackEpisode.update_hashes(mappack: self, pre: true)
+    MappackStory.update_hashes(mappack: self, pre: true)
 
     # Log final results for entire mappack
     if file_errors + map_errors == 0
@@ -1394,10 +1394,11 @@ module MappackHighscoreable
   end
 
   # Recompute SHA1 hash for all available versions
-  def update_hashes
+  # If 'pre', then episodes/stories will not recompute their level hashes
+  def update_hashes(pre: false)
     hashes.clear
     versions.each{ |v|
-      hashes.create(version: v, sha1_hash: hash(c: true, v: v))
+      hashes.create(version: v, sha1_hash: hash(c: true, v: v, pre: pre))
     }
     hashes.count
   end
@@ -1725,13 +1726,13 @@ class MappackEpisode < ActiveRecord::Base
   end
 
   # Update all mappack episode SHA1 hashes (for every version)
-  def self.update_hashes(mappack: nil)
+  def self.update_hashes(mappack: nil, pre: false)
     total = 0
     list = self.where(mappack ? "mappack_id = #{mappack.id}" : '')
     count = list.count
     list.find_each.with_index{ |e, i|
       dbg("Updating mappack hashes for episode #{i + 1} / #{count}...", progress: true)
-      total += e.update_hashes
+      total += e.update_hashes(pre: pre)
     }
     Log.clear
     total
@@ -1746,8 +1747,11 @@ class MappackEpisode < ActiveRecord::Base
   end
 
   # Computes the episode's hash, which the game uses for integrity verifications
-  def hash(c: false, v: nil)
-    hashes = levels.order(:id).map{ |l| l.hash(c: c, v: v) }.compact
+  # If 'pre', take the precomputed level hashes, otherwise compute them
+  def hash(c: false, v: nil, pre: false)
+    hashes = levels.order(:id).map{ |l|
+      c && pre ? l.hashes.find_by(version: v).sha1_hash : l.hash(c: c, v: v)
+    }.compact
     hashes.size < 5 ? nil : hashes.join
   end
 end
@@ -1773,13 +1777,13 @@ class MappackStory < ActiveRecord::Base
   end
 
   # Update all mappack story SHA1 hashes (for every version)
-  def self.update_hashes(mappack: nil)
+  def self.update_hashes(mappack: nil, pre: false)
     total = 0
     list = self.where(mappack ? "mappack_id = #{mappack.id}" : '')
     count = list.count
     list.find_each.with_index{ |s, i|
       dbg("Updating mappack hashes for story #{i + 1} / #{count}...", progress: true)
-      total += s.update_hashes
+      total += s.update_hashes(pre: pre)
     }
     Log.clear
     total
@@ -1794,8 +1798,11 @@ class MappackStory < ActiveRecord::Base
   end
 
   # Computes the story's hash, which the game uses for integrity verifications
-  def hash(c: false, v: nil)
-    hashes = episodes.map{ |e| e.levels.map{ |l| l.hash(c: c, v: v) } }.flatten.compact
+  # If 'pre', take the precomputed level hashes, otherwise compute them
+  def hash(c: false, v: nil, pre: false)
+    hashes = levels.order(:id).map{ |l|
+      c && pre ? l.hashes.find_by(version: v).sha1_hash : l.hash(c: c, v: v)
+    }.compact
     return nil if hashes.size < 25
     work = 0.chr * 20
     25.times.each{ |i|
@@ -2445,8 +2452,8 @@ class MappackHash < ActiveRecord::Base
   # Update all hashes for all mappack highscoreables
   def self.seed(mappack: nil)
     total  = MappackLevel.update_hashes(mappack: mappack)
-    total += MappackEpisode.update_hashes(mappack: mappack)
-    total += MappackStory.update_hashes(mappack: mappack)
+    total += MappackEpisode.update_hashes(mappack: mappack, pre: true)
+    total += MappackStory.update_hashes(mappack: mappack, pre: true)
     total
   end
 end
