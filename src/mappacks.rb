@@ -1195,7 +1195,8 @@ class Mappack < ActiveRecord::Base
         new_objects  = Map.encode_objects(map[:objects])
         save_objects = prev_objects != new_objects
 
-        if hard || save_tiles || save_objects
+        new_data = hard || save_tiles || save_objects
+        if new_data
           data = MappackData.find_or_create_by(highscoreable_id: level_id, version: v)
           if hard || save_tiles
             data.update(tile_data: new_tiles)
@@ -1205,6 +1206,7 @@ class Mappack < ActiveRecord::Base
             data.update(object_data: new_objects)
             changes[:objects] += 1 if !hard
           end
+          level.update_hashes
         end
 
         # Create corresponding mappack episode, except for secret tabs.
@@ -1227,6 +1229,8 @@ class Mappack < ActiveRecord::Base
           perror("#{code.upcase} episode with ID #{level_id / 5} should exist, stopping soft update.", discord: discord) if !episode
         end
 
+        episode.update_hashes if new_data
+
         # Create corresponding mappack story, only for non-X-Row Solo.
         next if !story || level_id % 25 > 0
 
@@ -1244,6 +1248,8 @@ class Mappack < ActiveRecord::Base
           story = MappackStory.find_by(id: level_id / 25)
           perror("#{code.upcase} story with ID #{level_id / 25} should exist, stopping soft update.", discord: discord) if !story
         end
+
+        story.update_hashes if new_data
       }
       Log.clear
 
@@ -1585,14 +1591,20 @@ module MappackHighscoreable
   # comparing it with the submitted one.
   # This hash depends on both the score and the map data, so a score cannot
   # be submitted if the map is changed.
-  def verify_replay(ninja_check, score)
+  def _verify_replay(ninja_check, score, c: true, v: nil)
+    c_hash = hashes.find_by(version: v)
+    map_hash = c && c_hash ? c_hash.sha1_hash : hash(c: c, v: v)
+    return false if !map_hash
     score = (1000.0 * score / 60.0).round.to_s
-    map_hash1 = hash(c: false)
-    map_hash2 = hash(c: true)
-    return true if map_hash1.nil? && map_hash2.nil?
-    eq1 = sha1(map_hash1.to_s + score, c: false) == ninja_check
-    eq2 = sha1(map_hash2.to_s + score, c: true) == ninja_check
-    eq1 || eq2
+    sha1(map_hash + score, c: c) == ninja_check
+  end
+
+  def verify_replay(ninja_check, score, all: true)
+    (all ? versions : [version]).each{ |v|
+      return true if _verify_replay(ninja_check, score, v: v, c: false)
+      return true if _verify_replay(ninja_check, score, v: v, c: true)
+    }
+    false
   end
 end
 
@@ -1921,7 +1933,6 @@ class MappackScore < ActiveRecord::Base
     end
     if score_sr_min.nil? || score_sr < score_sr_min
       scores.update_all(rank_sr: nil, tied_rank_sr: nil)
-      #res['better'] = 1
       sr = true
     end
     if gold_max.nil? || gold > gold_max
@@ -1977,7 +1988,7 @@ class MappackScore < ActiveRecord::Base
       # Warn if mappack version is outdated
       v1 = (req.path.split('/')[1][/\d+$/i] || 1).to_i
       v2 = mappack.version
-      if v1 != v2
+      if WARN_VERSION && v1 != v2
         _thread do
           warn("#{name} submitted a score to #{h.name} with an incorrect mappack version (#{v1} vs #{v2})", discord: true)
         end

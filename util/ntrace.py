@@ -21,7 +21,7 @@ import zlib
 OUTTE_MODE        = True # Format output for outte's usage.
 COMPRESSED_INPUTS = True # Inputs are Zlibbed.
 
-# Filenames. Keep original names when running with outte.
+# Filenames. Keep these names when running with outte.
 FILE_INPUTS_LEVEL   = "inputs_%d"
 FILE_INPUTS_EPISODE = "inputs_episode"
 FILE_MAP_LEVEL      = "map_data"
@@ -92,8 +92,6 @@ RADIUS = {
 
 # Other constants
 MAX_PLAYERS  = 4
-INPUT_SEP    = b'&'
-INPUT_OFFSET = 215
 INITIAL_TIME = 90
 FPS          = 60
 
@@ -102,18 +100,15 @@ inputs_list = []
 if os.path.isfile(FILE_INPUTS_EPISODE):
     tool_mode = "splits"
     with open(FILE_INPUTS_EPISODE, "rb") as f:
-        inputs_episode = zlib.decompress(f.read()).split(INPUT_SEP)
-        for inputs_level in inputs_episode:
+        for inputs_level in zlib.decompress(f.read()).split(b'&'):
             inputs_list.append([int(b) for b in inputs_level])
 else:
     tool_mode = "trace"
     for i in range(MAX_PLAYERS):
         if not os.path.isfile(FILE_INPUTS_LEVEL % i): break
         with open(FILE_INPUTS_LEVEL % i, "rb") as f:
-            if COMPRESSED_INPUTS:
-                inputs_list.append([int(b) for b in zlib.decompress(f.read())])
-            else:
-                inputs_list.append([int(b) for b in f.read()[INPUT_OFFSET:]])
+            demo = zlib.decompress(f.read()) if COMPRESSED_INPUTS else f.read()[215:]
+            inputs_list.append([int(b) for b in demo])
 
 # Import map data
 mdata_list = []
@@ -220,10 +215,10 @@ class Ninja:
             Checks if a ground jump needs to be performed, and executes it.
 
             There are 3 types of jump:
-            - Regular jump: If the horizontal input and the ground normal go in the same direction,
+            - Regular jump: If the input and the ground normal go in the same horizontal direction,
                             or if either of them are null.
-            - Perp jump:    The same as before, when the horizontal speed opposes the ground normal.
-            - Low jump:     If the horizontal input opposes the ground normal.
+            - Perp jump:    Same, but when the speed opposes the ground normal horizonally.
+            - Low jump:     If the input opposes the ground normal horizontally.
         """
         if self.pre_buffer and self.post_buffer in (1, 2, 3, 5) and not self.jumping and not self.wall_jumping:
             # Compute jump vector
