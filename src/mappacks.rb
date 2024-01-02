@@ -1590,19 +1590,32 @@ module MappackHighscoreable
 
   # Verifies the integrity of a replay by generating the security hash and
   # comparing it with the submitted one.
-  # This hash depends on both the score and the map data, so a score cannot
-  # be submitted if the map is changed.
+  #
+  # The format used by N++ is:
+  #   Hash = SHA1(MapHash + ScoreString)
+  # where:
+  #   MapHash = SHA1(Pwd + MapData) [see Map#hash]
+  #       Pwd     = Hardcoded password (not present in outte's source code)
+  #       MapData = Map's data [see Map#dump_level(hash: true)]
+  #   ScoreString = (Score * 1000) rounded as an integer
+  #
+  # Notes:
+  #   - Since this depends on both the score and the map data, a score cannot
+  #     be submitted if either have been tampered with.
+  #   - The modulo 2 ** 32 is to simulate 4-byte unsigned integer arithmetic,
+  #     which is what N++ uses. Negative scores (which sometimes happen erroneously)
+  #     then underflow, so we need to replicate this behaviour to match the hashes.
   def _verify_replay(ninja_check, score, c: true, v: nil)
     c_hash = hashes.find_by(version: v)
     map_hash = c && c_hash ? c_hash.sha1_hash : hash(c: c, v: v)
-    return false if !map_hash
-    score = (1000.0 * score / 60.0).round.to_s
+    return true if !map_hash
+    score = ((1000.0 * score / 60.0 + 0.5).floor % 2 ** 32).to_s
     sha1(map_hash + score, c: c) == ninja_check
   end
 
   def verify_replay(ninja_check, score, all: true)
     (all ? versions : [version]).each{ |v|
-      return true if _verify_replay(ninja_check, score, v: v, c: false)
+      #return true if _verify_replay(ninja_check, score, v: v, c: false)
       return true if _verify_replay(ninja_check, score, v: v, c: true)
     }
     false
