@@ -1644,7 +1644,9 @@ class MappackLevel < ActiveRecord::Base
   end
 
   # Update all mappack level SHA1 hashes (for every version)
-  def self.update_hashes(mappack: nil)
+  # 'pre' parameter is unused, but left there for compatibility with the
+  # Episode/Story versions of this method
+  def self.update_hashes(mappack: nil, pre: false)
     total = 0
     list = self.where(mappack ? "mappack_id = #{mappack.id}" : '')
     count = list.count
@@ -1763,7 +1765,8 @@ class MappackEpisode < ActiveRecord::Base
   # If 'pre', take the precomputed level hashes, otherwise compute them
   def hash(c: false, v: nil, pre: false)
     hashes = levels.order(:id).map{ |l|
-      c && pre ? l.hashes.find_by(version: v).sha1_hash : l.hash(c: c, v: v)
+      stored = l.hashes.find_by(version: v)
+      c && pre && stored ? stored.sha1_hash : l.hash(c: c, v: v)
     }.compact
     hashes.size < 5 ? nil : hashes.join
   end
@@ -1814,7 +1817,8 @@ class MappackStory < ActiveRecord::Base
   # If 'pre', take the precomputed level hashes, otherwise compute them
   def hash(c: false, v: nil, pre: false)
     hashes = levels.order(:id).map{ |l|
-      c && pre ? l.hashes.find_by(version: v).sha1_hash : l.hash(c: c, v: v)
+      stored = l.hashes.find_by(version: v)
+      c && pre && stored ? stored.sha1_hash : l.hash(c: c, v: v)
     }.compact
     return nil if hashes.size < 25
     work = 0.chr * 20
@@ -2437,7 +2441,7 @@ end
 # 1) The score has been submitted with a different level, or has been cheated.
 #    Either way, it needs to be checked.
 # 2) Our SHA1 algo doesn't match the one used by N++, so we want to polish that.
-#    This is currently happening sometimes.
+#    This is currently happening sometimes (Edit: Not anymore)
 class BadHash < ActiveRecord::Base
   # Remove orphaned bad hashes (missing corresponding mappack score)
   def self.sanitize
@@ -2463,10 +2467,9 @@ class MappackHash < ActiveRecord::Base
   belongs_to :highscoreable, polymorphic: true
 
   # Update all hashes for all mappack highscoreables
-  def self.seed(mappack: nil)
-    total  = MappackLevel.update_hashes(mappack: mappack)
-    total += MappackEpisode.update_hashes(mappack: mappack, pre: true)
-    total += MappackStory.update_hashes(mappack: mappack, pre: true)
+  def self.seed(mappack: nil, types: [Level, Episode, Story])
+    total = 0
+    types.each{ |t| total += t.mappack.update_hashes(mappack: mappack, pre: true) }
     total
   end
 end
