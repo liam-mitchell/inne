@@ -2491,7 +2491,8 @@ def seed_hashes(event)
   msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
   mappack = parse_mappack(flags[:mappack], explicit: true, vanilla: false)
-  types = parse_type(flags[:type], multiple: true) || [Level, Episode, Story]
+  types = parse_type(flags[:type].to_s, multiple: true)
+  types = [Level, Episode, Story] if types.empty?
   send_message(event, content: 'Seeding mappack SHA1 hashes.')
   count = MappackHash.seed(mappack: mappack, types: types)
   event << "Seeded mappack hashes, updated #{count} hashes."

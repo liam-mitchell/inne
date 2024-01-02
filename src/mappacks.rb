@@ -347,9 +347,12 @@ module Map
   end
 
   # Computes the level's hash, which the game uses for integrity verifications
-  # Parameter 'pre' doesn't have any meaning, but is necessary for compatibility
-  # with the episode/story versions
+  #   c   - Use the C SHA1 implementation (vs. the default Ruby one)
+  #   v   - Map version to hash
+  #   pre - Serve precomputed hash stored in BadHash table
   def hash(c: false, v: nil, pre: false)
+    stored = l.hashes.where("version <= #{v}").order(:version).last rescue nil
+    return stored if pre && stored
     map_data = dump_level(hash: true, version: v)
     return nil if map_data.nil?
     sha1(PWD + map_data[0xB8..-1], c: c)
@@ -1644,7 +1647,8 @@ class MappackLevel < ActiveRecord::Base
   end
 
   # Update all mappack level SHA1 hashes (for every version)
-  # 'pre' parameter is unused, but left there for compatibility with the
+  # 'pre' parameter is unused (as we force it to false, since we always want
+  # to recompute the level hashes), but is left there for compatibility with the
   # Episode/Story versions of this method
   def self.update_hashes(mappack: nil, pre: false)
     total = 0
@@ -1652,7 +1656,7 @@ class MappackLevel < ActiveRecord::Base
     count = list.count
     list.find_each.with_index{ |l, i|
       dbg("Updating mappack hashes for level #{i + 1} / #{count}...", progress: true)
-      total += l.update_hashes
+      total += l.update_hashes(pre: false)
     }
     Log.clear
     total
@@ -1765,7 +1769,8 @@ class MappackEpisode < ActiveRecord::Base
   # If 'pre', take the precomputed level hashes, otherwise compute them
   def hash(c: false, v: nil, pre: false)
     hashes = levels.order(:id).map{ |l|
-      stored = l.hashes.find_by(version: v)
+      stored = l.hashes.where("version <= #{v}").order(:version).last
+      binding.pry if !stored
       c && pre && stored ? stored.sha1_hash : l.hash(c: c, v: v)
     }.compact
     hashes.size < 5 ? nil : hashes.join
@@ -1817,7 +1822,7 @@ class MappackStory < ActiveRecord::Base
   # If 'pre', take the precomputed level hashes, otherwise compute them
   def hash(c: false, v: nil, pre: false)
     hashes = levels.order(:id).map{ |l|
-      stored = l.hashes.find_by(version: v)
+      stored = l.hashes.where("version <= #{v}").order(:version).last
       c && pre && stored ? stored.sha1_hash : l.hash(c: c, v: v)
     }.compact
     return nil if hashes.size < 25
