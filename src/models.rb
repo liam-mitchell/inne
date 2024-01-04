@@ -73,6 +73,20 @@ module MonkeyPatches
         error("Exception: #{e.inspect}")
       end
     end
+    ::Discordrb::Webhooks::View::RowBuilder.class_eval do
+      def button(style:, label: nil, emoji: nil, custom_id: nil, disabled: nil, url: nil)
+        style = ::Discordrb::Webhooks::View::BUTTON_STYLES[style] || style
+        emoji = case emoji
+                when Integer, String
+                  emoji.to_i.positive? ? { id: emoji } : { name: emoji }
+                when nil
+                  nil
+                else
+                  emoji.to_h
+                end
+        @components << { type: ::Discordrb::Webhooks::View::COMPONENT_TYPES[:button], label: label, emoji: emoji, style: style, custom_id: custom_id, disabled: disabled, url: url }
+      end
+    end
   end
 
   # Customize WEBRick's log format
