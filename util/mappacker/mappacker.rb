@@ -4,13 +4,13 @@ require 'win32/registry'
 require 'zip'
 
 # Mappack-specific constants
-MAPPACK   = 'Community Tab Project'
-AUTHOR    = 'CTP'
-NAME      = 'ctp'
-FILES     = ['SI', 'S', 'Scodes', 'SS', 'SScodes']
-SPLASH    = MAPPACK # "#{MAPPACK} by #{AUTHOR}"
+MAPPACK   = 'SPECTRA'
+AUTHOR    = 'abho & MegalordX8'
+NAME      = 'spe'
+FILES     = ['SI']
+SPLASH    = "#{MAPPACK} by #{AUTHOR}"
 SIGN      = AUTHOR.dup
-TITLE     = MAPPACK # "#{MAPPACK} by #{AUTHOR}"
+TITLE     = "#{MAPPACK} by #{AUTHOR}"
 
 # General constants
 TEST      = false
@@ -25,6 +25,7 @@ DIALOG    = true
 PAD       = 32
 CONTROLS  = false
 NPROFILE  = true
+PALETTES  = true
 
 def dialog(title, text)
   print "\a"
@@ -291,6 +292,46 @@ rescue => e
   log_exception(e, "Failed to change level files.")
 end
 
+def add_palettes
+  print "┣━ Adding palettes... ".ljust(PAD, ' ')
+  # Find (or create) folder
+  folder = File.join(find_npp_folder(false), 'NPP')
+  raise "N++ levels folder not found" if !Dir.exist?(folder)
+  folder = File.join(folder, 'Palettes')
+  Dir.mkdir(folder) unless Dir.exist?(folder)
+
+  # Fetch installed palettes
+  palettes = Dir.entries(folder)
+                .select{ |e| File.directory?(e) }
+                .reject{ |e| ['.', '..'].include?(e) }
+
+  # Fetch included palettes
+  tmp = $0[/(.*)\//, 1]
+  zip = Zip::File.open(File.join(tmp, 'palettes.zip'))
+  new_palettes = zip.select{ |d| d.directory? && !palettes.include?(d.name) }
+
+  # New palettes don't fit
+  if 119 + palettes.size + new_palettes.size > 255
+    puts "NOT DONE"
+    return
+  end
+
+  # Create palette folders
+  new_palettes.each{ |p|
+    path = File.join(folder, p.name)
+    Dir.mkdir(path) unless Dir.exist?(path) # Should be unnecessary
+  }
+
+  # Extract palette TGAs
+  zip.select{ |d| d.file? }.each{ |f| f.extract(f.name) }
+
+  zip.close
+  puts "OK"
+rescue
+  puts "NOT DONE"
+  nil
+end
+
 def change_text(file, name, value)
   file.sub!(/#{name}\|[^\|]+?\|/, "#{name}|#{value}|")
 end
@@ -342,6 +383,7 @@ def install
   change_texts(true)
   change_controls(true) if CONTROLS
   change_nprofile(true) if NPROFILE
+  add_palettes()        if PALETTES
   change_author(true)
   puts "┃\n┗━━━ Installed '#{MAPPACK}' successfully!\n\n"
   dialog("N++ Mappack", "Installed '#{MAPPACK}' N++ mappack successfully!")

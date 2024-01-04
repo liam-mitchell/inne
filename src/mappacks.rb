@@ -1909,8 +1909,8 @@ class MappackScore < ActiveRecord::Base
       # Also, try to update the corresponding Metanet scores in outte (in parallel)
       res = forward(req)
       _thread(release: true) do
-        klass = sid >= MIN_ID ? Userlevel : type[:name].constantize
-        klass.find_by(id: sid).update_scores(fast: true)
+        h = (sid >= MIN_ID ? Userlevel : type[:name].constantize).find_by(id: sid)
+        h.update_scores(fast: true) if h
       end if !res.nil?
       return res
     end
