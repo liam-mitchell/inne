@@ -87,6 +87,19 @@ module MonkeyPatches
         @components << { type: ::Discordrb::Webhooks::View::COMPONENT_TYPES[:button], label: label, emoji: emoji, style: style, custom_id: custom_id, disabled: disabled, url: url }
       end
     end
+    ::Discordrb::Webhooks::View::SelectMenuBuilder.class_eval do
+      def option(label:, value:, description: nil, emoji: nil, default: nil)
+        emoji = case emoji
+                when Integer, String
+                  emoji.to_i.positive? ? { id: emoji } : { name: emoji }
+                when
+                  nil
+                else
+                  emoji.to_h
+                end
+        @options << { label: label, value: value, description: description, emoji: emoji, default: default }
+      end
+    end
   end
 
   # Customize WEBRick's log format
