@@ -116,7 +116,7 @@ def find_npp_folder(output = true)
     folder = path if Dir.exist?(path)
   }
   raise "N++ installation not found" if folder.nil?
-  
+
   puts "OK" if output
   $folder_npp = folder
   folder
@@ -264,7 +264,7 @@ def change_nprofile(install = true)
     res = swap_save(og, File.join(folder, "nprofile_#{NAME}.zip"), nprofile)
     return puts "NOT DONE" if !res
   end
-  
+
   puts "OK"
 rescue RuntimeError => e
   log_exception(e, '')
@@ -277,7 +277,7 @@ def change_levels(install = true)
   # Find folder
   folder = File.join(find_npp_folder(false), 'NPP', 'Levels')
   raise "N++ levels folder not found" if !Dir.exist?(folder)
-  
+
   # Change files
   tmp = $0[/(.*)\//, 1]
   FILES.each{ |f|
@@ -312,7 +312,7 @@ def add_palettes
 
   # New palettes don't fit
   if 119 + palettes.size + new_palettes.size > 255
-    puts "NOT DONE"
+    puts "NO (too many palettes)"
     return
   end
 
@@ -323,7 +323,10 @@ def add_palettes
   }
 
   # Extract palette TGAs
-  zip.select{ |d| d.file? }.each{ |f| f.extract(f.name) }
+  zip.select{ |d| d.file? }.each{ |f|
+    path = File.join(folder, f.name)
+    f.extract(path) unless File.exist?(path)
+  }
 
   zip.close
   puts "OK"
