@@ -1,125 +1,94 @@
 import matplotlib.pyplot as mpl
-from itertools import product
+from matplotlib.animation import FFMpegWriter
+#mpl.rcParams["animation.ffmpeg_path"] = "C:\\Users\\Utilisateur\\Desktop\\BizHawk-2.8-win-x64\\dll\\ffmpeg.exe"
 import math
 import os.path
 import zlib
 
-'''
-    TODO:
 
-    - Since all bytes from the map data are casted to integers individually,
-      the 2-byte object counts aren't read correctly, so this will fail for
-      levels with over 256 exit doors, for example.
-    - Generalize to more than 4 players (only Mpl left to adapt)
-'''
+outte_mode = True #Only set to False when manually running the script. Changes what the output of the tool is.
+compressed_inputs = True #Only set to False when manually running the script and using regular uncompressed input files.
+animation_mode = False #Experimental animated plot, set to false for now in outte
 
-'''
-    Constants
-'''
+#Required names for files. Only change values if running manually.
+raw_inputs_0 = "inputs_0"
+raw_inputs_1 = "inputs_1"
+raw_inputs_2 = "inputs_2"
+raw_inputs_3 = "inputs_3"
+raw_map_data = "map_data"
+raw_inputs_episode = "inputs_episode"
+raw_map_data_0 = "map_data_0"
+raw_map_data_1 = "map_data_1"
+raw_map_data_2 = "map_data_2"
+raw_map_data_3 = "map_data_3"
+raw_map_data_4 = "map_data_4"
+map_img = None #This one is only needed for manual execution
 
-# Configure ntrace's input and output. They must be True when using with outte!
-OUTTE_MODE        = True # Format output for outte's usage.
-COMPRESSED_INPUTS = True # Inputs are Zlibbed.
-
-# Filenames. Keep these names when running with outte.
-FILE_INPUTS_LEVEL   = "inputs_%d"
-FILE_INPUTS_EPISODE = "inputs_episode"
-FILE_MAP_LEVEL      = "map_data"
-FILE_MAP_EPISODE    = "map_data_%d"
-MAP_IMG             = "screenshot.PNG" # Only needed for manual execution
-
-# Physics constants
-GRAVITY              = 0.06666666666666665
-GRAVITY_HELD         = 0.01111111111111111
-GROUND_ACCEL         = 0.06666666666666665
-AIR_ACCEL            = 0.04444444444444444
-DRAG                 = 0.9933221725495059 # 0.99^(2/3)
-FRICTION_GROUND      = 0.9459290248857720 # 0.92^(2/3)
-FRICTION_GROUND_SLOW = 0.8617738760127536 # 0.80^(2/3)
-FRICTION_WALL        = 0.9113380468927672 # 0.87^(2/3)
-MAX_XSPEED           = 3.333333333333333  # 5.00/(2/3)
-
-# Ninja's movement
-JUMP_POWER_X     = 2/3
-JUMP_POWER_Y     = 2
-LOW_JUMP_POWER_X = 0
-LOW_JUMP_POWER_Y = 1.4
-WALLJUMP_POWER_X = 1
-WALLJUMP_POWER_Y = 1.4
-SLIDE_WJ_POWER_X = 2/3
-SLIDE_WJ_POWER_Y = 1
-
-WALLED_TOLERANCE   = 0.1
-FRICTION_THRESHOLD = 0.1
-GRAVITY_THRESHOLD  = 46
-BUFFER_PRE_JUMP    = 6
-BUFFER_POST_JUMP   = 5
-BUFFER_POST_WJ     = 5
-
-# Map data parameters
-OFFSET_MODE    =   12
-OFFSET_TITLE   =   38
-OFFSET_TILES   =  184
-OFFSET_COUNTS  = 1150
-OFFSET_OBJECTS = 1230
-
-IDS = {
-    'ninja'          :  0, 'mine'             :  1, 'gold'        :  2, 'exit_door'          :  3,
-    'exit_switch'    :  4, 'door_regular'     :  5, 'door_locked' :  6, 'door_locked_switch' :  7,
-    'door_trap'      :  8, 'door_trap_switch' :  9, 'launch_pad'  : 10, 'one_way'            : 11,
-    'drone_chaingun' : 12, 'drone_laser'      : 13, 'drone_zap'   : 14, 'drone_chaser'       : 15,
-    'floor_guard'    : 16, 'bounce_block'     : 17, 'rocket'      : 18, 'gauss'              : 19,
-    'thwump'         : 20, 'toggle_mine'      : 21, 'evil_ninja'  : 22, 'laser_turret'       : 23,
-    'boost_pad'      : 24, 'death_ball'       : 25, 'micro_drone' : 26, 'mini'               : 27,
-    'shove_thwump'   : 28, 'player_rocket'    : 29
-}
-
-# Dimensions
-UNITS   = 24
-ROWS    = 23
-COLUMNS = 42
-
-RADIUS = {
-    'ninja'          : 10, 'mine'             :  4, 'gold'        :   6, 'exit_door'          :  12,
-    'exit_switch'    :  6, 'door_regular'     : 10, 'door_locked' :  12, 'door_locked_switch' :   5,
-    'door_trap'      : 12, 'door_trap_switch' :  5, 'launch_pad'  :   6, 'one_way'            :  12,
-    'drone_chaingun' :  0, 'drone_laser'      :  0, 'drone_zap'   : 7.5, 'drone_chaser'       : 7.5,
-    'floor_guard'    :  6, 'bounce_block'     :  9, 'rocket'      :   0, 'gauss'              :   0,
-    'thwump'         :  9, 'toggle_mine'      :  4, 'evil_ninja'  :  10, 'laser_turret'       :   0,
-    'boost_pad'      :  6, 'death_ball'       :  5, 'micro_drone' :   4, 'mini'               :   5,
-    'shove_thwump'   : 12, 'player_rocket'    :  0
-}
-
-# Other constants
-MAX_PLAYERS  = 4
-INITIAL_TIME = 90
-FPS          = 60
-
-# Import inputs
+#Import inputs.
 inputs_list = []
-if os.path.isfile(FILE_INPUTS_EPISODE):
+if os.path.isfile(raw_inputs_episode):
     tool_mode = "splits"
-    with open(FILE_INPUTS_EPISODE, "rb") as f:
-        for inputs_level in zlib.decompress(f.read()).split(b'&'):
+    with open(raw_inputs_episode, "rb") as f:
+        inputs_episode = zlib.decompress(f.read()).split(b"&")
+        for inputs_level in inputs_episode:
             inputs_list.append([int(b) for b in inputs_level])
 else:
     tool_mode = "trace"
-    for i in range(MAX_PLAYERS):
-        if not os.path.isfile(FILE_INPUTS_LEVEL % i): break
-        with open(FILE_INPUTS_LEVEL % i, "rb") as f:
-            demo = zlib.decompress(f.read()) if COMPRESSED_INPUTS else f.read()[215:]
-            inputs_list.append([int(b) for b in demo])
+if os.path.isfile(raw_inputs_0):
+    with open(raw_inputs_0, "rb") as f:
+        if compressed_inputs:
+            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
+        else:
+            inputs_list.append([int(b) for b in f.read()][215:])
+if os.path.isfile(raw_inputs_1):
+    with open(raw_inputs_1, "rb") as f:
+        if compressed_inputs:
+            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
+        else:
+            inputs_list.append([int(b) for b in f.read()][215:])
+if os.path.isfile(raw_inputs_2):
+    with open(raw_inputs_2, "rb") as f:
+        if compressed_inputs:
+            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
+        else:
+            inputs_list.append([int(b) for b in f.read()][215:])
+if os.path.isfile(raw_inputs_3):
+    with open(raw_inputs_3, "rb") as f:
+        if compressed_inputs:
+            inputs_list.append([int(b) for b in zlib.decompress(f.read())])
+        else:
+            inputs_list.append([int(b) for b in f.read()][215:])
 
-# Import map data
+#import map data
 mdata_list = []
 if tool_mode == "trace":
-    with open(FILE_MAP_LEVEL, "rb") as f:
+    with open(raw_map_data, "rb") as f:
         mdata = [int(b) for b in f.read()]
-    mdata_list = [mdata] * len(inputs_list)
+    for i in range(len(inputs_list)):
+        mdata_list.append(mdata)
 elif tool_mode == "splits":
-    for i in range(5):
-        with open(FILE_MAP_EPISODE % i, "rb") as f:
-            mdata_list.append([int(b) for b in f.read()])
+    with open(raw_map_data_0, "rb") as f:
+        mdata_list.append([int(b) for b in f.read()])
+    with open(raw_map_data_1, "rb") as f:
+        mdata_list.append([int(b) for b in f.read()])
+    with open(raw_map_data_2, "rb") as f:
+        mdata_list.append([int(b) for b in f.read()])
+    with open(raw_map_data_3, "rb") as f:
+        mdata_list.append([int(b) for b in f.read()])
+    with open(raw_map_data_4, "rb") as f:
+        mdata_list.append([int(b) for b in f.read()])
+
+#Defining physics constants
+gravity = 0.06666666666666665
+gravity_held = 0.01111111111111111
+ground_accel = 0.06666666666666665
+air_accel = 0.04444444444444444
+drag = 0.9933221725495059 # 0.99^(2/3)
+friction_ground = 0.9459290248857720 # 0.92^(2/3)
+friction_ground_slow = 0.8617738760127536 # 0.80^(2/3)
+friction_wall = 0.9113380468927672 # 0.87^(2/3)
+max_xspeed = 3.333333333333333
+max_jump_duration = 45
 
 class Ninja:
     """This class is responsible for updating and storing the positions and velocities of each ninja.
@@ -127,268 +96,342 @@ class Ninja:
     """
     def __init__(self, xspawn, yspawn):
         """Initiate ninja position at spawn point, and initiate other values to their initial state"""
-        self.xpos              = xspawn
-        self.ypos              = yspawn
-        self.xspeed            = 0
-        self.yspeed            = 0
-        self.xspeed_old        = 0
-        self.yspeed_old        = 0
-        self.applied_gravity   = GRAVITY
-        self.applied_friction  = FRICTION_GROUND
-        self.grounded          = False
-        self.grounded_old      = False
-        self.ground_normal     = (0, -1)
-        self.ground_sliding    = 0
-        self.walled            = False
-        self.wall_normal       = 0
-        self.wall_sliding      = 0
-        self.pre_buffer        = 0
-        self.post_buffer       = 0
-        self.post_buffer_wall  = 0
-        self.jump_held_time    = 0
-        self.jumping           = False
-        self.wall_jumping      = False
-        self.gravity_held_time = 0
-        self.hor_input         = 0
-        self.jump_input        = 0
-        self.hor_input_old     = 0
-        self.poslog            = [(0, xspawn, yspawn)]
-        self.xposlog           = [xspawn]
-        self.yposlog           = [yspawn]
-        self.speedlog          = [(0, 0, 0)]
-        self.plog              = [(0, 0)]
-        self.radius            = RADIUS['ninja']
+        self.xpos = xspawn
+        self.ypos = yspawn
+        self.xspeed = 0
+        self.yspeed = 0
+        self.applied_gravity = gravity
+        self.applied_friction = friction_ground
+        self.state = 4
+        self.radius = 10
+        self.hor_input = 0
+        self.jump_input = 0
+        self.jump_input_old = 0
+        self.jump_duration = 0
+        self.jump_buffer = 0
+        self.floor_buffer = 0
+        self.wall_buffer = 0
+        self.floor_jumping = False
+        self.wall_jumping = False
+        self.poslog = [(0, xspawn, yspawn)]
+        self.xposlog = [xspawn]
+        self.yposlog = [yspawn]
+        self.speedlog = [(0,0,0)]
+        self.plog = [(0,0)]
 
     def center_cell(self):
         """find the cell coordinates containing the center of the ninja at its current x and y pos"""
-        return (math.floor(self.xpos / UNITS), math.floor(self.ypos / UNITS))
+        return (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
     
     def neighbour_cells(self, radius):
         """Return a set containing all cells that the ninja overlaps.
         There can be either 1, 2 or 4 cells in the neighbourhood
         """
-        pairs = product((self.xpos, self.ypos), (-radius, radius))
-        x1, x2, y1, y2 = (math.floor((p + r) / UNITS) for p, r in pairs)
-        return set(product((x1, x2), (y1, y2)))
+        x_lower = math.floor((self.xpos - radius) / 24)
+        x_upper = math.floor((self.xpos + radius) / 24)
+        y_lower = math.floor((self.ypos - radius) / 24)
+        y_upper = math.floor((self.ypos + radius) / 24)
+        cell_set = set()
+        cell_set.add((x_lower, y_lower))
+        cell_set.add((x_lower, y_upper))
+        cell_set.add((x_upper, y_lower))
+        cell_set.add((x_upper, y_upper))
+        return cell_set
     
     def object_neighbour_cells(self):
         """Return a list that contains all the cells that could contain objects which the ninja could interact with.
         This list contains nine cells. The one containing the center of the ninja and the eight cells around it.
         """
-        cx, cy = self.center_cell()
-        return product(range(cx - 1, cx + 2), range(cy - 1, cy + 2))
+        center_cell = self.center_cell()
+        center_x = center_cell[0]
+        center_y = center_cell[1]
+        cell_list = [center_cell]
+        cell_list.append((center_x-1,center_y-1))
+        cell_list.append((center_x,center_y-1))
+        cell_list.append((center_x+1,center_y-1))
+        cell_list.append((center_x-1,center_y))
+        cell_list.append((center_x+1,center_y))
+        cell_list.append((center_x-1,center_y+1))
+        cell_list.append((center_x,center_y+1))
+        cell_list.append((center_x+1,center_y+1))
+        return cell_list
     
+    def integrate(self):
+        self.xspeed *= drag
+        self.yspeed *= drag
+        self.yspeed += self.applied_gravity
+        self.xpos_old = self.xpos
+        self.ypos_old = self.ypos
+        self.xpos += self.xspeed
+        self.ypos += self.yspeed
+
     def pre_collision(self):
-        """
-            First stage of the ninja's logic, it happens before any collision
-            has taken place, but after the objects have been moved and thought.
-            
-            Integration (Ghidra: Ninja::integrate):
-            - Save old position.
-            - Apply drag to velocity.
-            - Apply gravity to vertical speed.
-            - Update position by adding velocity.
-        """
-        self.xspeed_old    = self.xspeed
-        self.yspeed_old    = self.yspeed
-        self.xspeed       *= DRAG
-        self.yspeed       *= DRAG
-        self.yspeed       += self.applied_gravity
-        self.xpos         += self.xspeed
-        self.ypos         += self.yspeed
-        self.grounded_old  = self.grounded
-        self.grounded      = False
-        self.walled        = False
+        self.xspeed_old = self.xspeed
+        self.yspeed_old = self.yspeed
+        self.floor_count = 0
+        self.wall_count = 0
+        self.floor_normal_x = 0
+        self.floor_normal_y = 0
 
-        if self.jump_input:
-            self.jump_held_time += 1
-            if self.jump_held_time == 1: self.pre_buffer = BUFFER_PRE_JUMP
-            if self.gravity_held_time:   self.gravity_held_time += 1
-        else:
-            self.jump_held_time    = 0
-            self.jumping           = False
-            self.wall_jumping      = False
-            self.gravity_held_time = 0
+    def collide_vs_objects(self):
+        neighbour_cells = self.object_neighbour_cells()
+        for cell in neighbour_cells:
+            for entity in entity_dic[cell]:
+                if entity.is_physical_collidable and entity.active:
+                    depen = entity.physical_collision(self, self.radius)
+                    if depen:
+                        depen_x = depen[0]
+                        depen_y = depen[1]
+                        self.xpos += depen_x
+                        self.ypos += depen_y
+                        self.xspeed += depen_x
+                        self.yspeed += depen_y
+                        if depen_y < 0:
+                            self.floor_count += 1
+                            self.floor_normal_x += depen_x
+                            self.floor_normal_y += depen_y
 
-    def ground_jump(self):
-        """
-            Checks if a ground jump needs to be performed, and executes it.
-
-            There are 3 types of jump:
-            - Regular jump: If the input and the ground normal go in the same horizontal direction,
-                            or if either of them are null.
-            - Perp jump:    Same, but when the speed opposes the ground normal horizonally.
-            - Low jump:     If the input opposes the ground normal horizontally.
-        """
-        if self.pre_buffer and self.post_buffer in (1, 2, 3, 5) and not self.jumping and not self.wall_jumping:
-            # Compute jump vector
-            gnx, gny = self.ground_normal
-            if gnx * self.hor_input >= 0:
-                jx, jy = (JUMP_POWER_X * gnx, JUMP_POWER_Y * gny) # Regular jump
-                if gnx * self.xspeed < 0: self.xspeed = 0         # Perp jump
-            else:
-                jx, jy = (LOW_JUMP_POWER_X, -LOW_JUMP_POWER_Y)    # Low jump
-            
-            # Update position, velocity, and others
-            self.yspeed            = min(self.yspeed, 0)
-            self.xspeed           += jx
-            self.yspeed           += jy
-            self.xpos             += jx
-            self.ypos             += jy
-            self.jumping           = True
-            self.gravity_held_time = 1
-            self.pre_buffer        = 0
-            self.post_buffer       = 0
-            self.grounded          = False
-
-    def wall_jump(self):
-        """
-            Checks if a walljump needs to be performed, and executes it.
-
-            There are 2 types of walljump:
-            - Slide walljump:   If the ninja is sliding, and the horizontal input is towards the wall.
-            - Regular walljump: Any other case.
-            The regular walljump is 50% stronger horizontally and 40% stronger vertically.
-        """
-        if self.pre_buffer and self.post_buffer_wall and not self.jumping and not self.wall_jumping and self.post_buffer != 4:
-            # Stop ninja when hitting a wall
-            if self.xspeed * self.wall_normal < 0: self.xspeed = 0
-
-            # Compute jump vector
-            n = self.wall_normal
-            if self.wall_sliding and self.hor_input * n == -1:     # Slide walljump
-                jx, jy = (SLIDE_WJ_POWER_X * n, -SLIDE_WJ_POWER_Y)
-                self.yspeed = 0
-            else:                                                  # Regular walljump
-                jx, jy = (WALLJUMP_POWER_X * n, -WALLJUMP_POWER_Y)
-                self.yspeed = min(self.yspeed, 0)
-            
-            # Update position, velocity, and others
-            self.xspeed           += jx
-            self.yspeed           += jy
-            self.xpos             += jx
-            self.ypos             += jy
-            self.wall_jumping      = True
-            self.gravity_held_time = 1
-            self.pre_buffer        = 0
-            self.post_buffer_wall  = 0
-            self.walled            = False
-            self.wall_sliding      = 0
+    def collide_vs_tiles(self):
+        for point in range(32):
+            closest_point = get_single_closest_point(self)
+            if not closest_point:
+                break
+            a = closest_point[0]
+            b = closest_point[1]
+            dx = self.xpos - a
+            dy = self.ypos - b
+            dist = math.sqrt(dx**2 + dy**2)
+            if dist == 0:
+                break
+            xpos_new = a + self.radius*dx/dist
+            ypos_new = b + self.radius*dy/dist
+            self.xpos = xpos_new
+            self.ypos = ypos_new
+            dot_product = self.xspeed * dx + self.yspeed * dy
+            if dot_product < 0: #check if you're moving towards the corner.
+                xspeed_new = (self.xspeed*dy - self.yspeed*dx) / dist**2 * dy
+                yspeed_new = (self.xspeed*dy - self.yspeed*dx) / dist**2 * (-dx)
+                self.xspeed = xspeed_new
+                self.yspeed = yspeed_new
+            if dy < -0.0001:
+                self.floor_count += 1
+                self.floor_normal_x += dx
+                self.floor_normal_y += dy
 
     def post_collision(self):
-        """
-            Last stage of each frame's execution.
+        #Perform LOGICAL collisions between the ninja and nearby entities.
+        neighbour_cells = self.object_neighbour_cells()
+        for cell in neighbour_cells:
+            for entity in entity_dic[cell]:
+                if entity.is_logical_collidable and entity.active:
+                    entity.logical_collision(self, self.radius + 0.1)
 
-            Performs all remaining physics operations after the collision phase:
-            - Add player acceleration.
-            - Update jump buffers.
-            - Perform jump / walljump, if applicable.
-            - Apply ground friction, if sliding.
-            - Apply wall friction, if wallsliding.
-            - Prepare other parameters for next frame (e.g. gravity).
-        """
-
-        # Add player generated horizontal acceleration if the max speed is not exceeded by this
-        a = self.hor_input * (GROUND_ACCEL if self.grounded else AIR_ACCEL)
-        if (abs(self.xspeed + a) <= MAX_XSPEED): self.xspeed += a
-
-        # Check if walled
-        for cell in self.neighbour_cells(self.radius + WALLED_TOLERANCE):
-            if self.walled: break
+        #Check if the ninja can interact with nearby walls.
+        neighbour_cells = self.neighbour_cells(self.radius + 0.1)
+        for cell in neighbour_cells:
             for segment in segment_dic[cell]:
-                if segment.active and segment.type == "linear" and segment.is_wall_intersecting(self):
-                    self.walled = True
-                    break
-        
-        # Update all variables related to jump buffers
-        if self.pre_buffer:       self.pre_buffer       -= 1
-        if self.post_buffer:      self.post_buffer      -= 1
-        if self.post_buffer_wall: self.post_buffer_wall -= 1
-        if self.walled:           self.post_buffer_wall  = BUFFER_POST_WJ
-        if self.grounded:
-            self.post_buffer       = BUFFER_POST_JUMP
-            self.jumping           = 0
-            self.gravity_held_time = 0
+                if segment.active and segment.type == "linear":
+                    wall_normal = segment.wall_intersecting(self)
+                    if wall_normal:
+                        self.wall_count += 1
+                        self.wall_normal = wall_normal
 
-        # Perform jump/walljump if applicable
-        if self.grounded:     self.ground_jump()
-        self.wall_jump()
-        if not self.grounded: self.ground_jump()
+        #Calculate the combined floor normalized normal vector if the ninja has touched any floor.
+        if self.floor_count > 0:
+            floor_scalar = math.sqrt(self.floor_normal_x**2 + self.floor_normal_y**2)
+            if floor_scalar == 0:
+                self.floor_normalized_x = 0
+                self.floor_normalized_y = -1
+            else:
+                self.floor_normalized_x = self.floor_normal_x/floor_scalar
+                self.floor_normalized_y = self.floor_normal_y/floor_scalar
 
-        # Check if ground/wall sliding
-        if self.grounded and (self.hor_input == 0 or self.hor_input * self.xspeed < 0):
-            self.ground_sliding += 1 if self.grounded_old else 2
+    def floor_jump(self):
+        self.state = 3
+        self.applied_gravity = gravity_held
+        if self.floor_normalized_x == 0:
+            jx = 0
+            jy = -2
         else:
-            self.ground_sliding = 0
-
-        if self.walled and self.yspeed > 0 and self.post_buffer != 4:
-            if self.wall_sliding:
-                if self.hor_input * self.wall_normal <= 0:
-                    self.wall_sliding += 1
+            dx = self.floor_normalized_x
+            dy = self.floor_normalized_y
+            if self.xspeed * dx > 0:
+                if self.xspeed * self.hor_input >= 0:
+                    jx = 2/3 * dx
+                    jy = 2 * dy
                 else:
-                    self.wall_sliding = 0
-            elif self.hor_input * self.wall_normal == -1:
-                self.wall_sliding = 1
+                    jx = 0
+                    jy = -1.4
+            elif self.xspeed * dx < 0:
+                if self.xspeed * self.hor_input > 0:
+                    jx = 0
+                    jy = -1.4
+                else:
+                    self.xspeed = 0
+                    jx = 2/3 * dx
+                    jy = 2 * dy
+        if self.yspeed > 0:
+            self.yspeed = 0
+        self.xspeed += jx
+        self.yspeed += jy
+        self.xpos += jx
+        self.ypos += jy
+        self.jump_buffer = 0
+        self.jump_duration = 0
+
+    def wall_jump(self):
+        if self.hor_input * self.wall_normal < 0 and self.state == 5:
+            jx = 2/3
+            jy = -1
         else:
-            self.wall_sliding = 0
+            jx = 1
+            jy = -1.4
+        self.state = 3
+        self.applied_gravity = gravity_held
+        if self.xspeed * self.wall_normal < 0:
+            self.xspeed = 0
+        if self.yspeed > 0:
+            self.yspeed = 0
+        self.xspeed += jx * self.wall_normal
+        self.yspeed += jy
+        self.xpos += jx * self.wall_normal
+        self.ypos += jy
+        self.jump_buffer = 0
+        self.jump_duration = 0
+        return  
 
-        # Apply ground friction if applicable
-        if self.ground_sliding > 1:
-            if abs(self.xspeed) <= FRICTION_THRESHOLD and (self.hor_input or abs(self.xspeed_old) > FRICTION_THRESHOLD):
-                self.applied_friction = 1
-            if self.ground_normal == (0, -1):        # Friction in flat ground
-                self.xspeed *= self.applied_friction
-            elif self.yspeed > 0:                    # Friction down a slope
-                self.xspeed *= FRICTION_GROUND
-            elif self.yspeed < 0:                    # Friction up a slope
-                # This is the worst friction formula ever concieved.
-                speed_scalar = math.sqrt(self.xspeed ** 2 + self.yspeed ** 2)
-                fric_force1 = abs(self.xspeed * (1 - FRICTION_GROUND) * self.ground_normal[1])
-                fric_force2 = speed_scalar - fric_force1 * self.ground_normal[1] ** 2
-                self.xspeed = self.xspeed / speed_scalar * fric_force2
-                self.yspeed = self.yspeed / speed_scalar * fric_force2
-            if abs(self.xspeed) <= FRICTION_THRESHOLD:
-                self.applied_friction = 1 if self.hor_input else FRICTION_GROUND_SLOW
+    def think(self):
+        #Start by updating buffers
+        if frame == 188:
+            print("debug")
+        if self.jump_buffer:
+            self.jump_buffer -= 1
+        if self.floor_buffer:
+            self.floor_buffer -= 1
+        if self.wall_buffer:
+            self.wall_buffer -= 1
+        if self.jump_input and not self.jump_input_old:
+            self.jump_buffer = 5
+        self.jump_input_old = self.jump_input
+        if self.floor_count:
+            self.floor_buffer = 5
+        if self.wall_count:
+            self.wall_buffer = 5
 
-        if abs(self.xspeed) > FRICTION_THRESHOLD:
-            self.applied_friction = FRICTION_GROUND
+        #Determine if the ninja is capable of jumping on that frame
+        self.floor_jumping = True if self.jump_buffer and self.floor_buffer else False
+        self.wall_jumping = True if self.jump_buffer and self.wall_buffer else False
 
-        # Apply wall friction if applicable
-        if self.wall_sliding > 1: self.yspeed *= FRICTION_WALL
+        #This block deals with the case where the ninja is touching a floor
+        if self.floor_count: 
+            xspeed_new = self.xspeed + ground_accel * self.hor_input
+            if abs(xspeed_new) < max_xspeed:
+                self.xspeed = xspeed_new
+            if self.state > 2:
+                if self.xspeed * self.hor_input <= 0:
+                    if self.state == 3:
+                        self.applied_gravity = gravity
+                    self.state = 2
+                else:
+                    if self.state == 3:
+                        self.applied_gravity = gravity
+                    self.state = 1
+            if not self.floor_jumping:
+                if self.state == 2:
+                    projection = abs(self.yspeed * self.floor_normalized_x - self.xspeed * self.floor_normalized_y)
+                    if self.hor_input * projection * self.xspeed > 0:
+                        self.state = 1
+                        return
+                    if projection < 0.1 and self.floor_normalized_x == 0:
+                        self.state = 0
+                        return
+                    if self.yspeed < 0 and self.floor_normalized_x != 0:
+                        #Up slope friction formula, very dumb but that's how it is
+                        speed_scalar = math.sqrt(self.xspeed**2 + self.yspeed**2)
+                        fric_force = abs(self.xspeed * (1-friction_ground) * self.floor_normalized_y)
+                        fric_force2 = speed_scalar - fric_force * self.floor_normalized_y**2
+                        self.xspeed = self.xspeed / speed_scalar * fric_force2
+                        self.yspeed = self.yspeed / speed_scalar * fric_force2 
+                        return
+                    self.xspeed *= friction_ground
+                    return
+                if self.state == 1:
+                    projection = abs(self.yspeed * self.floor_normalized_x - self.xspeed * self.floor_normalized_y)
+                    if self.hor_input * projection * self.xspeed > 0:
+                        if self.hor_input * self.floor_normalized_x >= 0: #if holding inputs in downhill direction or flat ground
+                            return
+                        if abs(xspeed_new) < max_xspeed:
+                            boost = ground_accel/2 * self.hor_input
+                            xboost = boost * self.floor_normalized_y * self.floor_normalized_y
+                            yboost = boost * self.floor_normalized_y * -self.floor_normalized_x
+                            self.xspeed += xboost
+                            self.yspeed += yboost
+                        return
+                    self.state = 2
+                else: #if you were in state 0 I guess
+                    if self.hor_input:
+                        self.state = 1
+                        return
+                    projection = abs(self.yspeed * self.floor_normalized_x - self.xspeed * self.floor_normalized_y)
+                    if projection < 0.1:
+                        self.xspeed *= friction_ground_slow
+                        return
+                    self.state = 2
+                    return
 
-        # If the ninja is in the state of jumping and holding the jump key, lower his applied gravity.
-        # This effect only lasts for 46 frames (a full jump).
-        self.applied_gravity = GRAVITY_HELD if 1 <= self.gravity_held_time <= GRAVITY_THRESHOLD else GRAVITY
-        if not self.jump_input:
-            self.jumping = False
-            self.wall_jumping = False 
+        #This block deals with the case where the ninja didn't touch a floor
+        if not self.floor_count:
+            xspeed_new = self.xspeed + air_accel * self.hor_input
+            if abs(xspeed_new) < max_xspeed:
+                self.xspeed = xspeed_new
+            if self.state < 3:
+                self.state = 4
+                return
+            if self.state == 3:
+                self.jump_duration += 1
+                if self.jump_input == 0 or self.jump_duration > max_jump_duration:
+                    self.applied_gravity = gravity
+                    self.state = 4
+                return
+            if not self.wall_jumping:
+                if not self.wall_count:
+                    self.state = 4
+                else:
+                    if self.state == 5:
+                        if self.hor_input * self.wall_normal <= 0:
+                            self.yspeed *= friction_wall
+                        else:
+                            self.state = 4
+                    else:
+                        if self.yspeed > 0 and self.hor_input * self.wall_normal < 0:
+                            self.state = 5
 
-        self.hor_input_old = self.hor_input
+        #Deals with jumping     
+        if self.floor_jumping and self.floor_count:
+            self.floor_jump()
+            return
+        if self.wall_jumping:
+            self.wall_jump()
+            return
+        if self.floor_jumping and not self.floor_count:
+            self.floor_jump()
 
 class GridSegmentLinear:
-    """
-        Represents a solid linear segment with endpoints in the grid, defined by
-        the coordinates of its two endpoints.
-        
-        Both the ninja and enemies can collide with these. A segment may be part
-        of a tile, or also a door. A segment may or may not be active during
-        the course of the run (e.g. doors), so we need to store that info too.
-    """
+    """Contains all the linear segments of tiles and doors that the ninja can interract with"""
     def __init__(self, p1, p2):
-        self.x1     = p1[0]
-        self.y1     = p1[1]
-        self.x2     = p2[0]
-        self.y2     = p2[1]
+        """Initiate an instance of a linear segment of a tile. 
+        Each segment is defined by the coordinates of its two end points.
+        """
+        self.x1 = p1[0]
+        self.y1 = p1[1]
+        self.x2 = p2[0]
+        self.y2 = p2[1]
         self.active = True
-        self.type   = "linear"
+        self.type = "linear"
 
     def collision_check(self, ninja):
-        """
-            Check if the ninja is interesecting with the segment, and if so,
-            return the depenetration information:
-            - Closest segment point to the center of the ninja.
-            - Distance between these points (penetration length).
-            With this information, we can later depenetrate the ninja from the segment.
+        """Check if the ninja is interesecting with the segment.
+        If so, calculate the penetration length and the closest point on the segment from the center of the ninja.
         """
         px = self.x2 - self.x1
         py = self.y2 - self.y1
@@ -402,21 +445,23 @@ class GridSegmentLinear:
         penetration = ninja.radius - dist if dist < 9.9999999 else 0
         return (x, y), penetration
     
-    def is_wall_intersecting(self, ninja):
+    def wall_intersecting(self, ninja):
         """Return True only if the segment is a wall that is intersecting the ninja with an increased radius of 10.1
         Also store the wall normal into the ninja's wall_normal variable"""
         if self.x1 == self.x2:
-            if -(ninja.radius + WALLED_TOLERANCE) < ninja.xpos-self.x1 < 0 and self.y1 <= ninja.ypos <= self.y2:
-                ninja.wall_normal = -1
-                return True
-            if 0 < ninja.xpos-self.x1 < (ninja.radius + WALLED_TOLERANCE) and self.y1 <= ninja.ypos <= self.y2:
-                ninja.wall_normal = 1
-                return True
-        return False
+            if -(ninja.radius + 0.1) < ninja.xpos-self.x1 < 0 and self.y1 <= ninja.ypos <= self.y2:
+                return -1
+            if 0 < ninja.xpos-self.x1 < (ninja.radius + 0.1) and self.y1 <= ninja.ypos <= self.y2:
+                return 1
     
 class GridSegmentCircular:
     """Contains all the circular segments of tiles that the ninja can interract with"""
-    def __init__(self, center, quadrant, convex=True, radius=UNITS):
+    def __init__(self, center, quadrant, convex=True, radius=24):
+        """Initiate an instance of a circular segment of a tile. 
+        Each segment is defined by the coordinates of its center, a vector indicating which
+        quadrant contains the qurater-circle, a boolean indicating if the tile is convex or
+        concave, and the radius of the quarter-circle.
+        """
         self.xpos = center[0]
         self.ypos = center[1]
         self.hor = quadrant[0]
@@ -455,11 +500,11 @@ class Entity:
         self.is_physical_collidable = False
         self.is_movable = False
         self.is_thinkable = False
-        self.cell = (math.floor(self.xpos / UNITS), math.floor(self.ypos / UNITS))
+        self.cell = (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
         entity_dic[self.cell].append(self)
         entity_list.append(self)
 
-    def is_colliding_circle(self, ninja):
+    def is_colliding_circle(self, ninja, radius):
         """Returns True if the ninja is colliding with the entity. That is, if the distance
         between the center of the ninja and the center of the entity is inferior to the lenth of the
         entity's radius plus the ninja's radius.
@@ -467,41 +512,48 @@ class Entity:
         dx = self.xpos - ninja.xpos
         dy = self.ypos - ninja.ypos
         dist = math.sqrt(dx**2 + dy**2)
-        return dist < self.radius + ninja.radius
+        return dist < self.radius + radius
     
     def grid_move(self):
         """As the entity is moving, if its center goes from one grid cell to another,
         remove it from the previous cell and insert it into the new cell.
         """
         entity_dic[self.cell].remove(self)
-        self.cell = (math.floor(self.xpos / UNITS), math.floor(self.ypos / UNITS))
+        self.cell = (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
         entity_dic[self.cell].append(self)
+
+class EntityMine(Entity):
+    def __init__(self, type, xcoord, ycoord):
+        super().__init__(type, xcoord, ycoord)
+        self.radius = 4
+        self.color = "#910A46"
 
 class EntityGold(Entity):
     def __init__(self, type, xcoord, ycoord):
         super().__init__(type, xcoord, ycoord)
         self.is_logical_collidable = True
-        self.radius = RADIUS['gold']
+        self.radius = 6
         self.collected = False
+        self.color = "#EDDC54"
         
-    def logical_collision(self, ninja):
+    def logical_collision(self, ninja, radius):
         """If the ninja is colliding with the piece of gold, flag it as being collected."""
-        if self.is_colliding_circle(ninja):
-            self.collected = True
+        if self.is_colliding_circle(ninja, radius):
+            self.collected = frame
             self.active = False
 
 class EntityExit(Entity):
     def __init__(self, type, xcoord, ycoord):
         super().__init__(type, xcoord, ycoord)
         self.is_logical_collidable = True
-        self.radius = RADIUS['exit_door']
+        self.radius = 12
         self.open = False
         self.ninja_exit = []
 
-    def logical_collision(self, ninja):
+    def logical_collision(self, ninja, radius):
         """If the ninja is colliding with the open door, store the frame at which the collision happened"""
         if self.open:
-            if self.is_colliding_circle(ninja):
+            if self.is_colliding_circle(ninja, radius):
                 self.ninja_exit.append(frame)
                 self.active = False
 
@@ -509,13 +561,13 @@ class EntityExitSwitch(Entity):
     def __init__(self, type, xcoord, ycoord, parent):
         super().__init__(type, xcoord, ycoord)
         self.is_logical_collidable = True
-        self.radius = RADIUS['exit_switch']
+        self.radius = 6
         self.collected = False
         self.parent = parent
 
-    def logical_collision(self, ninja):
+    def logical_collision(self, ninja, radius):
         """If the ninja is colliding with the switch, flag it as being collected, and open its associated door."""
-        if self.is_colliding_circle(ninja):
+        if self.is_colliding_circle(ninja, radius):
             self.collected = True
             self.active = False
             self.parent.open = True
@@ -528,15 +580,16 @@ class EntityDoorBase(Entity):
         self.sw_xpos = 6 * sw_xcoord
         self.sw_ypos = 6 * sw_ycoord
         if orientation == 0:
-            self.segment = GridSegmentLinear((self.xpos, self.ypos-UNITS / 2), (self.xpos, self.ypos+UNITS / 2))
+            self.segment = GridSegmentLinear((self.xpos, self.ypos-12), (self.xpos, self.ypos+12))
         if orientation == 2:
-            self.segment = GridSegmentLinear((self.xpos-UNITS / 2, self.ypos), (self.xpos+UNITS / 2, self.ypos))
+            self.segment = GridSegmentLinear((self.xpos-12, self.ypos), (self.xpos+12, self.ypos))
         segment_dic[self.cell].append(self.segment)
         self.xpos = self.sw_xpos
         self.ypos = self.sw_ypos
         self.grid_move()
 
     def change_state(self, open=True):
+        #Change the state of the door from closed to open or from open to closed.
         if open:
             self.open = True
             self.segment.active = False
@@ -548,39 +601,43 @@ class EntityDoorRegular(EntityDoorBase):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
         super().__init__(type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord)
         self.is_thinkable = True
-        self.radius = RADIUS['door_regular']
+        self.radius = 10
         self.open_timer = 0
 
     def think(self):
+        #If the door has been opened for more than 5 frames without being touched by the ninja, close it.
         if self.open:
             self.open_timer += 1
             if self.open_timer > 5:
                 self.change_state(open=False)
 
-    def logical_collision(self, ninja):
-        if self.is_colliding_circle(ninja):
+    def logical_collision(self, ninja, radius):
+        #If the ninja touches the activation region of the door, open it.
+        if self.is_colliding_circle(ninja, radius):
             self.change_state()
             self.open_timer = 0
 
 class EntityDoorLocked(EntityDoorBase):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
         super().__init__(type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord)
-        self.radius = RADIUS['door_locked_switch']
+        self.radius = 5
 
-    def logical_collision(self, ninja):
-        if self.is_colliding_circle(ninja):
+    def logical_collision(self, ninja, radius):
+        #If the ninja collects the associated open switch, open the door.
+        if self.is_colliding_circle(ninja, radius):
             self.change_state()
             self.active = False
 
 class EntityDoorTrap(EntityDoorBase):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
         super().__init__(type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord)
-        self.radius = RADIUS['door_trap_switch']
+        self.radius = 5
         self.open = True
         self.segment.active = False
 
-    def logical_collision(self, ninja):
-        if self.is_colliding_circle(ninja):
+    def logical_collision(self, ninja, radius):
+        #If the ninja collects the associated close switch, close the door.
+        if self.is_colliding_circle(ninja, radius):
             self.change_state(open=False)
             self.active = False
             
@@ -588,17 +645,19 @@ class EntityBounceBlock(Entity):
     def __init__(self, type, xcoord, ycoord):
         super().__init__(type, xcoord, ycoord)
         self.is_physical_collidable = True
+        self.is_logical_collidable = True
         self.is_movable = True
         self.is_thinkable = True
         self.xspeed = 0
         self.yspeed = 0
         self.xorigin = self.xpos
         self.yorigin = self.ypos
-        self.semiside = RADIUS['bounce_block']
+        self.semiside = 9
         self.stiffness = 0.02222222222222222
         self.dampening = 0.98
         self.strength = 0.2
         self.is_immobile = True
+        self.log = [(self.xpos, self.ypos)]
         
     def move(self, ninja):
         """Update the position and speed of the bounce block by applying the spring force and dampening."""
@@ -627,37 +686,38 @@ class EntityBounceBlock(Entity):
                 self.yspeed = 0
                 self.is_immobile = True
 
-    def physical_collision(self, ninja):
-        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside + ninja.radius)
+    def physical_collision(self, ninja, radius):
+        #Collide with the ninja. 
+        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside + radius)
         depen_x = depen[0]
         depen_y = depen[1]
         depen_len = abs(depen_x) + abs(depen_y)
         if depen_len > 0:
-            ninja.xpos += depen_x * self.strength
-            ninja.ypos += depen_y * self.strength
-            ninja.xspeed += depen_x * self.strength
-            ninja.yspeed += depen_y * self.strength
-            if depen_y == 0:
-                ninja.walled = True
-                ninja.wall_normal = -1 if depen_x < 0 else 1
-            if depen_y < 0:
-                ninja.grounded = True
-                ninja.ground_normal = (0, -1)
             self.xpos -= depen_x * (1-self.strength)
             self.ypos -= depen_y * (1-self.strength)
             self.xspeed -= depen_x * (1-self.strength)
             self.yspeed -= depen_y * (1-self.strength)
             self.is_immobile = False
+            return (depen_x * self.strength, depen_y*self.strength)
+        
+    def logical_collision(self, ninja, radius):
+        #Check if the ninja can interact with the wall of the bounce block
+        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside + radius)
+        depen_x = depen[0]
+        if depen_x:
+            ninja.wall_count += 1
+            ninja.wall_normal = depen_x / abs(depen_x)
 
 class EntityBoostPad(Entity):
     def __init__(self, type, xcoord, ycoord):
         super().__init__(type, xcoord, ycoord)
         self.is_movable = True
-        self.radius = RADIUS['boost_pad']
+        self.radius = 6
         self.is_touching_ninja = False
 
     def move(self, ninja):
-        if self.is_colliding_circle(ninja):
+        #If the ninja starts touching the booster, add 2 to its velocity norm.
+        if self.is_colliding_circle(ninja, ninja.radius):
             if not self.is_touching_ninja:
                 vel_norm = math.sqrt(ninja.xspeed**2 + ninja.yspeed**2)
                 if vel_norm > 0:
@@ -669,44 +729,18 @@ class EntityBoostPad(Entity):
         else:
             self.is_touching_ninja = False
 
-def point_collision(p, a, b):
-    """handles collision between the ninja and a specific point"""
-    dx = p.xpos - a
-    dy = p.ypos - b
-    dist = math.sqrt(dx**2 + dy**2)
-    if dist == 0:
-        return
-    xpos_new = a + p.radius*dx/dist
-    ypos_new = b + p.radius*dy/dist
-    p.xpos = xpos_new
-    p.ypos = ypos_new
-    dot_prod = p.xspeed * dx + p.yspeed * dy #negative dot prod means the ninja is moving towards the point else away from it
-    xspeed_boost = 0
-    if p.xspeed * dx < 0 and dy < 0 and p.xspeed * p.hor_input > 0 and p.hor_input_old == p.hor_input and not (p.pre_buffer and not p.jumping):
-        if p.xspeed > 0:
-            xspeed_boost = 1/30
-        if p.xspeed < 0:
-            xspeed_boost = -1/30
-    if dot_prod < 0: #check if you're moving towards the corner.
-        xspeed_new = (p.xspeed*dy - p.yspeed*dx) / dist**2 * dy
-        yspeed_new = (p.xspeed*dy - p.yspeed*dx) / dist**2 * (-dx)
-        xspeed_new_boost = ((p.xspeed+xspeed_boost)*dy - p.yspeed*dx) / dist**2 * dy
-        yspeed_new_boost = ((p.xspeed+xspeed_boost)*dy - p.yspeed*dx) / dist**2 * (-dx)
-        if p.xspeed * xspeed_new_boost < 0 and abs(xspeed_new_boost) >= abs(xspeed_boost):
-            p.xspeed = xspeed_new	
-            p.yspeed = yspeed_new
-        else:
-            p.xspeed = xspeed_new_boost	
-            p.yspeed = yspeed_new_boost
-    else:
-        xspeed_new = xspeed_boost*dy / dist**2 * dy
-        yspeed_new = xspeed_boost*dy / dist**2 * (-dx)
-        p.xspeed += xspeed_new	
-        p.yspeed += yspeed_new
-    if not p.grounded:
-        p.grounded = (dy < -0.0000001)
-    if abs(dy) > 0.0000001:
-        p.ground_normal = (dx/dist, dy/dist)
+def get_single_closest_point(p):
+    neighbour_cells = p.neighbour_cells(p.radius)
+    biggest_penetration = 0
+    for cell in neighbour_cells:
+        for segment in segment_dic[cell]:
+            if segment.active:
+                point, penetration = segment.collision_check(p)
+                if penetration > biggest_penetration:
+                    biggest_penetration = penetration
+                    closest_point = point
+    if biggest_penetration > 0:
+        return closest_point
 
 def collision_square_vs_point(square_pos, point_pos, semiside):
     """Return the depenetration vector to depenetrate a point out of a square.
@@ -744,40 +778,20 @@ def tick(p, frame):
             entity.think()
             
     #Do pre collision calculations.
+    p.integrate()
     p.pre_collision()
 
     #Handle PHYSICAL collisions with entities.
-    neighbour_cells = p.object_neighbour_cells()
-    for cell in neighbour_cells:
-        for entity in entity_dic[cell]:
-            if entity.is_physical_collidable and entity.active:
-                entity.physical_collision(p)
+    p.collide_vs_objects()
 
-    #Handle collisions with tile segments.
-    for i in range(32):
-        neighbour_cells = p.neighbour_cells(p.radius)
-        biggest_penetration = 0 #What I did to your mom xd
-        for cell in neighbour_cells:
-            for segment in segment_dic[cell]:
-                if segment.active:
-                    cloesest_point, penetration = segment.collision_check(p)
-                    if penetration > biggest_penetration:
-                        biggest_penetration = penetration
-                        closest_point_x = cloesest_point[0]
-                        closest_point_y = cloesest_point[1]
-        if biggest_penetration == 0:
-            break
-        point_collision(p, closest_point_x, closest_point_y)
-
-    #Handle LOGICAL collisions with entities.
-    neighbour_cells = p.object_neighbour_cells()
-    for cell in neighbour_cells:
-        for entity in entity_dic[cell]:
-            if entity.is_logical_collidable and entity.active:
-                entity.logical_collision(p)
+    #Handle physical collisions with tiles.
+    p.collide_vs_tiles()
 
     #Do post collision calculations.
     p.post_collision()
+
+    #Make ninja think
+    p.think()
 
     #Update all the logs for debugging purposes. Only the position log will be used to draw the route.
     p.poslog.append((frame, round(p.xpos, 6), round(p.ypos, 6)))
@@ -807,215 +821,218 @@ for i in range(len(inputs_list)):
     inp_len = len(inputs)
 
     #extract tile data from map data
-    tile_data = mdata[OFFSET_TILES:OFFSET_TILES + ROWS * COLUMNS]
+    tile_data = mdata[184:1150]
 
     #initiate a dictionary mapping each tile to its cell. Start by filling it with full tiles.
     tile_dic = {}
-    for x in range(COLUMNS + 2):
-        for y in range(ROWS + 2):
+    for x in range(44):
+        for y in range(25):
             tile_dic[(x, y)] = 1
 
     #map each tile to its cell
-    for x in range(COLUMNS):
-        for y in range(ROWS):
-            tile_dic[(x+1, y+1)] = tile_data[x + y*COLUMNS]
+    for x in range(42):
+        for y in range(23):
+            tile_dic[(x+1, y+1)] = tile_data[x + y*42]
 
+    #Initiate dictionaries and list containing interactable segments and entities
     segment_dic = {}
-    for x in range(COLUMNS + 2):
-        for y in range(ROWS + 2):
+    for x in range(44):
+        for y in range(25):
             segment_dic[(x, y)] = []
     entity_dic = {}
-    for x in range(COLUMNS + 2):
-        for y in range(ROWS + 2):
+    for x in range(44):
+        for y in range(25):
             entity_dic[(x, y)] = []
     entity_list = []
 
     #put each segment in its correct cell
     for coord, tile_id in tile_dic.items():
-        xtl = coord[0] * UNITS
-        ytl = coord[1] * UNITS
+        xtl = coord[0] * 24
+        ytl = coord[1] * 24
         if tile_id == 1: #1: full tile
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
         if tile_id == 2: #2-5: half tiles
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl+UNITS, ytl+UNITS / 2)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS / 2)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS / 2)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+12)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+12)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+12)))
         if tile_id == 3:
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl), (xtl+UNITS / 2, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+12, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
         if tile_id == 4:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl+UNITS, ytl+UNITS / 2)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl+UNITS / 2), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+12)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl+12), (xtl+24, ytl+24)))
         if tile_id == 5:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS / 2, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS / 2, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl), (xtl+UNITS / 2, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+12, ytl+24)))
         if tile_id == 6: #6-9: 45 degreee slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl)))
         if tile_id == 7: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+24)))
         if tile_id == 8: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl)))
         if tile_id == 9: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+24)))
         if tile_id == 10: #10-13: quarter moons
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl, ytl), (1, 1)))
         if tile_id == 11: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentCircular((xtl+UNITS, ytl), (-1, 1)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl), (-1, 1)))
         if tile_id == 12: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentCircular((xtl+UNITS, ytl+UNITS), (-1, -1)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl+24), (-1, -1)))
         if tile_id == 13: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentCircular((xtl, ytl+UNITS), (1, -1)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentCircular((xtl, ytl+24), (1, -1)))
         if tile_id == 14: #14-17: quarter pipes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentCircular((xtl+UNITS, ytl+UNITS), (-1, -1), convex=False))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl+24), (-1, -1), convex=False))
         if tile_id == 15: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentCircular((xtl, ytl+UNITS), (1, -1), convex=False))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentCircular((xtl, ytl+24), (1, -1), convex=False))
         if tile_id == 16: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl, ytl), (1, 1), convex=False))
         if tile_id == 17: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentCircular((xtl+UNITS, ytl), (-1, 1), convex=False))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl), (-1, 1), convex=False))
         if tile_id == 18: #18-21: short mild slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS / 2)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl+UNITS, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+12)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl)))
         if tile_id == 19:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS / 2)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl+UNITS / 2)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+12)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+12)))
         if tile_id == 20: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl+UNITS / 2), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS / 2)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl+12), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+12)))
         if tile_id == 21: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+24)))
         if tile_id == 22: #22-25: raised mild slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS / 2)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS / 2)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+12)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+12)))
         if tile_id == 23:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS / 2)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl+UNITS, ytl+UNITS)))
-        if tile_id == UNITS: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS / 2), (xtl+UNITS, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+12)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+24)))
+        if tile_id == 24: 
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl)))
         if tile_id == 25: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl+UNITS / 2), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl+UNITS / 2)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl+12), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+12)))
         if tile_id == 26: #26-29: short steep slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS / 2, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS / 2, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl)))
         if tile_id == 27: 
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl+24)))
         if tile_id == 28: 
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl+UNITS), (xtl+UNITS, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl)))
         if tile_id == 29: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS / 2, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS / 2, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl+24)))
         if tile_id == 30: #30-33: raised steep slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS / 2, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl+UNITS), (xtl+UNITS, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl)))
         if tile_id == 31: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS / 2, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl+24)))
         if tile_id == 32: 
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl), (xtl+UNITS, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS, ytl), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS / 2, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl)))
         if tile_id == 33: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+UNITS / 2, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+UNITS), (xtl+UNITS, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+UNITS)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+UNITS / 2, ytl), (xtl+UNITS, ytl+UNITS)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl+24)))
 
     #find the spawn position of the ninja
-    xspawn = mdata[OFFSET_OBJECTS + 1] * 6
-    yspawn = mdata[OFFSET_OBJECTS + 2] * 6
+    xspawn = mdata[1231]*6
+    yspawn = mdata[1232]*6
 
     #initiate player 1 instance of Ninja at spawn coordinates
     p1 = Ninja(xspawn, yspawn)
 
     #Initiate each entity (other than ninjas)
-    index = OFFSET_OBJECTS
-    exit_door_count = mdata[OFFSET_COUNTS + 2 * IDS['exit_door']]
+    index = 1230
+    exit_door_count = mdata[1156]
     while (True):
         type = mdata[index]
         xcoord = mdata[index+1]
         ycoord = mdata[index+2]
         orientation = mdata[index+3]
         mode = mdata[index+4]
-        if type == IDS['gold']:
+        if type == 1:
+            EntityMine(type, xcoord, ycoord)
+        if type == 2:
             EntityGold(type, xcoord, ycoord)
-        if type == IDS['exit_door']:
+        if type == 3:
             parent = EntityExit(type, xcoord, ycoord)
             child_xcoord = mdata[index + 5*exit_door_count + 1]
             child_ycoord = mdata[index + 5*exit_door_count + 2]
             EntityExitSwitch(4, child_xcoord, child_ycoord, parent)
-        if type == IDS['door_regular']:
+        if type == 5:
             EntityDoorRegular(type, xcoord, ycoord, orientation, xcoord, ycoord)
-        if type == IDS['door_locked']:
+        if type == 6:
             switch_xcoord = mdata[index + 6]
             switch_ycoord = mdata[index + 7]
             EntityDoorLocked(type, xcoord, ycoord, orientation, switch_xcoord, switch_ycoord)
-        if type == IDS['door_trap']:
+        if type == 8:
             switch_xcoord = mdata[index + 6]
             switch_ycoord = mdata[index + 7]
             EntityDoorTrap(type, xcoord, ycoord, orientation, switch_xcoord, switch_ycoord)
-        if type == IDS['bounce_block']:
+        if type == 17:
             EntityBounceBlock(type, xcoord, ycoord)
-        if type == IDS['boost_pad']:
+        if type == 24:
             EntityBoostPad(type, xcoord, ycoord)
         index += 5
         if index >= len(mdata):
@@ -1025,11 +1042,13 @@ for i in range(len(inputs_list)):
     for frame in range(1, inp_len+1):
         tick(p1, frame)
 
+    #Append the positions log of each replay
     xposlog.append(p1.xposlog)
     yposlog.append(p1.yposlog)
 
+    #For splits mode, calculate the amount of gold collected for each replay.
     if tool_mode == "splits":
-        gold_amount = mdata[OFFSET_COUNTS + 2 * IDS['gold']]
+        gold_amount = mdata[1154]
         gold_collected = 0
         for entity in entity_list:
             if entity.type == 2:
@@ -1038,6 +1057,8 @@ for i in range(len(inputs_list)):
         goldlog.append((gold_collected, gold_amount))
         frameslog.append(inp_len)
 
+    #Verify for each replay if the run is valid.
+    #That is, verify if the ninja collects the switch and enters the door at the end of the replay.
     ninja_exits = []
     for entity in entity_list:
         if entity.type == 3:
@@ -1050,13 +1071,14 @@ for i in range(len(inputs_list)):
                 valid_replay = True
     validlog.append(valid_replay)
 
-    if not OUTTE_MODE:
-        print(p1.speedlog)
-        #print(p1.poslog)
+    #Print info useful for debug if in manual mode
+    if not outte_mode:
+        print(p1.speedlog[0:500])
+        print(p1.poslog[0:500])
         print(valid_replay)
 
 #Plot the route. Only ran in manual mode.
-if tool_mode == "trace" and OUTTE_MODE == False:
+if tool_mode == "trace" and outte_mode == False and animation_mode == False:
     if len(inputs_list) >= 4:
         mpl.plot(xposlog[3], yposlog[3], "#910A46")
     if len(inputs_list) >= 3:
@@ -1068,13 +1090,62 @@ if tool_mode == "trace" and OUTTE_MODE == False:
     mpl.axis("off")
     ax = mpl.gca()
     ax.set_aspect("equal", adjustable="box")
-    if MAP_IMG:
-        img = mpl.imread(MAP_IMG)
+    if map_img:
+        img = mpl.imread(map_img)
         ax.imshow(img, extent=[0, 1056, 600, 0])
     mpl.show()
 
+if tool_mode == "trace" and outte_mode == False and animation_mode == True:
+    fig = mpl.figure()
+    fig.set_size_inches(484, 275)
+    l, = mpl.plot([], [])
+    mpl.axis([0, 1056, 600, 0])
+    mpl.axis("off")
+    ax = mpl.gca()
+    ax.set_aspect("equal", adjustable="box")
+    if map_img:
+        img = mpl.imread(map_img)
+        ax.imshow(img, extent=[0, 1056, 600, 0])
+
+    metadata = dict(title="movie", author="simvyo")
+    #writer = FFMpegWriter(fps=60, metadata=metadata)
+
+    def assign_circle_patch(entity, center):
+        entity.patch = mpl.Circle(center, entity.radius, color = entity.color)
+        ax.add_patch(entity.patch)
+
+    def assign_square_patch(entity, center):
+        entity.patch = mpl.Rectangle((center[0] - entity.semiside, center[1] - entity.semiside), 2 * entity.semiside, 2 * entity.semiside, color = "black")
+        ax.add_patch(entity.patch)
+        
+    def trace_initialize():
+        p1.patch = mpl.Circle((xposlog[0][0], yposlog[0][0]), 10, color = "black")
+        ax.add_patch(p1.patch)
+        for entity in entity_list:
+            if entity.type in (1, 2):
+                assign_circle_patch(entity, (entity.xpos, entity.ypos))
+            if entity.type == 17:
+                assign_square_patch(entity, entity.log[0])
+
+    def trace_update(frame):
+        p1.patch.set(center = (xposlog[0][frame], yposlog[0][frame]))
+        for entity in entity_list:
+            if entity.type == 2:
+                if entity.collected == frame:
+                    entity.patch.set(visible = False)
+            if entity.type == 17:
+                entity.patch.set(x = entity.log[frame][0] - entity.semiside)
+                entity.patch.set(y = entity.log[frame][1] - entity.semiside)
+
+    #with writer.saving(fig, "simul.MP4", 2):
+        #trace_initialize()
+        #for i in range(len(xposlog[0])):
+            #trace_update(i)
+            #writer.grab_frame()
+            #print(i)
+            
 #For each replay, write to file whether it is valid or not, then write the series of coordinates for each frame. Only ran in outte mode and in trace mode.
-if tool_mode == "trace" and OUTTE_MODE == True:
+if tool_mode == "trace" and outte_mode == True:
     with open("output.txt", "w") as f:
         for i in range(len(inputs_list)):
             print(validlog[i], file=f)
@@ -1082,20 +1153,19 @@ if tool_mode == "trace" and OUTTE_MODE == True:
                 print(round(xposlog[i][frame], 2), round(yposlog[i][frame], 2), file=f)
 
 #Print episode splits and other info to the console. Only ran in manual mode and splits mode.
-if tool_mode == "splits" and OUTTE_MODE == False:
+if tool_mode == "splits" and outte_mode == False:
     print("SI-A-00 0th replay analysis:")
-    split = INITIAL_TIME * FPS
+    split = 90*60
     for i in range(5):
-        split = split - frameslog[i] + 1 + goldlog[i][0] * 2 * FPS
-        split_score = round(split/FPS, 3)
+        split = split - frameslog[i] + 1 + goldlog[i][0]*120
+        split_score = round(split/60, 3)
         print(f"{i}:-- Is replay valid?: {validlog[i]} | Gold collected: {goldlog[i][0]}/{goldlog[i][1]} | Replay length: {frameslog[i]} frames | Split score: {split_score:.3f}")
 
 #For each level of the episode, write to file whether the replay is valid, then write the score split. Only ran in outte mode and in splits mode.
-if tool_mode == "splits" and OUTTE_MODE == True:
-    split = INITIAL_TIME * FPS
+if tool_mode == "splits" and outte_mode == True:
+    split = 90*60
     with open("output.txt", "w") as f:
         for i in range(5):
             print(validlog[i], file=f)
-            split = split - frameslog[i] + 1 + goldlog[i][0] * 2 * FPS
+            split = split - frameslog[i] + 1 + goldlog[i][0]*120
             print(split, file=f)
-
