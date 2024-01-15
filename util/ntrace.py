@@ -107,10 +107,12 @@ class Ninja:
         self.hor_input = 0
         self.jump_input = 0
         self.jump_input_old = 0
+        self.airborn = True
+        self.walled = False
         self.jump_duration = 0
-        self.jump_buffer = 0
-        self.floor_buffer = 0
-        self.wall_buffer = 0
+        self.jump_buffer = -1
+        self.floor_buffer = -1
+        self.wall_buffer = -1
         self.floor_jumping = False
         self.wall_jumping = False
         self.poslog = [(0, xspawn, yspawn)]
@@ -178,14 +180,22 @@ class Ninja:
         for cell in neighbour_cells:
             for entity in entity_dic[cell]:
                 if entity.is_physical_collidable and entity.active:
-                    depen = entity.physical_collision(self, self.radius)
+                    depen = entity.physical_collision(self)
                     if depen:
                         depen_x = depen[0]
                         depen_y = depen[1]
                         self.xpos += depen_x
                         self.ypos += depen_y
-                        self.xspeed += depen_x
-                        self.yspeed += depen_y
+                        if entity.type == 17:
+                            self.xspeed += depen_x
+                            self.yspeed += depen_y
+                        if entity.type == 11:
+                            depen_len = math.sqrt(depen_x**2 + depen_y**2)
+                            if depen_len:
+                                xspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * depen_y
+                                yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * (-depen_x)
+                                self.xspeed = xspeed_new
+                                self.yspeed = yspeed_new
                         if depen_y < 0:
                             self.floor_count += 1
                             self.floor_normal_x += depen_x
@@ -219,25 +229,37 @@ class Ninja:
                 self.floor_normal_y += dy
 
     def post_collision(self):
+        wall_normal = None
+
         #Perform LOGICAL collisions between the ninja and nearby entities.
+        #Also check if the ninja can interact with the walls of entities when applicable.
         neighbour_cells = self.object_neighbour_cells()
         for cell in neighbour_cells:
             for entity in entity_dic[cell]:
                 if entity.is_logical_collidable and entity.active:
-                    entity.logical_collision(self, self.radius + 0.1)
+                    collision_result = entity.logical_collision(self)
+                    if collision_result:
+                        wall_normal = collision_result                  
 
         #Check if the ninja can interact with nearby walls.
         neighbour_cells = self.neighbour_cells(self.radius + 0.1)
         for cell in neighbour_cells:
             for segment in segment_dic[cell]:
                 if segment.active and segment.type == "linear":
-                    wall_normal = segment.wall_intersecting(self)
-                    if wall_normal:
-                        self.wall_count += 1
-                        self.wall_normal = wall_normal
+                    collision_result = segment.wall_intersecting(self)
+                    if collision_result:
+                        wall_normal = collision_result
+
+        self.airborn_old = self.airborn
+        self.airborn = True
+        self.walled = False
+        if wall_normal:
+            self.walled = True
+            self.wall_normal = wall_normal
 
         #Calculate the combined floor normalized normal vector if the ninja has touched any floor.
         if self.floor_count > 0:
+            self.airborn = False
             floor_scalar = math.sqrt(self.floor_normal_x**2 + self.floor_normal_y**2)
             if floor_scalar == 0:
                 self.floor_normalized_x = 0
@@ -247,6 +269,8 @@ class Ninja:
                 self.floor_normalized_y = self.floor_normal_y/floor_scalar
 
     def floor_jump(self):
+        self.jump_buffer = -1
+        self.floor_buffer = -1
         self.state = 3
         self.applied_gravity = gravity_held
         if self.floor_normalized_x == 0:
@@ -276,7 +300,6 @@ class Ninja:
         self.yspeed += jy
         self.xpos += jx
         self.ypos += jy
-        self.jump_buffer = 0
         self.jump_duration = 0
 
     def wall_jump(self):
@@ -296,34 +319,47 @@ class Ninja:
         self.yspeed += jy
         self.xpos += jx * self.wall_normal
         self.ypos += jy
-        self.jump_buffer = 0
+        self.jump_buffer = -1
+        self.wall_buffer = -1
         self.jump_duration = 0
-        return  
 
     def think(self):
-        #Start by updating buffers
-        if frame == 188:
-            print("debug")
-        if self.jump_buffer:
-            self.jump_buffer -= 1
-        if self.floor_buffer:
-            self.floor_buffer -= 1
-        if self.wall_buffer:
-            self.wall_buffer -= 1
-        if self.jump_input and not self.jump_input_old:
-            self.jump_buffer = 5
+        #Logic to determine if you're starting a new jump.
+        if not self.jump_input:
+            new_jump_check = False
+        else:
+            new_jump_check = self.jump_input_old == 0
         self.jump_input_old = self.jump_input
-        if self.floor_count:
-            self.floor_buffer = 5
-        if self.wall_count:
-            self.wall_buffer = 5
 
-        #Determine if the ninja is capable of jumping on that frame
-        self.floor_jumping = True if self.jump_buffer and self.floor_buffer else False
-        self.wall_jumping = True if self.jump_buffer and self.wall_buffer else False
+        #Determine if within buffer ranges. If so, increment buffers.
+        in_jump_buffer = -1 < self.jump_buffer < 5
+        if in_jump_buffer:
+            self.jump_buffer += 1
+        else:
+            self.jump_buffer = -1
+        in_wall_buffer = -1 < self.wall_buffer < 5
+        if in_wall_buffer:
+            self.wall_buffer += 1
+        else:
+            self.wall_buffer = -1
+        in_floor_buffer = -1 < self.floor_buffer < 5
+        if in_floor_buffer:
+            self.floor_buffer += 1
+        else:
+            self.floor_buffer = -1
 
-        #This block deals with the case where the ninja is touching a floor
-        if self.floor_count: 
+        #Initiate jump buffer if beginning a new jump and airborn.
+        if new_jump_check and self.airborn:
+            self.jump_buffer = 0
+        #Initiate wall buffer if touched a wall this frame.
+        if self.walled:
+            self.wall_buffer = 0
+        #Initiate floor buffer if touched a floor this frame.
+        if not self.airborn:
+            self.floor_buffer = 0
+
+        #This block deals with the case where the ninja is touching a floor.
+        if not self.airborn: 
             xspeed_new = self.xspeed + ground_accel * self.hor_input
             if abs(xspeed_new) < max_xspeed:
                 self.xspeed = xspeed_new
@@ -336,7 +372,7 @@ class Ninja:
                     if self.state == 3:
                         self.applied_gravity = gravity
                     self.state = 1
-            if not self.floor_jumping:
+            if not in_jump_buffer and not new_jump_check: #if not jumping
                 if self.state == 2:
                     projection = abs(self.yspeed * self.floor_normalized_x - self.xspeed * self.floor_normalized_y)
                     if self.hor_input * projection * self.xspeed > 0:
@@ -377,10 +413,13 @@ class Ninja:
                         self.xspeed *= friction_ground_slow
                         return
                     self.state = 2
-                    return
+                return
+            #if you're jumping
+            self.floor_jump()
+            return
 
         #This block deals with the case where the ninja didn't touch a floor
-        if not self.floor_count:
+        else:
             xspeed_new = self.xspeed + air_accel * self.hor_input
             if abs(xspeed_new) < max_xspeed:
                 self.xspeed = xspeed_new
@@ -389,32 +428,31 @@ class Ninja:
                 return
             if self.state == 3:
                 self.jump_duration += 1
-                if self.jump_input == 0 or self.jump_duration > max_jump_duration:
+                if not self.jump_input or self.jump_duration > max_jump_duration:
                     self.applied_gravity = gravity
                     self.state = 4
-                return
-            if not self.wall_jumping:
-                if not self.wall_count:
+                    return
+            if in_jump_buffer or new_jump_check: #if able to perfrom jump
+                if self.walled or in_wall_buffer:
+                    self.wall_jump()
+                    return
+                if in_floor_buffer:
+                    self.floor_jump()
+                    return
+            if not self.walled:
+                if self.state == 5:
                     self.state = 4
-                else:
-                    if self.state == 5:
-                        if self.hor_input * self.wall_normal <= 0:
-                            self.yspeed *= friction_wall
-                        else:
-                            self.state = 4
+            else:
+                if self.state == 5:
+                    if self.hor_input * self.wall_normal <= 0:
+                        self.yspeed *= friction_wall
                     else:
-                        if self.yspeed > 0 and self.hor_input * self.wall_normal < 0:
-                            self.state = 5
-
-        #Deals with jumping     
-        if self.floor_jumping and self.floor_count:
-            self.floor_jump()
-            return
-        if self.wall_jumping:
-            self.wall_jump()
-            return
-        if self.floor_jumping and not self.floor_count:
-            self.floor_jump()
+                        self.state = 4
+                else:
+                    if self.yspeed > 0 and self.hor_input * self.wall_normal < 0:
+                        if self.state == 3:
+                            self.applied_gravity = gravity
+                        self.state = 5
 
 class GridSegmentLinear:
     """Contains all the linear segments of tiles and doors that the ninja can interract with"""
@@ -536,9 +574,9 @@ class EntityGold(Entity):
         self.collected = False
         self.color = "#EDDC54"
         
-    def logical_collision(self, ninja, radius):
+    def logical_collision(self, ninja):
         """If the ninja is colliding with the piece of gold, flag it as being collected."""
-        if self.is_colliding_circle(ninja, radius):
+        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
             self.collected = frame
             self.active = False
 
@@ -550,10 +588,10 @@ class EntityExit(Entity):
         self.open = False
         self.ninja_exit = []
 
-    def logical_collision(self, ninja, radius):
+    def logical_collision(self, ninja):
         """If the ninja is colliding with the open door, store the frame at which the collision happened"""
         if self.open:
-            if self.is_colliding_circle(ninja, radius):
+            if self.is_colliding_circle(ninja, ninja.radius + 0.1):
                 self.ninja_exit.append(frame)
                 self.active = False
 
@@ -565,9 +603,9 @@ class EntityExitSwitch(Entity):
         self.collected = False
         self.parent = parent
 
-    def logical_collision(self, ninja, radius):
+    def logical_collision(self, ninja):
         """If the ninja is colliding with the switch, flag it as being collected, and open its associated door."""
-        if self.is_colliding_circle(ninja, radius):
+        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
             self.collected = True
             self.active = False
             self.parent.open = True
@@ -611,9 +649,9 @@ class EntityDoorRegular(EntityDoorBase):
             if self.open_timer > 5:
                 self.change_state(open=False)
 
-    def logical_collision(self, ninja, radius):
+    def logical_collision(self, ninja):
         #If the ninja touches the activation region of the door, open it.
-        if self.is_colliding_circle(ninja, radius):
+        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
             self.change_state()
             self.open_timer = 0
 
@@ -622,9 +660,9 @@ class EntityDoorLocked(EntityDoorBase):
         super().__init__(type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord)
         self.radius = 5
 
-    def logical_collision(self, ninja, radius):
+    def logical_collision(self, ninja):
         #If the ninja collects the associated open switch, open the door.
-        if self.is_colliding_circle(ninja, radius):
+        if self.is_colliding_circle(ninja, ninja.radius +0.1):
             self.change_state()
             self.active = False
 
@@ -635,19 +673,57 @@ class EntityDoorTrap(EntityDoorBase):
         self.open = True
         self.segment.active = False
 
-    def logical_collision(self, ninja, radius):
+    def logical_collision(self, ninja):
         #If the ninja collects the associated close switch, close the door.
-        if self.is_colliding_circle(ninja, radius):
+        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
             self.change_state(open=False)
             self.active = False
-            
+
+class EntityOneWayPlatform(Entity):
+    def __init__(self, type, xcoord, ycoord, orientation):
+        super().__init__(type, xcoord, ycoord)
+        self.is_logical_collidable = True
+        self.is_physical_collidable = True
+        normal = map_orientation_to_vector(orientation)
+        self.normal_x = normal[0]
+        self.normal_y = normal[1]
+        self.semiside = 12
+
+    def calculate_depenetration(self, ninja):
+        dx = ninja.xpos - self.xpos
+        dy = ninja.ypos - self.ypos
+        lateral_dist = dy * self.normal_x - dx * self.normal_y
+        direction = (ninja.yspeed * self.normal_x - ninja.xspeed * self.normal_y) * lateral_dist
+        radius_scalar = 0.9 if direction < 0 else 0.5
+        if abs(lateral_dist) < radius_scalar * ninja.radius + self.semiside:
+            normal_dist = dx * self.normal_x + dy * self.normal_y
+            if 0 < normal_dist <= ninja.radius:
+                normal_proj = ninja.xspeed * self.normal_x + ninja.yspeed * self.normal_y
+                if normal_proj <= 0:
+                    dx_old = ninja.xpos_old - self.xpos
+                    dy_old = ninja.ypos_old - self.ypos
+                    normal_dist_old = dx_old * self.normal_x + dy_old * self.normal_y
+                    if ninja.radius - normal_dist_old <= 1.1:
+                        depen_x = self.normal_x * (ninja.radius - normal_dist)
+                        depen_y = self.normal_y * (ninja.radius - normal_dist)
+                        return (depen_x, depen_y)
+
+    def physical_collision(self, ninja):
+        return self.calculate_depenetration(ninja)
+
+    def logical_collision(self, ninja):
+        collision_result = self.calculate_depenetration(ninja)
+        if collision_result:
+            if abs(self.normal_x) == 1:
+                return self.normal_x
+        
 class EntityBounceBlock(Entity):
     def __init__(self, type, xcoord, ycoord):
         super().__init__(type, xcoord, ycoord)
         self.is_physical_collidable = True
         self.is_logical_collidable = True
         self.is_movable = True
-        self.is_thinkable = True
+        self.is_thinkable = False
         self.xspeed = 0
         self.yspeed = 0
         self.xorigin = self.xpos
@@ -656,39 +732,25 @@ class EntityBounceBlock(Entity):
         self.stiffness = 0.02222222222222222
         self.dampening = 0.98
         self.strength = 0.2
-        self.is_immobile = True
         self.log = [(self.xpos, self.ypos)]
         
     def move(self, ninja):
         """Update the position and speed of the bounce block by applying the spring force and dampening."""
-        if not self.is_immobile:
-            self.xspeed *= self.dampening
-            self.yspeed *= self.dampening
-            self.xpos += self.xspeed
-            self.ypos += self.yspeed
-            xforce = self.stiffness * (self.xorigin - self.xpos)
-            yforce = self.stiffness * (self.yorigin - self.ypos)
-            self.xpos += xforce
-            self.ypos += yforce
-            self.xspeed += xforce
-            self.yspeed += yforce
-            self.grid_move()
+        self.xspeed *= self.dampening
+        self.yspeed *= self.dampening
+        self.xpos += self.xspeed
+        self.ypos += self.yspeed
+        xforce = self.stiffness * (self.xorigin - self.xpos)
+        yforce = self.stiffness * (self.yorigin - self.ypos)
+        self.xpos += xforce
+        self.ypos += yforce
+        self.xspeed += xforce
+        self.yspeed += yforce
+        self.grid_move()
 
-    def think(self):
-        """If the bounce block has low speed and small distance from its origin,
-        set its position to the origin, set its speed to 0, and flag it as immobile.
-        """
-        if not self.is_immobile:
-            if (self.xspeed**2 + self.yspeed**2) < 0.05 and ((self.xpos - self.xorigin)**2 + (self.ypos - self.yorigin)**2) < 0.05:
-                self.xpos = self.xorigin
-                self.ypos = self.yorigin
-                self.xspeed = 0
-                self.yspeed = 0
-                self.is_immobile = True
-
-    def physical_collision(self, ninja, radius):
+    def physical_collision(self, ninja):
         #Collide with the ninja. 
-        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside + radius)
+        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius)
         depen_x = depen[0]
         depen_y = depen[1]
         depen_len = abs(depen_x) + abs(depen_y)
@@ -697,16 +759,14 @@ class EntityBounceBlock(Entity):
             self.ypos -= depen_y * (1-self.strength)
             self.xspeed -= depen_x * (1-self.strength)
             self.yspeed -= depen_y * (1-self.strength)
-            self.is_immobile = False
-            return (depen_x * self.strength, depen_y*self.strength)
+            return (depen_x * self.strength, depen_y * self.strength)
         
-    def logical_collision(self, ninja, radius):
+    def logical_collision(self, ninja):
         #Check if the ninja can interact with the wall of the bounce block
-        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside + radius)
+        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius + 0.1)
         depen_x = depen[0]
         if depen_x:
-            ninja.wall_count += 1
-            ninja.wall_normal = depen_x / abs(depen_x)
+            return depen_x/abs(depen_x)
 
 class EntityBoostPad(Entity):
     def __init__(self, type, xcoord, ycoord):
@@ -742,7 +802,7 @@ def get_single_closest_point(p):
     if biggest_penetration > 0:
         return closest_point
 
-def collision_square_vs_point(square_pos, point_pos, semiside):
+def collision_square_vs_point(square_pos, point_pos, semiside, radius):
     """Return the depenetration vector to depenetrate a point out of a square.
     Used to collide the ninja with square entities. (bounce blocks, thwumps, shwumps)"""
     x0 = square_pos[0]
@@ -751,13 +811,21 @@ def collision_square_vs_point(square_pos, point_pos, semiside):
     y1 = point_pos[1]
     dx = x1 - x0
     dy = y1 - y0
-    penx = semiside - abs(dx)
-    peny = semiside - abs(dy)
+    penx = semiside + radius - abs(dx)
+    peny = semiside + radius - abs(dy)
     if  penx > 0 and peny > 0:
         if peny <= penx:
             return (0, -peny) if dy < 0 else (0, peny)
         return (-penx, 0) if dx < 0 else (penx, 0)
     return (0, 0)
+
+def map_orientation_to_vector(orientation):
+    """Return a normalized vector pointing in the direction of the orientation.
+    Orientation is a value between 0 and 7 taken from map data.
+    """
+    diag = math.sqrt(2) / 2
+    orientation_dic = {0:(1, 0), 1:(diag, diag), 2:(0, 1), 3:(-diag, diag), 4:(-1, 0), 5:(-diag, -diag), 6:(0, -1), 7:(diag, -diag)}
+    return orientation_dic[orientation]
           
 def tick(p, frame):
     """This is the main function that handles physics.
@@ -777,21 +845,12 @@ def tick(p, frame):
         if entity.is_thinkable and entity.active:
             entity.think()
             
-    #Do pre collision calculations.
-    p.integrate()
-    p.pre_collision()
-
-    #Handle PHYSICAL collisions with entities.
-    p.collide_vs_objects()
-
-    #Handle physical collisions with tiles.
-    p.collide_vs_tiles()
-
-    #Do post collision calculations.
-    p.post_collision()
-
-    #Make ninja think
-    p.think()
+    p.integrate() #Do preliminary speed and position updates.
+    p.pre_collision() #Do pre collision calculations.
+    p.collide_vs_objects() #Handle PHYSICAL collisions with entities.
+    p.collide_vs_tiles() #Handle physical collisions with tiles.
+    p.post_collision() #Do post collision calculations.
+    p.think() #Make ninja think
 
     #Update all the logs for debugging purposes. Only the position log will be used to draw the route.
     p.poslog.append((frame, round(p.xpos, 6), round(p.ypos, 6)))
@@ -1030,6 +1089,8 @@ for i in range(len(inputs_list)):
             switch_xcoord = mdata[index + 6]
             switch_ycoord = mdata[index + 7]
             EntityDoorTrap(type, xcoord, ycoord, orientation, switch_xcoord, switch_ycoord)
+        if type == 11:
+            EntityOneWayPlatform(type, xcoord, ycoord, orientation)
         if type == 17:
             EntityBounceBlock(type, xcoord, ycoord)
         if type == 24:
