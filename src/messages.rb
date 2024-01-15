@@ -813,7 +813,7 @@ end
 def send_level_id(event)
   msg   = parse_message(event)
   level = parse_highscoreable(event, mappack: true)
-  perror("Episodes and stories don't have a name!") if level.is_a?(Episode) || level.is_a?(Story)
+  perror("Episodes and stories don't have a name!") if level.is_episode? || level.is_story?
   event << "#{level.longname} is level #{level.name}."
 rescue => e
   lex(e, "Error getting ID.", event: event)
@@ -821,8 +821,8 @@ end
 
 # Return level name for a specified level ID
 def send_level_name(event)
-  level = parse_highscoreable(event)
-  perror("Episodes and stories don't have a name!") if level.is_a?(Episode) || level.is_a?(Story)
+  level = parse_highscoreable(event, mappack: true)
+  perror("Episodes and stories don't have a name!") if level.is_episode? || level.is_story?
   event << "#{level.name} is called #{level.longname}."
 rescue => e
   lex(e, "Error getting name.", event: event)
