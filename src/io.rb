@@ -418,6 +418,7 @@ def parse_highscoreable_by_name(msg, user = nil, channel = nil, mappack: true)
   klass = pack && pack.id != 0 ? MappackLevel.where(mappack: pack) : Level
   pack = pack && pack.id != 0 ? pack.code.upcase + ' ' : 'MET '
   name = msg.split("\n")[0][/(?:for|of) (.*)/i, 1].tr('"`:', '').strip
+  return ['', []] if name.empty?
 
   # Exact name match
   ret = ['', klass.where_like('longname', name, partial: false).to_a]
@@ -447,7 +448,7 @@ def parse_highscoreable_by_name(msg, user = nil, channel = nil, mappack: true)
   ]
   return ret if !ret[1].empty?
 
-  ['', []]
+  perror("No #{pack}matches found for #{verbatim(name)}.")
 rescue
   ['', []]
 end
