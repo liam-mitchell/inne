@@ -102,7 +102,7 @@ class Ninja:
         self.yspeed = 0
         self.applied_gravity = gravity
         self.applied_friction = friction_ground
-        self.state = 4
+        self.state = 0
         self.radius = 10
         self.hor_input = 0
         self.jump_input = 0
@@ -113,13 +113,11 @@ class Ninja:
         self.jump_buffer = -1
         self.floor_buffer = -1
         self.wall_buffer = -1
-        self.floor_jumping = False
-        self.wall_jumping = False
+        self.launch_pad_buffer = -1
         self.poslog = [(0, xspawn, yspawn)]
         self.xposlog = [xspawn]
         self.yposlog = [yspawn]
         self.speedlog = [(0,0,0)]
-        self.plog = [(0,0)]
 
     def center_cell(self):
         """find the cell coordinates containing the center of the ninja at its current x and y pos"""
@@ -231,6 +229,9 @@ class Ninja:
     def post_collision(self):
         wall_normal = None
 
+        if frame == 31:
+            print("debug")
+
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
         neighbour_cells = self.object_neighbour_cells()
@@ -239,7 +240,24 @@ class Ninja:
                 if entity.is_logical_collidable and entity.active:
                     collision_result = entity.logical_collision(self)
                     if collision_result:
-                        wall_normal = collision_result                  
+                        if entity.type == 10: #If collision with launch pad
+                            xboost = collision_result[0] * 2/3
+                            yboost = collision_result[1] * 2/3
+                            self.xpos += xboost
+                            self.ypos += yboost
+                            self.xspeed = xboost
+                            self.yspeed = yboost
+                            self.floor_count = 0
+                            self.floor_buffer = -1
+                            boost_scalar = math.sqrt(xboost**2 + yboost**2)
+                            self.xlp_boost_normalized = xboost/boost_scalar
+                            self.ylp_boost_normalized = yboost/boost_scalar
+                            self.launch_pad_buffer = 0
+                            if self.state == 3:
+                                self.applied_gravity = gravity
+                            self.state = 4
+                        else: #If touched wall of bounce block, oneway, thwump or shwump
+                            wall_normal = collision_result                  
 
         #Check if the ninja can interact with nearby walls.
         neighbour_cells = self.neighbour_cells(self.radius + 0.1)
@@ -250,7 +268,6 @@ class Ninja:
                     if collision_result:
                         wall_normal = collision_result
 
-        self.airborn_old = self.airborn
         self.airborn = True
         self.walled = False
         if wall_normal:
@@ -271,6 +288,7 @@ class Ninja:
     def floor_jump(self):
         self.jump_buffer = -1
         self.floor_buffer = -1
+        self.launch_pad_buffer = -1
         self.state = 3
         self.applied_gravity = gravity_held
         if self.floor_normalized_x == 0:
@@ -321,8 +339,20 @@ class Ninja:
         self.ypos += jy
         self.jump_buffer = -1
         self.wall_buffer = -1
+        self.launch_pad_buffer = -1
         self.jump_duration = 0
 
+    def lp_jump(self):
+        self.floor_buffer = -1
+        self.wall_buffer = -1
+        self.jump_buffer = -1
+        self.launch_pad_buffer = -1
+        boost_scalar = 2 * abs(self.xlp_boost_normalized) + 2
+        if boost_scalar == 2:
+            boost_scalar = 1.7 #This was really needed. Thanks Metanet
+        self.xspeed += self.xlp_boost_normalized * boost_scalar * 2/3
+        self.yspeed += self.ylp_boost_normalized * boost_scalar * 2/3
+        
     def think(self):
         #Logic to determine if you're starting a new jump.
         if not self.jump_input:
@@ -332,6 +362,11 @@ class Ninja:
         self.jump_input_old = self.jump_input
 
         #Determine if within buffer ranges. If so, increment buffers.
+        in_lp_buffer = -1 < self.launch_pad_buffer < 3
+        if in_lp_buffer:
+            self.launch_pad_buffer += 1
+        else:
+            self.launch_pad_buffer = -1
         in_jump_buffer = -1 < self.jump_buffer < 5
         if in_jump_buffer:
             self.jump_buffer += 1
@@ -438,6 +473,9 @@ class Ninja:
                     return
                 if in_floor_buffer:
                     self.floor_jump()
+                    return
+                if in_lp_buffer:
+                    self.lp_jump()
                     return
             if not self.walled:
                 if self.state == 5:
@@ -576,7 +614,7 @@ class EntityGold(Entity):
         
     def logical_collision(self, ninja):
         """If the ninja is colliding with the piece of gold, flag it as being collected."""
-        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
+        if self.is_colliding_circle(ninja, ninja.radius):
             self.collected = frame
             self.active = False
 
@@ -591,7 +629,7 @@ class EntityExit(Entity):
     def logical_collision(self, ninja):
         """If the ninja is colliding with the open door, store the frame at which the collision happened"""
         if self.open:
-            if self.is_colliding_circle(ninja, ninja.radius + 0.1):
+            if self.is_colliding_circle(ninja, ninja.radius):
                 self.ninja_exit.append(frame)
                 self.active = False
 
@@ -605,7 +643,7 @@ class EntityExitSwitch(Entity):
 
     def logical_collision(self, ninja):
         """If the ninja is colliding with the switch, flag it as being collected, and open its associated door."""
-        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
+        if self.is_colliding_circle(ninja, ninja.radius):
             self.collected = True
             self.active = False
             self.parent.open = True
@@ -651,7 +689,7 @@ class EntityDoorRegular(EntityDoorBase):
 
     def logical_collision(self, ninja):
         #If the ninja touches the activation region of the door, open it.
-        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
+        if self.is_colliding_circle(ninja, ninja.radius):
             self.change_state()
             self.open_timer = 0
 
@@ -662,7 +700,7 @@ class EntityDoorLocked(EntityDoorBase):
 
     def logical_collision(self, ninja):
         #If the ninja collects the associated open switch, open the door.
-        if self.is_colliding_circle(ninja, ninja.radius +0.1):
+        if self.is_colliding_circle(ninja, ninja.radius):
             self.change_state()
             self.active = False
 
@@ -675,9 +713,29 @@ class EntityDoorTrap(EntityDoorBase):
 
     def logical_collision(self, ninja):
         #If the ninja collects the associated close switch, close the door.
-        if self.is_colliding_circle(ninja, ninja.radius + 0.1):
+        if self.is_colliding_circle(ninja, ninja.radius):
             self.change_state(open=False)
             self.active = False
+
+class EntityLaunchPad(Entity):
+    def __init__(self, type, xcoord, ycoord, orientation):
+        super().__init__(type, xcoord, ycoord)
+        self.is_logical_collidable = True
+        normal = map_orientation_to_vector(orientation)
+        self.normal_x = normal[0]
+        self.normal_y = normal[1]
+        self.radius = 6
+        self.boost = 36/7
+
+    def logical_collision(self, ninja):
+        if self.is_colliding_circle(ninja, ninja.radius):
+            if (self.xpos - (ninja.xpos - ninja.radius*self.normal_x))*self.normal_x + (self.ypos - (ninja.ypos - ninja.radius*self.normal_y))*self.normal_y >= -0.1:
+                yboost_scale = 1
+                if self.normal_y < 0:
+                    yboost_scale = 1 - self.normal_y
+                xboost = self.normal_x * self.boost
+                yboost = self.normal_y * self.boost * yboost_scale
+                return (xboost, yboost)
 
 class EntityOneWayPlatform(Entity):
     def __init__(self, type, xcoord, ycoord, orientation):
@@ -1089,6 +1147,8 @@ for i in range(len(inputs_list)):
             switch_xcoord = mdata[index + 6]
             switch_ycoord = mdata[index + 7]
             EntityDoorTrap(type, xcoord, ycoord, orientation, switch_xcoord, switch_ycoord)
+        if type == 10:
+            EntityLaunchPad(type, xcoord, ycoord, orientation)
         if type == 11:
             EntityOneWayPlatform(type, xcoord, ycoord, orientation)
         if type == 17:
