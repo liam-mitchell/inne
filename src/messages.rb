@@ -2720,18 +2720,22 @@ def test_ntrace(event)
   }.to_h
   Log.clear
   log("Finished testing ntrace")
-  good  = results.select{ |k, v| v          }.to_h
-  bad   = results.select{ |k, v| v == false }.to_h
-  error = results.select{ |k, v| v.nil?     }.to_h
+  good  = results.select{ |k, v| v == :good  }.to_h
+  bad   = results.select{ |k, v| v == :bad   }.to_h
+  error = results.select{ |k, v| v == :error }.to_h
+  other = results.select{ |k, v| v == :other }.to_h
 
   # Format results
   event << "Results from ntrace test:"
   block = ""
-  block << "Mappack: #{mappack.code.upcase}\n" if mappack
+  block << "Mappack: #{mappack.code.upcase}\n"
   block << "Tabs:    #{tabs.empty? ? 'All' : format_tabs(tabs)}\n"
+  block << "-------------\n"
   block << "Good:    #{good.size}\n"
   block << "Bad:     #{bad.size}\n"
   block << "Error:   #{error.size}\n"
+  block << "Other:   #{other.size}\n"
+  block << "-------------\n"
   block << "Total:   #{results.size}"
   event << format_block(block)
   file = "GOOD: #{good.size}\n\n"
