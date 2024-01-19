@@ -229,9 +229,6 @@ class Ninja:
     def post_collision(self):
         wall_normal = None
 
-        if frame == 31:
-            print("debug")
-
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
         neighbour_cells = self.object_neighbour_cells()
@@ -655,9 +652,9 @@ class EntityDoorBase(Entity):
         self.open = False
         self.sw_xpos = 6 * sw_xcoord
         self.sw_ypos = 6 * sw_ycoord
-        if orientation == 0:
+        if orientation in (0, 4):
             self.segment = GridSegmentLinear((self.xpos, self.ypos-12), (self.xpos, self.ypos+12))
-        if orientation == 2:
+        if orientation in (2, 6):
             self.segment = GridSegmentLinear((self.xpos-12, self.ypos), (self.xpos+12, self.ypos))
         segment_dic[self.cell].append(self.segment)
         self.xpos = self.sw_xpos
