@@ -297,14 +297,14 @@ class Ninja:
         else:
             dx = self.floor_normalized_x
             dy = self.floor_normalized_y
-            if self.xspeed * dx > 0:
+            if self.xspeed * dx >= 0:
                 if self.xspeed * self.hor_input >= 0:
                     jx = 2/3 * dx
                     jy = 2 * dy
                 else:
                     jx = 0
                     jy = -1.4
-            elif self.xspeed * dx < 0:
+            else:
                 if self.xspeed * self.hor_input > 0:
                     jx = 0
                     jy = -1.4

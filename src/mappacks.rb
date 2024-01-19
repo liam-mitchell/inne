@@ -974,6 +974,31 @@ module Map
     event.drain
     lex(e, 'Failed to trace replays')
   end
+
+  # Tests whether ntrace is working with this level or not
+  def test_ntrace(ranks: [0], board: 'hs')
+    leaderboard = vanilla.leaderboard(board, pluck: false)
+    scores = ranks.map{ |r| leaderboard[r] }.compact
+    if scores.empty?
+      warn("No scores found for level #{self.name}.")
+      return nil
+    end
+
+    # Export input files and run ntrace
+    File.binwrite('map_data', dump_level)
+    scores.each_with_index.map{ |s, i| File.binwrite("inputs_#{i}", s.demo.demo) }
+    shell("python3 #{PATH_NTRACE}")
+
+    # Read output files
+    file = File.binread('output.txt') rescue nil
+    return nil if file.nil?
+    valid = file.scan(/True|False/).map{ |b| b == 'True' }
+    FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
+    return valid.count(false) == 0
+  rescue => e
+    lex(e, 'ntrace testing failed')
+    nil
+  end
 end
 
 class Mappack < ActiveRecord::Base

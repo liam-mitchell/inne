@@ -2702,6 +2702,49 @@ rescue => e
   lex(e, 'Failed to delete outte message.', event: event)
 end
 
+# Tests ntrace on many runs (e.g. all Metanet 0ths)
+def test_ntrace(event)
+  # Parse params
+  msg     = remove_command(parse_message(event))
+  flags   = parse_flags(msg)
+  tabs    = parse_tabs(flags[:tabs].to_s)
+  mappack = parse_mappack(flags[:mappack].to_s)
+  klass   = mappack ? MappackLevel.where(mappack: mappack) : Level.all
+  klass   = klass.where(tab: tabs) if !tabs.empty?
+  count   = klass.count
+
+  # Execute test
+  results = klass.each_with_index.map{ |l, i|
+    dbg("Testing ntrace on level #{i + 1} / #{count}...", progress: true)
+    [l.name, l.map.test_ntrace]
+  }.to_h
+  Log.clear
+  log("Finished testing ntrace")
+  good  = results.select{ |k, v| v          }.to_h
+  bad   = results.select{ |k, v| v == false }.to_h
+  error = results.select{ |k, v| v.nil?     }.to_h
+
+  # Format results
+  event << "Results from ntrace test:"
+  block = ""
+  block << "Mappack: #{mappack.code.upcase}\n" if mappack
+  block << "Tabs:    #{tabs.empty? ? 'All' : format_tabs(tabs)}\n"
+  block << "Good:    #{good.size}\n"
+  block << "Bad:     #{bad.size}\n"
+  block << "Error:   #{error.size}\n"
+  block << "Total:   #{results.size}"
+  event << format_block(block)
+  file = "GOOD: #{good.size}\n\n"
+  file << good.keys.join("\n")
+  file << "\n\nBAD: #{bad.size}\n\n"
+  file << bad.keys.join("\n")
+  file << "\n\nERROR: #{error.size}\n\n"
+  file << error.keys.join("\n")
+  send_file(event, file, "ntrace-test.txt", false)
+rescue => e
+  lex(e, 'Failed to test ntrace')
+end
+
 # Special commands can only be executed by the botmaster, and are intended to
 # manage the bot on the fly without having to restart it, or to print sensitive
 # information.
@@ -2753,6 +2796,7 @@ def respond_special(event)
   return update_completions(event)       if cmd == 'update_completions'
   return userlevel_completions(event)    if cmd == 'userlevel_completions'
   return send_delete_score(event)        if cmd == 'delete_score'
+  return test_ntrace(event)              if cmd == 'test_ntrace'
 
   event << "Unsupported special command."
 end
