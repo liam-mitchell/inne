@@ -269,7 +269,7 @@ def lin   (msg, **kwargs)    Log.write(msg, :in,    kwargs) end
 def lout  (msg, **kwargs)    Log.write(msg, :out,   kwargs) end
 def fatal (msg, **kwargs)    Log.write(msg, :fatal, kwargs) end
 def lex   (e, msg, **kwargs) Log.exception(e, msg, kwargs)  end
-def ld    (msg)              Log.discord(msg, kwargs)       end
+def ld    (msg)              Log.discord(msg)               end
 
 # <---------------------------------------------------------------------------->
 # <------                     EXCEPTION HANDLING                         ------>
