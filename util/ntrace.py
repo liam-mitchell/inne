@@ -184,7 +184,7 @@ class Ninja:
                         depen_y = depen[1]
                         self.xpos += depen_x
                         self.ypos += depen_y
-                        if entity.type == 17:
+                        if entity.type in (17, 20):
                             self.xspeed += depen_x
                             self.yspeed += depen_y
                         if entity.type == 11:
@@ -649,26 +649,37 @@ class EntityDoorBase(Entity):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
         super().__init__(type, xcoord, ycoord)
         self.is_logical_collidable = True
-        self.open = False
+        self.closed = True
         self.sw_xpos = 6 * sw_xcoord
         self.sw_ypos = 6 * sw_ycoord
-        if orientation in (0, 4):
+        self.grid_segment_coords = []
+        self.is_vertical = orientation in (0, 4)
+        if self.is_vertical:
             self.segment = GridSegmentLinear((self.xpos, self.ypos-12), (self.xpos, self.ypos+12))
-        if orientation in (2, 6):
+            if not ver_grid_edge_dic[(self.xpos/12-1, self.ypos/12-1)]:
+                self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
+            if not ver_grid_edge_dic[(self.xpos/12-1, self.ypos/12)]:
+                self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12))
+        else:
             self.segment = GridSegmentLinear((self.xpos-12, self.ypos), (self.xpos+12, self.ypos))
+            if not hor_grid_edge_dic[(self.xpos/12-1, self.ypos/12-1)]:
+                self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
+            if not hor_grid_edge_dic[(self.xpos/12, self.ypos/12)]:
+                self.grid_segment_coords.append((self.xpos/12, self.ypos/12))
         segment_dic[self.cell].append(self.segment)
         self.xpos = self.sw_xpos
         self.ypos = self.sw_ypos
         self.grid_move()
 
-    def change_state(self, open=True):
+    def change_state(self, closed):
         #Change the state of the door from closed to open or from open to closed.
-        if open:
-            self.open = True
-            self.segment.active = False
-        else:
-            self.open = False
-            self.segment.active = True
+        self.closed = closed
+        self.segment.active = closed
+        for coord in self.grid_segment_coords:
+            if self.is_vertical:
+                ver_grid_edge_dic[coord] = closed
+            else:
+                hor_grid_edge_dic[coord] = closed
 
 class EntityDoorRegular(EntityDoorBase):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
@@ -677,17 +688,17 @@ class EntityDoorRegular(EntityDoorBase):
         self.radius = 10
         self.open_timer = 0
 
-    def think(self):
+    def think(self, ninja):
         #If the door has been opened for more than 5 frames without being touched by the ninja, close it.
-        if self.open:
+        if not self.closed:
             self.open_timer += 1
             if self.open_timer > 5:
-                self.change_state(open=False)
+                self.change_state(closed = True)
 
     def logical_collision(self, ninja):
         #If the ninja touches the activation region of the door, open it.
         if self.is_colliding_circle(ninja, ninja.radius):
-            self.change_state()
+            self.change_state(closed = False)
             self.open_timer = 0
 
 class EntityDoorLocked(EntityDoorBase):
@@ -698,20 +709,20 @@ class EntityDoorLocked(EntityDoorBase):
     def logical_collision(self, ninja):
         #If the ninja collects the associated open switch, open the door.
         if self.is_colliding_circle(ninja, ninja.radius):
-            self.change_state()
+            self.change_state(closed = False)
             self.active = False
 
 class EntityDoorTrap(EntityDoorBase):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
         super().__init__(type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord)
         self.radius = 5
-        self.open = True
+        self.closed = False
         self.segment.active = False
 
     def logical_collision(self, ninja):
         #If the ninja collects the associated close switch, close the door.
         if self.is_colliding_circle(ninja, ninja.radius):
-            self.change_state(open=False)
+            self.change_state(closed = True)
             self.active = False
 
 class EntityLaunchPad(Entity):
@@ -822,6 +833,107 @@ class EntityBounceBlock(Entity):
         depen_x = depen[0]
         if depen_x:
             return depen_x/abs(depen_x)
+        
+class EntityThwump(Entity):
+    def __init__(self, type, xcoord, ycoord, orientation):
+        super().__init__(type, xcoord, ycoord)
+        self.is_movable = True
+        self.is_thinkable = True
+        self.is_logical_collidable = True
+        self.is_physical_collidable = True
+        self.is_horizontal = orientation in (0, 4)
+        self.direction = 1 if orientation in (0, 2) else -1
+        self.xorigin = self.xpos
+        self.yorigin = self.ypos
+        self.semiside = 9
+        self.forward_speed = 20/7
+        self.backward_speed = 8/7
+        self.state = 0 #0:immobile, 1:forward, -1:backward
+
+    def move(self, ninja):
+        if self.state:
+            speed = self.forward_speed if self.state == 1 else self.backward_speed
+            speed_dir = self.direction * self.state
+            if not self.is_horizontal:
+                ypos_new = self.ypos + speed * speed_dir
+                if self.state == -1 and (ypos_new - self.yorigin) * (self.ypos - self.yorigin) < 0: #If the thwump as retreated past its starting point.
+                    self.ypos = self.yorigin
+                    self.state = 0
+                    return
+                cell_y = math.floor((self.ypos + speed_dir * 11) / 12)
+                cell_y_new = math.floor((ypos_new + speed_dir * 11) / 12)
+                if cell_y != cell_y_new:
+                    cell_x1 = math.floor((self.xpos - 11) / 12)
+                    cell_x2 = math.floor((self.xpos + 11) / 12)
+                    if not is_empty_row(cell_x1, cell_x2, cell_y, speed_dir):
+                        self.state = -1
+                        return
+                self.ypos = ypos_new
+            else:
+                xpos_new = self.xpos + speed * speed_dir
+                if self.state == -1 and (xpos_new - self.xorigin) * (self.xpos - self.xorigin) < 0: #If the thwump as retreated past its starting point.
+                    self.xpos = self.xorigin
+                    self.state = 0
+                    return
+                cell_x = math.floor((self.xpos + speed_dir * 11) / 12)
+                cell_x_new = math.floor((xpos_new + speed_dir * 11) / 12)
+                if cell_x != cell_x_new:
+                    cell_y1 = math.floor((self.ypos - 11) / 12)
+                    cell_y2 = math.floor((self.ypos + 11) / 12)
+                    if not is_empty_column(cell_x, cell_y1, cell_y2, speed_dir):
+                        self.state = -1
+                        return
+                self.xpos = xpos_new
+            self.grid_move()
+
+    def think(self, ninja):
+        if not self.state:
+            activation_range = 2 * (self.semiside + ninja.radius)
+            if not self.is_horizontal:
+                if abs(self.xpos - ninja.xpos) < activation_range: #If the ninja is in the activation range
+                    ninja_ycell = math.floor(ninja.ypos / 12)
+                    thwump_ycell = math.floor((self.ypos - self.direction * 11) / 12)
+                    thwump_xcell1 = math.floor((self.xpos - 11) / 12)
+                    thwump_xcell2 = math.floor((self.xpos + 11) / 12)
+                    dy = ninja_ycell - thwump_ycell
+                    if dy * self.direction < 0:
+                        return
+                    while dy * self.direction >= 0:
+                        if dy == 0:
+                            self.state = 1
+                            return
+                        if not is_empty_row(thwump_xcell1, thwump_xcell2, thwump_ycell, self.direction):
+                            return
+                        thwump_ycell += self.direction
+                        dy = ninja_ycell - thwump_ycell
+            else:
+                if abs(self.ypos - ninja.ypos) < activation_range: #If the ninja is in the activation range
+                    ninja_xcell = math.floor(ninja.xpos / 12)
+                    thwump_xcell = math.floor((self.xpos - self.direction * 11) / 12)
+                    thwump_ycell1 = math.floor((self.ypos - 11) / 12)
+                    thwump_ycell2 = math.floor((self.ypos + 11) / 12)
+                    dx = ninja_xcell - thwump_xcell
+                    if dx * self.direction < 0:
+                        return
+                    while dx * self.direction >= 0:
+                        if dx == 0:
+                            self.state = 1
+                            return
+                        if not is_empty_column(thwump_xcell, thwump_ycell1, thwump_ycell2, self.direction):
+                            return
+                        thwump_xcell += self.direction
+                        dx = ninja_xcell - thwump_xcell
+
+    def physical_collision(self, ninja):
+        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius)
+        if depen != (0, 0):
+            return depen
+    
+    def logical_collision(self, ninja):
+        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius + 0.1)
+        depen_x = depen[0]
+        if depen_x:
+            return depen_x/abs(depen_x)
 
 class EntityBoostPad(Entity):
     def __init__(self, type, xcoord, ycoord):
@@ -881,6 +993,22 @@ def map_orientation_to_vector(orientation):
     diag = math.sqrt(2) / 2
     orientation_dic = {0:(1, 0), 1:(diag, diag), 2:(0, 1), 3:(-diag, diag), 4:(-1, 0), 5:(-diag, -diag), 6:(0, -1), 7:(diag, -diag)}
     return orientation_dic[orientation]
+
+def is_empty_row(xcoord1, xcoord2, ycoord, dir):
+    """Return true if the cell has no solid horizontal edge in the specified direction."""
+    xcoord3 = xcoord1 if xcoord1 == xcoord2 else xcoord1 + 1
+    if dir == 1:
+        return not (hor_grid_edge_dic[xcoord1, ycoord+1] or hor_grid_edge_dic[xcoord2, ycoord+1] or hor_grid_edge_dic[xcoord3, ycoord+1])
+    if dir == -1:
+        return not (hor_grid_edge_dic[xcoord1, ycoord] or hor_grid_edge_dic[xcoord2, ycoord] or hor_grid_edge_dic[xcoord3, ycoord])
+    
+def is_empty_column(xcoord, ycoord1, ycoord2, dir):
+    """Return true if the cell has no solid vertical edge in the specified direction."""
+    ycoord3 = ycoord1 if ycoord1 == ycoord2 else ycoord1 + 1
+    if dir == 1:
+        return not (ver_grid_edge_dic[xcoord+1, ycoord1] or ver_grid_edge_dic[xcoord+1, ycoord2] or ver_grid_edge_dic[xcoord+1, ycoord3])
+    if dir == -1:
+        return not (ver_grid_edge_dic[xcoord, ycoord1] or ver_grid_edge_dic[xcoord, ycoord2] or ver_grid_edge_dic[xcoord, ycoord3])
           
 def tick(p, frame):
     """This is the main function that handles physics.
@@ -898,7 +1026,7 @@ def tick(p, frame):
     #Make all thinkable entities think.
     for entity in entity_list:
         if entity.is_thinkable and entity.active:
-            entity.think()
+            entity.think(p)
             
     p.integrate() #Do preliminary speed and position updates.
     p.pre_collision() #Do pre collision calculations.
@@ -959,10 +1087,43 @@ for i in range(len(inputs_list)):
             entity_dic[(x, y)] = []
     entity_list = []
 
+    #Initiate dictionaries of grid edges. They are all set to false initialy. Set to true later if a thwump or shwump can't get through.
+    hor_grid_edge_dic = {}
+    for x in range(88):
+        for y in range(51):
+            hor_grid_edge_dic[(x, y)] = False
+    ver_grid_edge_dic = {}
+    for x in range(89):
+        for y in range(50):
+            ver_grid_edge_dic[(x, y)] = False
+    
     #put each segment in its correct cell
     for coord, tile_id in tile_dic.items():
-        xtl = coord[0] * 24
-        ytl = coord[1] * 24
+        xcoord = coord[0]
+        ycoord = coord[1]
+        if tile_id in (1, 2, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33):
+            hor_grid_edge_dic[(2*xcoord, 2*ycoord)] = True
+            ver_grid_edge_dic[(2*xcoord, 2*ycoord)] = True
+        if tile_id in (1, 2, 3, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 18, 19, 22, 23, 24, 25, 27, 28, 30, 31, 32, 33):
+            hor_grid_edge_dic[(2*xcoord+1, 2*ycoord)] = True
+            ver_grid_edge_dic[(2*xcoord+2, 2*ycoord)] = True
+        if tile_id in (1, 3, 4, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 20, 21, 22, 23, 24, 25, 27, 28, 30, 31, 32, 33):
+            hor_grid_edge_dic[(2*xcoord+1, 2*ycoord+2)] = True
+            ver_grid_edge_dic[(2*xcoord+2, 2*ycoord+1)] = True
+        if tile_id in (1, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 16, 17, 20, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33):
+            hor_grid_edge_dic[(2*xcoord, 2*ycoord+2)] = True
+            ver_grid_edge_dic[(2*xcoord, 2*ycoord+1)] = True
+        if tile_id in (2, 4, 6, 9, 14, 17, 18, 19, 20, 21):
+            hor_grid_edge_dic[(2*xcoord+1, 2*ycoord+1)] = True
+        if tile_id in (1, 3, 6, 7, 14, 15, 26, 27, 28, 29):
+            ver_grid_edge_dic[(2*xcoord+1, 2*ycoord+1)] = True
+        if tile_id in (2, 4, 7, 8, 15, 16, 18, 19, 20, 21):
+            hor_grid_edge_dic[(2*xcoord, 2*ycoord+1)] = True
+        if tile_id in (1, 3, 8, 9, 16, 17, 26, 27, 28, 29):
+            ver_grid_edge_dic[(2*xcoord+1, 2*ycoord)] = True
+
+        xtl = xcoord * 24
+        ytl = ycoord * 24
         if tile_id == 1: #1: full tile
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
@@ -1150,6 +1311,8 @@ for i in range(len(inputs_list)):
             EntityOneWayPlatform(type, xcoord, ycoord, orientation)
         if type == 17:
             EntityBounceBlock(type, xcoord, ycoord)
+        if type == 20:
+            EntityThwump(type, xcoord, ycoord, orientation)
         if type == 24:
             EntityBoostPad(type, xcoord, ycoord)
         index += 5
