@@ -832,7 +832,7 @@ module Map
         m = dx / 2.9
         dm = 4
         x, y = UNITS + dx * (n - i - 1), UNITS - 5
-        vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx -m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
+        vert_x = [x + bx, x + bx, x + bx + c, x + dx - m - dm, x + dx - m, x + dx - m + dm, x + dx - bx - c, x + dx - bx, x + dx - bx]
         vert_y = [2, UNITS - c - 2, UNITS - 2, UNITS - 2, UNITS - dm - 2, UNITS - 2, UNITS - 2, UNITS - c - 2, 2]
         color_bg = ChunkyPNG::Color.to_hex(PALETTE[2, palette_idx])
         color_bd = colors[i]

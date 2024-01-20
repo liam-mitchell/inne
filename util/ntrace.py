@@ -1,4 +1,5 @@
 import matplotlib.pyplot as mpl
+import struct
 from matplotlib.animation import FFMpegWriter
 #mpl.rcParams["animation.ffmpeg_path"] = "C:\\Users\\Utilisateur\\Desktop\\BizHawk-2.8-win-x64\\dll\\ffmpeg.exe"
 import math
@@ -1310,6 +1311,19 @@ for i in range(len(inputs_list)):
     #Execute the main physics function once per frame
     for frame in range(1, inp_len+1):
         tick(p1, frame)
+
+    # Compare with real positions
+    if os.path.isfile('coords'):
+        with open('coords', 'rb') as f: coords = f.read()
+        n = 4
+        line_size = 8 * n
+        frames = round(len(coords) / line_size)
+        c_list = struct.unpack(f"<{n * frames}d", coords)
+        lists = [c_list[i:i + n] for i in range(0, len(c_list), n)]
+        print(len(lists))
+        print(len(p1.xposlog))
+        print([abs(lists[i][0] - p1.xposlog[i + 1]) for i in range(len(lists))])
+    
 
     #Append the positions log of each replay
     xposlog.append(p1.xposlog)
