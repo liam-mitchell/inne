@@ -2728,15 +2728,15 @@ def test_ntrace(event)
   # Format results
   event << "Results from ntrace test:"
   block = ""
-  block << "Mappack: #{mappack.code.upcase}\n"
-  block << "Tabs:    #{tabs.empty? ? 'All' : format_tabs(tabs)}\n"
+  block << "Mappack:  #{mappack.code.upcase rescue 'MET'}\n"
+  block << "Tabs:     #{tabs.empty? ? 'All' : format_tabs(tabs)}\n"
   block << "-------------\n"
-  block << "Good:    #{good.size}\n"
-  block << "Bad:     #{bad.size}\n"
-  block << "Error:   #{error.size}\n"
-  block << "Other:   #{other.size}\n"
+  block << "Good:    #{'%4d' % good.size}\n"
+  block << "Bad:     #{'%4d' % bad.size}\n"
+  block << "Error:   #{'%4d' % error.size}\n"
+  block << "Other:   #{'%4d' % other.size}\n"
   block << "-------------\n"
-  block << "Total:   #{results.size}"
+  block << "Total:   #{'%4d' % results.size}"
   event << format_block(block)
   file = "GOOD: #{good.size}\n\n"
   file << good.keys.join("\n")

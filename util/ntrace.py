@@ -281,6 +281,7 @@ class Ninja:
             else:
                 self.floor_normalized_x = self.floor_normal_x/floor_scalar
                 self.floor_normalized_y = self.floor_normal_y/floor_scalar
+                #if abs(self.floor_normalized_x) < 0.000001: self.floor_normalized_x = 0
 
     def floor_jump(self):
         self.jump_buffer = -1
@@ -288,27 +289,14 @@ class Ninja:
         self.launch_pad_buffer = -1
         self.state = 3
         self.applied_gravity = gravity_held
-        if self.floor_normalized_x == 0:
-            jx = 0
-            jy = -2
+        dx = self.floor_normalized_x
+        dy = self.floor_normalized_y
+        if abs(dx) < 0.0000001: dx = 0
+        if dx * self.hor_input >= 0:
+            jx, jy = (2/3 * dx, 2 * dy)              # Regular jump
+            if dx * self.xspeed < 0: self.xspeed = 0 # Perp jump
         else:
-            dx = self.floor_normalized_x
-            dy = self.floor_normalized_y
-            if self.xspeed * dx >= 0:
-                if self.xspeed * self.hor_input >= 0:
-                    jx = 2/3 * dx
-                    jy = 2 * dy
-                else:
-                    jx = 0
-                    jy = -1.4
-            else:
-                if self.xspeed * self.hor_input > 0:
-                    jx = 0
-                    jy = -1.4
-                else:
-                    self.xspeed = 0
-                    jx = 2/3 * dx
-                    jy = 2 * dy
+            jx, jy = (0, -1.4)                       # Low jump
         if self.yspeed > 0:
             self.yspeed = 0
         self.xspeed += jx
