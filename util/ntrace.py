@@ -1019,8 +1019,9 @@ def tick(p, frame):
             
     p.integrate() #Do preliminary speed and position updates.
     p.pre_collision() #Do pre collision calculations.
-    p.collide_vs_objects() #Handle PHYSICAL collisions with entities.
-    p.collide_vs_tiles() #Handle physical collisions with tiles.
+    for _ in range(4):
+        p.collide_vs_objects() #Handle PHYSICAL collisions with entities.
+        p.collide_vs_tiles() #Handle physical collisions with tiles.
     p.post_collision() #Do post collision calculations.
     p.think() #Make ninja think
 
@@ -1313,7 +1314,7 @@ for i in range(len(inputs_list)):
         tick(p1, frame)
 
     # Compare with real positions
-    if os.path.isfile('coords'):
+    if False and os.path.isfile('coords'):
         with open('coords', 'rb') as f: coords = f.read()
         n = 4
         line_size = 8 * n
@@ -1330,15 +1331,10 @@ for i in range(len(inputs_list)):
     yposlog.append(p1.yposlog)
 
     #For splits mode, calculate the amount of gold collected for each replay.
-    if tool_mode == "splits":
-        gold_amount = mdata[1154]
-        gold_collected = 0
-        for entity in entity_list:
-            if entity.type == 2:
-                if entity.collected:
-                    gold_collected += 1
-        goldlog.append((gold_collected, gold_amount))
-        frameslog.append(inp_len)
+    gold_amount = mdata[1154]
+    gold_collected = sum(1 for e in entity_list if e.type == 2 and e.collected)
+    goldlog.append((gold_collected, gold_amount))
+    frameslog.append(inp_len)
 
     #Verify for each replay if the run is valid.
     #That is, verify if the ninja collects the switch and enters the door at the end of the replay.
@@ -1434,6 +1430,7 @@ if tool_mode == "trace" and outte_mode == True:
             print(validlog[i], file=f)
             for frame in range(len(xposlog[i])):
                 print(round(xposlog[i][frame], 2), round(yposlog[i][frame], 2), file=f)
+    print("%.3f" % ((90 * 60 - frameslog[0] + 1 + goldlog[0][0] * 120) / 60))
 
 #Print episode splits and other info to the console. Only ran in manual mode and splits mode.
 if tool_mode == "splits" and outte_mode == False:

@@ -923,7 +923,7 @@ module Map
       File.binwrite("inputs_#{i}", demo)
     }
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    shell("python3 #{PATH_NTRACE}")
+    shell("python3 #{PATH_NTRACE}", stream: true)
 
     # Read output files
     file = File.binread('output.txt') rescue nil
