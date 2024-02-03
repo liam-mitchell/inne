@@ -597,25 +597,27 @@ def send_community(event)
   # Parse message parameters
   msg  = parse_message(event)
   tabs = parse_tabs(msg)
-  cond = !(tabs&[:SS, :SS2]).empty? || tabs.empty?
+  rank = parse_range(msg)[0..1].max - 1
+  puts rank
+  has_secrets = !(tabs & [:SS, :SS2]).empty? || tabs.empty?
+  has_episodes = !(tabs - [:SS, :SS2]).empty? || tabs.empty?
 
   # Retrieve community's total and average scores
-  levels = Score.total_scores(Level, tabs, true)
-  episodes = Score.total_scores(Episode, tabs, false)
-  levels_no_secrets = (cond ? Score.total_scores(Level, tabs, false) : levels)
-  difference = levels_no_secrets[0] - 4 * 90 * episodes[1] - episodes[0]
+  levels = Score.total_scores(Level, tabs, rank, true)
+  episodes = Score.total_scores(Episode, tabs, rank, false) if has_episodes
+  levels_no_secrets = (has_secrets ? Score.total_scores(Level, tabs, rank, false) : levels) if has_episodes
+  difference = levels_no_secrets[0] - 4 * 90 * episodes[1] - episodes[0] if has_episodes
 
   # Format response
   pad = ("%.3f" % levels[0]).length
   str = ''
-  str << "Total level score (TLS):   #{"%#{pad}.3f" % levels[0]}\n"
-  str << "Total episode score (TES): #{"%#{pad}.3f" % episodes[0]}\n"
-  str << "TLS (w/o secrets):         #{"%#{pad}.3f" % levels_no_secrets[0]}\n" if cond
-  str << "Difference (TLS - TES):    #{"%#{pad}.3f" % [difference]}\n\n"
-  str << "Average level score:       #{"%#{pad}.3f" % [levels[0]/levels[1]]}\n"
-  str << "Average episode score:     #{"%#{pad}.3f" % [episodes[0]/episodes[1]]}\n"
-  str << "Average difference:        #{"%#{pad}.3f" % [difference/episodes[1]]}\n"
-  event << "Community's total #{format_tabs(tabs)} scores #{format_time}:\n".squish
+  str << "Total level score:     #{"%#{pad}.3f" % [levels[0]]}\n"
+  str << "Total episode score:   #{"%#{pad}.3f" % [episodes[0]]}\n"               if has_episodes
+  str << "Difference:            #{"%#{pad}.3f" % [difference]}\n\n"              if has_episodes
+  str << "Average level score:   #{"%#{pad}.3f" % [levels[0] / levels[1]]}\n"
+  str << "Average episode score: #{"%#{pad}.3f" % [episodes[0] / episodes[1]]}\n" if has_episodes
+  str << "Average difference:    #{"%#{pad}.3f" % [difference / episodes[1]]}\n"  if has_episodes
+  event << "Community's total #{rank.ordinalize} #{format_tabs(tabs)} scores #{format_time}:\n".squish
   event << format_block(str)
 rescue => e
   lex(e, "Error computing community total scores.", event: event)
