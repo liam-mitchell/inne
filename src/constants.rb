@@ -187,7 +187,7 @@ STORY_PATTERN       = /([SCR][ILU]?)-?([0-9][0-9]?)/i
 STORY_PATTERN_M     = /([A-Z]{3})-?([SCR][ILU]?)-?([0-9][0-9]?)/i
 
 # Organize all possible highscoreable ID patterns into a hash
-# (note dashes are irrelevant for stories, as there can be no ambiguity) 
+# (note dashes are irrelevant for stories, as there can be no ambiguity)
 ID_PATTERNS = {
   'Level' => {
     vanilla: { dashed: LEVEL_PATTERN,     dashless: LEVEL_PATTERN_D     },
@@ -272,7 +272,7 @@ QT_SEARCH_BY_TITLE                     = 36
 
 # Mapping for each QT we care about
 #     'name'     - Internal name used to identify each tab.
-#     'fullname' - Display name of tab 
+#     'fullname' - Display name of tab
 #     'update'   - Determines whether we update our db's tab info.
 #     'size'     - Determines how many maps from each tab to update.
 USERLEVEL_TABS = {
@@ -300,7 +300,7 @@ POTATO_FREQ    = 3 * 60 * 60        # 3 hours between potato delivers
 MISHU          = true               # MishNUB joke
 MISHU_COOLDOWN = 30 * 60            # MishNUB cooldown
 COOL           = true               # Emoji for CKC in leaderboards
-FRUITS         = [                  # Emojis for the potato joke
+FOOD           = [                  # Emojis for the potato joke
   ':potato:',
   ':tomato:',
   ':eggplant:',

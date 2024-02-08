@@ -1973,9 +1973,9 @@ def potato
     sleep(POTATO_RATE)
     next if $nv2_channel.nil? || $last_potato.nil?
     if Time.now.to_i - $last_potato.to_i >= POTATO_FREQ
-      send_message($nv2_channel, content: FRUITS[$potato], removable: false)
-      log(FRUITS[$potato].gsub(/:/, '').capitalize + 'ed nv2')
-      $potato = ($potato + 1) % FRUITS.size
+      send_message($nv2_channel, content: FOOD[$potato], removable: false)
+      log(FOOD[$potato].gsub(/:/, '').capitalize + 'ed nv2')
+      $potato = ($potato + 1) % FOOD.size
       $last_potato = Time.now.to_i
     end
   end

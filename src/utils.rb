@@ -215,7 +215,7 @@ module Log
     # Log to the terminal, if specified
     if log_to_console
       t_msg = fancy ? msg[:fancy] : msg[:plain]
-      newline ? stream.puts(t_msg) : stream.print(t_msg) 
+      newline ? stream.puts(t_msg) : stream.print(t_msg)
       stream.flush
     end
 
@@ -831,7 +831,7 @@ def find_server(id: nil, name: nil)
   if id
     $bot.servers[id]
   elsif name
-    $bot.servers.values.find{ |s| s.name.downcase.include?(name.downcase) } 
+    $bot.servers.values.find{ |s| s.name.downcase.include?(name.downcase) }
   else
     nil
   end
@@ -1398,12 +1398,12 @@ rescue
 end
 
 # This function sets up the potato parameters correctly in case outte was closed,
-# so that a chain of fruits may not be broken
+# so that the food chain may not be broken
 def fix_potato
   last_msg = $nv2_channel.history(1)[0] rescue nil
   $last_potato = last_msg.timestamp.to_i rescue Time.now.to_i
   if last_msg.author.id == $config['discord_client']
-    $potato = ((FRUITS.index(last_msg.content) + 1) % FRUITS.size) rescue 0
+    $potato = ((FOOD.index(last_msg.content) + 1) % FOOD.size) rescue 0
   end
 rescue
   nil
