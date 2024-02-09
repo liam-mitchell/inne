@@ -1,7 +1,4 @@
 import matplotlib.pyplot as mpl
-import struct
-from matplotlib.animation import FFMpegWriter
-#mpl.rcParams["animation.ffmpeg_path"] = "C:\\Users\\Utilisateur\\Desktop\\BizHawk-2.8-win-x64\\dll\\ffmpeg.exe"
 import math
 import os.path
 import zlib
@@ -9,7 +6,6 @@ import zlib
 
 outte_mode = True #Only set to False when manually running the script. Changes what the output of the tool is.
 compressed_inputs = True #Only set to False when manually running the script and using regular uncompressed input files.
-animation_mode = False #Experimental animated plot, set to false for now in outte
 
 #Required names for files. Only change values if running manually.
 raw_inputs_0 = "inputs_0"
@@ -209,6 +205,10 @@ class Ninja:
             b = closest_point[1]
             dx = self.xpos - a
             dy = self.ypos - b
+            if abs(dx) <= 0.0000001: #This is to prevent corner cases. Not in the original code
+                dx = 0
+            if self.xpos == 50.51197510492316 : #This is to artificially create corner cases at certain common exact spots. lol
+                dx = -2**-47
             dist = math.sqrt(dx**2 + dy**2)
             if dist == 0:
                 break
@@ -233,29 +233,31 @@ class Ninja:
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
         neighbour_cells = self.object_neighbour_cells()
+        entities = []
         for cell in neighbour_cells:
-            for entity in entity_dic[cell]:
-                if entity.is_logical_collidable and entity.active:
-                    collision_result = entity.logical_collision(self)
-                    if collision_result:
-                        if entity.type == 10: #If collision with launch pad
-                            xboost = collision_result[0] * 2/3
-                            yboost = collision_result[1] * 2/3
-                            self.xpos += xboost
-                            self.ypos += yboost
-                            self.xspeed = xboost
-                            self.yspeed = yboost
-                            self.floor_count = 0
-                            self.floor_buffer = -1
-                            boost_scalar = math.sqrt(xboost**2 + yboost**2)
-                            self.xlp_boost_normalized = xboost/boost_scalar
-                            self.ylp_boost_normalized = yboost/boost_scalar
-                            self.launch_pad_buffer = 0
-                            if self.state == 3:
-                                self.applied_gravity = gravity
-                            self.state = 4
-                        else: #If touched wall of bounce block, oneway, thwump or shwump
-                            wall_normal = collision_result                  
+            entities += entity_dic[cell]
+        for entity in entities:
+            if entity.is_logical_collidable and entity.active:
+                collision_result = entity.logical_collision(self)
+                if collision_result:
+                    if entity.type == 10: #If collision with launch pad
+                        xboost = collision_result[0] * 2/3
+                        yboost = collision_result[1] * 2/3
+                        self.xpos += xboost
+                        self.ypos += yboost
+                        self.xspeed = xboost
+                        self.yspeed = yboost
+                        self.floor_count = 0
+                        self.floor_buffer = -1
+                        boost_scalar = math.sqrt(xboost**2 + yboost**2)
+                        self.xlp_boost_normalized = xboost/boost_scalar
+                        self.ylp_boost_normalized = yboost/boost_scalar
+                        self.launch_pad_buffer = 0
+                        if self.state == 3:
+                            self.applied_gravity = gravity
+                        self.state = 4
+                    else: #If touched wall of bounce block, oneway, thwump or shwump
+                        wall_normal = collision_result                  
 
         #Check if the ninja can interact with nearby walls.
         neighbour_cells = self.neighbour_cells(self.radius + 0.1)
@@ -348,26 +350,26 @@ class Ninja:
         self.jump_input_old = self.jump_input
 
         #Determine if within buffer ranges. If so, increment buffers.
-        in_lp_buffer = -1 < self.launch_pad_buffer < 3
-        if in_lp_buffer:
+        if -1 < self.launch_pad_buffer < 3:
             self.launch_pad_buffer += 1
         else:
             self.launch_pad_buffer = -1
-        in_jump_buffer = -1 < self.jump_buffer < 5
-        if in_jump_buffer:
+        in_lp_buffer = -1 < self.launch_pad_buffer < 4
+        if -1 < self.jump_buffer < 5:
             self.jump_buffer += 1
         else:
             self.jump_buffer = -1
-        in_wall_buffer = -1 < self.wall_buffer < 5
-        if in_wall_buffer:
+        in_jump_buffer = -1 < self.jump_buffer < 5
+        if -1 < self.wall_buffer < 5:
             self.wall_buffer += 1
         else:
             self.wall_buffer = -1
-        in_floor_buffer = -1 < self.floor_buffer < 5
-        if in_floor_buffer:
+        in_wall_buffer = -1 < self.wall_buffer < 5
+        if -1 < self.floor_buffer < 5:
             self.floor_buffer += 1
         else:
             self.floor_buffer = -1
+        in_floor_buffer = -1 < self.floor_buffer < 5
 
         #Initiate jump buffer if beginning a new jump and airborn.
         if new_jump_check and self.airborn:
@@ -546,7 +548,7 @@ class GridSegmentCircular:
             penetration = ninja.radius + self.radius - dist
         else:
             penetration = dist + ninja.radius - self.radius
-        if not (dx * self.hor > 0 and dy * self.ver > 0) or penetration < 0.0000001:
+        if not (dx * self.hor > 0 and dy * self.ver > 0) or penetration < 0.0000001 or penetration > 10 :
             penetration = 0
         return (x, y), penetration
 
@@ -563,7 +565,8 @@ class Entity:
         self.is_movable = False
         self.is_thinkable = False
         self.cell = (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
-        entity_dic[self.cell].append(self)
+        if self.type != 3:
+            entity_dic[self.cell].append(self)
         entity_list.append(self)
 
     def is_colliding_circle(self, ninja, radius):
@@ -609,15 +612,13 @@ class EntityExit(Entity):
         super().__init__(type, xcoord, ycoord)
         self.is_logical_collidable = True
         self.radius = 12
-        self.open = False
         self.ninja_exit = []
 
     def logical_collision(self, ninja):
         """If the ninja is colliding with the open door, store the frame at which the collision happened"""
-        if self.open:
-            if self.is_colliding_circle(ninja, ninja.radius):
-                self.ninja_exit.append(frame)
-                self.active = False
+        if self.is_colliding_circle(ninja, ninja.radius):
+            self.ninja_exit.append(frame)
+            self.active = False
 
 class EntityExitSwitch(Entity):
     def __init__(self, type, xcoord, ycoord, parent):
@@ -632,7 +633,7 @@ class EntityExitSwitch(Entity):
         if self.is_colliding_circle(ninja, ninja.radius):
             self.collected = True
             self.active = False
-            self.parent.open = True
+            entity_dic[self.parent.cell].append(self.parent) #Add door to the entity grid so the ninja can touch it
 
 class EntityDoorBase(Entity):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
@@ -1352,12 +1353,12 @@ for i in range(len(inputs_list)):
 
     #Print info useful for debug if in manual mode
     if not outte_mode:
-        print(p1.speedlog[0:500])
-        print(p1.poslog[0:500])
+        print(p1.speedlog)
+        print(p1.poslog)
         print(valid_replay)
 
 #Plot the route. Only ran in manual mode.
-if tool_mode == "trace" and outte_mode == False and animation_mode == False:
+if tool_mode == "trace" and outte_mode == False:
     if len(inputs_list) >= 4:
         mpl.plot(xposlog[3], yposlog[3], "#910A46")
     if len(inputs_list) >= 3:
@@ -1373,55 +1374,6 @@ if tool_mode == "trace" and outte_mode == False and animation_mode == False:
         img = mpl.imread(map_img)
         ax.imshow(img, extent=[0, 1056, 600, 0])
     mpl.show()
-
-if tool_mode == "trace" and outte_mode == False and animation_mode == True:
-    fig = mpl.figure()
-    fig.set_size_inches(484, 275)
-    l, = mpl.plot([], [])
-    mpl.axis([0, 1056, 600, 0])
-    mpl.axis("off")
-    ax = mpl.gca()
-    ax.set_aspect("equal", adjustable="box")
-    if map_img:
-        img = mpl.imread(map_img)
-        ax.imshow(img, extent=[0, 1056, 600, 0])
-
-    metadata = dict(title="movie", author="simvyo")
-    #writer = FFMpegWriter(fps=60, metadata=metadata)
-
-    def assign_circle_patch(entity, center):
-        entity.patch = mpl.Circle(center, entity.radius, color = entity.color)
-        ax.add_patch(entity.patch)
-
-    def assign_square_patch(entity, center):
-        entity.patch = mpl.Rectangle((center[0] - entity.semiside, center[1] - entity.semiside), 2 * entity.semiside, 2 * entity.semiside, color = "black")
-        ax.add_patch(entity.patch)
-        
-    def trace_initialize():
-        p1.patch = mpl.Circle((xposlog[0][0], yposlog[0][0]), 10, color = "black")
-        ax.add_patch(p1.patch)
-        for entity in entity_list:
-            if entity.type in (1, 2):
-                assign_circle_patch(entity, (entity.xpos, entity.ypos))
-            if entity.type == 17:
-                assign_square_patch(entity, entity.log[0])
-
-    def trace_update(frame):
-        p1.patch.set(center = (xposlog[0][frame], yposlog[0][frame]))
-        for entity in entity_list:
-            if entity.type == 2:
-                if entity.collected == frame:
-                    entity.patch.set(visible = False)
-            if entity.type == 17:
-                entity.patch.set(x = entity.log[frame][0] - entity.semiside)
-                entity.patch.set(y = entity.log[frame][1] - entity.semiside)
-
-    #with writer.saving(fig, "simul.MP4", 2):
-        #trace_initialize()
-        #for i in range(len(xposlog[0])):
-            #trace_update(i)
-            #writer.grab_frame()
-            #print(i)
             
 #For each replay, write to file whether it is valid or not, then write the series of coordinates for each frame. Only ran in outte mode and in trace mode.
 if tool_mode == "trace" and outte_mode == True:

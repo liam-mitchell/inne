@@ -1089,7 +1089,7 @@ end
 
 # Return list of challenges for specified level, ordered and formatted as in the game
 def send_challenges(event)
-  allowable_channels = [CHANNEL_SECRETS, CHANNEL_CTP_HIGHSCORES]
+  allowable_channels = [CHANNEL_SECRETS, CHANNEL_CTP_SECRETS]
   if !(event.channel.type == 1 || allowable_channels.include?(event.channel.id))
     mentions = allowable_channels.map{ |c| mention_channel(id: c) }.join(', ')
     perror("No asking for challenges outside of #{mentions} or DMs!")
