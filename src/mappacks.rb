@@ -7,6 +7,7 @@
 
 #require 'chunky_png'
 require 'oily_png'    # C wrapper for ChunkyPNG
+require 'gifenc'      # Own gem to encode and decode GIFs
 require 'digest'
 require 'matplotlib/pyplot'
 require 'zlib'
@@ -415,6 +416,7 @@ module Map
       ppc:     0,               # Points per coordinate (essentially the scale) (0 = use default)
       h:       nil,             # Highscoreable to screenshot
       anim:    false,           # Whether to animate plotted coords or not
+      use_gif: true,            # Use GIF or MP4 for animated traces
       coords:  [],              # Coordinates of routes to trace
       spoiler: false,           # Whether the screenshot should be spoilered in Discord
       v:       nil              # Version of the map data to use (nil = latest)
@@ -690,7 +692,7 @@ module Map
         # Prepare parameters
         coords = coords.take(MAX_TRACES).reverse
         n = [coords.size, MAX_TRACES].min
-        colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
+        ninja_colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
 
         # Scale coordinates
         coords.each{ |c_list|
@@ -699,53 +701,133 @@ module Map
           }
         }
 
-        # Plot lines
-        sizes = coords.map(&:size)
-        frames = sizes.max
-        for f in (0 .. frames - 2) do
-          dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
-          coords.each_with_index{ |c_list, i|
-            image.line(
-              c_list[f][0],
-              c_list[f][1],
-              c_list[f + 1][0],
-              c_list[f + 1][1],
-              colors[i],
-              false,
-              weight: 2,
-              antialiasing: false
-            ) if sizes[i] >= f + 2
-          }
-          image.save("frames/#{'%04d' % f}.png", :fast_rgb) if anim
+        if use_gif
+          # Build GIF palette. Since each palette only supports a max of 256 colors,
+          # we sort the colors by frequency and take the top 256 ones (usually we
+          # actually have way fewer).
+          frequencies = Hash.new(0)
+          image.pixels.each{ |color| frequencies[color] += 1 }
+          colors = frequencies.sort_by{ |color, freq| -freq }
+                              .take(256)
+                              .map{ |c| c[0] >> 8 }
+          palette = Gifenc::ColorTable.new(colors).compact
+          ninja_colors.each{ |c| palette.add(c >> 8) }
+          index = palette.colors.compact.each_with_index.to_h
+
+          # Construct GIF and add background image
+          bg = index[bg_color >> 8]
+          gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1)
+          gif.images << Gifenc::Image.new(image.width, image.height, color: bg)
+                                    .replace(image.pixels.map{ |c| index[c >> 8] })
+
+          # Plot lines
+          sizes = coords.map(&:size)
+          frames = sizes.max
+          step = 3
+          (0 .. frames - 2).step(step) do |f|
+            dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
+            # Find bounding box
+            endpoints = []
+            coords.each_with_index{ |c_list, i|
+              next if sizes[i] < f + step + 1
+              endpoints << [c_list[f][0], c_list[f][1]]
+              endpoints << [c_list[f + step][0], c_list[f + step][1]]
+            }
+            next if endpoints.empty?
+            bbox = Gifenc::Image.bbox(endpoints, 1)
+
+            # Add new frame
+            gif.images << Gifenc::Image.new(
+              bbox[2], bbox[3], bbox[0], bbox[1], color: bg, delay: 2, trans_color: bg
+            )
+
+            # Draw each line
+            coords.each_with_index{ |c_list, i|
+              next if sizes[i] < f + step + 1
+              point_a = [c_list[f][0], c_list[f][1]]
+              point_b = [c_list[f + step][0], c_list[f + step][1]]
+              x0 = point_a[0] - bbox[0]
+              y0 = point_a[1] - bbox[1]
+              x1 = point_b[0] - bbox[0]
+              y1 = point_b[1] - bbox[1]
+              color = index[ninja_colors[i] >> 8]
+              gif.images.last.line(p1: [x0, y0], p2: [x1, y1], color: color, weight: 2)
+            }
+          end
+        else
+          # Plot lines
+          sizes = coords.map(&:size)
+          frames = sizes.max
+          for f in (0 .. frames - 2) do
+            dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
+            coords.each_with_index{ |c_list, i|
+              image.line(
+                c_list[f][0],
+                c_list[f][1],
+                c_list[f + 1][0],
+                c_list[f + 1][1],
+                ninja_colors[i],
+                false,
+                weight: 2,
+                antialiasing: false
+              ) if sizes[i] >= f + 2
+            }
+            image.save("frames/#{'%04d' % f}.png", :fast_rgb) if anim
+          end
         end
         bench(:step, 'Routes    ') if BENCH_IMAGES
       end
 
-
       # rb_p(rb_str_new_cstr("Hello, world!"));
       # rb_p(rb_sprintf("x0 = %ld", x0));
       if anim
-        `ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
-        res = File.binread('frames/anim.mp4')
-        FileUtils.rm(Dir.glob('frames/*'))
+        if use_gif
+          res = gif.write
+        else
+          `ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
+          res = File.binread('frames/anim.mp4')
+          FileUtils.rm(Dir.glob('frames/*'))
+        end
       else
         res = image.to_blob(:fast_rgb)
       end
       bench(:step, 'Blobify   ') if BENCH_IMAGES
+
       res
     end
 
     bench(:step) if BENCHMARK
 
     return nil if !res
-    file ? tmp_file(res, "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{anim ? 'mp4' : 'png'}", binary: true) : res
+    ext = !anim ? 'png' : use_gif ? 'gif' : 'mp4'
+    file ? tmp_file(res, "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{ext}", binary: true) : res
   rescue => e
     lex(e, "Failed to generate screenshot")
     nil
   end
 
-  def screenshot(theme = DEFAULT_PALETTE, file: false, blank: false, anim: false, coords: [], spoiler: false, v: nil)
-    Map.screenshot(theme, file: file, blank: blank, anim: anim, coords: coords, h: self, ppc: anim ? 4 : 0, spoiler: spoiler, v: v)
+  def screenshot(
+      theme = DEFAULT_PALETTE,
+      file:    false,
+      blank:   false,
+      anim:    false,
+      use_gif: false,
+      coords:  [],
+      spoiler: false,
+      v:       nil
+    )
+    Map.screenshot(
+      theme,
+      file:    file,
+      blank:   blank,
+      anim:    anim,
+      use_gif: use_gif,
+      coords:  coords,
+      h:       self,
+      ppc:     anim ? 5 : 0,
+      spoiler: spoiler,
+      v:       v
+    )
   end
 
   # Plot routes and legend on top of an image (typically a screenshot)
@@ -890,7 +972,7 @@ module Map
     end
   end
 
-  def trace(event)
+  def trace(event, anim: false)
     t = Time.now
     msg = parse_message(event)
     tmp_msg = [nil]
@@ -911,7 +993,7 @@ module Map
     markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
     markers = { jump: true,  left: false, right: false } if markers.nil?
-    animate = !!msg[/\banimate\b/i]
+    use_gif = true
 
     # Export input files
     demos = []
@@ -942,8 +1024,8 @@ module Map
     texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
-    if animate
-      trace = screenshot(palette, coords: coords, blank: blank, anim: true)
+    if anim
+      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif)
       perror('Failed to generate screenshot') if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
@@ -960,7 +1042,7 @@ module Map
       screenshot.close
       perror('Failed to trace replays') if trace.nil?
     end
-    ext = animate ? 'mp4' : 'png'
+    ext = anim ? (use_gif ? 'gif' : 'mp4') : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
     tmp_msg.first.delete rescue nil
     log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES

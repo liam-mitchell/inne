@@ -1320,7 +1320,7 @@ rescue => e
 end
 
 # Use SimVYo's tool to trace the replay of a run based on the map data and
-# the demo data.
+# the demo data: still image.
 def send_trace(event)
   perror("Sorry, tracing is disabled.") if !FEATURE_NTRACE
   wait_msg = send_message(event, content: "Queued...", removable: false) if $mutex[:ntrace].locked?
@@ -1329,7 +1329,23 @@ def send_trace(event)
     level = parse_highscoreable(event, mappack: true)
     perror("Failed to parse highscoreable.") if !level
     perror("Episodes and columns can't be traced.") if !level.is_a?(Levelish)
-    level.map.trace(event)
+    level.map.trace(event, anim: false)
+  end
+rescue => e
+  lex(e, "Error performing trace.", event: event)
+end
+
+# Use SimVYo's tool to trace the replay of a run based on the map data and
+# the demo data: animated GIF.
+def send_animation(event)
+  perror("Sorry, tracing is disabled.") if !FEATURE_NTRACE
+  wait_msg = send_message(event, content: "Queued...", removable: false) if $mutex[:ntrace].locked?
+  $mutex[:ntrace].synchronize do
+    wait_msg.delete if !wait_msg.nil? rescue nil
+    level = parse_highscoreable(event, mappack: true)
+    perror("Failed to parse highscoreable.") if !level
+    perror("Episodes and columns can't be traced.") if !level.is_a?(Levelish)
+    level.map.trace(event, anim: true)
   end
 rescue => e
   lex(e, "Error performing trace.", event: event)
@@ -2858,6 +2874,7 @@ def respond(event)
   return send_download(event)        if msg =~ /\bdownload\b/i
   return send_demo_download(event)   if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
   return send_trace(event)           if msg =~ /\btrace\b/i
+  return send_animation(event)       if msg =~ /\banimation\b/i
   return send_lotd(event, Level)     if msg =~ /lotd/i
   return send_lotd(event, Episode)   if msg =~ /eotw/i
   return send_lotd(event, Story)     if msg =~ /cotm/i

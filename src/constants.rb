@@ -22,7 +22,7 @@ DEBUG          = false # Breakpoint right after loading the bot
 TEST_REPORT    = false # Produces the report immediately once
 TEST_LOTD      = false # Posts lotd immediately once
 TEST_CTP_LOTD  = false # Posts CTP lotd immediately once
-BENCH_IMAGES   = false # Benchmark image manipulation steps
+BENCH_IMAGES   = true  # Benchmark image manipulation steps
 
 # Internal
 WAIT            = 1       # Seconds between iterations of infinite loops

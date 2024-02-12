@@ -8,12 +8,14 @@ source 'https://rubygems.org' do
   gem 'damerau-levenshtein'
   gem 'rubyzip'
   gem 'unicode-emoji'
+  gem 'lzwrb'
 
   group :imaging do
     gem 'rmagick'
     gem 'gruff'
     gem 'chunky_png'
     gem 'oily_png', github: 'edelkas/oily_png', branch: 'dev'
+    gem 'gifenc', github: 'edelkas/gifenc', branch: 'master'
     gem 'matplotlib'
     gem 'svg-graph'
   end

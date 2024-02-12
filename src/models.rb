@@ -279,6 +279,8 @@ module MonkeyPatches
         e = ((dy << 16) / dx.to_f).round
         max = dy <= 1 ? dx - 1 : dx + weight.to_i - 2
         weight *= (1 + (dy.to_f / dx) ** 2) ** 0.5
+
+        # Draw line chunks
         0.upto(max) do |i|
           e_acc += e
           y += sy if e_acc > 0xFFFF unless i == 0 && e == 0x10000
