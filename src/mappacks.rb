@@ -927,7 +927,7 @@ module Map
       # Plot or animate traces
       # Note: I've deprecated the animation code because the performance was horrible.
       # Instead, for animations I render each frame in the screenshot function,
-      # and then call ffmpeg to render an mp4.
+      # and then call ffmpeg to render an mp4, or generate a GIF.
       if false# animate
         anim = PyCall.import_module('matplotlib.animation')
         x = []
@@ -2102,7 +2102,7 @@ class MappackScore < ActiveRecord::Base
       MappackDemo.create(id: id, demo: Demo.encode(demos))
 
       # Verify hs score integrity by checking calculated gold count
-      if (!MappackScore.verify_gold(goldf) && type[:name] != 'Story') || (h.gold && gold > h.gold)
+      if (!MappackScore.verify_gold(goldf) && type[:name] != 'Story') || (h.gold && gold > h.gold) || (gold < 0)
         _thread do
           warn("Potentially incorrect hs score submitted by #{name} in #{h.name} (ID #{score.id})", discord: true)
         end
@@ -2264,31 +2264,36 @@ class MappackScore < ActiveRecord::Base
   # - A player and a highscoreable, in which case, his current hs PB will be taken
   # - An ID, in which case that specific score will be chosen
   # It performs score validation via gold check before changing it
-  def self.patch_score(id, highscoreable, player, score)
+  def self.patch_score(id, highscoreable, player, score, silent: false)
     # Find score
     if !id.nil? # If ID has been provided
       s = MappackScore.find_by(id: id)
-      perror("Mappack score of ID #{id} not found") if score.nil?
+      silent ? return : perror("Mappack score of ID #{id} not found") if s.nil?
       highscoreable = s.highscoreable
       player = s.player
       scores = MappackScore.where(highscoreable: highscoreable, player: player)
-      perror("#{player.name} does not have a score in #{highscoreable.name}") if scores.empty?
+      silent ? return : perror("#{player.name} does not have a score in #{highscoreable.name}") if scores.empty?
     else # If highscoreable and player have been provided
-      perror("#{highscoreable.name} does not belong to a mappack") if !highscoreable.is_a?(MappackHighscoreable)
+      silent ? return : perror("#{highscoreable.name} does not belong to a mappack") if !highscoreable.is_a?(MappackHighscoreable)
       scores = self.where(highscoreable: highscoreable, player: player)
-      perror("#{player.name} does not have a score in #{highscoreable.name}") if scores.empty?
+      silent ? return : perror("#{player.name} does not have a score in #{highscoreable.name}") if scores.empty?
       s = scores.where.not(rank_hs: nil).first
-      perror("#{player.name}'s leaderboard score in #{highscoreable.name} not found") if s.nil?
+      silent ? return : perror("#{player.name}'s leaderboard score in #{highscoreable.name} not found") if s.nil?
     end
 
     # Score integrity checks
+    if !score
+      score = s.ntrace_score
+      silent ? return : perror("ntrace failed to compute correct score") if !score
+    end
     new_score = (score * 60).round
     gold = MappackScore.gold_count(highscoreable.type, new_score, s.score_sr)
-    perror("That score is incompatible with the framecount") if !MappackScore.verify_gold(gold) && !highscoreable.type.include?('Story')
+    silent ? return : perror("The inferred gold count is incorrect") if gold.round < 0 || gold.round > highscoreable.gold
+    silent ? return : perror("That score is incompatible with the framecount") if !MappackScore.verify_gold(gold) && !highscoreable.type.include?('Story')
 
     # Change score
     old_score = s.score_hs.to_f / 60.0
-    perror("#{player.name}'s score (#{s.id}) in #{highscoreable.name} is already #{'%.3f' % old_score}") if s.score_hs == new_score
+    silent ? return : perror("#{player.name}'s score (#{s.id}) in #{highscoreable.name} is already #{'%.3f' % old_score}") if s.score_hs == new_score
     s.update(score_hs: new_score, gold: gold.round)
 
     # Update player's ranks
@@ -2338,7 +2343,7 @@ class MappackScore < ActiveRecord::Base
         .where("highscoreable_type = 'MappackLevel' AND mappack_scores.id >= #{id}")
         .where(mappack ? "mappack_scores.mappack_id = #{mappack.id}" : '')
         .where(strict ? "rank_hs < 20 OR rank_sr < 20" : '')
-        .having('remainder > 0.001')
+        .having('remainder > 0.001 OR mappack_scores.gold < 0 OR mappack_scores.gold > mappack_levels.gold')
         .order('highscoreable_id', 'mappack_scores.id')
         .pluck(
           'mappack_levels.name',
@@ -2347,11 +2352,13 @@ class MappackScore < ActiveRecord::Base
           'score_hs / 60.0',
           'rank_hs',
           'rank_sr',
+          'gold',
+          'mappack_levels.gold',
           'ABS(MOD((score_hs + score_sr - 5401) / 120, 1)) AS remainder'
-        ).map{ |row| row[0..-2] }
+        ).map{ |row| row[0..-4] + ["#{'%3d' % row[-3]} / #{'%3d' % row[-2]}"] }
   rescue => e
     lex(e, 'Failed to compute gold check.')
-    [['Error', 'Error', 'Error', 'Error', 'Error', 'Error']]
+    [['Error', 'Error', 'Error', 'Error', 'Error', 'Error', 'Error']]
   end
 
   # Update the completion count for each mappack highscoreable, should only
@@ -2470,6 +2477,26 @@ class MappackScore < ActiveRecord::Base
     return hash_c == hash_ruby
   end
 
+  # Calculate the score using ntrace
+  def ntrace_score
+    return false if !highscoreable || !demo || !demo.demo
+
+    # Export input files and run ntrace
+    File.binwrite('map_data', highscoreable.dump_level)
+    File.binwrite("inputs_0", demo.demo)
+    score = shell("python3 #{PATH_NTRACE}", output: true, stream: true)
+
+    # Read output files
+    file = File.binread('output.txt') rescue nil
+    FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
+    return false if !file || file.strip.empty? || score.strip.empty?
+    valid = file.scan(/True|False/).map{ |b| b == 'True' }
+    return false if valid.count(false) > 0 || valid.count(true) == 0
+    round_score(score.to_f)
+  rescue => e
+    lex(e, 'ntrace testing failed')
+    nil
+  end
 end
 
 class MappackDemo < ActiveRecord::Base

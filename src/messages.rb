@@ -2081,11 +2081,21 @@ end
 def send_mappack_patch(event)
   msg = remove_command(parse_message(event))
   flags = parse_flags(msg)
-  id = flags[:id]
-  highscoreable = parse_highscoreable(event, mappack: true) if !id
-  player = parse_player(event, false, true, true, flag: :p) if !id
-  score = parse_score(flags[:s])
-  event << MappackScore.patch_score(id, highscoreable, player, score)
+  if flags.key?(:all)
+    wrong = MappackScore.gold_check(mappack: flags.key?(:m))
+    count = wrong.count
+    changed = wrong.count{ |s|
+      !!MappackScore.patch_score(s[2], nil, nil, nil, silent: true)
+    }
+    Log.clear
+    event << "Patched #{changed} / #{count} mappack scores successfully with ntrace."
+  else
+    id = flags[:id]
+    highscoreable = parse_highscoreable(event, mappack: true) if !id
+    player = parse_player(event, false, true, true, flag: :p) if !id
+    score = parse_score(flags[:s]) if flags.key?(:s)
+    event << MappackScore.patch_score(id, highscoreable, player, score)
+  end
 rescue => e
   lex(e, "Error patching mappack score.", event: event)
 end
@@ -2275,10 +2285,10 @@ def send_gold_check(event)
   strict = flags.key?(:strict)
   event << "List of potentially incorrect mappack scores:"
   rows = []
-  rows << ['Level', 'Player', 'ID', 'Current', 'HS', 'SR']
+  rows << ['Level', 'Player', 'ID', 'Current', 'HS', 'SR', 'Gold']
   rows << :sep
   rows.push(*MappackScore.gold_check(id: id, mappack: mappack, strict: strict))
-  rows.size > 22 ? send_file(event, make_table(rows), 'gold_check.txt') : event << format_block(make_table(rows))
+  rows.size > 24 ? send_file(event, make_table(rows), 'gold_check.txt') : event << format_block(make_table(rows))
 rescue => e
   lex(e, "Error performing gold check.", event: event)
 end
@@ -2548,8 +2558,11 @@ end
 def set_replay_id(event)
   msg = remove_command(parse_message(event))
   if msg =~ /\d+/
-    GlobalProperty.find_by(key: 'replay_id').update(value: msg[/\d+/].to_i)
-    event << "Set manual replay ID to #{msg[/\d+/]}."
+    id = msg[/\d+/].to_i
+    score = MappackScore.find_by(id: id)
+    perror("Mappack score with ID #{id} not found.") if !score
+    GlobalProperty.find_by(key: 'replay_id').update(value: id)
+    event << "Set manual replay ID to #{msg[/\d+/]} (#{score.player.name} - #{score.highscoreable.name})."
   else
     GlobalProperty.find_by(key: 'replay_id').update(value: nil)
     event << "Unset manual replay ID."
