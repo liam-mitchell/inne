@@ -418,6 +418,7 @@ module Map
       anim:    false,           # Whether to animate plotted coords or not
       use_gif: true,            # Use GIF or MP4 for animated traces
       coords:  [],              # Coordinates of routes to trace
+      texts:   [],              # Texts for the legend
       spoiler: false,           # Whether the screenshot should be spoilered in Discord
       v:       nil              # Version of the map data to use (nil = latest)
     )
@@ -435,6 +436,7 @@ module Map
       bg_color = PALETTE[2, palette_idx]
       fg_color = PALETTE[0, palette_idx]
       anim = false if !FEATURE_ANIMATE
+      leaderboard = true
 
       # Prepare map data and other graphic params
       if h.is_a?(Levelish)
@@ -458,16 +460,18 @@ module Map
       dim = 4 * ppc          # Dimension of a tile, in pixels
       ppu = dim.to_f / UNITS # Pixels per in-game unit
       scale = ppc.to_f / PPC # Scale of screenshot
+      pad_x = 100
+      pad_y = 0
 
       # Initialize image
+      frame = !h.is_a?(Levelish)
       width = dim * (COLUMNS + 2)
       height = dim * (ROWS + 2)
-      frame = !h.is_a?(Levelish)
-      image = ChunkyPNG::Image.new(
-        cols * width  + (cols - 1) * dim + (frame ? 2 : 0) * dim,
-        rows * height + (rows - 1) * dim + (frame ? 2 : 0) * dim,
-        bg_color
-      )
+      full_width = cols * width  + (cols - 1) * dim + (frame ? 2 : 0) * dim
+      full_height = rows * height + (rows - 1) * dim + (frame ? 2 : 0) * dim
+      canvas_width = full_width + (leaderboard ? pad_x : 0)
+      canvas_height = full_height + (leaderboard ? pad_y : 0)
+      image = ChunkyPNG::Image.new(canvas_width, canvas_height, bg_color)
       next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
 
@@ -691,8 +695,11 @@ module Map
       if !coords.empty? && h.is_a?(Levelish)
         # Prepare parameters
         coords = coords.take(MAX_TRACES).reverse
+        texts = texts.take(MAX_TRACES).reverse
         n = [coords.size, MAX_TRACES].min
         ninja_colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
+        names = texts.map{ |t| t[/\d+:(.*)-/, 1].strip }
+        scores = texts.map{ |t| t[/\d+:(.*)-(.*)/, 2].strip }
 
         # Scale coordinates
         coords.each{ |c_list|
@@ -717,8 +724,19 @@ module Map
           # Construct GIF and add background image
           bg = index[bg_color >> 8]
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1)
-          gif.images << Gifenc::Image.new(image.width, image.height, color: bg)
-                                    .replace(image.pixels.map{ |c| index[c >> 8] })
+          background = Gifenc::Image.new(image.width, image.height, color: bg)
+          background.replace(image.pixels.map{ |c| index[c >> 8] })
+          if leaderboard
+            font = parse_bmfont('depixel')
+            n.times.each{ |i|
+              #pos_x = dim * 1.5 + i * COLUMNS * dim / 4
+              pos_x = full_width + dim / 2
+              pos_y = (2 + 3 * i) * dim
+              color = index[ninja_colors[n - i - 1] >> 8]
+              txt2gif(names[n - i - 1], background, font, pos_x, pos_y, color)
+            }
+          end
+          gif.images << background
 
           # Plot lines
           sizes = coords.map(&:size)
@@ -728,10 +746,18 @@ module Map
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
             # Find bounding box
             endpoints = []
+            done = [false] * n
             coords.each_with_index{ |c_list, i|
               next if sizes[i] < f + step + 1
               endpoints << [c_list[f][0], c_list[f][1]]
               endpoints << [c_list[f + step][0], c_list[f + step][1]]
+              done[i] = sizes[i] < f + 2 * step + 1
+              if done[i]
+                endpoints << [full_width + dim / 2, (2 + 3 * i) * dim]
+                endpoints << [canvas_width - 1    , (2 + 3 * i) * dim]
+                endpoints << [full_width + dim / 2, (3 + 3 * i) * dim + 3]
+                endpoints << [canvas_width - 1    , (3 + 3 * i) * dim + 3]
+              end
             }
             next if endpoints.empty?
             bbox = Gifenc::Geometry.bbox(endpoints, 1)
@@ -742,15 +768,32 @@ module Map
             )
 
             # Draw each line
+            cur_frame = gif.images.last
             coords.each_with_index{ |c_list, i|
               next if sizes[i] < f + step + 1
               p1 = [c_list[f][0], c_list[f][1]]
               p2 = [c_list[f + step][0], c_list[f + step][1]]
               p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-              color = index[ninja_colors[i] >> 8]
-              gif.images.last.line(p1: p1, p2: p2, color: color, weight: 2)
+              color = index[ninja_colors[n - i - 1] >> 8]
+              cur_frame.line(p1: p1, p2: p2, color: color, weight: 2)
+              if done[i]
+                pos_x = full_width + dim / 2
+                pos_y = (3 + 3 * i) * dim
+                pos_x, pos_y = Gifenc::Geometry.transform([[pos_x, pos_y]], bbox)[0]
+                cur_frame.rect(0, 0, cur_frame.width, cur_frame.height, color)
+                cur_frame.rect(
+                  pos_x,
+                  pos_y,
+                  canvas_width - (full_width + dim / 2) - dim,
+                  5,
+                  nil,
+                  color
+                )
+                txt2gif("Test", cur_frame, font, pos_x, pos_y, bg)
+              end
             }
           end
+          gif.images.last.delay = 100
         else
           # Plot lines
           sizes = coords.map(&:size)
@@ -811,6 +854,7 @@ module Map
       anim:    false,
       use_gif: false,
       coords:  [],
+      texts:   [],
       spoiler: false,
       v:       nil
     )
@@ -821,6 +865,7 @@ module Map
       anim:    anim,
       use_gif: use_gif,
       coords:  coords,
+      texts:   texts,
       h:       self,
       ppc:     anim ? 4 : 0,
       spoiler: spoiler,
@@ -1023,7 +1068,7 @@ module Map
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if anim
-      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif)
+      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif, texts: texts)
       perror('Failed to generate screenshot') if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
