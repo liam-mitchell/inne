@@ -1355,6 +1355,109 @@ def create_svg(
   File.open(filename, 'w'){ |f| f.write(g.burn_svg_only) }
 end
 
+# Parse a TGA image and read the pixel data (very incomplete)
+# Unpacking takes some time, but makes comparisons faster. If more than
+# 13k pixels need to be used (~200 font chars at 11px), it's faster.
+def parse_tga(file, unpack: true)
+  tga = File.binread(file)
+  perror("Invalid TGA file.") if tga.size < 18
+
+  # Parse header
+  id_length, colormap_type, image_type = tga.unpack('C3')
+  cm_index, cm_length, cm_size = tga[3 ... 8].unpack('S<2C')
+  x, y, width, height, depth, desc = tga[8 ... 18].unpack('S<4C2')
+
+  return [] if image_type == 0
+  perror("Color-mapped TGA files not supported.") if colormap_type != 0
+  perror("RLE TGA files not supported.") if image_type > 3
+  perror("True color TGA files not supported.") if image_type < 3
+  perror("Reverse-storage TGAs not supported.") unless desc[5] == 1
+  warn("Trying to parse a sub-8bit depth TGA.") if depth < 8
+
+  # Parse image data
+  offset = 18 + id_length + cm_length
+  perror("Incomplete TGA image data.") if tga.size < offset + width * height
+  image_data = tga[offset ... offset + width * height]
+  image_data = image_data.unpack('C*') if unpack
+
+  image_data
+rescue => e
+  lex(e, 'Failed to parse TGA file.')
+  nil
+end
+
+# Parses a BMFont-generated .fnt file to read a bitmap font
+def parse_bmfont(name)
+  file = File.join(DIR_FONTS, name + '.fnt')
+  perror("Font file not found.") if !File.file?(file)
+
+  font = File.read(file).split("\n").map{ |l|
+    [
+      l[/^\w+/],
+      l.scan(/(\w+)=(?:(?:"((?:[^"\\]|\\.)*)")|(\S+))/).map(&:compact).map{ |k, v|
+        [k, v =~ /^-?\d+$/ ? v.to_i : v]
+      }.to_h
+    ]
+  }.group_by(&:first).map{ |k, v| [k, v.map(&:last)] }.to_h
+  font['char'] = font['char'].map{ |c| [c['id'], c] }.to_h
+  font['pages'] = {}
+  font['page'].each{ |page|
+    file = File.join(DIR_FONTS, page['file'])
+    perror("Font TGA not found.") if !File.file?(file)
+    font['pages'][page['id'].to_i] = parse_tga(file)
+  }
+  font
+rescue => e
+  lex(e, 'Failed to parse BMFont.')
+  nil
+end
+
+# Add a string of text to a Gifenc::Image using a BMFont
+# TODO: Implement bound checks, wrapping logic, and add to Gifenc
+def txt2gif(str, image, font, x, y, color, pad_x: 0, pad_y: 0, wrap: true)
+  # Parse GIF image and font texture
+  cursor_x       = x
+  cursor_y       = y - font['common'][0]['base'] + 1
+  image_width    = image.width
+  image_height   = image.height
+  texture_width  = font['common'][0]['scaleW']
+  texture_height = font['common'][0]['scaleH']
+  wildcard       = font['char']['?'.ord]
+
+  # Render each character
+  str.each_codepoint{ |c|
+    # Fetch canvas offsets
+    char        = font['char'][c] || wildcard
+    image_x     = cursor_x + char['xoffset']
+    image_y     = cursor_y + char['yoffset']
+    texture     = font['pages'][char['page']]
+    texture_off = texture_width * char['y'] + char['x']
+
+    # Paint each pixel
+    char['height'].times.each{ |y|
+      char['width'].times.each{ |x|
+        if texture[texture_off] > 0
+          image[image_x, image_y] = color
+        end
+        texture_off += 1
+        image_x += 1
+      }
+      texture_off += texture_width - char['width']
+      image_y += 1
+      image_x -= char['width']
+    }
+
+    # Advance cursor
+    cursor_x += char['xadvance'] + pad_x
+  }
+  # cursor_y += font['common'][0]['lineHeight'] + pad_y
+
+  image
+rescue => e
+  lex(e, 'Failed to render text in GIF from TGA font.')
+  image
+end
+
 # <---------------------------------------------------------------------------->
 # <------                        BOT MANAGEMENT                          ------>
 # <---------------------------------------------------------------------------->

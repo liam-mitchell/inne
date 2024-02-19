@@ -150,6 +150,8 @@ DIR_UTILS       = './util'
 PATH_NTRACE     = "#{DIR_UTILS}/ntrace.py"
 PATH_SHA1       = "#{DIR_UTILS}/sha1"
 
+DIR_FONTS       = "#{DIR_UTILS}/fonts"
+
 FILENAME_MAPPACK_AUTHORS = 'AUTHORS'
 
 # <---------------------------------------------------------------------------->

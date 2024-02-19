@@ -734,24 +734,21 @@ module Map
               endpoints << [c_list[f + step][0], c_list[f + step][1]]
             }
             next if endpoints.empty?
-            bbox = Gifenc::Image.bbox(endpoints, 1)
+            bbox = Gifenc::Geometry.bbox(endpoints, 1)
 
             # Add new frame
             gif.images << Gifenc::Image.new(
-              bbox[2], bbox[3], bbox[0], bbox[1], color: bg, delay: 2, trans_color: bg
+              bbox: bbox, color: bg, delay: 2, trans_color: bg
             )
 
             # Draw each line
             coords.each_with_index{ |c_list, i|
               next if sizes[i] < f + step + 1
-              point_a = [c_list[f][0], c_list[f][1]]
-              point_b = [c_list[f + step][0], c_list[f + step][1]]
-              x0 = point_a[0] - bbox[0]
-              y0 = point_a[1] - bbox[1]
-              x1 = point_b[0] - bbox[0]
-              y1 = point_b[1] - bbox[1]
+              p1 = [c_list[f][0], c_list[f][1]]
+              p2 = [c_list[f + step][0], c_list[f + step][1]]
+              p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
               color = index[ninja_colors[i] >> 8]
-              gif.images.last.line(p1: [x0, y0], p2: [x1, y1], color: color, weight: 2)
+              gif.images.last.line(p1: p1, p2: p2, color: color, weight: 2)
             }
           end
         else
@@ -791,6 +788,7 @@ module Map
       else
         res = image.to_blob(:fast_rgb)
       end
+      dbg('Image size: ' + res.size.to_s) if BENCH_IMAGES
       bench(:step, 'Blobify   ') if BENCH_IMAGES
 
       res
@@ -824,7 +822,7 @@ module Map
       use_gif: use_gif,
       coords:  coords,
       h:       self,
-      ppc:     anim ? 5 : 0,
+      ppc:     anim ? 4 : 0,
       spoiler: spoiler,
       v:       v
     )
