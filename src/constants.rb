@@ -166,6 +166,7 @@ SCREENSHOT_SCALE_STORY   = 2
 
 # For animated traces
 ANIMATION_SCALE = 4
+ANIMATION_STEP  = 3 # How many frames to trace per GIF frame
 
 # <---------------------------------------------------------------------------->
 # <------                      FEATURE VARIABLES                         ------>

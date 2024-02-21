@@ -1414,26 +1414,35 @@ end
 
 # Add a string of text to a Gifenc::Image using a BMFont
 # TODO: Implement bound checks, wrapping logic, limit text to a certain bbox,
-#   and add to Gifenc
-def txt2gif(str, image, font, x, y, color, pad_x: 0, pad_y: 0, wrap: true, align: :left)
+#   rolling text (usng modulo)... and add to Gifenc
+def txt2gif(str, image, font, x, y, color, pad_x: 0, pad_y: 0, wrap: false, align: :left, max_length: nil, max_lines: nil, max_width: nil, max_height: nil)
   # Parse GIF image and font texture
-  factor         = { left: 0, center: 0.5, right: 1 }[align]
-  cursor_x       = x - strlen(str, font) * factor
-  cursor_y       = y - font['common'][0]['base'] + 1
   image_width    = image.width
   image_height   = image.height
   texture_width  = font['common'][0]['scaleW']
   texture_height = font['common'][0]['scaleH']
   wildcard       = font['char']['?'.ord]
 
+  # Init params
+  factor     = { left: 0, center: 0.5, right: 1 }[align]
+  start_x    = x - strlen(str, font) * factor
+  start_y    = y - font['common'][0]['base'] + 1
+  max_width  = [max_width, image_width - start_x].compact.min
+  max_height = [max_height, image_height - start_y].compact.min
+  max_length = max_width unless max_length
+  max_lines  = max_height unless max_lines
+
   # Render each character
-  str.each_codepoint{ |c|
+  cursor_x = start_x
+  cursor_y = start_y
+  str.each_codepoint.with_index{ |c, i|
     # Fetch canvas offsets
     char        = font['char'][c] || wildcard
     image_x     = cursor_x + char['xoffset']
     image_y     = cursor_y + char['yoffset']
     texture     = font['pages'][char['page']]
     texture_off = texture_width * char['y'] + char['x']
+    break if image_x + char['width'] - start_x > max_width || i >= max_length
 
     # Paint each pixel
     char['height'].times.each{ |y|

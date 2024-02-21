@@ -417,6 +417,7 @@ module Map
       h:       nil,             # Highscoreable to screenshot
       anim:    false,           # Whether to animate plotted coords or not
       use_gif: true,            # Use GIF or MP4 for animated traces
+      step:    ANIMATION_STEP,  # How many frames per frame to trace
       coords:  [],              # Coordinates of routes to trace
       texts:   [],              # Texts for the legend
       spoiler: false,           # Whether the screenshot should be spoilered in Discord
@@ -441,7 +442,7 @@ module Map
       # Prepare map data and other graphic params
       if h.is_a?(Levelish)
         maps = [h]
-        ppc = ppc == 0 ? SCREENSHOT_SCALE_LEVEL : ppc
+        ppc = ppc == 0 ? (anim ? ANIMATION_SCALE : SCREENSHOT_SCALE_LEVEL) : ppc
         cols = 1
         rows = 1
       elsif h.is_a?(Episodish)
@@ -726,6 +727,8 @@ module Map
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1)
           background = Gifenc::Image.new(image.width, image.height, color: bg)
           background.replace(image.pixels.map{ |c| index[c >> 8] })
+
+          # Timebars and legend
           if legend
             font = parse_bmfont('retro')
             n.times.each{ |i|
@@ -733,11 +736,33 @@ module Map
               border = 2
               dx = (COLUMNS - 2) * dim / 4.0
               pos_x = (dim * 1.25 + i * (dim / 2.0 + dx)).round
-              pos_y = 0
+              pos_y = 1
               color = index[ninja_colors[j] >> 8]
-              background.rect(pos_x, pos_y, dx.round, dim, color, bg, weight: border, anchor: 1)
-              txt2gif(names[j], background, font, pos_x + dim / 4, pos_y + dim - 1 - border - 3, color)
-              txt2gif(scores[j], background, font, pos_x + dx - dim / 4, pos_y + dim - 1 - border - 3, color, align: :right)
+
+              # Timebar rectangle
+              background.rect(pos_x, pos_y, dx.round, dim, color, bg, weight: border, anchor: 0)
+
+              # Name
+              txt2gif(
+                names[j],
+                background,
+                font,
+                pos_x + dim / 4,
+                pos_y + dim - 1 - border - 3,
+                color,
+                max_width: (dx - dim - strlen(scores[j], font)).round
+              )
+
+              # Score
+              txt2gif(
+                scores[j],
+                background,
+                font,
+                pos_x + dx - dim / 4,
+                pos_y + dim - 1 - border - 3,
+                color,
+                align: :right
+              )
             }
           end
           gif.images << background
@@ -745,7 +770,6 @@ module Map
           # Plot lines
           sizes = coords.map(&:size)
           frames = sizes.max
-          step = 3
           (0 .. frames - 2).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
             # Find bounding box
@@ -778,7 +802,7 @@ module Map
           end
           gif.images.last.delay = 100
         else
-          # Plot lines
+          # Video output using FFmpeg, we generate each new frame fully
           sizes = coords.map(&:size)
           frames = sizes.max
           for f in (0 .. frames - 2) do
@@ -830,30 +854,8 @@ module Map
     nil
   end
 
-  def screenshot(
-      theme = DEFAULT_PALETTE,
-      file:    false,
-      blank:   false,
-      anim:    false,
-      use_gif: false,
-      coords:  [],
-      texts:   [],
-      spoiler: false,
-      v:       nil
-    )
-    Map.screenshot(
-      theme,
-      file:    file,
-      blank:   blank,
-      anim:    anim,
-      use_gif: use_gif,
-      coords:  coords,
-      texts:   texts,
-      h:       self,
-      ppc:     anim ? ANIMATION_SCALE : 0,
-      spoiler: spoiler,
-      v:       v
-    )
+  def screenshot(theme, **kwargs)
+    Map.screenshot(theme, h: self, ppc: 0, **kwargs)
   end
 
   # Plot routes and legend on top of an image (typically a screenshot)
