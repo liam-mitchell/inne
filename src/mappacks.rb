@@ -410,18 +410,19 @@ module Map
   # Note: This function is forked to a different process, because ChunkyPNG has
   #       memory leaks we cannot handle.
   def self.screenshot(
-      theme =  DEFAULT_PALETTE, # Palette to generate screenshot in
-      file:    false,           # Whether to export to a file or return the raw data
-      blank:   false,           # Only draw background
-      ppc:     0,               # Points per coordinate (essentially the scale) (0 = use default)
-      h:       nil,             # Highscoreable to screenshot
-      anim:    false,           # Whether to animate plotted coords or not
-      use_gif: true,            # Use GIF or MP4 for animated traces
-      step:    ANIMATION_STEP,  # How many frames per frame to trace
-      coords:  [],              # Coordinates of routes to trace
-      texts:   [],              # Texts for the legend
-      spoiler: false,           # Whether the screenshot should be spoilered in Discord
-      v:       nil              # Version of the map data to use (nil = latest)
+      theme =  DEFAULT_PALETTE,        # Palette to generate screenshot in
+      file:    false,                  # Whether to export to a file or return the raw data
+      blank:   false,                  # Only draw background
+      ppc:     0,                      # Points per coordinate (essentially the scale) (0 = use default)
+      h:       nil,                    # Highscoreable to screenshot
+      anim:    false,                  # Whether to animate plotted coords or not
+      use_gif: true,                   # Use GIF or MP4 for animated traces
+      step:    ANIMATION_STEP_NORMAL,  # How many frames per frame to trace
+      delay:   ANIMATION_DELAY_NORMAL, # Time between frames, in 1/100ths sec
+      coords:  [],                     # Coordinates of routes to trace
+      texts:   [],                     # Texts for the legend
+      spoiler: false,                  # Whether the screenshot should be spoilered in Discord
+      v:       nil                     # Version of the map data to use (nil = latest)
     )
 
     bench(:start) if BENCHMARK
@@ -786,7 +787,7 @@ module Map
 
             # Add new frame
             gif.images << Gifenc::Image.new(
-              bbox: bbox, color: bg, delay: 2, trans_color: bg
+              bbox: bbox, color: bg, delay: delay, trans_color: bg
             )
 
             # Draw each line
@@ -1022,6 +1023,20 @@ module Map
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
     markers = { jump: true,  left: false, right: false } if markers.nil?
     use_gif = true
+    if !!msg[/very\s+slow/i]
+      delay = ANIMATION_DELAY_VSLOW
+    elsif !!msg[/slow/i]
+      delay = ANIMATION_DELAY_SLOW
+    else
+      delay = ANIMATION_DELAY_NORMAL
+    end
+    if !!msg[/very\s+fast/i]
+      step = ANIMATION_STEP_VFAST
+    elsif !!msg[/fast/i]
+      step = ANIMATION_STEP_FAST
+    else
+      step = ANIMATION_STEP_NORMAL
+    end
 
     # Export input files
     demos = []
@@ -1053,7 +1068,7 @@ module Map
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if anim
-      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif, texts: texts)
+      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif, texts: texts, step: step, delay: delay)
       perror('Failed to generate screenshot') if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
