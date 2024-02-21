@@ -1413,10 +1413,12 @@ rescue => e
 end
 
 # Add a string of text to a Gifenc::Image using a BMFont
-# TODO: Implement bound checks, wrapping logic, and add to Gifenc
-def txt2gif(str, image, font, x, y, color, pad_x: 0, pad_y: 0, wrap: true)
+# TODO: Implement bound checks, wrapping logic, limit text to a certain bbox,
+#   and add to Gifenc
+def txt2gif(str, image, font, x, y, color, pad_x: 0, pad_y: 0, wrap: true, align: :left)
   # Parse GIF image and font texture
-  cursor_x       = x
+  factor         = { left: 0, center: 0.5, right: 1 }[align]
+  cursor_x       = x - strlen(str, font) * factor
   cursor_y       = y - font['common'][0]['base'] + 1
   image_width    = image.width
   image_height   = image.height
@@ -1456,6 +1458,16 @@ def txt2gif(str, image, font, x, y, color, pad_x: 0, pad_y: 0, wrap: true)
 rescue => e
   lex(e, 'Failed to render text in GIF from TGA font.')
   image
+end
+
+# Find the pixel length of a string in the given font
+def strlen(str, font, pad_x: 0)
+  length = 0
+  str.each_codepoint{ |c|
+    char = font['char'][c] || wildcard
+    length += char['xadvance'] + pad_x
+  }
+  length
 end
 
 # <---------------------------------------------------------------------------->

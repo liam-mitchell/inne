@@ -436,22 +436,22 @@ module Map
       bg_color = PALETTE[2, palette_idx]
       fg_color = PALETTE[0, palette_idx]
       anim = false if !FEATURE_ANIMATE
-      leaderboard = true
+      legend = anim && !coords.empty? && !texts.empty?
 
       # Prepare map data and other graphic params
       if h.is_a?(Levelish)
         maps = [h]
-        ppc = ppc == 0 ? PPC : ppc
+        ppc = ppc == 0 ? SCREENSHOT_SCALE_LEVEL : ppc
         cols = 1
         rows = 1
       elsif h.is_a?(Episodish)
         maps = h.levels
-        ppc = ppc == 0 ? 3 : ppc
+        ppc = ppc == 0 ? SCREENSHOT_SCALE_EPISODE : ppc
         cols = 5
         rows = 1
       else
         maps = h.episodes.map{ |e| e.levels }.flatten
-        ppc = ppc == 0 ? 2 : ppc
+        ppc = ppc == 0 ? SCREENSHOT_SCALE_STORY : ppc
         cols = 5
         rows = 5
       end
@@ -460,7 +460,7 @@ module Map
       dim = 4 * ppc          # Dimension of a tile, in pixels
       ppu = dim.to_f / UNITS # Pixels per in-game unit
       scale = ppc.to_f / PPC # Scale of screenshot
-      pad_x = 100
+      pad_x = 0
       pad_y = 0
 
       # Initialize image
@@ -469,8 +469,8 @@ module Map
       height = dim * (ROWS + 2)
       full_width = cols * width  + (cols - 1) * dim + (frame ? 2 : 0) * dim
       full_height = rows * height + (rows - 1) * dim + (frame ? 2 : 0) * dim
-      canvas_width = full_width + (leaderboard ? pad_x : 0)
-      canvas_height = full_height + (leaderboard ? pad_y : 0)
+      canvas_width = full_width + (legend ? pad_x : 0)
+      canvas_height = full_height + (legend ? pad_y : 0)
       image = ChunkyPNG::Image.new(canvas_width, canvas_height, bg_color)
       next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
@@ -694,9 +694,9 @@ module Map
       # Plot routes
       if !coords.empty? && h.is_a?(Levelish)
         # Prepare parameters
-        coords = coords.take(MAX_TRACES).reverse
-        texts = texts.take(MAX_TRACES).reverse
         n = [coords.size, MAX_TRACES].min
+        coords = coords.take(n).reverse
+        texts = texts.take(n).reverse
         ninja_colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
         names = texts.map{ |t| t[/\d+:(.*)-/, 1].strip }
         scores = texts.map{ |t| t[/\d+:(.*)-(.*)/, 2].strip }
@@ -726,14 +726,18 @@ module Map
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1)
           background = Gifenc::Image.new(image.width, image.height, color: bg)
           background.replace(image.pixels.map{ |c| index[c >> 8] })
-          if leaderboard
-            font = parse_bmfont('depixel')
+          if legend
+            font = parse_bmfont('retro')
             n.times.each{ |i|
-              #pos_x = dim * 1.5 + i * COLUMNS * dim / 4
-              pos_x = full_width + dim / 2
-              pos_y = (2 + 3 * i) * dim
-              color = index[ninja_colors[n - i - 1] >> 8]
-              txt2gif(names[n - i - 1], background, font, pos_x, pos_y, color)
+              j = n - 1 - i
+              border = 2
+              dx = (COLUMNS - 2) * dim / 4.0
+              pos_x = (dim * 1.25 + i * (dim / 2.0 + dx)).round
+              pos_y = 0
+              color = index[ninja_colors[j] >> 8]
+              background.rect(pos_x, pos_y, dx.round, dim, color, bg, weight: border, anchor: 1)
+              txt2gif(names[j], background, font, pos_x + dim / 4, pos_y + dim - 1 - border - 3, color)
+              txt2gif(scores[j], background, font, pos_x + dx - dim / 4, pos_y + dim - 1 - border - 3, color, align: :right)
             }
           end
           gif.images << background
@@ -752,12 +756,6 @@ module Map
               endpoints << [c_list[f][0], c_list[f][1]]
               endpoints << [c_list[f + step][0], c_list[f + step][1]]
               done[i] = sizes[i] < f + 2 * step + 1
-              if done[i]
-                endpoints << [full_width + dim / 2, (2 + 3 * i) * dim]
-                endpoints << [canvas_width - 1    , (2 + 3 * i) * dim]
-                endpoints << [full_width + dim / 2, (3 + 3 * i) * dim + 3]
-                endpoints << [canvas_width - 1    , (3 + 3 * i) * dim + 3]
-              end
             }
             next if endpoints.empty?
             bbox = Gifenc::Geometry.bbox(endpoints, 1)
@@ -774,23 +772,8 @@ module Map
               p1 = [c_list[f][0], c_list[f][1]]
               p2 = [c_list[f + step][0], c_list[f + step][1]]
               p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-              color = index[ninja_colors[n - i - 1] >> 8]
+              color = index[ninja_colors[i] >> 8]
               cur_frame.line(p1: p1, p2: p2, color: color, weight: 2)
-              if done[i]
-                pos_x = full_width + dim / 2
-                pos_y = (3 + 3 * i) * dim
-                pos_x, pos_y = Gifenc::Geometry.transform([[pos_x, pos_y]], bbox)[0]
-                cur_frame.rect(0, 0, cur_frame.width, cur_frame.height, color)
-                cur_frame.rect(
-                  pos_x,
-                  pos_y,
-                  canvas_width - (full_width + dim / 2) - dim,
-                  5,
-                  nil,
-                  color
-                )
-                txt2gif("Test", cur_frame, font, pos_x, pos_y, bg)
-              end
             }
           end
           gif.images.last.delay = 100
@@ -867,7 +850,7 @@ module Map
       coords:  coords,
       texts:   texts,
       h:       self,
-      ppc:     anim ? 4 : 0,
+      ppc:     anim ? ANIMATION_SCALE : 0,
       spoiler: spoiler,
       v:       v
     )
@@ -898,10 +881,10 @@ module Map
       palette_idx = themes.index(theme)
 
       # Setup parameters and Matplotlib
-      coords = coords.take(MAX_TRACES).reverse
-      demos = demos.take(MAX_TRACES).reverse
-      texts = texts.take(MAX_TRACES).reverse
       n = [coords.size, MAX_TRACES].min
+      coords = coords.take(n).reverse
+      demos = demos.take(n).reverse
+      texts = texts.take(n).reverse
       color_idx = OBJECTS[0][:pal]
       colors = n.times.map{ |i| ChunkyPNG::Color.to_hex(PALETTE[color_idx + n - 1 - i, palette_idx]) }
       Matplotlib.use('agg')
@@ -1557,7 +1540,6 @@ module MappackHighscoreable
 
   # Return leaderboards, filtering obsolete scores and sorting appropiately
   # depending on the mode (hs / sr).
-  # Optionally 
   def leaderboard(
       m         = 'hs',  # Playing mode (hs, sr, gm)
       score     = false, # Sort by score and date instead of rank (used for computing the rank)

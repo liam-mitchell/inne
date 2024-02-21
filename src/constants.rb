@@ -155,6 +155,19 @@ DIR_FONTS       = "#{DIR_UTILS}/fonts"
 FILENAME_MAPPACK_AUTHORS = 'AUTHORS'
 
 # <---------------------------------------------------------------------------->
+# <------                     SCREENSHOT VARIABLES                       ------>
+# <---------------------------------------------------------------------------->
+
+# The scale of the screenshots is measured in pixels per quarter tile. At normal
+# 1080p resolution, the scale is 11 (44 pixels per tile).
+SCREENSHOT_SCALE_LEVEL   = 11
+SCREENSHOT_SCALE_EPISODE = 3
+SCREENSHOT_SCALE_STORY   = 2
+
+# For animated traces
+ANIMATION_SCALE = 4
+
+# <---------------------------------------------------------------------------->
 # <------                      FEATURE VARIABLES                         ------>
 # <---------------------------------------------------------------------------->
 
