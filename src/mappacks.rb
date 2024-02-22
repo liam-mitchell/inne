@@ -776,6 +776,12 @@ module Map
                 color,
                 align: :right
               )
+
+              background.line(
+                p1: [pos_x + dx - dim / 2 - strlen(scores[j], font), pos_y],
+                p2: [pos_x + dx - dim / 2 - strlen(scores[j], font), pos_y + dim - 1],
+                color: color
+              )
             }
           end
           gif.images << background
@@ -810,7 +816,8 @@ module Map
 
             # Draw trace chunks
             (0 ... step).each{ |s|
-              coords.each_with_index{ |c_list, i|
+              coords.reverse.each_with_index{ |c_list, j|
+                i = n - j - 1
                 next if sizes[i] < f + s + 2
                 p1 = [c_list[f + s][0], c_list[f + s][1]]
                 p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
@@ -1113,7 +1120,7 @@ module Map
     wrong_names = names.each_with_index.select{ |_, i| !valid[i] }.map(&:first)
     event << error.strip if !error.empty?
     event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel #{verbatim(level.name)}" : level.name} in palette #{verbatim(palette)}:"
-    texts = level.format_scores(np: 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
+    texts = level.format_scores(np: anim ? 0 : 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if anim
