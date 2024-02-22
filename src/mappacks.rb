@@ -717,21 +717,26 @@ module Map
           frequencies = Hash.new(0)
           image.pixels.each{ |color| frequencies[color] += 1 }
           colors = frequencies.sort_by{ |color, freq| -freq }
-                              .take(256)
+                              .take(246)
                               .map{ |c| c[0] >> 8 }
           palette = Gifenc::ColorTable.new(colors).compact
           ninja_colors.each{ |c| palette.add(c >> 8) }
+          ninja_colors.each{ |c| palette.add((c >> 8) ^ 0xFFFFFF) }
+          palette.add(0x00FF00)
           index = palette.colors.compact.each_with_index.to_h
-          ninja_colors.map!{ |c| index[c >> 8] }
 
           # Construct GIF and add background image
           bg = index[bg_color >> 8]
+          ninja_colors_inv = ninja_colors.map{ |c| index[(c >> 8) ^ 0xFFFFFF] }
+          ninja_colors.map!{ |c| index[c >> 8] }
+          trans_color = index[0x00FF00]
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1)
           background = Gifenc::Image.new(image.width, image.height, color: bg)
           background.replace(image.pixels.map{ |c| index[c >> 8] || bg })
 
           # Timebars and legend
           if legend
+            timebars = []
             font = parse_bmfont('retro')
             n.times.each{ |i|
               j = n - 1 - i
@@ -742,6 +747,12 @@ module Map
               color = ninja_colors[j]
 
               # Timebar rectangle
+              timebars[j] = [
+                [pos_x               , pos_y          ],
+                [pos_x + dx.round - 1, pos_y          ],
+                [pos_x               , pos_y + dim - 1],
+                [pos_x + dx.round - 1, pos_y + dim - 1]
+              ]
               background.rect(pos_x, pos_y, dx.round, dim, color, bg, weight: border, anchor: 0)
 
               # Name
@@ -774,7 +785,7 @@ module Map
           frames = sizes.max
           (0 .. frames - 2).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
-            # Find bounding box
+            # Find bounding box for this frame
             endpoints = []
             done = [false] * n
             coords.each_with_index{ |c_list, i|
@@ -783,28 +794,62 @@ module Map
               (0 .. _step).each{ |s|
                 endpoints << [c_list[f + s][0], c_list[f + s][1]]
               }
-              done[i] = sizes[i] < f + step + 2
+              if sizes[i] < f + step + 2
+                done[i] = true
+                endpoints.push(*timebars[i])
+              end
             }
             break if endpoints.empty?
             bbox = Gifenc::Geometry.bbox(endpoints, 1)
 
             # Add new frame
             gif.images << Gifenc::Image.new(
-              bbox: bbox, color: bg, delay: delay, trans_color: bg
+              bbox: bbox, color: trans_color, delay: delay, trans_color: trans_color
             )
 
-            # Draw each line
+            # Draw lines and other elements
             cur_frame = gif.images.last
             coords.each_with_index{ |c_list, i|
+              # Nothing to draw for this player
               next if sizes[i] < f + 2
+              color = ninja_colors[i]
+
+              # Draw all the new lines
               _step = [step, sizes[i] - (f + 1)].min
               (0 ... _step).each{ |s|
                 p1 = [c_list[f + s][0], c_list[f + s][1]]
                 p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
                 p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-                color = ninja_colors[i]
                 cur_frame.line(p1: p1, p2: p2, color: color, weight: 2)
               }
+
+              # If the player is done, change timebar
+              if done[i]
+                p1 = timebars[i].first
+                p2 = timebars[i].last
+                p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
+                cur_frame.rect(p1[0], p1[1], p2[0] - p1[0] + 1, p2[1] - p1[1] + 1, nil, color)
+
+                txt2gif(
+                  names[i],
+                  cur_frame,
+                  font,
+                  p1[0] + dim / 4,
+                  p1[1] + dim - 1 - border - 3,
+                  ninja_colors_inv[i],
+                  max_width: (p2[0] - p1[0] + 1 - dim - strlen(scores[i], font)).round
+                )
+
+                txt2gif(
+                  scores[i],
+                  cur_frame,
+                  font,
+                  p1[0] + p2[0] - p1[0] + 1 - dim / 4,
+                  p1[1] + dim - 1 - border - 3,
+                  ninja_colors_inv[i],
+                  align: :right
+                )
+              end
             }
           end
           gif.images.last.delay = 100
