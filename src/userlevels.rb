@@ -1599,7 +1599,7 @@ def send_userlevel_trace(event)
     parse_message(event).squish!
     msg = parse_palette(event)[:msg]
     send_userlevel_individual(event, msg){ |map|
-      map[:query].trace(event)
+      map[:query].trace(event, anim: !!parse_message(event)[/anim/i])
     }
   end
 rescue => e
@@ -1640,7 +1640,7 @@ def respond_userlevels(event)
   return send_userlevel_screenshot(event)  if msg =~ /\bscreenshots?\b/i
   return send_userlevel_scores(event)      if msg =~ /scores\b/i
   return send_userlevel_download(event)    if msg =~ /\bdownload\b/i
-  return send_userlevel_trace(event)       if msg =~ /\btrace\b/i
+  return send_userlevel_trace(event)       if msg =~ /\btrace\b/i || msg =~ /\banimation\b/i
   return send_userlevel_count(event)       if msg =~ /how many/i
   return send_userlevel_spreads(event)     if msg =~ /spread/i
   return send_userlevel_avg_points(event)  if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
