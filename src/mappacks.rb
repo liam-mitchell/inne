@@ -722,12 +722,13 @@ module Map
           palette = Gifenc::ColorTable.new(colors).compact
           ninja_colors.each{ |c| palette.add(c >> 8) }
           index = palette.colors.compact.each_with_index.to_h
+          ninja_colors.map!{ |c| index[c >> 8] }
 
           # Construct GIF and add background image
           bg = index[bg_color >> 8]
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1)
           background = Gifenc::Image.new(image.width, image.height, color: bg)
-          background.replace(image.pixels.map{ |c| index[c >> 8] })
+          background.replace(image.pixels.map{ |c| index[c >> 8] || bg })
 
           # Timebars and legend
           if legend
@@ -738,7 +739,7 @@ module Map
               dx = (COLUMNS - 2) * dim / 4.0
               pos_x = (dim * 1.25 + i * (dim / 2.0 + dx)).round
               pos_y = 1
-              color = index[ninja_colors[j] >> 8]
+              color = ninja_colors[j]
 
               # Timebar rectangle
               background.rect(pos_x, pos_y, dx.round, dim, color, bg, weight: border, anchor: 0)
@@ -777,12 +778,14 @@ module Map
             endpoints = []
             done = [false] * n
             coords.each_with_index{ |c_list, i|
-              next if sizes[i] < f + step + 1
-              endpoints << [c_list[f][0], c_list[f][1]]
-              endpoints << [c_list[f + step][0], c_list[f + step][1]]
-              done[i] = sizes[i] < f + 2 * step + 1
+              next if sizes[i] < f + 2
+              _step = [step, sizes[i] - (f + 1)].min
+              (0 .. _step).each{ |s|
+                endpoints << [c_list[f + s][0], c_list[f + s][1]]
+              }
+              done[i] = sizes[i] < f + step + 2
             }
-            next if endpoints.empty?
+            break if endpoints.empty?
             bbox = Gifenc::Geometry.bbox(endpoints, 1)
 
             # Add new frame
@@ -793,12 +796,15 @@ module Map
             # Draw each line
             cur_frame = gif.images.last
             coords.each_with_index{ |c_list, i|
-              next if sizes[i] < f + step + 1
-              p1 = [c_list[f][0], c_list[f][1]]
-              p2 = [c_list[f + step][0], c_list[f + step][1]]
-              p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-              color = index[ninja_colors[i] >> 8]
-              cur_frame.line(p1: p1, p2: p2, color: color, weight: 2)
+              next if sizes[i] < f + 2
+              _step = [step, sizes[i] - (f + 1)].min
+              (0 ... _step).each{ |s|
+                p1 = [c_list[f + s][0], c_list[f + s][1]]
+                p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
+                p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
+                color = ninja_colors[i]
+                cur_frame.line(p1: p1, p2: p2, color: color, weight: 2)
+              }
             }
           end
           gif.images.last.delay = 100
