@@ -1,10 +1,8 @@
 Ongoing:
 - Animated traces:
-  * Use a different color for the transparent color, other than the background color. This allows to actually draw using that color (for redraws, or for the timbars)
   * Remove level name from msg, so that it may not interfere with other parameters of the command.
   * Ensure each trace is always drawn over the previous one, by adding a condition that will not paint a pixel if it's already been painted by a previous trace.
   * Interpolate between frames, so that we can trace at slower speeds at 50fps, or basically at any speed.
-  * For faster speeds (step > 1), draw each line invididually, instead of just taking a single straight line for all "step" frames, and then take the bounding box of that.
   * Resolution choice (small, very small, large, very large).
   * Line thickness choice
   * Explicit speed choice (e.g. speed 8)

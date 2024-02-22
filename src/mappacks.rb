@@ -803,32 +803,30 @@ module Map
             bbox = Gifenc::Geometry.bbox(endpoints, 1)
 
             # Add new frame
-            gif.images << Gifenc::Image.new(
+            cur_frame = Gifenc::Image.new(
               bbox: bbox, color: trans_color, delay: delay, trans_color: trans_color
             )
+            gif.images << cur_frame
 
-            # Draw lines and other elements
-            cur_frame = gif.images.last
-            coords.each_with_index{ |c_list, i|
-              # Nothing to draw for this player
-              next if sizes[i] < f + 2
-              color = ninja_colors[i]
-
-              # Draw all the new lines
-              _step = [step, sizes[i] - (f + 1)].min
-              (0 ... _step).each{ |s|
+            # Draw trace chunks
+            (0 ... step).each{ |s|
+              coords.each_with_index{ |c_list, i|
+                next if sizes[i] < f + s + 2
                 p1 = [c_list[f + s][0], c_list[f + s][1]]
                 p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
                 p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-                cur_frame.line(p1: p1, p2: p2, color: color, weight: 2)
+                cur_frame.line(p1: p1, p2: p2, color: ninja_colors[i], weight: 2)
               }
+            }
 
+            # Draw other elements
+            coords.each_with_index{ |c_list, i|
               # If the player is done, change timebar
               if done[i]
                 p1 = timebars[i].first
                 p2 = timebars[i].last
                 p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-                cur_frame.rect(p1[0], p1[1], p2[0] - p1[0] + 1, p2[1] - p1[1] + 1, nil, color)
+                cur_frame.rect(p1[0], p1[1], p2[0] - p1[0] + 1, p2[1] - p1[1] + 1, nil, ninja_colors[i])
 
                 txt2gif(
                   names[i],
