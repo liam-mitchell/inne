@@ -416,6 +416,7 @@ module Map
       ppc:     0,                      # Points per coordinate (essentially the scale) (0 = use default)
       h:       nil,                    # Highscoreable to screenshot
       anim:    false,                  # Whether to animate plotted coords or not
+      trace:   false,                   # Whether the animation should be a trace or a moving object
       use_gif: true,                   # Use GIF or MP4 for animated traces
       step:    ANIMATION_STEP_NORMAL,  # How many frames per frame to trace
       delay:   ANIMATION_DELAY_NORMAL, # Time between frames, in 1/100ths sec
@@ -788,24 +789,44 @@ module Map
 
           # Plot lines
           sizes = coords.map(&:size)
+          coords.size.times.each{ |i|
+            coords[i] += [coords[i].last] * (sizes.max - coords[i].size)
+          }
           frames = sizes.max
-          (0 .. frames - 2).step(step) do |f|
+          markers = []
+          r = 6
+          (0 .. frames - 1).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
+
             # Find bounding box for this frame
             endpoints = []
             done = [false] * n
             coords.each_with_index{ |c_list, i|
-              next if sizes[i] < f + 2
-              _step = [step, sizes[i] - (f + 1)].min
-              (0 .. _step).each{ |s|
-                endpoints << [c_list[f + s][0], c_list[f + s][1]]
-              }
+              if trace
+                next if sizes[i] < f + 2
+                _step = [step, sizes[i] - (f + 1)].min
+                (0 .. _step).each{ |s|
+                  endpoints << [c_list[f + s][0], c_list[f + s][1]]
+                }
+              else
+                frame = [f + step - 1, c_list.size - 1].min
+                endpoints << [c_list[frame][0] - r, c_list[frame][1] - r]
+                endpoints << [c_list[frame][0] - r, c_list[frame][1] + r]
+                endpoints << [c_list[frame][0] + r, c_list[frame][1] - r]
+                endpoints << [c_list[frame][0] + r, c_list[frame][1] + r]
+              end
               if sizes[i] < f + step + 2
                 done[i] = true
                 endpoints.push(*timebars[i])
               end
             }
             break if endpoints.empty?
+            markers.each{ |p|
+              endpoints << [p[0] - r, p[1] - r]
+              endpoints << [p[0] - r, p[1] + r]
+              endpoints << [p[0] + r, p[1] - r]
+              endpoints << [p[0] + r, p[1] + r]
+            }
             bbox = Gifenc::Geometry.bbox(endpoints, 1)
 
             # Add new frame
@@ -814,17 +835,40 @@ module Map
             )
             gif.images << cur_frame
 
-            # Draw trace chunks
-            (0 ... step).each{ |s|
-              coords.reverse.each_with_index{ |c_list, j|
-                i = n - j - 1
-                next if sizes[i] < f + s + 2
-                p1 = [c_list[f + s][0], c_list[f + s][1]]
-                p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
-                p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-                cur_frame.line(p1: p1, p2: p2, color: ninja_colors[i], weight: 2)
+            # Redraw background regions to erase markers from previous frame
+            if !trace
+              markers.each{ |p|
+                cur_frame.copy(
+                  source: background,
+                  offset: [p[0] - r, p[1] - r],
+                  dim:    [2 * r + 1, 2 * r + 1],
+                  dest:   Gifenc::Geometry.transform([[p[0] - r, p[1] - r]], bbox)[0]
+                )
               }
-            }
+              markers = []
+            end
+
+            # Draw trace chunks
+            if trace
+              (0 ... step).each{ |s|
+                coords.reverse.each_with_index{ |c_list, j|
+                  i = n - j - 1
+                  next if sizes[i] < f + s + 2
+                  p1 = [c_list[f + s][0], c_list[f + s][1]]
+                  p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
+                  p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
+                  cur_frame.line(p1: p1, p2: p2, color: ninja_colors[i], weight: 2)
+                }
+              }
+            else
+              coords.each_with_index{ |c_list, i|
+                frame = [f + step - 1, c_list.size - 1].min
+                markers << [c_list[frame][0], c_list[frame][1]]
+                p = [c_list[frame][0], c_list[frame][1]]
+                p = Gifenc::Geometry.transform([p], bbox)[0]
+                cur_frame.circle(p, r, nil, ninja_colors[i])
+              }
+            end
 
             # Draw other elements
             coords.each_with_index{ |c_list, i|
@@ -1124,7 +1168,8 @@ module Map
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if anim
-      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif, texts: texts, step: step, delay: delay)
+      ball = !!msg[/animation/i] && !msg[/trace/i]
+      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif, texts: texts, step: step, delay: delay, trace: !ball)
       perror('Failed to generate screenshot') if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)

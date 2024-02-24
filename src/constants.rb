@@ -32,7 +32,7 @@ DATABASE        = 'outte' # Database environment
 MEMORY_LIMIT    = 0.25    # Available memory (ratio) before restarting
 MEMORY_USAGE    = 0.5     # Memory usage by outte (ratio) before restarting
 MEMORY_CRITICAL = 0.05    # Critical memory available ratio
-MEMORY_DELAY    = 60      # Seconds between memory checks during monitoring
+MEMORY_DELAY    = 5       # Seconds between memory checks during monitoring
 
 
 # <---------------------------------------------------------------------------->
