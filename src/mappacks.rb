@@ -1168,7 +1168,7 @@ module Map
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if anim
-      ball = !!msg[/animation/i] && !msg[/trace/i]
+      ball = !msg[/trace/i]
       trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif, texts: texts, step: step, delay: delay, trace: !ball)
       perror('Failed to generate screenshot') if trace.nil?
     else

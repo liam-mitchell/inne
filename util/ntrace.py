@@ -1,7 +1,9 @@
 import matplotlib.pyplot as mpl
+import matplotlib.collections as mc
 import math
 import os.path
 import zlib
+from itertools import product
 
 
 outte_mode = True #Only set to False when manually running the script. Changes what the output of the tool is.
@@ -139,19 +141,8 @@ class Ninja:
         """Return a list that contains all the cells that could contain objects which the ninja could interact with.
         This list contains nine cells. The one containing the center of the ninja and the eight cells around it.
         """
-        center_cell = self.center_cell()
-        center_x = center_cell[0]
-        center_y = center_cell[1]
-        cell_list = [center_cell]
-        cell_list.append((center_x-1,center_y-1))
-        cell_list.append((center_x,center_y-1))
-        cell_list.append((center_x+1,center_y-1))
-        cell_list.append((center_x-1,center_y))
-        cell_list.append((center_x+1,center_y))
-        cell_list.append((center_x-1,center_y+1))
-        cell_list.append((center_x,center_y+1))
-        cell_list.append((center_x+1,center_y+1))
-        return cell_list
+        cx, cy = self.center_cell()
+        return product(range(cx - 1, cx + 2), range(cy - 1, cy + 2))
     
     def integrate(self):
         self.xspeed *= drag
@@ -179,13 +170,13 @@ class Ninja:
                     if depen:
                         depen_x = depen[0]
                         depen_y = depen[1]
+                        depen_len = math.sqrt(depen_x**2 + depen_y**2)
                         self.xpos += depen_x
                         self.ypos += depen_y
-                        if entity.type in (17, 20):
+                        if entity.type in (17, 20, 28):
                             self.xspeed += depen_x
                             self.yspeed += depen_y
                         if entity.type == 11:
-                            depen_len = math.sqrt(depen_x**2 + depen_y**2)
                             if depen_len:
                                 xspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * depen_y
                                 yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * (-depen_x)
@@ -193,8 +184,8 @@ class Ninja:
                                 self.yspeed = yspeed_new
                         if depen_y < 0:
                             self.floor_count += 1
-                            self.floor_normal_x += depen_x
-                            self.floor_normal_y += depen_y
+                            self.floor_normal_x += depen_x / depen_len
+                            self.floor_normal_y += depen_y / depen_len
 
     def collide_vs_tiles(self):
         for point in range(32):
@@ -207,8 +198,10 @@ class Ninja:
             dy = self.ypos - b
             if abs(dx) <= 0.0000001: #This is to prevent corner cases. Not in the original code
                 dx = 0
-            if self.xpos == 50.51197510492316 : #This is to artificially create corner cases at certain common exact spots. lol
+            if self.xpos in (50.51197510492316, 49.23232124849253) : #This is to artificially create corner cases at certain common exact spots. lol
                 dx = -2**-47
+            if self.xpos == 49.153536108584795 :
+                dx = 2**-47
             dist = math.sqrt(dx**2 + dy**2)
             if dist == 0:
                 break
@@ -224,9 +217,9 @@ class Ninja:
                 self.yspeed = yspeed_new
             if dy < -0.0001:
                 self.floor_count += 1
-                self.floor_normal_x += dx
-                self.floor_normal_y += dy
-
+                self.floor_normal_x += dx/dist
+                self.floor_normal_y += dy/dist
+    
     def post_collision(self):
         wall_normal = None
 
@@ -284,7 +277,6 @@ class Ninja:
             else:
                 self.floor_normalized_x = self.floor_normal_x/floor_scalar
                 self.floor_normalized_y = self.floor_normal_y/floor_scalar
-                #if abs(self.floor_normalized_x) < 0.000001: self.floor_normalized_x = 0
 
     def floor_jump(self):
         self.jump_buffer = -1
@@ -292,14 +284,27 @@ class Ninja:
         self.launch_pad_buffer = -1
         self.state = 3
         self.applied_gravity = gravity_held
-        dx = self.floor_normalized_x
-        dy = self.floor_normalized_y
-        if abs(dx) < 0.0000001: dx = 0
-        if dx * self.hor_input >= 0:
-            jx, jy = (2/3 * dx, 2 * dy)              # Regular jump
-            if dx * self.xspeed < 0: self.xspeed = 0 # Perp jump
+        if self.floor_normalized_x == 0:
+            jx = 0
+            jy = -2
         else:
-            jx, jy = (0, -1.4)                       # Low jump
+            dx = self.floor_normalized_x
+            dy = self.floor_normalized_y
+            if self.xspeed * dx >= 0:
+                if self.xspeed * self.hor_input >= 0:
+                    jx = 2/3 * dx
+                    jy = 2 * dy
+                else:
+                    jx = 0
+                    jy = -1.4
+            else:
+                if self.xspeed * self.hor_input > 0:
+                    jx = 0
+                    jy = -1.4
+                else:
+                    self.xspeed = 0
+                    jx = 2/3 * dx
+                    jy = 2 * dy
         if self.yspeed > 0:
             self.yspeed = 0
         self.xspeed += jx
@@ -462,7 +467,7 @@ class Ninja:
                 if in_floor_buffer:
                     self.floor_jump()
                     return
-                if in_lp_buffer:
+                if in_lp_buffer and new_jump_check:
                     self.lp_jump()
                     return
             if not self.walled:
@@ -646,16 +651,12 @@ class EntityDoorBase(Entity):
         self.is_vertical = orientation in (0, 4)
         if self.is_vertical:
             self.segment = GridSegmentLinear((self.xpos, self.ypos-12), (self.xpos, self.ypos+12))
-            if not ver_grid_edge_dic[(self.xpos/12-1, self.ypos/12-1)]:
-                self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
-            if not ver_grid_edge_dic[(self.xpos/12-1, self.ypos/12)]:
-                self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12))
+            self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
+            self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12))
         else:
             self.segment = GridSegmentLinear((self.xpos-12, self.ypos), (self.xpos+12, self.ypos))
-            if not hor_grid_edge_dic[(self.xpos/12-1, self.ypos/12-1)]:
-                self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
-            if not hor_grid_edge_dic[(self.xpos/12, self.ypos/12)]:
-                self.grid_segment_coords.append((self.xpos/12, self.ypos/12))
+            self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
+            self.grid_segment_coords.append((self.xpos/12, self.ypos/12-1))
         segment_dic[self.cell].append(self.segment)
         self.xpos = self.sw_xpos
         self.ypos = self.sw_ypos
@@ -667,9 +668,9 @@ class EntityDoorBase(Entity):
         self.segment.active = closed
         for coord in self.grid_segment_coords:
             if self.is_vertical:
-                ver_grid_edge_dic[coord] = closed
+                ver_grid_edge_dic[coord] += 1 if closed else -1
             else:
-                hor_grid_edge_dic[coord] = closed
+                hor_grid_edge_dic[coord] += 1 if closed else -1
 
 class EntityDoorRegular(EntityDoorBase):
     def __init__(self, type, xcoord, ycoord, orientation, sw_xcoord, sw_ycoord):
@@ -750,7 +751,7 @@ class EntityOneWayPlatform(Entity):
         dy = ninja.ypos - self.ypos
         lateral_dist = dy * self.normal_x - dx * self.normal_y
         direction = (ninja.yspeed * self.normal_x - ninja.xspeed * self.normal_y) * lateral_dist
-        radius_scalar = 0.9 if direction < 0 else 0.5
+        radius_scalar = 0.91 if direction < 0 else 0.51
         if abs(lateral_dist) < radius_scalar * ninja.radius + self.semiside:
             normal_dist = dx * self.normal_x + dy * self.normal_y
             if 0 < normal_dist <= ninja.radius:
@@ -946,6 +947,88 @@ class EntityBoostPad(Entity):
         else:
             self.is_touching_ninja = False
 
+class EntityShoveThwump(Entity):
+    def __init__(self, type, xcoord, ycoord):
+        super().__init__(type, xcoord, ycoord)
+        self.is_thinkable = True
+        self.is_logical_collidable = True
+        self.is_physical_collidable = True
+        self.xorigin = self.xpos
+        self.yorigin = self.ypos
+        self.semiside = 12
+        self.xdir = 0
+        self.ydir = 0
+        self.state = 0 #0:immobile, 1:activated, 2:launching, 3:retreating
+        self.activated = False
+
+    def think(self, ninja):
+        if self.state == 1: 
+            if self.activated:
+                self.activated = False
+                return
+            self.state = 2
+        if self.state == 3:
+            origin_dist = abs(self.xpos - self.xorigin) + abs(self.ypos - self.yorigin)
+            if origin_dist >= 1:
+                self.move_if_possible(self.xdir, self.ydir, 1)
+            else:
+                self.xpos = self.xorigin
+                self.ypos = self.yorigin
+                self.state = 0
+        elif self.state == 2:
+            self.move_if_possible(-self.xdir, -self.ydir, 4)
+
+    def move_if_possible(self, xdir, ydir, speed):
+        if self.ydir == 0:
+            xpos_new = self.xpos + xdir * speed
+            cell_x = math.floor(self.xpos / 12)
+            cell_x_new = math.floor(xpos_new / 12)
+            if cell_x != cell_x_new:
+                cell_y1 = math.floor((self.ypos - 8) / 12)
+                cell_y2 = math.floor((self.ypos + 8) / 12)
+                if not is_empty_column(cell_x, cell_y1, cell_y2, xdir):
+                    self.state = 3
+                    return
+            self.xpos = xpos_new
+        else:
+            ypos_new = self.ypos + ydir * speed
+            cell_y = math.floor(self.ypos / 12)
+            cell_y_new = math.floor(ypos_new / 12)
+            if cell_y != cell_y_new:
+                cell_x1 = math.floor((self.xpos - 8) / 12)
+                cell_x2 = math.floor((self.xpos + 8) / 12)
+                if not is_empty_row(cell_x1, cell_x2, cell_y, ydir):
+                    self.state = 3
+                    return
+            self.ypos = ypos_new
+        self.grid_move()
+            
+    def physical_collision(self, ninja):
+        if self.state <= 1:
+            depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius)
+            if depen != (0, 0):
+                if self.state == 0 or self.xdir * depen[0] + self.ydir * depen[1] >= 0.01:
+                    return depen
+
+    def logical_collision(self, ninja):
+        depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius + 0.1)
+        if depen != (0, 0) and self.state <= 1:
+            if self.state == 0:
+                self.activated = True
+                depen_x, depen_y = depen
+                depen_len = abs(depen_x) + abs(depen_y)
+                self.xdir = depen_x/depen_len
+                self.ydir = depen_y/depen_len
+                self.state = 1
+            elif self.state == 1:
+                if self.xdir * depen[0] + self.ydir * depen[1] >= 0.01:
+                    self.activated = True
+                else:
+                    return               
+            if depen[0]:
+                return depen[0]/abs(depen[0])
+
+
 def get_single_closest_point(p):
     neighbour_cells = p.neighbour_cells(p.radius)
     biggest_penetration = 0
@@ -1017,7 +1100,7 @@ def tick(p, frame):
     for entity in entity_list:
         if entity.is_thinkable and entity.active:
             entity.think(p)
-            
+ 
     p.integrate() #Do preliminary speed and position updates.
     p.pre_collision() #Do pre collision calculations.
     for _ in range(4):
@@ -1069,8 +1152,8 @@ for i in range(len(inputs_list)):
 
     #Initiate dictionaries and list containing interactable segments and entities
     segment_dic = {}
-    for x in range(44):
-        for y in range(25):
+    for x in range(45):
+        for y in range(26):
             segment_dic[(x, y)] = []
     entity_dic = {}
     for x in range(44):
@@ -1078,189 +1161,108 @@ for i in range(len(inputs_list)):
             entity_dic[(x, y)] = []
     entity_list = []
 
-    #Initiate dictionaries of grid edges. They are all set to false initialy. Set to true later if a thwump or shwump can't get through.
+    #Initiate dictionaries of grid edges and segments. They are all set to zero initialy. Increment by 1 whenever a grid edge or segment is spawned.
     hor_grid_edge_dic = {}
     for x in range(88):
         for y in range(51):
-            hor_grid_edge_dic[(x, y)] = False
+            hor_grid_edge_dic[(x, y)] = 0
     ver_grid_edge_dic = {}
     for x in range(89):
         for y in range(50):
-            ver_grid_edge_dic[(x, y)] = False
+            ver_grid_edge_dic[(x, y)] = 0
+    hor_segment_dic = {}
+    for x in range(88):
+        for y in range(51):
+            hor_segment_dic[(x, y)] = 0
+    ver_segment_dic = {}
+    for x in range(89):
+        for y in range(50):
+            ver_segment_dic[(x, y)] = 0
     
+    tile_grid_edge_map = {0:[0,0,0,0,0,0,0,0,0,0,0,0], 1:[1,1,0,0,1,1,1,1,0,0,1,1], #Empty and full tiles
+                          2:[1,1,1,1,0,0,1,0,0,0,1,0], 3:[0,1,0,0,0,1,0,0,1,1,1,1], 4:[0,0,1,1,1,1,0,1,0,0,0,1], 5:[1,0,0,0,1,0,1,1,1,1,0,0], #Half tiles
+                          6:[1,1,0,1,1,0,1,1,0,1,1,0], 7:[1,1,1,0,0,1,1,0,0,1,1,1], 8:[0,1,1,0,1,1,0,1,1,0,1,1], 9:[1,0,0,1,1,1,1,1,1,0,0,1], #45 degree tiles
+                          10:[1,1,0,0,1,1,1,1,0,0,1,1], 11:[1,1,0,0,1,1,1,1,0,0,1,1], 12:[1,1,0,0,1,1,1,1,0,0,1,1], 13:[1,1,0,0,1,1,1,1,0,0,1,1], #Quarter moons
+                          14:[1,1,0,1,1,0,1,1,0,1,1,0], 15:[1,1,1,0,0,1,1,0,0,1,1,1], 16:[0,1,1,0,1,1,0,1,1,0,1,1], 17:[1,0,0,1,1,1,1,1,1,0,0,1], #Quarter pipes
+                          18:[1,1,1,1,0,0,1,0,0,0,1,0], 19:[1,1,1,1,0,0,1,0,0,0,1,0], 20:[0,0,1,1,1,1,0,1,0,0,0,1], 21:[0,0,1,1,1,1,0,1,0,0,0,1], #Short mild slopes
+                          22:[1,1,0,0,1,1,1,1,0,0,1,1], 23:[1,1,0,0,1,1,1,1,0,0,1,1], 24:[1,1,0,0,1,1,1,1,0,0,1,1], 25:[1,1,0,0,1,1,1,1,0,0,1,1], #Raised mild slopes
+                          26:[1,0,0,0,1,0,1,1,1,1,0,0], 27:[0,1,0,0,0,1,0,0,1,1,1,1], 28:[0,1,0,0,0,1,0,0,1,1,1,1], 29:[1,0,0,0,1,0,1,1,1,1,0,0], #Short steep slopes
+                          30:[1,1,0,0,1,1,1,1,0,0,1,1], 31:[1,1,0,0,1,1,1,1,0,0,1,1], 32:[1,1,0,0,1,1,1,1,0,0,1,1], 33:[1,1,0,0,1,1,1,1,0,0,1,1]} #Raised steep slopes
+    tile_segment_map = {0:[0,0,0,0,0,0,0,0,0,0,0,0], 1:[1,1,0,0,1,1,1,1,0,0,1,1], #Empty and full tiles
+                        2:[1,1,1,1,0,0,1,0,0,0,1,0], 3:[0,1,0,0,0,1,0,0,1,1,1,1], 4:[0,0,1,1,1,1,0,1,0,0,0,1], 5:[1,0,0,0,1,0,1,1,1,1,0,0], #Half tiles
+                        6:[1,1,0,0,0,0,1,1,0,0,0,0], 7:[1,1,0,0,0,0,0,0,0,0,1,1], 8:[0,0,0,0,1,1,0,0,0,0,1,1], 9:[0,0,0,0,1,1,1,1,0,0,0,0], #45 degree tiles
+                        10:[1,1,0,0,0,0,1,1,0,0,0,0], 11:[1,1,0,0,0,0,0,0,0,0,1,1], 12:[0,0,0,0,1,1,0,0,0,0,1,1], 13:[0,0,0,0,1,1,1,1,0,0,0,0], #Quarter moons
+                        14:[1,1,0,0,0,0,1,1,0,0,0,0], 15:[1,1,0,0,0,0,0,0,0,0,1,1], 16:[0,0,0,0,1,1,0,0,0,0,1,1], 17:[0,0,0,0,1,1,1,1,0,0,0,0], #Quarter pipes
+                        18:[1,1,0,0,0,0,1,0,0,0,0,0], 19:[1,1,0,0,0,0,0,0,0,0,1,0], 20:[0,0,0,0,1,1,0,0,0,0,0,1], 21:[0,0,0,0,1,1,0,1,0,0,0,0], #Short mild slopes
+                        22:[1,1,0,0,0,0,1,1,0,0,1,0], 23:[1,1,0,0,0,0,1,0,0,0,1,1], 24:[0,0,0,0,1,1,0,1,0,0,1,1], 25:[0,0,0,0,1,1,1,1,0,0,0,1], #Raised mild slopes
+                        26:[1,0,0,0,0,0,1,1,0,0,0,0], 27:[0,1,0,0,0,0,0,0,0,0,1,1], 28:[0,0,0,0,0,1,0,0,0,0,1,1], 29:[0,0,0,0,1,0,1,1,0,0,0,0], #Short steep slopes
+                        30:[1,1,0,0,1,0,1,1,0,0,0,0], 31:[1,1,0,0,0,1,0,0,0,0,1,1], 32:[0,1,0,0,1,1,0,0,0,0,1,1], 33:[1,0,0,0,1,1,1,1,0,0,0,0]} #Raised steep slopes
+
     #put each segment in its correct cell
     for coord, tile_id in tile_dic.items():
         xcoord = coord[0]
         ycoord = coord[1]
-        if tile_id in (1, 2, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33):
-            hor_grid_edge_dic[(2*xcoord, 2*ycoord)] = True
-            ver_grid_edge_dic[(2*xcoord, 2*ycoord)] = True
-        if tile_id in (1, 2, 3, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 18, 19, 22, 23, 24, 25, 27, 28, 30, 31, 32, 33):
-            hor_grid_edge_dic[(2*xcoord+1, 2*ycoord)] = True
-            ver_grid_edge_dic[(2*xcoord+2, 2*ycoord)] = True
-        if tile_id in (1, 3, 4, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 20, 21, 22, 23, 24, 25, 27, 28, 30, 31, 32, 33):
-            hor_grid_edge_dic[(2*xcoord+1, 2*ycoord+2)] = True
-            ver_grid_edge_dic[(2*xcoord+2, 2*ycoord+1)] = True
-        if tile_id in (1, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 16, 17, 20, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33):
-            hor_grid_edge_dic[(2*xcoord, 2*ycoord+2)] = True
-            ver_grid_edge_dic[(2*xcoord, 2*ycoord+1)] = True
-        if tile_id in (2, 4, 6, 9, 14, 17, 18, 19, 20, 21):
-            hor_grid_edge_dic[(2*xcoord+1, 2*ycoord+1)] = True
-        if tile_id in (1, 3, 6, 7, 14, 15, 26, 27, 28, 29):
-            ver_grid_edge_dic[(2*xcoord+1, 2*ycoord+1)] = True
-        if tile_id in (2, 4, 7, 8, 15, 16, 18, 19, 20, 21):
-            hor_grid_edge_dic[(2*xcoord, 2*ycoord+1)] = True
-        if tile_id in (1, 3, 8, 9, 16, 17, 26, 27, 28, 29):
-            ver_grid_edge_dic[(2*xcoord+1, 2*ycoord)] = True
-
+        if tile_id > 33:
+            tile_id = 0
+        grid_edge_list = tile_grid_edge_map[tile_id]
+        segment_list = tile_segment_map[tile_id]
+        for y in range(3):
+            for x in range(2):
+                hor_grid_edge_dic[(2*xcoord + x, 2*ycoord + y)] += grid_edge_list[2*y + x]
+                hor_segment_dic[(2*xcoord + x, 2*ycoord + y)] += segment_list[2*y + x]
+        for x in range(3):
+            for y in range(2):
+                ver_grid_edge_dic[(2*xcoord + x, 2*ycoord + y)] += grid_edge_list[2*x + y + 6]
+                ver_segment_dic[(2*xcoord + x, 2*ycoord + y)] += segment_list[2*x + y + 6]
         xtl = xcoord * 24
         ytl = ycoord * 24
-        if tile_id == 1: #1: full tile
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
-        if tile_id == 2: #2-5: half tiles
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+12)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+12)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+12)))
-        if tile_id == 3:
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+12, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
-        if tile_id == 4:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+12)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl+12), (xtl+24, ytl+24)))
-        if tile_id == 5:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+12, ytl+24)))
-        if tile_id == 6: #6-9: 45 degreee slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+        if tile_id in (6, 8):
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl)))
-        if tile_id == 7: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+        if tile_id in (7, 9): 
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+24)))
-        if tile_id == 8: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl)))
-        if tile_id == 9: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+24)))
-        if tile_id == 10: #10-13: quarter moons
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+        if tile_id == 10:
             segment_dic[coord].append(GridSegmentCircular((xtl, ytl), (1, 1)))
         if tile_id == 11: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl), (-1, 1)))
         if tile_id == 12: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl+24), (-1, -1)))
         if tile_id == 13: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl, ytl+24), (1, -1)))
-        if tile_id == 14: #14-17: quarter pipes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+        if tile_id == 14:
             segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl+24), (-1, -1), convex=False))
         if tile_id == 15: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl, ytl+24), (1, -1), convex=False))
         if tile_id == 16: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl, ytl), (1, 1), convex=False))
         if tile_id == 17: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
             segment_dic[coord].append(GridSegmentCircular((xtl+24, ytl), (-1, 1), convex=False))
-        if tile_id == 18: #18-21: short mild slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+12)))
+        if tile_id in (18, 24):
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl)))
-        if tile_id == 19:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+12)))
+        if tile_id in (19, 25):
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+12)))
-        if tile_id == 20: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl+12), (xtl+24, ytl+24)))
+        if tile_id in (20, 22): 
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+12)))
-        if tile_id == 21: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl, ytl+24)))
+        if tile_id in (21, 23): 
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+24)))
-        if tile_id == 22: #22-25: raised mild slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+12)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+12)))
-        if tile_id == 23:
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+12)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl+24)))
-        if tile_id == 24: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+12), (xtl+24, ytl)))
-        if tile_id == 25: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl+12), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl+12)))
-        if tile_id == 26: #26-29: short steep slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+        if tile_id in (26, 32):
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl)))
-        if tile_id == 27: 
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+        if tile_id in (27, 33): 
             segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl+24)))
-        if tile_id == 28: 
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
+        if tile_id in (28, 30): 
             segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl)))
-        if tile_id == 29: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
+        if tile_id in (29, 31): 
             segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl+24)))
-        if tile_id == 30: #30-33: raised steep slopes
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl)))
-        if tile_id == 31: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl+24)))
-        if tile_id == 32: 
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+24, ytl), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+12, ytl)))
-        if tile_id == 33: 
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl+12, ytl)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl+24), (xtl+24, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl, ytl), (xtl, ytl+24)))
-            segment_dic[coord].append(GridSegmentLinear((xtl+12, ytl), (xtl+24, ytl+24)))
-
+    for coord, state in hor_segment_dic.items():
+        if state == 1:
+            xcoord = coord[0]
+            ycoord = coord[1]
+            segment_dic[(math.floor(xcoord/2), math.floor(ycoord/2))].append(GridSegmentLinear((12*xcoord, 12*ycoord), (12*xcoord+12, 12*ycoord)))
+    for coord, state in ver_segment_dic.items():
+        if state == 1:
+            xcoord = coord[0]
+            ycoord = coord[1]
+            segment_dic[(math.floor(xcoord/2), math.floor(ycoord/2))].append(GridSegmentLinear((12*xcoord, 12*ycoord), (12*xcoord, 12*ycoord+12)))
+    
     #find the spawn position of the ninja
     xspawn = mdata[1231]*6
     yspawn = mdata[1232]*6
@@ -1306,6 +1308,8 @@ for i in range(len(inputs_list)):
             EntityThwump(type, xcoord, ycoord, orientation)
         if type == 24:
             EntityBoostPad(type, xcoord, ycoord)
+        if type == 28:
+            EntityShoveThwump(type, xcoord, ycoord)
         index += 5
         if index >= len(mdata):
             break
@@ -1314,28 +1318,20 @@ for i in range(len(inputs_list)):
     for frame in range(1, inp_len+1):
         tick(p1, frame)
 
-    # Compare with real positions
-    if False and os.path.isfile('coords'):
-        with open('coords', 'rb') as f: coords = f.read()
-        n = 4
-        line_size = 8 * n
-        frames = round(len(coords) / line_size)
-        c_list = struct.unpack(f"<{n * frames}d", coords)
-        lists = [c_list[i:i + n] for i in range(0, len(c_list), n)]
-        print(len(lists))
-        print(len(p1.xposlog))
-        print([abs(lists[i][0] - p1.xposlog[i + 1]) for i in range(len(lists))])
-    
-
     #Append the positions log of each replay
     xposlog.append(p1.xposlog)
     yposlog.append(p1.yposlog)
 
     #For splits mode, calculate the amount of gold collected for each replay.
-    gold_amount = mdata[1154]
-    gold_collected = sum(1 for e in entity_list if e.type == 2 and e.collected)
-    goldlog.append((gold_collected, gold_amount))
-    frameslog.append(inp_len)
+    if tool_mode == "splits":
+        gold_amount = mdata[1154]
+        gold_collected = 0
+        for entity in entity_list:
+            if entity.type == 2:
+                if entity.collected:
+                    gold_collected += 1
+        goldlog.append((gold_collected, gold_amount))
+        frameslog.append(inp_len)
 
     #Verify for each replay if the run is valid.
     #That is, verify if the ninja collects the switch and enters the door at the end of the replay.
@@ -1373,6 +1369,13 @@ if tool_mode == "trace" and outte_mode == False:
     if map_img:
         img = mpl.imread(map_img)
         ax.imshow(img, extent=[0, 1056, 600, 0])
+    lines = []
+    for cell in segment_dic.values():
+        for segment in cell:
+            if segment.type == "linear":
+                lines.append([(segment.x1, segment.y1), (segment.x2, segment.y2)])
+    lc = mc.LineCollection(lines)
+    ax.add_collection(lc)
     mpl.show()
             
 #For each replay, write to file whether it is valid or not, then write the series of coordinates for each frame. Only ran in outte mode and in trace mode.
@@ -1382,7 +1385,6 @@ if tool_mode == "trace" and outte_mode == True:
             print(validlog[i], file=f)
             for frame in range(len(xposlog[i])):
                 print(round(xposlog[i][frame], 2), round(yposlog[i][frame], 2), file=f)
-    print("%.3f" % ((90 * 60 - frameslog[0] + 1 + goldlog[0][0] * 120) / 60))
 
 #Print episode splits and other info to the console. Only ran in manual mode and splits mode.
 if tool_mode == "splits" and outte_mode == False:
@@ -1401,3 +1403,5 @@ if tool_mode == "splits" and outte_mode == True:
             print(validlog[i], file=f)
             split = split - frameslog[i] + 1 + goldlog[i][0]*120
             print(split, file=f)
+
+
