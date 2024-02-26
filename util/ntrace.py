@@ -117,32 +117,6 @@ class Ninja:
         self.xposlog = [xspawn]
         self.yposlog = [yspawn]
         self.speedlog = [(0,0,0)]
-
-    def center_cell(self):
-        """find the cell coordinates containing the center of the ninja at its current x and y pos"""
-        return (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
-    
-    def neighbour_cells(self, radius):
-        """Return a set containing all cells that the ninja overlaps.
-        There can be either 1, 2 or 4 cells in the neighbourhood
-        """
-        x_lower = math.floor((self.xpos - radius) / 24)
-        x_upper = math.floor((self.xpos + radius) / 24)
-        y_lower = math.floor((self.ypos - radius) / 24)
-        y_upper = math.floor((self.ypos + radius) / 24)
-        cell_set = set()
-        cell_set.add((x_lower, y_lower))
-        cell_set.add((x_lower, y_upper))
-        cell_set.add((x_upper, y_lower))
-        cell_set.add((x_upper, y_upper))
-        return cell_set
-    
-    def object_neighbour_cells(self):
-        """Return a list that contains all the cells that could contain objects which the ninja could interact with.
-        This list contains nine cells. The one containing the center of the ninja and the eight cells around it.
-        """
-        cx, cy = self.center_cell()
-        return product(range(cx - 1, cx + 2), range(cy - 1, cy + 2))
     
     def integrate(self):
         self.xspeed *= drag
@@ -162,34 +136,38 @@ class Ninja:
         self.floor_normal_y = 0
 
     def collide_vs_objects(self):
-        neighbour_cells = self.object_neighbour_cells()
-        for cell in neighbour_cells:
-            for entity in entity_dic[cell]:
-                if entity.is_physical_collidable and entity.active:
-                    depen = entity.physical_collision(self)
-                    if depen:
-                        depen_x = depen[0]
-                        depen_y = depen[1]
-                        depen_len = math.sqrt(depen_x**2 + depen_y**2)
-                        self.xpos += depen_x
-                        self.ypos += depen_y
-                        if entity.type in (17, 20, 28):
-                            self.xspeed += depen_x
-                            self.yspeed += depen_y
-                        if entity.type == 11:
-                            if depen_len:
-                                xspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * depen_y
-                                yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * (-depen_x)
-                                self.xspeed = xspeed_new
-                                self.yspeed = yspeed_new
-                        if depen_y < 0:
-                            self.floor_count += 1
-                            self.floor_normal_x += depen_x / depen_len
-                            self.floor_normal_y += depen_y / depen_len
+        entities = gather_neighbour_cells_content(self.xpos, self.ypos)
+        for entity in entities:
+            if entity.is_physical_collidable and entity.active:
+                depen = entity.physical_collision(self)
+                if depen:
+                    depen_x = depen[0]
+                    depen_y = depen[1]
+                    depen_len = math.sqrt(depen_x**2 + depen_y**2)
+                    self.xpos += depen_x
+                    self.ypos += depen_y
+                    if entity.type in (17, 20, 28):
+                        self.xspeed += depen_x
+                        self.yspeed += depen_y
+                    if entity.type == 11:
+                        if depen_len:
+                            xspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * depen_y
+                            yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * (-depen_x)
+                            self.xspeed = xspeed_new
+                            self.yspeed = yspeed_new
+                    if depen_y < 0:
+                        self.floor_count += 1
+                        self.floor_normal_x += depen_x / depen_len
+                        self.floor_normal_y += depen_y / depen_len
 
     def collide_vs_tiles(self):
+        dx = self.xpos - self.xpos_old
+        dy = self.ypos - self.ypos_old
+        time = sweep_circle_vs_tiles(self.xpos_old, self.ypos_old, dx, dy, self.radius * 0.5)
+        self.xpos = self.xpos_old + time * dx
+        self.ypos = self.ypos_old + time * dy
         for point in range(32):
-            closest_point = get_single_closest_point(self)
+            closest_point = get_single_closest_point(self.xpos, self.ypos, self.radius)
             if not closest_point:
                 break
             a = closest_point[0]
@@ -225,10 +203,7 @@ class Ninja:
 
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
-        neighbour_cells = self.object_neighbour_cells()
-        entities = []
-        for cell in neighbour_cells:
-            entities += entity_dic[cell]
+        entities = gather_neighbour_cells_content(self.xpos, self.ypos)
         for entity in entities:
             if entity.is_logical_collidable and entity.active:
                 collision_result = entity.logical_collision(self)
@@ -253,7 +228,8 @@ class Ninja:
                         wall_normal = collision_result                  
 
         #Check if the ninja can interact with nearby walls.
-        neighbour_cells = self.neighbour_cells(self.radius + 0.1)
+        rad = self.radius + 0.1
+        neighbour_cells = gather_cells_from_region(self.xpos-rad, self.ypos-rad, self.xpos+rad, self.ypos+rad)
         for cell in neighbour_cells:
             for segment in segment_dic[cell]:
                 if segment.active and segment.type == "linear":
@@ -491,28 +467,32 @@ class GridSegmentLinear:
         """Initiate an instance of a linear segment of a tile. 
         Each segment is defined by the coordinates of its two end points.
         """
-        self.x1 = p1[0]
-        self.y1 = p1[1]
-        self.x2 = p2[0]
-        self.y2 = p2[1]
+        self.x1, self.y1 = p1
+        self.x2, self.y2 = p2
         self.active = True
         self.type = "linear"
 
-    def collision_check(self, ninja):
+    def collision_check(self, xpos, ypos, radius):
         """Check if the ninja is interesecting with the segment.
         If so, calculate the penetration length and the closest point on the segment from the center of the ninja.
         """
         px = self.x2 - self.x1
         py = self.y2 - self.y1
         seg_lensq = px**2 + py**2
-        u = ((ninja.xpos-self.x1)*px + (ninja.ypos-self.y1)*py)/seg_lensq
+        u = ((xpos-self.x1)*px + (ypos-self.y1)*py)/seg_lensq
         u = max(u, 0)
         u = min(u, 1)
         x = self.x1 + u*px
         y = self.y1 + u*py
-        dist = math.sqrt((ninja.xpos-x)**2 + (ninja.ypos-y)**2)
-        penetration = ninja.radius - dist if dist < 9.9999999 else 0
+        dist = math.sqrt((xpos-x)**2 + (ypos-y)**2)
+        penetration = radius - dist if dist < 9.9999999 else 0
         return (x, y), penetration
+    
+    def intersect_with_ray(self, xpos, ypos, dx, dy, radius):
+        time1 = get_time_of_intersection_circle_vs_circle(xpos, ypos, dx, dy, self.x1, self.y1, radius)
+        time2 = get_time_of_intersection_circle_vs_circle(xpos, ypos, dx, dy, self.x2, self.y2, radius)
+        time3 = get_time_of_intersection_circle_vs_lineseg(xpos, ypos, dx, dy, self.x1, self.y1, self.x2, self.y2, radius)
+        return min(time1, time2, time3)
     
     def wall_intersecting(self, ninja):
         """Return True only if the segment is a wall that is intersecting the ninja with an increased radius of 10.1
@@ -540,22 +520,36 @@ class GridSegmentCircular:
         self.radius = radius
         self.convex = convex
 
-    def collision_check(self, ninja):
+    def collision_check(self, xpos, ypos, radius):
         """Check if the ninja is interesecting with the segment.
         If so, calculate the penetration length and the closest point on the segment from the center of the ninja.
         """
-        dx = ninja.xpos - self.xpos
-        dy = ninja.ypos - self.ypos
-        dist = math.sqrt(dx**2 + dy**2)
-        x = self.xpos + self.radius * dx / dist
-        y = self.ypos + self.radius * dy / dist
-        if self.convex:
-            penetration = ninja.radius + self.radius - dist
+        dx = xpos - self.xpos
+        dy = ypos - self.ypos
+        if dx * self.hor > 0 and dy * self.ver > 0:
+            dist = math.sqrt(dx**2 + dy**2)
+            x = self.xpos + self.radius * dx / dist
+            y = self.ypos + self.radius * dy / dist
+            if self.convex:
+                penetration = radius + self.radius - dist
+            else:
+                penetration = dist + radius - self.radius
         else:
-            penetration = dist + ninja.radius - self.radius
-        if not (dx * self.hor > 0 and dy * self.ver > 0) or penetration < 0.0000001 or penetration > 10 :
+            if dx * self.hor <= 0 and dy * self.ver > 0:
+                x = self.xpos
+                y = self.ypos + self.radius * self.ver
+            elif dx * self.hor > 0 and dy * self.ver <= 0:
+                x = self.xpos + self.radius * self.hor
+                y = self.ypos
+            else:
+                return (self.xpos, self.ypos), 0
+            penetration = math.sqrt((xpos - x)**2 + (ypos - y)**2)
+        if penetration < 0.0000001 or penetration > 10 :
             penetration = 0
         return (x, y), penetration
+    
+    def intersect_with_ray(self, xpos, ypos, dx, dy, radius):
+        pass
 
 class Entity:
     """Class that all entity types (gold, bounce blocks, thwumps, etc.) inherit from."""
@@ -592,19 +586,12 @@ class Entity:
         self.cell = (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
         entity_dic[self.cell].append(self)
 
-class EntityMine(Entity):
-    def __init__(self, type, xcoord, ycoord):
-        super().__init__(type, xcoord, ycoord)
-        self.radius = 4
-        self.color = "#910A46"
-
 class EntityGold(Entity):
     def __init__(self, type, xcoord, ycoord):
         super().__init__(type, xcoord, ycoord)
         self.is_logical_collidable = True
         self.radius = 6
         self.collected = False
-        self.color = "#EDDC54"
         
     def logical_collision(self, ninja):
         """If the ninja is colliding with the piece of gold, flag it as being collected."""
@@ -651,12 +638,12 @@ class EntityDoorBase(Entity):
         self.is_vertical = orientation in (0, 4)
         if self.is_vertical:
             self.segment = GridSegmentLinear((self.xpos, self.ypos-12), (self.xpos, self.ypos+12))
-            self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
-            self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12))
+            self.grid_segment_coords.append((math.ceil(self.xpos/12)-1, math.ceil(self.ypos/12)-1))
+            self.grid_segment_coords.append((math.ceil(self.xpos/12)-1, math.ceil(self.ypos/12)))
         else:
             self.segment = GridSegmentLinear((self.xpos-12, self.ypos), (self.xpos+12, self.ypos))
-            self.grid_segment_coords.append((self.xpos/12-1, self.ypos/12-1))
-            self.grid_segment_coords.append((self.xpos/12, self.ypos/12-1))
+            self.grid_segment_coords.append((math.ceil(self.xpos/12)-1, math.ceil(self.ypos/12)-1))
+            self.grid_segment_coords.append((math.ceil(self.xpos/12), math.ceil(self.ypos/12)-1))
         segment_dic[self.cell].append(self.segment)
         self.xpos = self.sw_xpos
         self.ypos = self.sw_ypos
@@ -1028,19 +1015,91 @@ class EntityShoveThwump(Entity):
             if depen[0]:
                 return depen[0]/abs(depen[0])
 
+def gather_cells_from_region(x1, y1, x2, y2):
+        """Return a list containing all cells that contain a rectangle bounded by 2 points"""
+        cx1 = math.floor(x1/24)
+        cy1 = math.floor(y1/24)
+        cx2 = math.floor(x2/24)
+        cy2 = math.floor(y2/24)
+        return product(range(cx1, cx2 + 1), range(cy1, cy2 + 1))
 
-def get_single_closest_point(p):
-    neighbour_cells = p.neighbour_cells(p.radius)
+def gather_neighbour_cells_content(xpos, ypos):
+        """Return a list that contains all the cells that could contain objects which the ninja could interact with.
+        This list contains nine cells. The one containing the center of the ninja and the eight cells around it.
+        """
+        cx = math.floor(xpos/24)
+        cy = math.floor(ypos/24)
+        cells = product(range(cx - 1, cx + 2), range(cy - 1, cy + 2))
+        entity_list = []
+        for cell in cells:
+            entity_list += entity_dic[cell]
+        return entity_list
+
+def get_single_closest_point(xpos, ypos, radius):
+    neighbour_cells = gather_cells_from_region(xpos-radius, ypos-radius, xpos+radius, ypos+radius)
     biggest_penetration = 0
     for cell in neighbour_cells:
         for segment in segment_dic[cell]:
             if segment.active:
-                point, penetration = segment.collision_check(p)
+                point, penetration = segment.collision_check(xpos, ypos, radius)
                 if penetration > biggest_penetration:
                     biggest_penetration = penetration
                     closest_point = point
     if biggest_penetration > 0:
         return closest_point
+    
+def sweep_circle_vs_tiles(xpos_old, ypos_old, dx, dy, radius):
+    xpos_new = xpos_old + dx
+    ypos_new = ypos_old + dy
+    width = radius + 1
+    x1 = min(xpos_old, xpos_new) - width
+    y1 = min(ypos_old, ypos_new) - width
+    x2 = max(xpos_old, xpos_new) + width
+    y2 = max(ypos_old, ypos_new) + width
+    cells = gather_cells_from_region(x1, y1, x2, y2)
+    shortest_time = 1
+    for cell in cells:
+        for segment in segment_dic[cell]:
+            if segment.active and segment.type == "linear":
+                time = segment.intersect_with_ray(xpos_old, ypos_old, dx, dy, radius)
+                shortest_time = min(time, shortest_time)
+    return shortest_time
+
+def get_time_of_intersection_circle_vs_circle(xpos, ypos, vx, vy, a, b, radius):
+    dx = xpos - a
+    dy = ypos - b
+    dist_sq = dx**2 + dy**2
+    radius_sq = radius**2
+    vel_sq = vx**2 + vy**2
+    dot_prod = dx * vx + dy * vy
+    if (dist_sq - radius_sq) > 0:
+        if vel_sq > 0.0001 and dot_prod < 0 and dot_prod**2 >= vel_sq * (dist_sq - radius_sq):
+            return (-dot_prod - math.sqrt(dot_prod**2 - vel_sq * (dist_sq - radius_sq))) / vel_sq
+        return 1
+    return 0
+
+def get_time_of_intersection_circle_vs_lineseg(xpos, ypos, dx, dy, a1, b1, a2, b2, radius):
+    wx = a2 - a1
+    wy = b2 - b1
+    seg_len = math.sqrt(wx**2 + wy**2)
+    nx = wx / seg_len
+    ny = wy / seg_len
+    normal_proj = (xpos - a1) * ny - (ypos - b1) * nx
+    hor_proj = (xpos - a1) * nx + (ypos - b1) * ny
+    if abs(normal_proj) >= radius:
+        dir = dx * ny - dy * nx
+        if dir * normal_proj < 0:
+            t = min(abs(normal_proj - radius) / abs(dir), 1)
+            hor_proj2 = hor_proj + t * (dx * nx  + dy * ny)
+            if 0 <= hor_proj2 <= seg_len:
+                return t
+    else:
+        if 0 <= hor_proj <= seg_len:
+            return 0
+    return 1
+
+def get_time_of_intersection_circle_vs_arc():
+    pass
 
 def collision_square_vs_point(square_pos, point_pos, semiside, radius):
     """Return the depenetration vector to depenetrate a point out of a square.
@@ -1279,8 +1338,6 @@ for i in range(len(inputs_list)):
         ycoord = mdata[index+2]
         orientation = mdata[index+3]
         mode = mdata[index+4]
-        if type == 1:
-            EntityMine(type, xcoord, ycoord)
         if type == 2:
             EntityGold(type, xcoord, ycoord)
         if type == 3:
