@@ -199,7 +199,7 @@ class Ninja:
                 self.floor_normal_y += dy/dist
     
     def post_collision(self):
-        wall_normal = None
+        wall_normal = 0
 
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
@@ -217,6 +217,7 @@ class Ninja:
                         self.yspeed = yboost
                         self.floor_count = 0
                         self.floor_buffer = -1
+                        
                         boost_scalar = math.sqrt(xboost**2 + yboost**2)
                         self.xlp_boost_normalized = xboost/boost_scalar
                         self.ylp_boost_normalized = yboost/boost_scalar
@@ -225,7 +226,7 @@ class Ninja:
                             self.applied_gravity = gravity
                         self.state = 4
                     else: #If touched wall of bounce block, oneway, thwump or shwump
-                        wall_normal = collision_result                  
+                        wall_normal += collision_result                  
 
         #Check if the ninja can interact with nearby walls.
         rad = self.radius + 0.1
@@ -235,13 +236,13 @@ class Ninja:
                 if segment.active and segment.type == "linear":
                     collision_result = segment.wall_intersecting(self)
                     if collision_result:
-                        wall_normal = collision_result
+                        wall_normal += collision_result
 
         self.airborn = True
         self.walled = False
         if wall_normal:
             self.walled = True
-            self.wall_normal = wall_normal
+            self.wall_normal = wall_normal/abs(wall_normal)
 
         #Calculate the combined floor normalized normal vector if the ninja has touched any floor.
         if self.floor_count > 0:
@@ -582,9 +583,11 @@ class Entity:
         """As the entity is moving, if its center goes from one grid cell to another,
         remove it from the previous cell and insert it into the new cell.
         """
-        entity_dic[self.cell].remove(self)
-        self.cell = (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
-        entity_dic[self.cell].append(self)
+        cell_new = (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
+        if cell_new != self.cell:
+            entity_dic[self.cell].remove(self)
+            self.cell = cell_new
+            entity_dic[self.cell].append(self)
 
 class EntityGold(Entity):
     def __init__(self, type, xcoord, ycoord):
