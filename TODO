@@ -1,5 +1,6 @@
 Ongoing:
 - Animated traces:
+  * Mitigate memory impact by storing all frames already compressed before actual encode time.
   * Remove level name from msg, so that it may not interfere with other parameters of the command.
   * Ensure each trace is always drawn over the previous one, by adding a condition that will not paint a pixel if it's already been painted by a previous trace.
   * Interpolate between frames, so that we can trace at slower speeds at 50fps, or basically at any speed.
@@ -7,7 +8,6 @@ Ongoing:
   * Line thickness choice
   * Explicit speed choice (e.g. speed 8)
   * Add dot for jumps, perhaps also arrow inputs.
-  * Animate only moving ninjas, not actual trace (need to redraw a little portion of the background).
   * Add inputs like the game does.
   * Remove collected gold (need to modify ntrace output, also see above point).
   * Perhaps animate other objects: exit door opening, toggle mine closing, locked/trap doors, ...

@@ -2873,8 +2873,8 @@ def respond(event)
   return send_videos(event)          if msg =~ /\bvideo\b/i
   return send_challenges(event)      if msg =~ /\bchallenges\b/i
   return add_alias(event)            if msg =~ /\badd\s*(level|player)?\s*alias\b/i
-  return send_download(event)        if msg =~ /\bdownload\b/i
   return send_demo_download(event)   if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
+  return send_download(event)        if msg =~ /\bdownload\b/i
   return send_trace(event)           if msg =~ /\btrace\b/i || msg =~ /\banim/i
   return send_lotd(event, Level)     if msg =~ /lotd/i
   return send_lotd(event, Episode)   if msg =~ /eotw/i

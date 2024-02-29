@@ -1061,6 +1061,26 @@ def send_userlevel_individual(event, msg, userlevel = nil, &block)
   end
 end
 
+def send_userlevel_demo_download(event)
+  msg = clean_userlevel_message(parse_message(event))
+  msg = remove_word_first(msg, 'download')
+  send_userlevel_individual(event, msg){ |map|
+    h     = map[:query]
+    rank  = [parse_range(msg).first, map[:query].scores.size - 1].min
+    score = map[:query].scores[rank]
+
+    output = "Downloading #{rank.ordinalize} score by `#{score.player.name}` "
+    output += "(#{"%.3f" % [score.score / 60.0]}) in userlevel #{verbatim(h.title)} "
+    output += "with ID #{verbatim(h.id.to_s)} "
+    output += "by #{verbatim(h.author.name)} "
+    output += "on #{Time.now.to_s}"
+    event << format_header(output)
+    send_file(event, Demo.encode(score.demo), "#{h.id}_#{rank}", true)
+  }
+rescue => e
+  lex(e, 'Error fetching userlevel demo download.', event: event)
+end
+
 def send_userlevel_download(event)
   msg = clean_userlevel_message(parse_message(event))
   msg = remove_word_first(msg, 'download')
@@ -1636,25 +1656,26 @@ def respond_userlevels(event)
     return send_userlevel_rankings(event)  if msg =~ /\brank/i
   end
 
-  return send_userlevel_browse(event)      if msg =~ /\bbrowse\b/i || msg =~ /\bsearch\b/i
-  return send_userlevel_screenshot(event)  if msg =~ /\bscreenshots?\b/i
-  return send_userlevel_scores(event)      if msg =~ /scores\b/i
-  return send_userlevel_download(event)    if msg =~ /\bdownload\b/i
-  return send_userlevel_trace(event)       if msg =~ /\btrace\b/i || msg =~ /\banimation\b/i
-  return send_userlevel_count(event)       if msg =~ /how many/i
-  return send_userlevel_spreads(event)     if msg =~ /spread/i
-  return send_userlevel_avg_points(event)  if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
-  return send_userlevel_points(event)      if msg =~ /point/i && msg !~ /rank/i
-  return send_userlevel_avg_rank(event)    if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
-  return send_userlevel_avg_lead(event)    if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
-  return send_userlevel_total_score(event) if msg =~ /total score/i && msg !~ /rank/i
-  return send_userlevel_list(event)        if msg =~ /\blist\b/i
-  return send_userlevel_stats(event)       if msg =~ /stat/i
-  return send_userlevel_maxed(event)       if msg =~ /maxed/i
-  return send_userlevel_maxable(event)     if msg =~ /maxable/i
-  return send_random_userlevel(event)      if msg =~ /random/i
-  return send_userlevel_summary(event)     if msg =~ /summary/i
-  return send_userlevel_times(event)       if msg =~ /\bwhen\b/i
+  return send_userlevel_browse(event)        if msg =~ /\bbrowse\b/i || msg =~ /\bsearch\b/i
+  return send_userlevel_screenshot(event)    if msg =~ /\bscreenshots?\b/i
+  return send_userlevel_scores(event)        if msg =~ /scores\b/i
+  return send_userlevel_demo_download(event) if (msg =~ /\breplay\b/i || msg =~ /\bdemo\b/i) && msg =~ /\bdownload\b/i
+  return send_userlevel_download(event)      if msg =~ /\bdownload\b/i
+  return send_userlevel_trace(event)         if msg =~ /\btrace\b/i || msg =~ /\banim/i
+  return send_userlevel_count(event)         if msg =~ /how many/i
+  return send_userlevel_spreads(event)       if msg =~ /spread/i
+  return send_userlevel_avg_points(event)    if msg =~ /average/i && msg =~ /point/i && msg !~ /rank/i
+  return send_userlevel_points(event)        if msg =~ /point/i && msg !~ /rank/i
+  return send_userlevel_avg_rank(event)      if msg =~ /average/i && msg =~ /rank/i && !!msg[NAME_PATTERN, 2]
+  return send_userlevel_avg_lead(event)      if msg =~ /average/i && msg =~ /lead/i && msg !~ /rank/i
+  return send_userlevel_total_score(event)   if msg =~ /total score/i && msg !~ /rank/i
+  return send_userlevel_list(event)          if msg =~ /\blist\b/i
+  return send_userlevel_stats(event)         if msg =~ /stat/i
+  return send_userlevel_maxed(event)         if msg =~ /maxed/i
+  return send_userlevel_maxable(event)       if msg =~ /maxable/i
+  return send_random_userlevel(event)        if msg =~ /random/i
+  return send_userlevel_summary(event)       if msg =~ /summary/i
+  return send_userlevel_times(event)         if msg =~ /\bwhen\b/i
 
   event << "Sorry, I didn't understand your userlevel command."
 end
