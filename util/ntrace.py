@@ -63,7 +63,7 @@ mdata_list = []
 if tool_mode == "trace":
     with open(raw_map_data, "rb") as f:
         mdata = [int(b) for b in f.read()]
-    for i in range(len(inputs_list)):
+    for _ in range(len(inputs_list)):
         mdata_list.append(mdata)
 elif tool_mode == "splits":
     with open(raw_map_data_0, "rb") as f:
@@ -77,7 +77,7 @@ elif tool_mode == "splits":
     with open(raw_map_data_4, "rb") as f:
         mdata_list.append([int(b) for b in f.read()])
 
-#Defining physics constants
+#Physics constants
 gravity = 0.06666666666666665
 gravity_held = 0.01111111111111111
 ground_accel = 0.06666666666666665
@@ -91,8 +91,7 @@ max_jump_duration = 45
 
 class Ninja:
     """This class is responsible for updating and storing the positions and velocities of each ninja.
-    self.poslog contains all the coordinates used to generate the traces of the replays.
-    """
+    self.xposlog and self.yposlog contain all the coordinates used to generate the traces of the replays."""
     def __init__(self, xspawn, yspawn):
         """Initiate ninja position at spawn point, and initiate other values to their initial state"""
         self.xpos = xspawn
@@ -101,7 +100,7 @@ class Ninja:
         self.yspeed = 0
         self.applied_gravity = gravity
         self.applied_friction = friction_ground
-        self.state = 0
+        self.state = 0 #0:Immobile, 1:Running, 2:Ground sliding, 3:Jumping, 4:Falling, 5:Wall sliding
         self.radius = 10
         self.hor_input = 0
         self.jump_input = 0
@@ -113,12 +112,14 @@ class Ninja:
         self.floor_buffer = -1
         self.wall_buffer = -1
         self.launch_pad_buffer = -1
-        self.poslog = [(0, xspawn, yspawn)]
-        self.xposlog = [xspawn]
-        self.yposlog = [yspawn]
+        self.poslog = [(0, xspawn, yspawn)] #Used for debug
         self.speedlog = [(0,0,0)]
+        self.xposlog = [xspawn] #Used to produce trace
+        self.yposlog = [yspawn]
+        
     
     def integrate(self):
+        """Update position and speed by applying drag and gravity before collision phase."""
         self.xspeed *= drag
         self.yspeed *= drag
         self.yspeed += self.applied_gravity
@@ -128,6 +129,7 @@ class Ninja:
         self.ypos += self.yspeed
 
     def pre_collision(self):
+        """Reset some values used for collision phase."""
         self.xspeed_old = self.xspeed
         self.yspeed_old = self.yspeed
         self.floor_count = 0
@@ -136,6 +138,7 @@ class Ninja:
         self.floor_normal_y = 0
 
     def collide_vs_objects(self):
+        """Gather all entities in neighbourhood and apply physical collisions if possible."""
         entities = gather_neighbour_cells_content(self.xpos, self.ypos)
         for entity in entities:
             if entity.is_physical_collidable and entity.active:
@@ -146,26 +149,31 @@ class Ninja:
                     depen_len = math.sqrt(depen_x**2 + depen_y**2)
                     self.xpos += depen_x
                     self.ypos += depen_y
-                    if entity.type in (17, 20, 28):
+                    if entity.type in (17, 20, 28): #Depenetration for bounce blocks, thwumps and shwumps.
                         self.xspeed += depen_x
                         self.yspeed += depen_y
-                    if entity.type == 11:
+                    if entity.type == 11: #Depenetration for one ways
                         if depen_len:
                             xspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * depen_y
                             yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * (-depen_x)
                             self.xspeed = xspeed_new
                             self.yspeed = yspeed_new
-                    if depen_y < 0:
+                    if depen_y < 0: 
                         self.floor_count += 1
                         self.floor_normal_x += depen_x / depen_len
                         self.floor_normal_y += depen_y / depen_len
 
     def collide_vs_tiles(self):
+        """Gather all tile segments in neighbourhood and handle collisions with those."""
         dx = self.xpos - self.xpos_old
         dy = self.ypos - self.ypos_old
-        time = sweep_circle_vs_tiles(self.xpos_old, self.ypos_old, dx, dy, self.radius * 0.5)
+
+        #Interpolation routine mainly to prevent from going through walls.
+        time = sweep_circle_vs_tiles(self.xpos_old, self.ypos_old, dx, dy, self.radius * 0.5) 
         self.xpos = self.xpos_old + time * dx
         self.ypos = self.ypos_old + time * dy
+
+        #Find the closest point from the ninja, apply depenetration and update speed. Loop 32 times. 
         for point in range(32):
             closest_point = get_single_closest_point(self.xpos, self.ypos, self.radius)
             if not closest_point:
@@ -188,7 +196,7 @@ class Ninja:
             self.xpos = xpos_new
             self.ypos = ypos_new
             dot_product = self.xspeed * dx + self.yspeed * dy
-            if dot_product < 0: #check if you're moving towards the corner.
+            if dot_product < 0: #Check if you're moving towards the corner.
                 xspeed_new = (self.xspeed*dy - self.yspeed*dx) / dist**2 * dy
                 yspeed_new = (self.xspeed*dy - self.yspeed*dx) / dist**2 * (-dx)
                 self.xspeed = xspeed_new
@@ -199,16 +207,16 @@ class Ninja:
                 self.floor_normal_y += dy/dist
     
     def post_collision(self):
-        wall_normal = 0
-
+        """Perform logical collisions with entities, check for walled state and calculate floor normals."""
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
+        wall_normal = 0
         entities = gather_neighbour_cells_content(self.xpos, self.ypos)
         for entity in entities:
             if entity.is_logical_collidable and entity.active:
                 collision_result = entity.logical_collision(self)
                 if collision_result:
-                    if entity.type == 10: #If collision with launch pad
+                    if entity.type == 10: #If collision with launch pad, update speed and position.
                         xboost = collision_result[0] * 2/3
                         yboost = collision_result[1] * 2/3
                         self.xpos += xboost
@@ -217,7 +225,6 @@ class Ninja:
                         self.yspeed = yboost
                         self.floor_count = 0
                         self.floor_buffer = -1
-                        
                         boost_scalar = math.sqrt(xboost**2 + yboost**2)
                         self.xlp_boost_normalized = xboost/boost_scalar
                         self.ylp_boost_normalized = yboost/boost_scalar
@@ -225,10 +232,10 @@ class Ninja:
                         if self.state == 3:
                             self.applied_gravity = gravity
                         self.state = 4
-                    else: #If touched wall of bounce block, oneway, thwump or shwump
+                    else: #If touched wall of bounce block, oneway, thwump or shwump, retrieve wall normal.
                         wall_normal += collision_result                  
 
-        #Check if the ninja can interact with nearby walls.
+        #Check if the ninja can interact with walls from nearby tile segments.
         rad = self.radius + 0.1
         neighbour_cells = gather_cells_from_region(self.xpos-rad, self.ypos-rad, self.xpos+rad, self.ypos+rad)
         for cell in neighbour_cells:
@@ -238,6 +245,7 @@ class Ninja:
                     if collision_result:
                         wall_normal += collision_result
 
+        #Calculate combined wall normal.
         self.airborn = True
         self.walled = False
         if wall_normal:
@@ -256,30 +264,31 @@ class Ninja:
                 self.floor_normalized_y = self.floor_normal_y/floor_scalar
 
     def floor_jump(self):
+        """Perform floor jump depending on slope angle and direction."""
         self.jump_buffer = -1
         self.floor_buffer = -1
         self.launch_pad_buffer = -1
         self.state = 3
         self.applied_gravity = gravity_held
-        if self.floor_normalized_x == 0:
+        if self.floor_normalized_x == 0: #Jump from flat ground
             jx = 0
             jy = -2
-        else:
+        else: #Slope jump
             dx = self.floor_normalized_x
             dy = self.floor_normalized_y
-            if self.xspeed * dx >= 0:
+            if self.xspeed * dx >= 0: #Moving downhill
                 if self.xspeed * self.hor_input >= 0:
                     jx = 2/3 * dx
                     jy = 2 * dy
                 else:
                     jx = 0
                     jy = -1.4
-            else:
-                if self.xspeed * self.hor_input > 0:
+            else: #Moving uphill
+                if self.xspeed * self.hor_input > 0: #Forward jump
                     jx = 0
                     jy = -1.4
                 else:
-                    self.xspeed = 0
+                    self.xspeed = 0 #Perp jump
                     jx = 2/3 * dx
                     jy = 2 * dy
         if self.yspeed > 0:
@@ -291,10 +300,11 @@ class Ninja:
         self.jump_duration = 0
 
     def wall_jump(self):
-        if self.hor_input * self.wall_normal < 0 and self.state == 5:
+        """Perform wall jump depending on wall normal and if sliding or not."""
+        if self.hor_input * self.wall_normal < 0 and self.state == 5: #Slide wall jump
             jx = 2/3
             jy = -1
-        else:
+        else: #Regular wall jump
             jx = 1
             jy = -1.4
         self.state = 3
@@ -313,6 +323,7 @@ class Ninja:
         self.jump_duration = 0
 
     def lp_jump(self):
+        """Perform launch pad jump."""
         self.floor_buffer = -1
         self.wall_buffer = -1
         self.jump_buffer = -1
@@ -324,6 +335,7 @@ class Ninja:
         self.yspeed += self.ylp_boost_normalized * boost_scalar * 2/3
         
     def think(self):
+        """This function handle all the ninja's actions depending of the inputs and its environment."""
         #Logic to determine if you're starting a new jump.
         if not self.jump_input:
             new_jump_check = False
@@ -466,8 +478,7 @@ class GridSegmentLinear:
     """Contains all the linear segments of tiles and doors that the ninja can interract with"""
     def __init__(self, p1, p2):
         """Initiate an instance of a linear segment of a tile. 
-        Each segment is defined by the coordinates of its two end points.
-        """
+        Each segment is defined by the coordinates of its two end points."""
         self.x1, self.y1 = p1
         self.x2, self.y2 = p2
         self.active = True
@@ -475,8 +486,7 @@ class GridSegmentLinear:
 
     def collision_check(self, xpos, ypos, radius):
         """Check if the ninja is interesecting with the segment.
-        If so, calculate the penetration length and the closest point on the segment from the center of the ninja.
-        """
+        If so, return the penetration length and the closest point on the segment from the center of the ninja."""
         px = self.x2 - self.x1
         py = self.y2 - self.y1
         seg_lensq = px**2 + py**2
@@ -490,14 +500,15 @@ class GridSegmentLinear:
         return (x, y), penetration
     
     def intersect_with_ray(self, xpos, ypos, dx, dy, radius):
+        """Return the time of intersection (as a fraction of a frame) for the closest point in the ninja's path.
+        Return 0 if the ninja is already intersection or 1 if won't intersect within the frame."""
         time1 = get_time_of_intersection_circle_vs_circle(xpos, ypos, dx, dy, self.x1, self.y1, radius)
         time2 = get_time_of_intersection_circle_vs_circle(xpos, ypos, dx, dy, self.x2, self.y2, radius)
         time3 = get_time_of_intersection_circle_vs_lineseg(xpos, ypos, dx, dy, self.x1, self.y1, self.x2, self.y2, radius)
         return min(time1, time2, time3)
     
     def wall_intersecting(self, ninja):
-        """Return True only if the segment is a wall that is intersecting the ninja with an increased radius of 10.1
-        Also store the wall normal into the ninja's wall_normal variable"""
+        """If the ninja with an icreased radius of 10.1 is intersecting a wall, return the wall normal."""
         if self.x1 == self.x2:
             if -(ninja.radius + 0.1) < ninja.xpos-self.x1 < 0 and self.y1 <= ninja.ypos <= self.y2:
                 return -1
@@ -510,8 +521,7 @@ class GridSegmentCircular:
         """Initiate an instance of a circular segment of a tile. 
         Each segment is defined by the coordinates of its center, a vector indicating which
         quadrant contains the qurater-circle, a boolean indicating if the tile is convex or
-        concave, and the radius of the quarter-circle.
-        """
+        concave, and the radius of the quarter-circle."""
         self.xpos = center[0]
         self.ypos = center[1]
         self.hor = quadrant[0]
@@ -523,8 +533,7 @@ class GridSegmentCircular:
 
     def collision_check(self, xpos, ypos, radius):
         """Check if the ninja is interesecting with the segment.
-        If so, calculate the penetration length and the closest point on the segment from the center of the ninja.
-        """
+        If so, calculate the penetration length and the closest point on the segment from the center of the ninja."""
         dx = xpos - self.xpos
         dy = ypos - self.ypos
         if dx * self.hor > 0 and dy * self.ver > 0:
@@ -536,21 +545,24 @@ class GridSegmentCircular:
             else:
                 penetration = dist + radius - self.radius
         else:
-            if dx * self.hor <= 0 and dy * self.ver > 0:
+            (hor, ver) = (-self.hor, -self.ver) if self.convex else (self.hor, self.ver)
+            if dx * hor <= 0 and dy * ver > 0:
                 x = self.xpos
-                y = self.ypos + self.radius * self.ver
-            elif dx * self.hor > 0 and dy * self.ver <= 0:
-                x = self.xpos + self.radius * self.hor
+                y = self.ypos + self.radius * ver
+            elif dx * hor > 0 and dy * ver <= 0:
+                x = self.xpos + self.radius * hor
                 y = self.ypos
             else:
                 return (self.xpos, self.ypos), 0
-            penetration = math.sqrt((xpos - x)**2 + (ypos - y)**2)
+            penetration = 10 - math.sqrt((xpos - x)**2 + (ypos - y)**2)
         if penetration < 0.0000001 or penetration > 10 :
             penetration = 0
         return (x, y), penetration
     
     def intersect_with_ray(self, xpos, ypos, dx, dy, radius):
-        pass
+        """Return the time of intersection (as a fraction of a frame) for the closest point in the ninja's path.
+        Return 0 if the ninja is already intersection or 1 if won't intersect within the frame."""
+        pass #TODO
 
 class Entity:
     """Class that all entity types (gold, bounce blocks, thwumps, etc.) inherit from."""
@@ -572,8 +584,7 @@ class Entity:
     def is_colliding_circle(self, ninja, radius):
         """Returns True if the ninja is colliding with the entity. That is, if the distance
         between the center of the ninja and the center of the entity is inferior to the lenth of the
-        entity's radius plus the ninja's radius.
-        """
+        entity's radius plus the ninja's radius."""
         dx = self.xpos - ninja.xpos
         dy = self.ypos - ninja.ypos
         dist = math.sqrt(dx**2 + dy**2)
@@ -581,8 +592,7 @@ class Entity:
     
     def grid_move(self):
         """As the entity is moving, if its center goes from one grid cell to another,
-        remove it from the previous cell and insert it into the new cell.
-        """
+        remove it from the previous cell and insert it into the new cell."""
         cell_new = (math.floor(self.xpos / 24), math.floor(self.ypos / 24))
         if cell_new != self.cell:
             entity_dic[self.cell].remove(self)
@@ -597,7 +607,7 @@ class EntityGold(Entity):
         self.collected = False
         
     def logical_collision(self, ninja):
-        """If the ninja is colliding with the piece of gold, flag it as being collected."""
+        """If the ninja is colliding with the piece of gold, store the collection frame."""
         if self.is_colliding_circle(ninja, ninja.radius):
             self.collected = frame
             self.active = False
@@ -610,7 +620,7 @@ class EntityExit(Entity):
         self.ninja_exit = []
 
     def logical_collision(self, ninja):
-        """If the ninja is colliding with the open door, store the frame at which the collision happened"""
+        """If the ninja is colliding with the open door, store the collision frame."""
         if self.is_colliding_circle(ninja, ninja.radius):
             self.ninja_exit.append(frame)
             self.active = False
@@ -653,7 +663,7 @@ class EntityDoorBase(Entity):
         self.grid_move()
 
     def change_state(self, closed):
-        #Change the state of the door from closed to open or from open to closed.
+        """Change the state of the door from closed to open or from open to closed."""
         self.closed = closed
         self.segment.active = closed
         for coord in self.grid_segment_coords:
@@ -670,14 +680,14 @@ class EntityDoorRegular(EntityDoorBase):
         self.open_timer = 0
 
     def think(self, ninja):
-        #If the door has been opened for more than 5 frames without being touched by the ninja, close it.
+        """If the door has been opened for more than 5 frames without being touched by the ninja, close it."""
         if not self.closed:
             self.open_timer += 1
             if self.open_timer > 5:
                 self.change_state(closed = True)
 
     def logical_collision(self, ninja):
-        #If the ninja touches the activation region of the door, open it.
+        """If the ninja touches the activation region of the door, open it."""
         if self.is_colliding_circle(ninja, ninja.radius):
             self.change_state(closed = False)
             self.open_timer = 0
@@ -688,7 +698,7 @@ class EntityDoorLocked(EntityDoorBase):
         self.radius = 5
 
     def logical_collision(self, ninja):
-        #If the ninja collects the associated open switch, open the door.
+        """If the ninja collects the associated open switch, open the door."""
         if self.is_colliding_circle(ninja, ninja.radius):
             self.change_state(closed = False)
             self.active = False
@@ -701,7 +711,7 @@ class EntityDoorTrap(EntityDoorBase):
         self.segment.active = False
 
     def logical_collision(self, ninja):
-        #If the ninja collects the associated close switch, close the door.
+        """If the ninja collects the associated close switch, close the door."""
         if self.is_colliding_circle(ninja, ninja.radius):
             self.change_state(closed = True)
             self.active = False
@@ -717,6 +727,7 @@ class EntityLaunchPad(Entity):
         self.boost = 36/7
 
     def logical_collision(self, ninja):
+        """If the ninja is colliding with the launch pad (semi circle hitbox), return boost."""
         if self.is_colliding_circle(ninja, ninja.radius):
             if (self.xpos - (ninja.xpos - ninja.radius*self.normal_x))*self.normal_x + (self.ypos - (ninja.ypos - ninja.radius*self.normal_y))*self.normal_y >= -0.1:
                 yboost_scale = 1
@@ -741,7 +752,7 @@ class EntityOneWayPlatform(Entity):
         dy = ninja.ypos - self.ypos
         lateral_dist = dy * self.normal_x - dx * self.normal_y
         direction = (ninja.yspeed * self.normal_x - ninja.xspeed * self.normal_y) * lateral_dist
-        radius_scalar = 0.91 if direction < 0 else 0.51
+        radius_scalar = 0.91 if direction < 0 else 0.51 #The platform has a bigger width if the ninja is moving towards its center.
         if abs(lateral_dist) < radius_scalar * ninja.radius + self.semiside:
             normal_dist = dx * self.normal_x + dy * self.normal_y
             if 0 < normal_dist <= ninja.radius:
@@ -796,7 +807,7 @@ class EntityBounceBlock(Entity):
         self.grid_move()
 
     def physical_collision(self, ninja):
-        #Collide with the ninja. 
+        """Apply 80% of the depenetration to the bounce block and 20% to the ninja."""
         depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius)
         depen_x = depen[0]
         depen_y = depen[1]
@@ -809,7 +820,7 @@ class EntityBounceBlock(Entity):
             return (depen_x * self.strength, depen_y * self.strength)
         
     def logical_collision(self, ninja):
-        #Check if the ninja can interact with the wall of the bounce block
+        """Check if the ninja can interact with the wall of the bounce block"""
         depen = collision_square_vs_point((self.xpos, self.ypos), (ninja.xpos, ninja.ypos), self.semiside, ninja.radius + 0.1)
         depen_x = depen[0]
         if depen_x:
@@ -832,7 +843,7 @@ class EntityThwump(Entity):
         self.state = 0 #0:immobile, 1:forward, -1:backward
 
     def move(self, ninja):
-        if self.state:
+        if self.state: #If not immobile.
             speed = self.forward_speed if self.state == 1 else self.backward_speed
             speed_dir = self.direction * self.state
             if not self.is_horizontal:
@@ -868,6 +879,7 @@ class EntityThwump(Entity):
             self.grid_move()
 
     def think(self, ninja):
+        """Make the thwump charge if it has sight of the ninja."""
         if not self.state:
             activation_range = 2 * (self.semiside + ninja.radius)
             if not self.is_horizontal:
@@ -924,7 +936,7 @@ class EntityBoostPad(Entity):
         self.is_touching_ninja = False
 
     def move(self, ninja):
-        #If the ninja starts touching the booster, add 2 to its velocity norm.
+        """If the ninja starts touching the booster, add 2 to its velocity norm."""
         if self.is_colliding_circle(ninja, ninja.radius):
             if not self.is_touching_ninja:
                 vel_norm = math.sqrt(ninja.xspeed**2 + ninja.yspeed**2)
@@ -952,6 +964,7 @@ class EntityShoveThwump(Entity):
         self.activated = False
 
     def think(self, ninja):
+        """Update the state of the shwump and move it if possible."""
         if self.state == 1: 
             if self.activated:
                 self.activated = False
@@ -969,6 +982,7 @@ class EntityShoveThwump(Entity):
             self.move_if_possible(-self.xdir, -self.ydir, 4)
 
     def move_if_possible(self, xdir, ydir, speed):
+        """Move the shwump depending of state and orientation. Only called by EntityShoveThwump.think"""
         if self.ydir == 0:
             xpos_new = self.xpos + xdir * speed
             cell_x = math.floor(self.xpos / 12)
@@ -1027,9 +1041,7 @@ def gather_cells_from_region(x1, y1, x2, y2):
         return product(range(cx1, cx2 + 1), range(cy1, cy2 + 1))
 
 def gather_neighbour_cells_content(xpos, ypos):
-        """Return a list that contains all the cells that could contain objects which the ninja could interact with.
-        This list contains nine cells. The one containing the center of the ninja and the eight cells around it.
-        """
+        """Return a list that contains all the entities from the nine neighbour cells."""
         cx = math.floor(xpos/24)
         cy = math.floor(ypos/24)
         cells = product(range(cx - 1, cx + 2), range(cy - 1, cy + 2))
@@ -1039,6 +1051,7 @@ def gather_neighbour_cells_content(xpos, ypos):
         return entity_list
 
 def get_single_closest_point(xpos, ypos, radius):
+    """Fetch all segments from neighbourhood. If there is collision, return the closest intersection point."""
     neighbour_cells = gather_cells_from_region(xpos-radius, ypos-radius, xpos+radius, ypos+radius)
     biggest_penetration = 0
     for cell in neighbour_cells:
@@ -1052,6 +1065,7 @@ def get_single_closest_point(xpos, ypos, radius):
         return closest_point
     
 def sweep_circle_vs_tiles(xpos_old, ypos_old, dx, dy, radius):
+    """Fetch all segments from neighbourhood. Return shortest intersection time from interpolation."""
     xpos_new = xpos_old + dx
     ypos_new = ypos_old + dy
     width = radius + 1
@@ -1069,6 +1083,7 @@ def sweep_circle_vs_tiles(xpos_old, ypos_old, dx, dy, radius):
     return shortest_time
 
 def get_time_of_intersection_circle_vs_circle(xpos, ypos, vx, vy, a, b, radius):
+    """Return time of intersection by interpolation by sweeping a circle onto an other circle, given a combined radius."""
     dx = xpos - a
     dy = ypos - b
     dist_sq = dx**2 + dy**2
@@ -1082,6 +1097,7 @@ def get_time_of_intersection_circle_vs_circle(xpos, ypos, vx, vy, a, b, radius):
     return 0
 
 def get_time_of_intersection_circle_vs_lineseg(xpos, ypos, dx, dy, a1, b1, a2, b2, radius):
+    """Return time of intersection by interpolation by sweeping a circle onto a line segment."""
     wx = a2 - a1
     wy = b2 - b1
     seg_len = math.sqrt(wx**2 + wy**2)
@@ -1102,7 +1118,8 @@ def get_time_of_intersection_circle_vs_lineseg(xpos, ypos, dx, dy, a1, b1, a2, b
     return 1
 
 def get_time_of_intersection_circle_vs_arc():
-    pass
+    """Return time of intersection by interpolation by sweeping a circle onto a circle arc."""
+    pass #TODO
 
 def collision_square_vs_point(square_pos, point_pos, semiside, radius):
     """Return the depenetration vector to depenetrate a point out of a square.
@@ -1123,8 +1140,7 @@ def collision_square_vs_point(square_pos, point_pos, semiside, radius):
 
 def map_orientation_to_vector(orientation):
     """Return a normalized vector pointing in the direction of the orientation.
-    Orientation is a value between 0 and 7 taken from map data.
-    """
+    Orientation is a value between 0 and 7 taken from map data."""
     diag = math.sqrt(2) / 2
     orientation_dic = {0:(1, 0), 1:(diag, diag), 2:(0, 1), 3:(-diag, diag), 4:(-1, 0), 5:(-diag, -diag), 6:(0, -1), 7:(diag, -diag)}
     return orientation_dic[orientation]
@@ -1144,22 +1160,18 @@ def is_empty_column(xcoord, ycoord1, ycoord2, dir):
         return not (ver_grid_edge_dic[xcoord+1, ycoord1] or ver_grid_edge_dic[xcoord+1, ycoord2] or ver_grid_edge_dic[xcoord+1, ycoord3])
     if dir == -1:
         return not (ver_grid_edge_dic[xcoord, ycoord1] or ver_grid_edge_dic[xcoord, ycoord2] or ver_grid_edge_dic[xcoord, ycoord3])
-          
+    
 def tick(p, frame):
     """This is the main function that handles physics.
-    This function gets called once per frame.
-    """
+    This function gets called once per frame."""
     #Extract inputs for this frame.
     p.hor_input = hor_inputs[frame-1]
     p.jump_input = jump_inputs[frame-1]
 
-    #Move all movable entities.
-    for entity in entity_list:
+    for entity in entity_list: #Move all movable entities
         if entity.is_movable and entity.active:
             entity.move(p)
-
-    #Make all thinkable entities think.
-    for entity in entity_list:
+    for entity in entity_list: #Make all thinkable entities think.
         if entity.is_thinkable and entity.active:
             entity.think(p)
  
@@ -1171,7 +1183,7 @@ def tick(p, frame):
     p.post_collision() #Do post collision calculations.
     p.think() #Make ninja think
 
-    #Update all the logs for debugging purposes. Only the position log will be used to draw the route.
+    #Update all the logs for debugging purposes and for tracing the route.
     p.poslog.append((frame, round(p.xpos, 6), round(p.ypos, 6)))
     p.speedlog.append((frame, round(p.xspeed, 6), round(p.yspeed, 6)))
     p.xposlog.append(p.xpos)
@@ -1243,28 +1255,31 @@ for i in range(len(inputs_list)):
     
     tile_grid_edge_map = {0:[0,0,0,0,0,0,0,0,0,0,0,0], 1:[1,1,0,0,1,1,1,1,0,0,1,1], #Empty and full tiles
                           2:[1,1,1,1,0,0,1,0,0,0,1,0], 3:[0,1,0,0,0,1,0,0,1,1,1,1], 4:[0,0,1,1,1,1,0,1,0,0,0,1], 5:[1,0,0,0,1,0,1,1,1,1,0,0], #Half tiles
-                          6:[1,1,0,1,1,0,1,1,0,1,1,0], 7:[1,1,1,0,0,1,1,0,0,1,1,1], 8:[0,1,1,0,1,1,0,1,1,0,1,1], 9:[1,0,0,1,1,1,1,1,1,0,0,1], #45 degree tiles
+                          6:[1,1,0,1,1,0,1,1,0,1,1,0], 7:[1,1,1,0,0,1,1,0,0,1,1,1], 8:[0,1,1,0,1,1,0,1,1,0,1,1], 9:[1,0,0,1,1,1,1,1,1,0,0,1], #45 degree slopes
                           10:[1,1,0,0,1,1,1,1,0,0,1,1], 11:[1,1,0,0,1,1,1,1,0,0,1,1], 12:[1,1,0,0,1,1,1,1,0,0,1,1], 13:[1,1,0,0,1,1,1,1,0,0,1,1], #Quarter moons
                           14:[1,1,0,1,1,0,1,1,0,1,1,0], 15:[1,1,1,0,0,1,1,0,0,1,1,1], 16:[0,1,1,0,1,1,0,1,1,0,1,1], 17:[1,0,0,1,1,1,1,1,1,0,0,1], #Quarter pipes
                           18:[1,1,1,1,0,0,1,0,0,0,1,0], 19:[1,1,1,1,0,0,1,0,0,0,1,0], 20:[0,0,1,1,1,1,0,1,0,0,0,1], 21:[0,0,1,1,1,1,0,1,0,0,0,1], #Short mild slopes
                           22:[1,1,0,0,1,1,1,1,0,0,1,1], 23:[1,1,0,0,1,1,1,1,0,0,1,1], 24:[1,1,0,0,1,1,1,1,0,0,1,1], 25:[1,1,0,0,1,1,1,1,0,0,1,1], #Raised mild slopes
                           26:[1,0,0,0,1,0,1,1,1,1,0,0], 27:[0,1,0,0,0,1,0,0,1,1,1,1], 28:[0,1,0,0,0,1,0,0,1,1,1,1], 29:[1,0,0,0,1,0,1,1,1,1,0,0], #Short steep slopes
-                          30:[1,1,0,0,1,1,1,1,0,0,1,1], 31:[1,1,0,0,1,1,1,1,0,0,1,1], 32:[1,1,0,0,1,1,1,1,0,0,1,1], 33:[1,1,0,0,1,1,1,1,0,0,1,1]} #Raised steep slopes
+                          30:[1,1,0,0,1,1,1,1,0,0,1,1], 31:[1,1,0,0,1,1,1,1,0,0,1,1], 32:[1,1,0,0,1,1,1,1,0,0,1,1], 33:[1,1,0,0,1,1,1,1,0,0,1,1], #Raised steep slopes
+                          34:[1,1,0,0,0,0,0,0,0,0,0,0], 35:[0,0,0,0,0,0,0,0,0,0,1,1], 36:[0,0,0,0,1,1,0,0,0,0,0,0], 37:[0,0,0,0,0,0,1,1,0,0,0,0]} #Glitched tiles
+                          
     tile_segment_map = {0:[0,0,0,0,0,0,0,0,0,0,0,0], 1:[1,1,0,0,1,1,1,1,0,0,1,1], #Empty and full tiles
                         2:[1,1,1,1,0,0,1,0,0,0,1,0], 3:[0,1,0,0,0,1,0,0,1,1,1,1], 4:[0,0,1,1,1,1,0,1,0,0,0,1], 5:[1,0,0,0,1,0,1,1,1,1,0,0], #Half tiles
-                        6:[1,1,0,0,0,0,1,1,0,0,0,0], 7:[1,1,0,0,0,0,0,0,0,0,1,1], 8:[0,0,0,0,1,1,0,0,0,0,1,1], 9:[0,0,0,0,1,1,1,1,0,0,0,0], #45 degree tiles
+                        6:[1,1,0,0,0,0,1,1,0,0,0,0], 7:[1,1,0,0,0,0,0,0,0,0,1,1], 8:[0,0,0,0,1,1,0,0,0,0,1,1], 9:[0,0,0,0,1,1,1,1,0,0,0,0], #45 degree slopes
                         10:[1,1,0,0,0,0,1,1,0,0,0,0], 11:[1,1,0,0,0,0,0,0,0,0,1,1], 12:[0,0,0,0,1,1,0,0,0,0,1,1], 13:[0,0,0,0,1,1,1,1,0,0,0,0], #Quarter moons
                         14:[1,1,0,0,0,0,1,1,0,0,0,0], 15:[1,1,0,0,0,0,0,0,0,0,1,1], 16:[0,0,0,0,1,1,0,0,0,0,1,1], 17:[0,0,0,0,1,1,1,1,0,0,0,0], #Quarter pipes
                         18:[1,1,0,0,0,0,1,0,0,0,0,0], 19:[1,1,0,0,0,0,0,0,0,0,1,0], 20:[0,0,0,0,1,1,0,0,0,0,0,1], 21:[0,0,0,0,1,1,0,1,0,0,0,0], #Short mild slopes
                         22:[1,1,0,0,0,0,1,1,0,0,1,0], 23:[1,1,0,0,0,0,1,0,0,0,1,1], 24:[0,0,0,0,1,1,0,1,0,0,1,1], 25:[0,0,0,0,1,1,1,1,0,0,0,1], #Raised mild slopes
                         26:[1,0,0,0,0,0,1,1,0,0,0,0], 27:[0,1,0,0,0,0,0,0,0,0,1,1], 28:[0,0,0,0,0,1,0,0,0,0,1,1], 29:[0,0,0,0,1,0,1,1,0,0,0,0], #Short steep slopes
-                        30:[1,1,0,0,1,0,1,1,0,0,0,0], 31:[1,1,0,0,0,1,0,0,0,0,1,1], 32:[0,1,0,0,1,1,0,0,0,0,1,1], 33:[1,0,0,0,1,1,1,1,0,0,0,0]} #Raised steep slopes
+                        30:[1,1,0,0,1,0,1,1,0,0,0,0], 31:[1,1,0,0,0,1,0,0,0,0,1,1], 32:[0,1,0,0,1,1,0,0,0,0,1,1], 33:[1,0,0,0,1,1,1,1,0,0,0,0], #Raised steep slopes
+                        34:[1,1,0,0,0,0,0,0,0,0,0,0], 35:[0,0,0,0,0,0,0,0,0,0,1,1], 36:[0,0,0,0,1,1,0,0,0,0,0,0], 37:[0,0,0,0,0,0,1,1,0,0,0,0]} #Glitched tiles
 
     #put each segment in its correct cell
     for coord, tile_id in tile_dic.items():
         xcoord = coord[0]
         ycoord = coord[1]
-        if tile_id > 33:
+        if tile_id > 37:
             tile_id = 0
         grid_edge_list = tile_grid_edge_map[tile_id]
         segment_list = tile_segment_map[tile_id]
@@ -1409,8 +1424,8 @@ for i in range(len(inputs_list)):
 
     #Print info useful for debug if in manual mode
     if not outte_mode:
-        print(p1.speedlog)
-        print(p1.poslog)
+        print(p1.speedlog[80:90])
+        print(p1.poslog[80:90])
         print(valid_replay)
 
 #Plot the route. Only ran in manual mode.
@@ -1463,5 +1478,3 @@ if tool_mode == "splits" and outte_mode == True:
             print(validlog[i], file=f)
             split = split - frameslog[i] + 1 + goldlog[i][0]*120
             print(split, file=f)
-
-
