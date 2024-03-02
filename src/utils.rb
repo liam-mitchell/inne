@@ -1473,7 +1473,7 @@ end
 def strlen(str, font, pad_x: 0)
   length = 0
   str.each_codepoint{ |c|
-    char = font['char'][c] || wildcard
+    char = font['char'][c] || font['char']['?'.ord]
     length += char['xadvance'] + pad_x
   }
   length

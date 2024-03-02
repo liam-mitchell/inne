@@ -731,7 +731,7 @@ module Map
           ninja_colors_inv = ninja_colors.map{ |c| index[(c >> 8) ^ 0xFFFFFF] }
           ninja_colors.map!{ |c| index[c >> 8] }
           trans_color = index[0x00FF00]
-          gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1)
+          gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1, destroy: true)
           background = Gifenc::Image.new(image.width, image.height, color: bg)
           background.replace(image.pixels.map{ |c| index[c >> 8] || bg })
 
@@ -877,29 +877,30 @@ module Map
                 p1 = timebars[i].first
                 p2 = timebars[i].last
                 p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-                cur_frame.rect(p1[0], p1[1], p2[0] - p1[0] + 1, p2[1] - p1[1] + 1, nil, ninja_colors[i])
+                cur_frame.rect(p1.x, p1.y, p2.x - p1.x + 1, p2.y - p1.y + 1, nil, ninja_colors[i])
 
                 txt2gif(
                   names[i],
                   cur_frame,
                   font,
-                  p1[0] + dim / 4,
-                  p1[1] + dim - 1 - border - 3,
+                  p1.x + dim / 4,
+                  p1.y + dim - 1 - border - 3,
                   ninja_colors_inv[i],
-                  max_width: (p2[0] - p1[0] + 1 - dim - strlen(scores[i], font)).round
+                  max_width: (p2.x - p1.x + 1 - dim - strlen(scores[i], font)).round
                 )
 
                 txt2gif(
                   scores[i],
                   cur_frame,
                   font,
-                  p1[0] + p2[0] - p1[0] + 1 - dim / 4,
-                  p1[1] + dim - 1 - border - 3,
+                  p1.x + p2.x - p1.x + 1 - dim / 4,
+                  p1.y + dim - 1 - border - 3,
                   ninja_colors_inv[i],
                   align: :right
                 )
               end
             }
+            gif.images.last.compress
           end
           gif.images.last.delay = 100
         else
@@ -930,7 +931,9 @@ module Map
       # rb_p(rb_sprintf("x0 = %ld", x0));
       if anim
         if use_gif
+          #profile(:start)
           res = gif.write
+          #profile(:stop)
         else
           `ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
           res = File.binread('frames/anim.mp4')
@@ -1114,6 +1117,10 @@ module Map
     board = parse_board(msg, 'hs')
     perror("Non-highscore modes (e.g. speedrun) are only available for mappacks") if !mappack && board != 'hs'
     perror("Traces are only available for either highscore or speedrun mode") if !['hs', 'sr'].include?(board)
+    if userlevel
+      concurrent_edit(event, tmp_msg, "Updating scores and downloading replays...")
+      level.update_scores(fast: true)
+    end
     leaderboard = level.leaderboard(board, pluck: false)
     ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
     scores = ranks.map{ |r| leaderboard[r] }.compact
@@ -1140,7 +1147,6 @@ module Map
 
     # Export input files
     demos = []
-    concurrent_edit(event, tmp_msg, "Downloading replays...") if userlevel
     File.binwrite('map_data', dump_level)
     scores.each_with_index.map{ |s, i|
       demo = userlevel ? Demo.encode(s.demo) : s.demo.demo
