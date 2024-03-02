@@ -789,9 +789,9 @@ module Map
 
           # Plot lines
           sizes = coords.map(&:size)
-          coords.size.times.each{ |i|
-            coords[i] += [coords[i].last] * (sizes.max - coords[i].size)
-          }
+          #coords.size.times.each{ |i|
+          #  coords[i] += [coords[i].last] * (sizes.max - coords[i].size)
+          #} # No demo padding
           frames = sizes.max
           markers = []
           r = 6
@@ -809,6 +809,7 @@ module Map
                   endpoints << [c_list[f + s][0], c_list[f + s][1]]
                 }
               else
+                next if sizes[i] < f + step
                 frame = [f + step - 1, c_list.size - 1].min
                 endpoints << [c_list[frame][0] - r, c_list[frame][1] - r]
                 endpoints << [c_list[frame][0] - r, c_list[frame][1] + r]
@@ -860,8 +861,9 @@ module Map
                   cur_frame.line(p1: p1, p2: p2, color: ninja_colors[i], weight: 2)
                 }
               }
-            else
+            elsif f < frames - 1
               coords.each_with_index{ |c_list, i|
+                next if sizes[i] < f + step
                 frame = [f + step - 1, c_list.size - 1].min
                 markers << [c_list[frame][0], c_list[frame][1]]
                 p = [c_list[frame][0], c_list[frame][1]]
