@@ -517,7 +517,7 @@ def bench(action, msg = nil)
 end
 
 # Wrapper to do memory profiling for a piece of code
-def profile(action, name = '')
+def profile(action)
   case action
   when :start
     MemoryProfiler.start

@@ -2726,13 +2726,23 @@ end
 # Tests ntrace on many runs (e.g. all Metanet 0ths)
 def test_ntrace(event)
   # Parse params
-  msg     = remove_command(parse_message(event))
-  flags   = parse_flags(msg)
-  tabs    = parse_tabs(flags[:tabs].to_s)
-  mappack = parse_mappack(flags[:mappack].to_s)
-  klass   = mappack ? MappackLevel.where(mappack: mappack) : Level.all
-  klass   = klass.where(tab: tabs) if !tabs.empty?
-  count   = klass.count
+  msg   = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  tabs  = parse_tabs(flags[:tabs].to_s)
+  mode  = parse_mode(flags[:mode].to_s)
+  if flags.key?(:mappack)
+    if flags[:mappack]
+      klass = MappackLevel.where(mappack: parse_mappack(flags[:mappack]))
+    else
+      klass = MappackLevel.where('mappack_id > 0')
+    end
+  else
+    klass = Level.all
+  end
+  klass = klass.where(mode: 0) if flags.key?(:solo)
+  klass = klass.where(tab: tabs) if !tabs.empty?
+  klass = klass.select{ |l| l.tiles.flatten.none?{ |t| t > 33 } } if flags.key?(:glitchless)
+  count = klass.count
 
   # Execute test
   results = klass.each_with_index.map{ |l, i|
@@ -2759,12 +2769,14 @@ def test_ntrace(event)
   block << "-------------\n"
   block << "Total:   #{'%4d' % results.size}"
   event << format_block(block)
-  file = "GOOD: #{good.size}\n\n"
-  file << good.keys.join("\n")
-  file << "\n\nBAD: #{bad.size}\n\n"
+  #file = "GOOD: #{good.size}\n\n"
+  #file << good.keys.join("\n")
+  file = "BAD: #{bad.size}\n\n"
   file << bad.keys.join("\n")
   file << "\n\nERROR: #{error.size}\n\n"
   file << error.keys.join("\n")
+  file << "\n\nOTHER: #{other.size}\n\n"
+  file << other.keys.join("\n")
   send_file(event, file, "ntrace-test.txt", false)
 rescue => e
   lex(e, 'Failed to test ntrace')

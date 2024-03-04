@@ -933,9 +933,7 @@ module Map
       # rb_p(rb_sprintf("x0 = %ld", x0));
       if anim
         if use_gif
-          #profile(:start)
           res = gif.write
-          #profile(:stop)
         else
           `ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
           res = File.binread('frames/anim.mp4')
