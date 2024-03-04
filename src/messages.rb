@@ -2742,6 +2742,7 @@ def test_ntrace(event)
   klass = klass.where(mode: 0) if flags.key?(:solo)
   klass = klass.where(tab: tabs) if !tabs.empty?
   klass = klass.select{ |l| l.tiles.flatten.none?{ |t| t > 33 } } if flags.key?(:glitchless)
+  klass = klass.select{ |l| l.tiles.flatten.any?{ |t| t > 33 } } if flags.key?(:glitchful)
   count = klass.count
 
   # Execute test
@@ -2769,13 +2770,14 @@ def test_ntrace(event)
   block << "-------------\n"
   block << "Total:   #{'%4d' % results.size}"
   event << format_block(block)
-  #file = "GOOD: #{good.size}\n\n"
-  #file << good.keys.join("\n")
-  file = "BAD: #{bad.size}\n\n"
-  file << bad.keys.join("\n")
-  file << "\n\nERROR: #{error.size}\n\n"
-  file << error.keys.join("\n")
-  file << "\n\nOTHER: #{other.size}\n\n"
+  file = ""
+  file << "GOOD: #{good.size}\n\n" if flags.key?(:good)
+  file << good.keys.join("\n") + "\n\n" if flags.key?(:good)
+  file << "BAD: #{bad.size}\n\n"
+  file << bad.keys.join("\n") + "\n\n"
+  file << "ERROR: #{error.size}\n\n"
+  file << error.keys.join("\n") + "\n\n"
+  file << "OTHER: #{other.size}\n\n"
   file << other.keys.join("\n")
   send_file(event, file, "ntrace-test.txt", false)
 rescue => e
