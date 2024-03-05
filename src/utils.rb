@@ -480,7 +480,7 @@ end
 #   output - Return the output as a string
 def shell(cmd, stream: LOG_SHELL, output: false)
   cmd += ' > /dev/null 2>&1' if !stream && !output
-  output ? `#{cmd}` : system(cmd)
+  output ? Open3.capture3(cmd) : system(cmd)
 rescue => e
   lex(e, "Failed to execute shell command: #{cmd}")
 end

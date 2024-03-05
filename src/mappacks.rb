@@ -1155,11 +1155,29 @@ module Map
       File.binwrite("inputs_#{i}", demo)
     }
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    ret = shell("python3 #{PATH_NTRACE}", output: true)
+    stdout, stderr, status = shell("python3 #{PATH_NTRACE}", output: true)
+    ret = stdout + " \n" + stderr
 
     # Read output files
     file = File.binread('output.txt') rescue nil
-    perror("ntrace failed, please contact the botmaster for details.") if file.nil?
+    if file.nil?
+      str = "ntrace failed, please contact the botmaster for details."
+      if debug
+        if ret.length < DISCORD_CHAR_LIMIT - 100
+          str << "\n"
+          str << format_block(ret)
+        else
+          _thread do
+            sleep(0.5)
+            event.send_file(
+              tmp_file(ret, 'ntrace_output.txt', binary: false),
+              caption: 'ntrace output:'
+            )
+          end
+        end
+      end
+      perror(str)
+    end
     valid = file.scan(/True|False/).map{ |b| b == 'True' }
     coords = file.split(/True|False/)[1..-1].map{ |d|
       d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
