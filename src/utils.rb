@@ -479,7 +479,7 @@ end
 #   stream - Show or hide whatever is sent to STDOUT/STDERR
 #   output - Return the output as a string
 def shell(cmd, stream: LOG_SHELL, output: false)
-  cmd += ' > /dev/null 2>&1' if !stream
+  cmd += ' > /dev/null 2>&1' if !stream && !output
   output ? `#{cmd}` : system(cmd)
 rescue => e
   lex(e, "Failed to execute shell command: #{cmd}")
@@ -1490,8 +1490,10 @@ end
 #
 #   Currently implemented roles:
 #     1) botmaster: Only the manager of the bot can execute them (matches
-#                   Discord's user ID with a constant).
-#     2) dmmc: For executing the function to batch-generate screenies of DMMC.
+#                   Discord's user ID with a constant). This role has permission
+#                   to perform any other task as well.
+#     2) dmmc:      For executing the function to batch-generate screenies of DMMC.
+#     3) ntracer:   Those who can update ntrace.
 #
 #   The following functions then check if the user who tried to execute a
 #   certain function belongs to any of the permitted roles for it.
@@ -1505,7 +1507,7 @@ def check_permission(event, role)
   else
     names = Role.owners(role).pluck(:name)
     {
-      granted: Role.exists(event.user.id, role),
+      granted: Role.exists(event.user.id, role) || event.user.id == BOTMASTER_ID,
       allowed: role.pluralize #names
     }
   end

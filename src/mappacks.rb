@@ -1144,6 +1144,7 @@ module Map
     else
       step = ANIMATION_STEP_NORMAL
     end
+    debug = !!msg[/\bdebug\b/i] && check_permission(event, 'ntracer')
 
     # Export input files
     demos = []
@@ -1154,7 +1155,7 @@ module Map
       File.binwrite("inputs_#{i}", demo)
     }
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    shell("python3 #{PATH_NTRACE}", stream: true)
+    ret = shell("python3 #{PATH_NTRACE}", output: true)
 
     # Read output files
     file = File.binread('output.txt') rescue nil
@@ -1194,6 +1195,19 @@ module Map
     end
     ext = anim ? (use_gif ? 'gif' : 'mp4') : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
+    if debug
+      if ret.length < DISCORD_CHAR_LIMIT - 200
+        event << format_block(ret)
+      else
+        _thread do
+          sleep(0.5)
+          event.send_file(
+            tmp_file(ret, 'ntrace_output.txt', binary: false),
+            caption: 'ntrace output:'
+          )
+        end
+      end
+    end
     tmp_msg.first.delete rescue nil
     log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES
   rescue OutteError => e

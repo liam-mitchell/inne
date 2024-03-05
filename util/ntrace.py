@@ -5,7 +5,6 @@ import os.path
 import zlib
 from itertools import product
 
-
 outte_mode = True #Only set to False when manually running the script. Changes what the output of the tool is.
 compressed_inputs = True #Only set to False when manually running the script and using regular uncompressed input files.
 
@@ -1424,8 +1423,8 @@ for i in range(len(inputs_list)):
 
     #Print info useful for debug if in manual mode
     if not outte_mode:
-        print(p1.speedlog[80:90])
-        print(p1.poslog[80:90])
+        print(p1.speedlog)
+        print(p1.poslog)
         print(valid_replay)
 
 #Plot the route. Only ran in manual mode.
