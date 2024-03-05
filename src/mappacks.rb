@@ -416,7 +416,7 @@ module Map
       ppc:     0,                      # Points per coordinate (essentially the scale) (0 = use default)
       h:       nil,                    # Highscoreable to screenshot
       anim:    false,                  # Whether to animate plotted coords or not
-      trace:   false,                   # Whether the animation should be a trace or a moving object
+      trace:   false,                  # Whether the animation should be a trace or a moving object
       use_gif: true,                   # Use GIF or MP4 for animated traces
       step:    ANIMATION_STEP_NORMAL,  # How many frames per frame to trace
       delay:   ANIMATION_DELAY_NORMAL, # Time between frames, in 1/100ths sec

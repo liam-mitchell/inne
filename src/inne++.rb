@@ -149,6 +149,7 @@ def initialize_vars
   $memory_warned_c = false
   $linux           = RbConfig::CONFIG['host_os'] =~ /linux/i
   $mutex           = { ntrace: Mutex.new }
+  $threads         = []
 
   # Set environment variables
   ENV['DISCORDRB_NONACL'] = '1' # Prevent libsodium warning message
@@ -394,10 +395,12 @@ load_config
 connect_db
 create_bot
 setup_bot
-Thread.new do
+start_main_threads
+start_metanet_threads
+_thread do
   run_bot
   set_channels
+  start_discord_threads
 end
-start_threads
 binding.pry if DEBUG
 block_threads

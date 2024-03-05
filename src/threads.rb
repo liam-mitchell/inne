@@ -750,33 +750,50 @@ rescue => e
   retry
 end
 
-# Start all the tasks in this file in independent threads
-def start_threads
-  $threads = []
+# Start all the tasks in this file in independent threads.
+# We separate them in 3 categories:
+# - Main threads: These are completely autonomous threads that don't depend
+#   on any other service being up, such as starting the CLE server or monitoring
+#   memory. They're the first ones to be started.
+# - Metanet threads: These are the ones that perform periodic operations querying
+#   Metanet's database (e.g. to fetch scores or new userlevels). They depend on
+#   their server being up, but we always start them up.
+# - Discord threads: These are the ones that perform Discord-related tasks,
+#   such as posting lotd or the highscoring report. They require a connection
+#   to Discord, which means that they otherwise fail. We start these last, and
+#   only on the condition that the connection has been established.
+
+def start_main_threads
+  $threads << Thread.new { sleep                         } # KEEP FIRST
   $threads << Thread.new { monitor_memory                } if $linux
   $threads << Thread.new { Server::on                    } if SOCKET && !DO_NOTHING
-  $threads << Thread.new { update_status                 } if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
-  $threads << Thread.new { update_twitch                 } if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
+end
+
+def start_metanet_threads
   $threads << Thread.new { start_high_scores             } if (UPDATE_SCORES     || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { start_demos                   } if (UPDATE_DEMOS      || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
-  $threads << Thread.new { start_level_of_the_day(true)  } # No checks here because they're done individually there
-  $threads << Thread.new { start_level_of_the_day(false) } # No checks here because they're done individually there
   $threads << Thread.new { start_userlevel_scores        } if (UPDATE_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { update_all_userlevels         } if (UPDATE_USER_GLOB  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { start_userlevel_histories     } if (UPDATE_USER_HIST  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { start_userlevel_tabs          } if (UPDATE_USER_TABS  || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
+end
+
+def start_discord_threads
+  $threads << Thread.new { update_status                 } if (UPDATE_STATUS     || DO_EVERYTHING) && !DO_NOTHING
+  $threads << Thread.new { update_twitch                 } if (UPDATE_TWITCH     || DO_EVERYTHING) && !DO_NOTHING
+  $threads << Thread.new { start_level_of_the_day(true)  } # No checks here because they're done individually there
+  $threads << Thread.new { start_level_of_the_day(false) } # No checks here because they're done individually there
   $threads << Thread.new { start_report                  } if (REPORT_METANET    || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { start_userlevel_report        } if (REPORT_USERLEVELS || DO_EVERYTHING) && !DO_NOTHING && !OFFLINE_MODE
   $threads << Thread.new { potato                        } if POTATO && !DO_NOTHING
-  $threads << Thread.new { sleep                         }
 end
 
 def block_threads
   log("Loaded outte")
-  $threads.last.join
+  $threads.first.join
 end
 
 def unblock_threads
-  $threads.last.run
+  $threads.first.run
   log("Shut down")
 end
