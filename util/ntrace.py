@@ -5,6 +5,7 @@ import os.path
 import zlib
 from itertools import product
 
+
 OUTTE_MODE = True #Only set to False when manually running the script. Changes what the output of the tool is.
 COMPRESSED_INPUTS = True #Only set to False when manually running the script and using regular uncompressed input files.
 
@@ -1127,6 +1128,7 @@ def get_single_closest_point(xpos, ypos, radius):
     """Find the closest point belonging to a collidable segment from the given position.
     Return result and position of the closest point. The result is 0 if no closest point
     found, 1 if belongs to outside edge, -1 if belongs from inside edge."""
+    
     segments = gather_segments_from_region(xpos-radius, ypos-radius, xpos+radius, ypos+radius)
     shortest_distance = 9999999
     result = 0
@@ -1134,7 +1136,7 @@ def get_single_closest_point(xpos, ypos, radius):
     for segment in segments:
         is_back_facing, a, b = segment.get_closest_point(xpos, ypos)
         distance_sq = (xpos - a)**2 + (ypos - b)**2
-        if not is_back_facing: #Idk why this is in the code.
+        if not is_back_facing: #This is to prioritize correct side collisions when multiple close segments.
             distance_sq -= 0.1
         if distance_sq < shortest_distance:
             shortest_distance = distance_sq
@@ -1380,17 +1382,21 @@ for i in range(len(inputs_list)):
     for coord, state in hor_segment_dic.items():
         if state:
             xcoord, ycoord = coord
+            cell = (math.floor(xcoord/2), math.floor((ycoord - 0.1*state) / 2))
             point1 = (12*xcoord, 12*ycoord)
             point2 = (12*xcoord+12, 12*ycoord)
-            points = (point1, point2) if state == 1 else (point2, point1)
-            segment_dic[(math.floor(xcoord/2), math.floor(ycoord/2))].append(GridSegmentLinear(points[0], points[1]))
+            if state == -1:
+                point1, point2 = point2, point1
+            segment_dic[cell].append(GridSegmentLinear(point1, point2))
     for coord, state in ver_segment_dic.items():
         if state:
             xcoord, ycoord = coord
-            point1 = (12*xcoord, 12*ycoord)
-            point2 = (12*xcoord, 12*ycoord+12)
-            points = (point1, point2) if state == -1 else (point2, point1)
-            segment_dic[(math.floor(xcoord/2), math.floor(ycoord/2))].append(GridSegmentLinear(points[0], points[1]))
+            cell = (math.floor((xcoord - 0.1*state) / 2), math.floor(ycoord/2))
+            point1 = (12*xcoord, 12*ycoord+12)
+            point2 = (12*xcoord, 12*ycoord)
+            if state == -1:
+                point1, point2 = point2, point1
+            segment_dic[cell].append(GridSegmentLinear(point1, point2))
     #initiate player 1 instance of Ninja at spawn coordinates
     xspawn = mdata[1231]*6
     yspawn = mdata[1232]*6
