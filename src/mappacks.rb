@@ -397,10 +397,351 @@ module Map
     # Paint and combine the layers
     masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file(File.join(path, part))] }
     images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id], fast: true) }
-    dims = [ images.map{ |i| i.width }.max, images.map{ |i| i.height }.max ]
+    dims = [ images.map{ |i| i.width }.max || 1, images.map{ |i| i.height }.max || 1]
     output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
     images.each{ |image| output.compose!(image, 0, 0) }
     output
+  end
+
+  # Parse map(s) data, sanitize it, and return objects and tiles conveniently
+  # organized for screenshot generation. Note that objects are sorted by
+  # overlapping preference for the rendering process.
+  def self.parse_maps(maps, v = 1)
+    # Parse objects, remove glitch ones, and normalize bad orientations
+    objects = maps.map{ |m|
+      m.objects(version: v)
+        .reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
+        .sort_by{ |o| -OBJECTS[o[0]][:pref] } # Sort objs by overlap preference
+    }
+    objects.each{ |m|
+      m.each{ |o|
+        o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0]) # Remove glitched orientations
+      }
+    }
+
+    # Parse tiles, add frame, and reject glitch tiles
+    tiles = maps.map{ |m|
+      tile_list = m.tiles(version: v).map(&:dup)
+      tile_list.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
+      tile_list.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
+      tile_list.each{ |row| row.map!{ |t| t > 33 ? 0 : t } }           # Reject glitch tiles
+      tile_list
+    }
+
+    [objects, tiles]
+  end
+
+  # Create an initial image with the right dimensions and color
+  def self.init_image(palette_idx, ppc, h)
+    cols = h.is_level? ? 1 : 5
+    rows = h.is_story? ? 5 : 1
+    dim = 4 * ppc
+    frame = !h.is_level?
+    width = dim * (COLUMNS + 2)
+    height = dim * (ROWS + 2)
+    full_width = cols * width  + (cols - 1) * dim + (frame ? 2 : 0) * dim
+    full_height = rows * height + (rows - 1) * dim + (frame ? 2 : 0) * dim
+    ChunkyPNG::Image.new(full_width, full_height, PALETTE[2, palette_idx])
+  end
+
+  # Initialize the object sprites with the given palette and scale
+  def self.init_objects(objects, palette_idx, ppc = PPC)
+    scale = ppc.to_f / PPC
+    dict = 30.times.map{ |i| [i, {}] }.to_h
+    objects.each{ |m|
+      m.each{ |o|
+        # Skip if this object is already initialized
+        next if dict.key?(o[0]) && dict[o[0]].key?(o[3])
+
+        # Initialize base object image
+        s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
+        base = s ? 1 : 0
+        if !dict[o[0]].key?(base)
+          dict[o[0]][base] = generate_object(o[0], palette_idx, true, s)
+          dict[o[0]][base].resample_bilinear!(
+            (scale * dict[o[0]][base].width).round,
+            (scale * dict[o[0]][base].height).round,
+          ) if ppc != PPC
+        end
+        next if o[3] <= 1
+
+        # Initialize rotated copies
+        case o[3] / 2
+        when 1
+          dict[o[0]][o[3]] = dict[o[0]][base].rotate_right
+        when 2
+          dict[o[0]][o[3]] = dict[o[0]][base].rotate_180
+        when 3
+          dict[o[0]][o[3]] = dict[o[0]][base].rotate_left
+        end
+      }
+    }
+    dict
+  end
+
+  # Initialize the tile sprites with the given palette and scale
+  def self.init_tiles(tiles, palette_idx, ppc = PPC)
+    scale = ppc.to_f / PPC
+    dict = {}
+    tiles.each{ |m|
+      m.each{ |row|
+        row.each{ |t|
+          # Skip if this tile is already initialized
+          next if dict.key?(t) || t <= 1 || t >= 34
+
+          # Initialize base tile image
+          o = (t - 2) % 4                # Orientation
+          base = t - o                   # Base shape
+          if !dict.key?(base)
+            dict[base] = generate_object(base, palette_idx, false)
+            dict[base].resample_bilinear!(
+              (scale * dict[base].width).round,
+              (scale * dict[base].height).round,
+            ) if ppc != PPC
+          end
+          next if base == t
+
+          # Initialize rotated / flipped copies
+          if t >= 2 && t <= 17           # Half tiles and curved slopes
+            case o
+            when 1
+              dict[t] = dict[base].rotate_right
+            when 2
+              dict[t] = dict[base].rotate_180
+            when 3
+              dict[t] = dict[base].rotate_left
+            end
+          elsif t >= 18 && t <= 33       # Small and big straight slopes
+            case o
+            when 1
+              dict[t] = dict[base].flip_vertically
+            when 2
+              dict[t] = dict[base].flip_horizontally.flip_vertically
+            when 3
+              dict[t] = dict[base].flip_horizontally
+            end
+          end
+        }
+      }
+    }
+    dict
+  end
+
+  # Render a list of objects onto a base image, optionally only updating a
+  # given bounding box (for redraws in animations).
+  def self.render_objects(objects, image, ppc: PPC, dict: {}, bbox: nil, frame: true)
+    # Prepare scale params
+    dim = 4 * ppc
+    width = dim * (COLUMNS + 2)
+    height = dim * (ROWS + 2)
+
+    # Draw objects
+    off_x = frame ? dim : 0
+    off_y = frame ? dim : 0
+    objects.each_with_index do |m, i|
+      # Compose images
+      m.each do |o|
+        next if !dict.key?(o[0])
+        r = dict[o[0]].key?(o[3]) ? o[3] : dict[o[0]].keys.first
+        next if r.nil?
+        obj = dict[o[0]][r]
+        image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2) rescue nil
+      end
+
+      # Adjust offsets
+      off_x += width + dim
+      if i % 5 == 4
+        off_x = frame ? dim : 0
+        off_y += height + dim
+      end
+    end
+  end
+
+  # Render a list of tiles onto a base image, optionally only updating a
+  # given bounding box (for redraws in animations).
+  def self.render_tiles(tiles, image, ppc: PPC, dict: {}, bbox: nil, frame: true, palette_idx: 0)
+    # Prepare scale params
+    dim = 4 * ppc
+    width = dim * (COLUMNS + 2)
+    height = dim * (ROWS + 2)
+    color = PALETTE[0, palette_idx]
+
+    # Draw tiles
+    off_x = frame ? dim : 0
+    off_y = frame ? dim : 0
+    tiles.each_with_index do |m, i|
+      m.each_with_index do |slice, row|
+        slice.each_with_index do |t, column|
+          # Empty and full tiles are handled separately
+          next if t == 0
+          if t == 1
+            image.fast_rect(
+              off_x + dim * column,
+              off_y + dim * row,
+              off_x + dim * column + dim - 1,
+              off_y + dim * row + dim - 1,
+              nil,
+              color
+            )
+            next
+          end
+
+          # Compose all other tiles
+          next if !dict.key?(t)
+          image.compose!(dict[t], off_x + dim * column, off_y + dim * row)
+        end
+      end
+
+      # Adjust offsets
+      off_x += width + dim
+      if i % 5 == 4
+        off_x = frame ? dim : 0
+        off_y += height + dim
+      end
+    end
+  end
+
+  def self.render_borders(tiles, image, palette_idx: 0, ppc: PPC, frame: true)
+    # Prepare scale params
+    dim = 4 * ppc
+    width = dim * (COLUMNS + 2)
+    height = dim * (ROWS + 2)
+    thin = ppc <= 6
+
+    # Parse borders and color
+    borders = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
+    bd_color = PALETTE[1, palette_idx]
+
+    # Draw borders
+    off_x = frame ? dim : 0
+    off_y = frame ? dim : 0
+    tiles.each_with_index do |m, i|
+      #                  Frame surrounding entire level
+      if frame
+        image.fast_rect(
+          off_x, off_y, off_x + width - 1, off_y + height - 1, bd_color, nil
+        )
+        image.fast_rect(
+          off_x + 1, off_y + 1, off_x + width - 2, off_y + height - 2, bd_color, nil
+        )
+      end
+
+      #                  Horizontal borders
+      (0 .. ROWS).each do |row|
+        (0 ... 2 * (COLUMNS + 2)).each do |col|
+          tile_a = m[row][col / 2]
+          tile_b = m[row + 1][col / 2]
+          bool = col % 2 == 0 ? (borders[tile_a][3] + borders[tile_b][6]) % 2 : (borders[tile_a][2] + borders[tile_b][7]) % 2
+          image.fast_rect(
+            off_x + dim / 2 * col - (thin ? 0 : 1),
+            off_y + dim * (row + 1) - (thin ? 0 : 1),
+            off_x + dim / 2 * (col + 1) - (thin ? 1 : 0),
+            off_y + dim * (row + 1),
+            nil,
+            bd_color
+          ) if bool == 1
+        end
+      end
+
+      #                  Vertical borders
+      (0 ... 2 * (ROWS + 2)).each do |row|
+        (0 .. COLUMNS).each do |col|
+          tile_a = m[row / 2][col]
+          tile_b = m[row / 2][col + 1]
+          bool = row % 2 == 0 ? (borders[tile_a][0] + borders[tile_b][5]) % 2 : (borders[tile_a][1] + borders[tile_b][4]) % 2
+          image.fast_rect(
+            off_x + dim * (col + 1) - (thin ? 0 : 1),
+            off_y + dim / 2 * row - (thin ? 0 : 1),
+            off_x + dim * (col + 1),
+            off_y + dim / 2 * (row + 1) - (thin ? 1 : 0),
+            nil,
+            bd_color
+          ) if bool == 1
+        end
+      end
+
+      # Adjust offsets
+      off_x += width + dim
+      if i % 5 == 4
+        off_x = frame ? dim : 0
+        off_y += height + dim
+      end
+    end
+  end
+
+  # Render the timbars with names and scores on top of animated GIFs
+  def self.render_timebars(image, names, scores, font, colors, bg, ppc = PPC)
+    dim = 4 * ppc
+    timebars = []
+    n = names.length
+    n.times.each{ |i|
+      j = n - 1 - i
+      dx = (COLUMNS - 2) * dim / 4.0
+      pos_x = (dim * 1.25 + i * (dim / 2.0 + dx)).round
+      pos_y = 1
+
+      # Timebar rectangle
+      timebars[j] = [
+        [pos_x               , pos_y          ],
+        [pos_x + dx.round - 1, pos_y          ],
+        [pos_x               , pos_y + dim - 1],
+        [pos_x + dx.round - 1, pos_y + dim - 1]
+      ]
+      image.rect(pos_x, pos_y, dx.round, dim, colors[j], bg, weight: 2, anchor: 0)
+
+      # Name
+      txt2gif(
+        names[j],
+        image,
+        font,
+        pos_x + dim / 4,
+        pos_y + dim - 1 - 2 - 3,
+        colors[j],
+        max_width: (dx - dim - strlen(scores[j], font)).round
+      )
+
+      # Score
+      txt2gif(
+        scores[j],
+        image,
+        font,
+        pos_x + dx - dim / 4,
+        pos_y + dim - 1 - 2 - 3,
+        colors[j],
+        align: :right
+      )
+
+      image.line(
+        p1: [pos_x + dx - dim / 2 - strlen(scores[j], font), pos_y],
+        p2: [pos_x + dx - dim / 2 - strlen(scores[j], font), pos_y + dim - 1],
+        color: colors[j]
+      )
+    }
+    timebars
+  end
+
+  def self.update_timebars
+
+  end
+
+  # Build a Global Color Table (a GIF palette) from a ChunkyPNG image
+  def self.init_gct(image, ninja_colors)
+    # Since each color table supports a max of 256 colors, we sort the colors by
+    # frequency and take the top 256 ones (we usually have way fewer).
+    frequencies = Hash.new(0)
+    image.pixels.each{ |color| frequencies[color] += 1 }
+    colors = frequencies.sort_by{ |color, freq| -freq }
+                        .take(246)
+                        .map{ |c| c[0] >> 8 }
+    palette = Gifenc::ColorTable.new(colors).compact
+
+    # Add the 4 ninja colors and their inverse ones, as well as a weird color
+    # to use for transparency
+    ninja_colors.each{ |c| palette.add(c >> 8) }
+    ninja_colors.each{ |c| palette.add((c >> 8) ^ 0xFFFFFF) }
+    palette.add(TRANSPARENT_COLOR)
+
+    palette
   end
 
   # Generate a PNG screenshot of a level in the chosen palette.
@@ -429,269 +770,52 @@ module Map
     bench(:start) if BENCHMARK
 
     res = _fork do
-      # Parse palette and colors
+      # Parse palette
       bench(:start) if BENCH_IMAGES
       return nil if h.nil?
       themes = THEMES.map(&:downcase)
-      theme = theme.downcase
-      if !themes.include?(theme) then theme = DEFAULT_PALETTE end
+      theme.downcase!
+      theme = DEFAULT_PALETTE if !themes.include?(theme)
       palette_idx = themes.index(theme)
-      bg_color = PALETTE[2, palette_idx]
-      fg_color = PALETTE[0, palette_idx]
       anim = false if !FEATURE_ANIMATE
-      legend = anim && !coords.empty? && !texts.empty?
 
-      # Prepare map data and other graphic params
-      if h.is_a?(Levelish)
-        maps = [h]
-        ppc = ppc == 0 ? (anim ? ANIMATION_SCALE : SCREENSHOT_SCALE_LEVEL) : ppc
-        cols = 1
-        rows = 1
-      elsif h.is_a?(Episodish)
-        maps = h.levels
-        ppc = ppc == 0 ? SCREENSHOT_SCALE_EPISODE : ppc
-        cols = 5
-        rows = 1
-      else
-        maps = h.episodes.map{ |e| e.levels }.flatten
-        ppc = ppc == 0 ? SCREENSHOT_SCALE_STORY : ppc
-        cols = 5
-        rows = 5
+      # Prepare map data and map scale
+      maps = h.is_level? ? [h] : h.levels
+      if ppc == 0
+        ppc = (anim ? ANIMATION_SCALE : SCREENSHOT_SCALE_LEVEL) if h.is_level?
+        ppc = SCREENSHOT_SCALE_EPISODE if h.is_episode?
+        ppc = SCREENSHOT_SCALE_STORY if h.is_story?
       end
+      dim = 4 * ppc
+      frame = !h.is_level?
 
-      # Compute scale params
-      dim = 4 * ppc          # Dimension of a tile, in pixels
-      ppu = dim.to_f / UNITS # Pixels per in-game unit
-      scale = ppc.to_f / PPC # Scale of screenshot
-      pad_x = 0
-      pad_y = 0
-
-      # Initialize image
-      frame = !h.is_a?(Levelish)
-      width = dim * (COLUMNS + 2)
-      height = dim * (ROWS + 2)
-      full_width = cols * width  + (cols - 1) * dim + (frame ? 2 : 0) * dim
-      full_height = rows * height + (rows - 1) * dim + (frame ? 2 : 0) * dim
-      canvas_width = full_width + (legend ? pad_x : 0)
-      canvas_height = full_height + (legend ? pad_y : 0)
-      image = ChunkyPNG::Image.new(canvas_width, canvas_height, bg_color)
+      # Initialize base image
+      image = init_image(palette_idx, ppc, h)
       next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
 
       # Parse map
-      tiles = maps.map{ |m| m.tiles(version: v).map(&:dup) }
-      objects = maps.map{ |m|
-        m.objects(version: v)
-         .reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
-         .sort_by{ |o| -OBJECTS[o[0]][:pref] } # Sort objs by overlap preference
-      }
-      objects.each{ |m|
-        m.each{ |o|
-          o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0]) # Remove glitched orientations
-        }
-      }
+      objects, tiles = parse_maps(maps, v)
       bench(:step, 'Parse     ') if BENCH_IMAGES
 
       # Initialize tile images
-      tile = {}
-      tiles.each{ |m|
-        m.each{ |row|
-          row.each{ |t|
-            # Skip if this tile is already initialized
-            next if tile.key?(t) || t <= 1 || t >= 34
-
-            # Initialize base tile image
-            o = (t - 2) % 4                # Orientation
-            base = t - o                   # Base shape
-            if !tile.key?(base)
-              tile[base] = generate_object(base, palette_idx, false)
-              tile[base].resample_bilinear!(
-                (scale * tile[base].width).round,
-                (scale * tile[base].height).round,
-              ) if ppc != PPC
-            end
-            next if base == t
-
-            # Initialize rotated / flipped copies
-            if t >= 2 && t <= 17           # Half tiles and curved slopes
-              case o
-              when 1
-                tile[t] = tile[base].rotate_right
-              when 2
-                tile[t] = tile[base].rotate_180
-              when 3
-                tile[t] = tile[base].rotate_left
-              end
-            elsif t >= 18 && t <= 33       # Small and big straight slopes
-              case o
-              when 1
-                tile[t] = tile[base].flip_vertically
-              when 2
-                tile[t] = tile[base].flip_horizontally.flip_vertically
-              when 3
-                tile[t] = tile[base].flip_horizontally
-              end
-            end
-          }
-        }
-      }
+      tile_dict = init_tiles(tiles, palette_idx, ppc)
       bench(:step, 'Init tiles') if BENCH_IMAGES
 
       # Initialize object images
-      object = 30.times.map{ |i| [i, {}] }.to_h
-      objects.each{ |m|
-        m.each{ |o|
-          # Skip if this object is already initialized
-          next if object.key?(o[0]) && object[o[0]].key?(o[3])
-
-          # Initialize base object image
-          s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
-          base = s ? 1 : 0
-          if !object[o[0]].key?(base)
-            object[o[0]][base] = generate_object(o[0], palette_idx, true, s)
-            object[o[0]][base].resample_bilinear!(
-              (scale * object[o[0]][base].width).round,
-              (scale * object[o[0]][base].height).round,
-            ) if ppc != PPC
-          end
-          next if o[3] <= 1
-
-          # Initialize rotated copies
-          case o[3] / 2
-          when 1
-            object[o[0]][o[3]] = object[o[0]][base].rotate_right
-          when 2
-            object[o[0]][o[3]] = object[o[0]][base].rotate_180
-          when 3
-            object[o[0]][o[3]] = object[o[0]][base].rotate_left
-          end
-        }
-      }
+      object_dict = init_objects(objects, palette_idx, ppc)
       bench(:step, 'Init objs ') if BENCH_IMAGES
 
-      # Parse tile borders
-      border = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-
       # Draw objects
-      off_x = frame ? dim : 0
-      off_y = frame ? dim : 0
-      objects.each_with_index do |m, i|
-        # Compose images
-        m.each do |o|
-          next if !object.key?(o[0])
-          r = object[o[0]].key?(o[3]) ? o[3] : object[o[0]].keys.first
-          next if r.nil?
-          obj = object[o[0]][r]
-          image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2) rescue nil
-        end
-
-        # Adjust offsets
-        off_x += width + dim
-        if i % 5 == 4
-          off_x = frame ? dim : 0
-          off_y += height + dim
-        end
-      end
+      render_objects(objects, image, ppc: ppc, dict: object_dict, frame: frame)
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
-      off_x = frame ? dim : 0
-      off_y = frame ? dim : 0
-      tiles.each_with_index do |m, i|
-        # Prepare tiles
-        m.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
-        m.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
-        m.each{ |row| row.map!{ |t| t > 33 ? 0 : t } }           # Reject glitch tiles
-
-        # Draw images
-        m.each_with_index do |slice, row|
-          slice.each_with_index do |t, column|
-            # Empty and full tiles are handled separately
-            next if t == 0
-            if t == 1
-              image.fast_rect(
-                off_x + dim * column,
-                off_y + dim * row,
-                off_x + dim * column + dim - 1,
-                off_y + dim * row + dim - 1,
-                nil,
-                fg_color
-              )
-              next
-            end
-
-            # Compose all other tiles
-            next if !tile.key?(t)
-            image.compose!(tile[t], off_x + dim * column, off_y + dim * row)
-          end
-        end
-
-        # Adjust offsets
-        off_x += width + dim
-        if i % 5 == 4
-          off_x = frame ? dim : 0
-          off_y += height + dim
-        end
-      end
+      render_tiles(tiles, image, ppc: ppc, dict: tile_dict, frame: frame, palette_idx: palette_idx)
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
-      bd_color = PALETTE[1, palette_idx]
-      off_x = frame ? dim : 0
-      off_y = frame ? dim : 0
-      thin = ppc <= 6
-      tiles.each_with_index do |m, i|
-        #                  Frame surrounding entire level
-        if frame
-          image.fast_rect(
-            off_x, off_y, off_x + width - 1, off_y + height - 1, bd_color, nil
-          )
-          image.fast_rect(
-            off_x + 1, off_y + 1, off_x + width - 2, off_y + height - 2, bd_color, nil
-          )
-        end
-
-        #                  Horizontal borders
-        (0 .. ROWS).each do |row|
-          (0 ... 2 * (COLUMNS + 2)).each do |col|
-            tile_a = m[row][col / 2]
-            tile_b = m[row + 1][col / 2]
-            bool = col % 2 == 0 ? (border[tile_a][3] + border[tile_b][6]) % 2 : (border[tile_a][2] + border[tile_b][7]) % 2
-            image.fast_rect(
-              off_x + dim / 2 * col - (thin ? 0 : 1),
-              off_y + dim * (row + 1) - (thin ? 0 : 1),
-              off_x + dim / 2 * (col + 1) - (thin ? 1 : 0),
-              off_y + dim * (row + 1),
-              nil,
-              bd_color
-            ) if bool == 1
-          end
-        end
-
-        #                  Vertical borders
-        (0 ... 2 * (ROWS + 2)).each do |row|
-          (0 .. COLUMNS).each do |col|
-            tile_a = m[row / 2][col]
-            tile_b = m[row / 2][col + 1]
-            bool = row % 2 == 0 ? (border[tile_a][0] + border[tile_b][5]) % 2 : (border[tile_a][1] + border[tile_b][4]) % 2
-            image.fast_rect(
-              off_x + dim * (col + 1) - (thin ? 0 : 1),
-              off_y + dim / 2 * row - (thin ? 0 : 1),
-              off_x + dim * (col + 1),
-              off_y + dim / 2 * (row + 1) - (thin ? 1 : 0),
-              nil,
-              bd_color
-            ) if bool == 1
-          end
-        end
-
-        # Adjust offsets
-        off_x += width + dim
-        if i % 5 == 4
-          off_x = frame ? dim : 0
-          off_y += height + dim
-        end
-      end
+      render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
       # Plot routes
@@ -705,6 +829,7 @@ module Map
         scores = texts.map{ |t| t[/\d+:(.*)-(.*)/, 2].strip }
 
         # Scale coordinates
+        ppu = dim.to_f / UNITS
         coords.each{ |c_list|
           c_list.each{ |coord|
             coord.map!{ |c| (ppu * c).round }
@@ -712,86 +837,25 @@ module Map
         }
 
         if use_gif
-          # Build GIF palette. Since each palette only supports a max of 256 colors,
-          # we sort the colors by frequency and take the top 256 ones (usually we
-          # actually have way fewer).
-          frequencies = Hash.new(0)
-          image.pixels.each{ |color| frequencies[color] += 1 }
-          colors = frequencies.sort_by{ |color, freq| -freq }
-                              .take(246)
-                              .map{ |c| c[0] >> 8 }
-          palette = Gifenc::ColorTable.new(colors).compact
-          ninja_colors.each{ |c| palette.add(c >> 8) }
-          ninja_colors.each{ |c| palette.add((c >> 8) ^ 0xFFFFFF) }
-          palette.add(0x00FF00)
+          # Initialize GIF palette
+          palette = init_gct(image, ninja_colors)
           index = palette.colors.compact.each_with_index.to_h
 
           # Construct GIF and add background image
-          bg = index[bg_color >> 8]
+          bg = index[PALETTE[2, palette_idx] >> 8]
           ninja_colors_inv = ninja_colors.map{ |c| index[(c >> 8) ^ 0xFFFFFF] }
           ninja_colors.map!{ |c| index[c >> 8] }
-          trans_color = index[0x00FF00]
+          trans_color = index[TRANSPARENT_COLOR]
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1, destroy: true)
-          background = Gifenc::Image.new(image.width, image.height, color: bg)
-          background.replace(image.pixels.map{ |c| index[c >> 8] || bg })
+          gif.images << Gifenc::Image.new(image.width, image.height, color: bg)
+          gif.images.first.replace(image.pixels.map{ |c| index[c >> 8] || bg })
 
           # Timebars and legend
-          if legend
-            timebars = []
-            font = parse_bmfont('retro')
-            n.times.each{ |i|
-              j = n - 1 - i
-              border = 2
-              dx = (COLUMNS - 2) * dim / 4.0
-              pos_x = (dim * 1.25 + i * (dim / 2.0 + dx)).round
-              pos_y = 1
-              color = ninja_colors[j]
-
-              # Timebar rectangle
-              timebars[j] = [
-                [pos_x               , pos_y          ],
-                [pos_x + dx.round - 1, pos_y          ],
-                [pos_x               , pos_y + dim - 1],
-                [pos_x + dx.round - 1, pos_y + dim - 1]
-              ]
-              background.rect(pos_x, pos_y, dx.round, dim, color, bg, weight: border, anchor: 0)
-
-              # Name
-              txt2gif(
-                names[j],
-                background,
-                font,
-                pos_x + dim / 4,
-                pos_y + dim - 1 - border - 3,
-                color,
-                max_width: (dx - dim - strlen(scores[j], font)).round
-              )
-
-              # Score
-              txt2gif(
-                scores[j],
-                background,
-                font,
-                pos_x + dx - dim / 4,
-                pos_y + dim - 1 - border - 3,
-                color,
-                align: :right
-              )
-
-              background.line(
-                p1: [pos_x + dx - dim / 2 - strlen(scores[j], font), pos_y],
-                p2: [pos_x + dx - dim / 2 - strlen(scores[j], font), pos_y + dim - 1],
-                color: color
-              )
-            }
-          end
-          gif.images << background
+          font = parse_bmfont(TIMEBAR_FONT)
+          timebars = render_timebars(gif.images.first, names, scores, font, ninja_colors, bg, ppc)
 
           # Plot lines
           sizes = coords.map(&:size)
-          #coords.size.times.each{ |i|
-          #  coords[i] += [coords[i].last] * (sizes.max - coords[i].size)
-          #} # No demo padding
           frames = sizes.max
           markers = []
           r = 6
@@ -840,7 +904,7 @@ module Map
             if !trace
               markers.each{ |p|
                 cur_frame.copy(
-                  source: background,
+                  source: gif.images.first,
                   offset: [p[0] - r, p[1] - r],
                   dim:    [2 * r + 1, 2 * r + 1],
                   dest:   Gifenc::Geometry.transform([[p[0] - r, p[1] - r]], bbox)[0]
@@ -886,7 +950,7 @@ module Map
                   cur_frame,
                   font,
                   p1.x + dim / 4,
-                  p1.y + dim - 1 - border - 3,
+                  p1.y + dim - 1 - 2 - 3,
                   ninja_colors_inv[i],
                   max_width: (p2.x - p1.x + 1 - dim - strlen(scores[i], font)).round
                 )
@@ -896,7 +960,7 @@ module Map
                   cur_frame,
                   font,
                   p1.x + p2.x - p1.x + 1 - dim / 4,
-                  p1.y + dim - 1 - border - 3,
+                  p1.y + dim - 1 - 2 - 3,
                   ninja_colors_inv[i],
                   align: :right
                 )
@@ -904,7 +968,7 @@ module Map
             }
             gif.images.last.compress
           end
-          gif.images.last.delay = 100
+          gif.exhibit(100)
         else
           # Video output using FFmpeg, we generate each new frame fully
           sizes = coords.map(&:size)

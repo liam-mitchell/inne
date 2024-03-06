@@ -173,6 +173,12 @@ ANIMATION_DELAY_NORMAL = 2 # Time, in 1/100ths of a second, between GIF frames (
 ANIMATION_DELAY_SLOW   = 3
 ANIMATION_DELAY_VSLOW  = 5
 
+# Colors
+TRANSPARENT_COLOR = 0x00FF00
+
+# Fonts
+TIMEBAR_FONT = 'retro'
+
 # <---------------------------------------------------------------------------->
 # <------                      FEATURE VARIABLES                         ------>
 # <---------------------------------------------------------------------------->
