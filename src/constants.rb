@@ -165,11 +165,13 @@ SCREENSHOT_SCALE_EPISODE = 3
 SCREENSHOT_SCALE_STORY   = 2
 
 # For animated traces
-ANIMATION_SCALE        = 4
-ANIMATION_STEP_NORMAL  = 1 # How many frames to trace per GIF frame
+ANIMATION_SCALE        = 4   # Scale of GIF
+ANIMATION_RADIUS       = 6   # Radius of ninja balls in pixels
+ANIMATION_EXHIBIT      = 100 # Showcase final frame for 1 second before looping
+ANIMATION_STEP_NORMAL  = 1   # How many frames to trace per GIF frame
 ANIMATION_STEP_FAST    = 3
 ANIMATION_STEP_VFAST   = 6
-ANIMATION_DELAY_NORMAL = 2 # Time, in 1/100ths of a second, between GIF frames (min. 2)
+ANIMATION_DELAY_NORMAL = 2   # Time between GIF frames (min. 2)
 ANIMATION_DELAY_SLOW   = 3
 ANIMATION_DELAY_VSLOW  = 5
 
@@ -177,7 +179,7 @@ ANIMATION_DELAY_VSLOW  = 5
 TRANSPARENT_COLOR = 0x00FF00
 
 # Fonts
-TIMEBAR_FONT = 'retro'
+FONT_TIMEBAR = 'retro'
 
 # <---------------------------------------------------------------------------->
 # <------                      FEATURE VARIABLES                         ------>
