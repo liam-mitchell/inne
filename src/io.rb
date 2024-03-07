@@ -63,6 +63,29 @@ def compute_pages(count = 1, page = 1, pagesize = PAGE_SIZE)
   { page: page, pages: pages, offset: offset }
 end
 
+# Given a list, page through it by sending messages to Discord with only
+# a page of it (of given offset and length), together with buttons to
+# navigate the pages interactively.
+def pager(event, page, header: "Results", list: [], size: PAGE_SIZE, rails: true, pluck: [])
+  # Format header
+  page = parse_page(parse_message(event), page, false, event.message.components)
+  pag = compute_pages(list.count, page)
+  header << " (#{list.count} matches):"
+
+  # Format list
+  list = rails ? list.offset(pag[:offset]).limit(size) : list[pag[:offset], size]
+  list = list.pluck(*pluck) if rails && !pluck.empty?
+  list.map!{ |e| yield(e) } if block_given?
+  list = list.join("\n")
+  header << format_block(list)
+
+  # Send message with buttons
+  view = Discordrb::Webhooks::View.new
+  interaction_add_button_navigation(view, pag[:page], pag[:pages]) unless pag[:pages] == 1
+  send_message(event, content: header, components: view)
+  perror
+end
+
 # Parse game mode from string. If explicit is set, one of the 3 modes must be
 # set (defaulting to 'solo'), otherwise, it defaults to 'all', or nil if
 # 'null' is true
@@ -792,8 +815,8 @@ def parse_title_and_author(msg, full = true)
   [title, author, msg]
 end
 
-def parse_author(msg, rais = true)
-  UserlevelAuthor.parse(parse_userlevel_author(msg))
+def parse_author(event, rais = true)
+  UserlevelAuthor.parse(parse_userlevel_author(parse_message(event)), event: event)
 rescue
   raise if rais
   nil
@@ -801,11 +824,12 @@ end
 
 # Parse a userlevel from a message by looking for a title or an ID, as well as
 # an author or author ID, optionally.
-def parse_userlevel(msg, userlevel = nil)
+def parse_userlevel(event, userlevel = nil)
   # --- PARSE message elements
 
+  msg = parse_message(event)
   title, author, msg = parse_title_and_author(msg, true)
-  author = UserlevelAuthor.parse(author)
+  author = UserlevelAuthor.parse(author, event: event)
   if userlevel
     return {
       query:  userlevel,

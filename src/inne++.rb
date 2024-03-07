@@ -53,7 +53,7 @@
 #                                                                              #
 # 2)  Configure the database environment in ./db/config.yml, by either:        #
 #       - Setting up the "outte" environment, or                               #
-#       - Creating a new one, and renaming the DATABASE constant.              #     
+#       - Creating a new one, and renaming the DATABASE constant.              #
 #     If you don't need to change anything, the default outte environment      #
 #     provided in that file should work well.                                  #
 #                                                                              #
@@ -232,10 +232,10 @@ def craft_response(event, func)
 rescue OutteError => e
   # These exceptions are manually triggered errors, usually user errors that
   # we may want to log back to Discord
-  
+
   err(e.message.strip) if e.log && !e.message.strip.empty?
 
-  if e.discord
+  if e.discord && !e.message.strip.empty?
     if event.is_a?(Discordrb::Events::Respondable)
       event << e
     else
@@ -245,7 +245,7 @@ rescue OutteError => e
 rescue => e
   # These exceptions are internal errors, so send warning to the channel and
   # log full trace to the terminal/log file
-  
+
   lex(e, "Error parsing message.", event: event)
 end
 
@@ -350,7 +350,7 @@ rescue => e
   exit
 end
 
-# Start running the bot, and set up an interrupt trigger to shut it down 
+# Start running the bot, and set up an interrupt trigger to shut it down
 def run_bot
   $bot.run(true)
   trap("INT") { shutdown }

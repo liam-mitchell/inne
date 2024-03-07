@@ -79,7 +79,8 @@ class UserlevelAuthor < ActiveRecord::Base
   #     1 - Return author
   #   <20 - Print matches
   #  >=20 - Raise error of too many matches
-  def self.parse(term, aliases = true)
+  def self.parse(term = nil, aliases = true, event: nil, page: nil)
+    term = parse_userlevel_author(parse_message(event)) if !term && event
     if term.is_a?(Integer)
       p = self.find(term) rescue nil
       perror("Userlevel author with ID #{verbatim(term)} not found.") if p.nil?
@@ -88,6 +89,8 @@ class UserlevelAuthor < ActiveRecord::Base
     perror("Couldn't parse userlevel author.") if !term.is_a?(String)
     return nil if term.empty?
     p = self.where_like('name', term[0...16])
+    multiple = "Authors by \"#{term}\" - Please refine name or use ID instead"
+
     case p.count
     when 0
       perror("No author found by the name #{verbatim(term)}.") if !aliases
@@ -98,18 +101,21 @@ class UserlevelAuthor < ActiveRecord::Base
       when 1
         return p.first
       else
-        perror("Too many author matches! (#{p.count}). Please refine author name.") if p.count > 20
-        matches = p.map{ |a| "#{"%6d" % a.id} - #{a.name}" }.join("\n")
-        perror("Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}")
+        perror("Too many author matches! (#{p.count}). Please refine author name.") if !event
+        pager(event, page, header: multiple, list: p, pluck: [:id, :name]){ |s|
+          "#{"%6d" % s[0]} - #{s[1]}"
+        }
       end
     when 1
       return p.first
     else
-      perror("Too many author matches! (#{p.count}). Please refine author name.") if p.count > 20
-      matches = p.pluck(:id, :name).map{ |id, name| "#{"%6d" % id} - #{name}" }.join("\n")
-      perror("Multiple matching authors found, please refine name or use author ID instead:\n#{format_block(matches)}")
+      perror("Too many author matches! (#{p.count}). Please refine author name.") if !event
+      pager(event, page, header: multiple, list: p, pluck: [:id, :name]){ |s|
+        "#{"%6d" % s[0]} - #{s[1]}"
+      }
     end
-  rescue
+  rescue => e
+    lex(e, 'Failed to parse userlevel author.')
     nil
   end
 
@@ -906,10 +912,10 @@ def send_userlevel_browse(
     search = search.to_s # Prev func might return int
     search = unescape(search) if search.is_a?(String)
     author = unescape(author) if author.is_a?(String)
-    author = UserlevelAuthor.parse(author)
+    author = UserlevelAuthor.parse(author, event: event)
   else
     search = query[:title]
-    author = UserlevelAuthor.parse(query[:author])
+    author = UserlevelAuthor.parse(query[:author], event: event)
   end
   page = parse_page(msg, page, reset_page)
   mode = MODES.select{ |k, v| v == (mode || parse_mode(msg, true)) }.keys.first
@@ -1047,7 +1053,7 @@ end
 # We pass in the msg (instead of extracting it from the event)
 # because it might've been modified by the caller function already.
 def send_userlevel_individual(event, msg, userlevel = nil, &block)
-  map = parse_userlevel(msg, userlevel)
+  map = parse_userlevel(event, userlevel)
   case map[:count]
   when 0
     event << map[:msg]
@@ -1144,7 +1150,7 @@ def send_userlevel_rankings(event)
   ties      = parse_ties(msg)
   full      = parse_full(msg)
   global    = parse_global(msg)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   type      = ""
 
@@ -1202,7 +1208,7 @@ end
 def send_userlevel_count(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
   rank      = parse_rank(msg) || 20
@@ -1264,7 +1270,7 @@ end
 def send_userlevel_points(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
   full      = parse_global(msg)
@@ -1282,7 +1288,7 @@ end
 def send_userlevel_avg_points(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
   full      = parse_global(msg)
@@ -1299,7 +1305,7 @@ end
 def send_userlevel_avg_rank(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
   full      = parse_global(msg)
@@ -1316,7 +1322,7 @@ end
 def send_userlevel_total_score(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
   max       = Userlevel.find_max(:score, full, nil, author_id)
@@ -1332,7 +1338,7 @@ end
 def send_userlevel_avg_lead(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
   full      = parse_global(msg)
@@ -1349,7 +1355,7 @@ end
 def send_userlevel_list(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   rank      = parse_rank(msg) || 20
   bott      = parse_bottom_rank(msg) || 0
@@ -1374,7 +1380,7 @@ end
 def send_userlevel_stats(event)
   msg       = parse_message(event)
   player    = parse_player(event, true)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   ties      = parse_ties(msg)
   full      = parse_global(msg)
@@ -1425,7 +1431,7 @@ end
 def send_userlevel_maxed(event)
   msg       = parse_message(event)
   player    = parse_player(event, true, true, false)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
   ties      = Userlevel.ties(player.nil? ? nil : player.id, true, full, false, nil, author_id)
@@ -1445,7 +1451,7 @@ end
 def send_userlevel_maxable(event)
   msg       = parse_message(event)
   player    = parse_player(event, true, true, false)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
   ties      = Userlevel.ties(player.nil? ? nil : player.id, false, full, false, nil, author_id)
@@ -1466,7 +1472,7 @@ end
 
 def send_random_userlevel(event)
   msg       = parse_message(event)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   amount    = [(msg[/\d+/] || 1).to_i, PAGE_SIZE].min
   mode      = parse_mode(msg, true)
@@ -1490,7 +1496,7 @@ end
 def send_userlevel_mapping_summary(event)
   # Parse message parameters
   msg       = parse_message(event)
-  author    = UserlevelAuthor.parse(parse_userlevel_both(msg))
+  author    = UserlevelAuthor.parse(parse_userlevel_both(msg), event: event)
   author_id = !author.nil? ? author.id : nil
   mode      = parse_mode(msg, false, true)
 
@@ -1533,7 +1539,7 @@ def send_userlevel_highscoring_summary(event)
   # Parse message parameters
   msg       = parse_message(event)
   player    = parse_player(event, true, true, false)
-  author    = parse_author(msg, false)
+  author    = parse_author(event, false)
   author_id = !author.nil? ? author.id : nil
   full      = parse_global(msg)
   mode      = parse_mode(msg, false, true)

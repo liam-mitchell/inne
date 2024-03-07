@@ -2784,6 +2784,21 @@ rescue => e
   lex(e, 'Failed to test ntrace')
 end
 
+# Update a userlevel author's name and add a new A.K.A.
+def rename_author(event)
+  msg   = remove_command(parse_message(event))
+  flags = parse_flags(msg)
+  id = flags[:id]
+  name = flags[:name]
+  perror("Usage: !rename_author -id ID -name NAME") unless !!id && !!name
+  author = UserlevelAuthor.find_by(id: id.to_i)
+  perror("No userlevel author with ID #{id}.") unless author
+  author.rename(name)
+  event << "Renamed author #{id} to #{verbatim(name)}."
+rescue => e
+  lex(e, 'Failed to rename author.')
+end
+
 # Special commands can only be executed by the botmaster, and are intended to
 # manage the bot on the fly without having to restart it, or to print sensitive
 # information.
@@ -2836,6 +2851,7 @@ def respond_special(event)
   return userlevel_completions(event)    if cmd == 'userlevel_completions'
   return send_delete_score(event)        if cmd == 'delete_score'
   return test_ntrace(event)              if cmd == 'test_ntrace'
+  return rename_author(event)            if cmd == 'rename_author'
 
   event << "Unsupported special command."
 end
