@@ -403,32 +403,78 @@ module Map
     output
   end
 
+  # Given a bounding box (rectangle), return the range of grid cells intersected
+  # by it. The neighbouring cells may also be optionally included.
+  def self.gather_cells(bbox, ppc, neighbours = false)
+    dim = 4 * ppc
+    pad = neighbours ? 1 : 0
+    x_min = [bbox[0] / dim - pad, 0].max
+    y_min = [bbox[1] / dim - pad, 0].max
+    x_max = [(bbox[0] + bbox[2] - 1) / dim + pad, COLUMNS + 1].min
+    y_max = [(bbox[1] + bbox[3] - 1) / dim + pad, ROWS + 1].min
+    [x_min, y_min, x_max, y_max]
+  end
+
+  # Gather a list of all the objects that intersect a given rectangle (X, Y, W, H)
+  # and its neighbouring cells. The list is sorted by drawing preference.
+  # Notes:
+  # - We are ignoring out of bounds objects (frame is included though).
+  # - The coordinates of that bbox are given with respect to the image's
+  #   dimensions, so they must be rescaled by the ppc.
+  def self.gather_objects(objects, bbox, ppc)
+    dim = 4 * ppc
+    x_min, y_min, x_max, y_max = gather_cells(bbox, ppc, true)
+    objs = []
+    (x_min .. x_max).each{ |x|
+      (y_min .. y_max).each{ |y|
+        objs.push(*objects[x][y])
+      }
+    }
+    objs.sort_by{ |o| -OBJECTS[o[0]][:pref] }
+  end
+
   # Parse map(s) data, sanitize it, and return objects and tiles conveniently
   # organized for screenshot generation. Note that objects are sorted by
   # overlapping preference for the rendering process.
   def self.parse_maps(maps, v = 1)
     # Parse objects, remove glitch ones, and normalize bad orientations
-    objects = maps.map{ |m|
-      m.objects(version: v)
+    objects = maps.map{ |map|
+      map.objects(version: v)
         .reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
         .sort_by{ |o| -OBJECTS[o[0]][:pref] } # Sort objs by overlap preference
     }
-    objects.each{ |m|
-      m.each{ |o|
+    objects.each{ |map|
+      map.each{ |o|
         o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0]) # Remove glitched orientations
       }
     }
 
+    # Build an object dictionary keyed on row and column, for fast access, akin
+    # to GridEntity
+    object_dicts = maps.map{
+      (COLUMNS + 2).times.map{ |t|
+        [t, (ROWS + 2).times.map{ |s| [s, []] }.to_h]
+      }.to_h
+    }
+    objects.each_with_index{ |map, i|
+      map.each{ |o|
+        x = o[1] / 4
+        y = o[2] / 4
+        next if x < 0 || x > COLUMNS + 1 || y < 0 || y > ROWS + 1
+        object_dicts[i][x][y] << o
+      }
+    }
+
     # Parse tiles, add frame, and reject glitch tiles
-    tiles = maps.map{ |m|
-      tile_list = m.tiles(version: v).map(&:dup)
+    tiles = maps.map{ |map|
+      tile_list = map.tiles(version: v).map(&:dup)
       tile_list.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
       tile_list.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
       tile_list.each{ |row| row.map!{ |t| t > 33 ? 0 : t } }           # Reject glitch tiles
       tile_list
     }
 
-    [objects, tiles]
+    [objects_dicts, tiles]
   end
 
   # Create an initial image with the right dimensions and color
@@ -447,56 +493,60 @@ module Map
   # Initialize the object sprites with the given palette and scale
   def self.init_objects(objects, palette_idx, ppc = PPC)
     scale = ppc.to_f / PPC
-    dict = 30.times.map{ |i| [i, {}] }.to_h
-    objects.each{ |m|
-      m.each{ |o|
-        # Skip if this object is already initialized
-        next if dict.key?(o[0]) && dict[o[0]].key?(o[3])
+    atlas = 30.times.map{ |i| [i, {}] }.to_h
+    objects.each{ |map|
+      map.each{ |col, hash|
+        hash.each{ |row, objs|
+          objs.each{ |o|
+            # Skip if this object is already initialized
+            next if atlas.key?(o[0]) && atlas[o[0]].key?(o[3])
 
-        # Initialize base object image
-        s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
-        base = s ? 1 : 0
-        if !dict[o[0]].key?(base)
-          dict[o[0]][base] = generate_object(o[0], palette_idx, true, s)
-          dict[o[0]][base].resample_bilinear!(
-            (scale * dict[o[0]][base].width).round,
-            (scale * dict[o[0]][base].height).round,
-          ) if ppc != PPC
-        end
-        next if o[3] <= 1
+            # Initialize base object image
+            s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
+            base = s ? 1 : 0
+            if !atlas[o[0]].key?(base)
+              atlas[o[0]][base] = generate_object(o[0], palette_idx, true, s)
+              atlas[o[0]][base].resample_bilinear!(
+                (scale * atlas[o[0]][base].width).round,
+                (scale * atlas[o[0]][base].height).round,
+              ) if ppc != PPC
+            end
+            next if o[3] <= 1
 
-        # Initialize rotated copies
-        case o[3] / 2
-        when 1
-          dict[o[0]][o[3]] = dict[o[0]][base].rotate_right
-        when 2
-          dict[o[0]][o[3]] = dict[o[0]][base].rotate_180
-        when 3
-          dict[o[0]][o[3]] = dict[o[0]][base].rotate_left
-        end
+            # Initialize rotated copies
+            case o[3] / 2
+            when 1
+              atlas[o[0]][o[3]] = atlas[o[0]][base].rotate_right
+            when 2
+              atlas[o[0]][o[3]] = atlas[o[0]][base].rotate_180
+            when 3
+              atlas[o[0]][o[3]] = atlas[o[0]][base].rotate_left
+            end
+          }
+        }
       }
     }
-    dict
+    atlas
   end
 
   # Initialize the tile sprites with the given palette and scale
   def self.init_tiles(tiles, palette_idx, ppc = PPC)
     scale = ppc.to_f / PPC
-    dict = {}
-    tiles.each{ |m|
-      m.each{ |row|
+    atlas = {}
+    tiles.each{ |map|
+      map.each{ |row|
         row.each{ |t|
           # Skip if this tile is already initialized
-          next if dict.key?(t) || t <= 1 || t >= 34
+          next if atlas.key?(t) || t <= 1 || t >= 34
 
           # Initialize base tile image
           o = (t - 2) % 4                # Orientation
           base = t - o                   # Base shape
-          if !dict.key?(base)
-            dict[base] = generate_object(base, palette_idx, false)
-            dict[base].resample_bilinear!(
-              (scale * dict[base].width).round,
-              (scale * dict[base].height).round,
+          if !atlas.key?(base)
+            atlas[base] = generate_object(base, palette_idx, false)
+            atlas[base].resample_bilinear!(
+              (scale * atlas[base].width).round,
+              (scale * atlas[base].height).round,
             ) if ppc != PPC
           end
           next if base == t
@@ -505,46 +555,50 @@ module Map
           if t >= 2 && t <= 17           # Half tiles and curved slopes
             case o
             when 1
-              dict[t] = dict[base].rotate_right
+              atlas[t] = atlas[base].rotate_right
             when 2
-              dict[t] = dict[base].rotate_180
+              atlas[t] = atlas[base].rotate_180
             when 3
-              dict[t] = dict[base].rotate_left
+              atlas[t] = atlas[base].rotate_left
             end
           elsif t >= 18 && t <= 33       # Small and big straight slopes
             case o
             when 1
-              dict[t] = dict[base].flip_vertically
+              atlas[t] = atlas[base].flip_vertically
             when 2
-              dict[t] = dict[base].flip_horizontally.flip_vertically
+              atlas[t] = atlas[base].flip_horizontally.flip_vertically
             when 3
-              dict[t] = dict[base].flip_horizontally
+              atlas[t] = atlas[base].flip_horizontally
             end
           end
         }
       }
     }
-    dict
+    atlas
   end
 
   # Render a list of objects onto a base image, optionally only updating a
   # given bounding box (for redraws in animations).
-  def self.render_objects(objects, image, ppc: PPC, dict: {}, bbox: nil, frame: true)
+  def self.render_objects(objects, image, ppc: PPC, atlas: {}, bbox: nil, frame: true)
     # Prepare scale params
     dim = 4 * ppc
     width = dim * (COLUMNS + 2)
     height = dim * (ROWS + 2)
+    bbox = [0, 0, width, height] if !bbox
 
     # Draw objects
     off_x = frame ? dim : 0
     off_y = frame ? dim : 0
-    objects.each_with_index do |m, i|
-      # Compose images
-      m.each do |o|
-        next if !dict.key?(o[0])
-        r = dict[o[0]].key?(o[3]) ? o[3] : dict[o[0]].keys.first
+    objects.each_with_index do |map, i|
+      # Compose images, only for those objects intersecting the bbox
+      # TODO:
+      # - Actually intersect each object's image with the bbox when composing.
+      # - We need 2 methods: ChunkyPNG and Gifenc.
+      gather_objects(map, bbox, ppc).each do |o|
+        next if !atlas.key?(o[0])
+        r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
         next if r.nil?
-        obj = dict[o[0]][r]
+        obj = atlas[o[0]][r]
         image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2) rescue nil
       end
 
@@ -559,19 +613,30 @@ module Map
 
   # Render a list of tiles onto a base image, optionally only updating a
   # given bounding box (for redraws in animations).
-  def self.render_tiles(tiles, image, ppc: PPC, dict: {}, bbox: nil, frame: true, palette_idx: 0)
+  def self.render_tiles(tiles, image, ppc: PPC, atlas: {}, bbox: nil, frame: true, palette_idx: 0)
     # Prepare scale params
     dim = 4 * ppc
     width = dim * (COLUMNS + 2)
     height = dim * (ROWS + 2)
     color = PALETTE[0, palette_idx]
+    bbox = [0, 0, width, height] if !bbox
+    x_min, y_min, x_max, y_max = gather_cells(bbox, ppc, true)
 
     # Draw tiles
     off_x = frame ? dim : 0
     off_y = frame ? dim : 0
-    tiles.each_with_index do |m, i|
-      m.each_with_index do |slice, row|
+    tiles.each_with_index do |map, i|
+      map.each_with_index do |slice, row|
+        # Only care about tiles within the given cell range
+        next if row < y_min
+        break if row > y_max
         slice.each_with_index do |t, column|
+          next if t < x_min
+          break if t > x_max
+          # TODO:
+          # - Actually intersect each tile's image with the bbox when composing.
+          # - We need 2 methods: ChunkyPNG and Gifenc.
+
           # Empty and full tiles are handled separately
           next if t == 0
           if t == 1
@@ -587,8 +652,8 @@ module Map
           end
 
           # Compose all other tiles
-          next if !dict.key?(t)
-          image.compose!(dict[t], off_x + dim * column, off_y + dim * row)
+          next if !atlas.key?(t)
+          image.compose!(atlas[t], off_x + dim * column, off_y + dim * row)
         end
       end
 
@@ -832,7 +897,8 @@ module Map
     end
   end
 
-  # Draw a single frame and export to PNG
+  # Draw a single frame and export to PNG. They will later be joined into an
+  # MP4 using FFmpeg.
   def self.draw_frame_vid(image, coords, f, colors)
     coords.each_with_index{ |c_list, i|
       image.line(
@@ -924,19 +990,19 @@ module Map
       bench(:step, 'Parse     ') if BENCH_IMAGES
 
       # Initialize tile images
-      tile_dict = init_tiles(tiles, palette_idx, ppc)
+      tile_atlas = init_tiles(tiles, palette_idx, ppc)
       bench(:step, 'Init tiles') if BENCH_IMAGES
 
       # Initialize object images
-      object_dict = init_objects(objects, palette_idx, ppc)
+      object_atlas = init_objects(objects, palette_idx, ppc)
       bench(:step, 'Init objs ') if BENCH_IMAGES
 
       # Draw objects
-      render_objects(objects, image, ppc: ppc, dict: object_dict, frame: frame)
+      render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame)
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
-      render_tiles(tiles, image, ppc: ppc, dict: tile_dict, frame: frame, palette_idx: palette_idx)
+      render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx)
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
@@ -957,9 +1023,9 @@ module Map
 
         # Scale coordinates
         ppu = dim.to_f / UNITS
-        coords.each{ |c_list|
-          c_list.each{ |coord|
-            coord.map!{ |c| (ppu * c).round }
+        pixel_coords = coords.map{ |c_list|
+          c_list.map{ |coord|
+            coord.map{ |c| (ppu * c).round }
           }
         }
 
@@ -988,7 +1054,7 @@ module Map
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
 
             # Find bounding box for this frame
-            bbox = find_frame_bbox(f, coords, step, markers, trace: trace, ppc: ppc)
+            bbox = find_frame_bbox(f, pixel_coords, step, markers, trace: trace, ppc: ppc)
             break if !bbox
             done = sizes.map{ |s| s.between?(f + (trace ? 2 : step), f + step + 1) }
 
@@ -1004,7 +1070,7 @@ module Map
             erase_markers(gif, markers, bbox) if !trace
 
             # Draw trace chunks
-            markers = draw_frame_gif(gif, coords, f, step, trace, bbox, ninja_colors)
+            markers = draw_frame_gif(gif, pixel_coords, f, step, trace, bbox, ninja_colors)
 
             # Draw other elements
             render_timebars(gif.images.last, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc, bbox)
@@ -1021,7 +1087,7 @@ module Map
           frames = sizes.max
           for f in (0 .. frames - 2) do
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
-            draw_frame_vid(image, coords, f, ninja_colors)
+            draw_frame_vid(image, pixel_coords, f, ninja_colors)
           end
         end
         bench(:step, 'Routes    ') if BENCH_IMAGES
@@ -1029,6 +1095,7 @@ module Map
 
       # rb_p(rb_str_new_cstr("Hello, world!"));
       # rb_p(rb_sprintf("x0 = %ld", x0));
+
       # Export result
       if anim
         if use_gif
