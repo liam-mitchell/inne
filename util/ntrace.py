@@ -141,24 +141,23 @@ class Ninja:
             if entity.is_physical_collidable:
                 depen = entity.physical_collision(self)
                 if depen:
-                    depen_x = depen[0]
-                    depen_y = depen[1]
-                    depen_len = math.sqrt(depen_x**2 + depen_y**2)
-                    self.xpos += depen_x
-                    self.ypos += depen_y
+                    depen_x, depen_y = depen[0]
+                    depen_len = depen[1][0]
+                    self.xpos += depen_x * depen_len
+                    self.ypos += depen_y * depen_len
                     if entity.type in (17, 20, 28): #Depenetration for bounce blocks, thwumps and shwumps.
-                        self.xspeed += depen_x
-                        self.yspeed += depen_y
+                        self.xspeed += depen_x * depen_len
+                        self.yspeed += depen_y * depen_len
                     if entity.type == 11: #Depenetration for one ways
                         if depen_len:
-                            xspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * depen_y
-                            yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) / depen_len**2 * (-depen_x)
+                            xspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) * depen_y
+                            yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) * (-depen_x)
                             self.xspeed = xspeed_new
                             self.yspeed = yspeed_new
                     if depen_y < 0: 
                         self.floor_count += 1
-                        self.floor_normal_x += depen_x / depen_len
-                        self.floor_normal_y += depen_y / depen_len
+                        self.floor_normal_x += depen_x
+                        self.floor_normal_y += depen_y
 
     def collide_vs_tiles(self):
         """Gather all tile segments in neighbourhood and handle collisions with those."""
@@ -201,7 +200,9 @@ class Ninja:
                 self.floor_normal_y += dy/dist
     
     def post_collision(self):
-        """Perform logical collisions with entities, check for walled state and calculate floor normals."""
+        """Perform logical collisions with entities, check for airborn state,
+        check for walled state and calculate floor normals.
+        """
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
         wall_normal = 0
@@ -529,9 +530,12 @@ class GridSegmentCircular:
         self.ypos = center[1]
         self.hor = quadrant[0]
         self.ver = quadrant[1]
+        self.radius = radius
+        #The following two variables are the position of the two extremities of arc.
+        self.p_hor = (self.xpos + self.radius*self.hor, self.ypos)
+        self.p_ver = (self.xpos, self.ypos + self.radius*self.ver)
         self.active = True
         self.type = "circular"
-        self.radius = radius
         self.convex = convex
 
     def get_closest_point(self, xpos, ypos):
@@ -548,18 +552,20 @@ class GridSegmentCircular:
             is_back_facing = dist < self.radius if self.convex else dist > self.radius
         else: #If closer to edges of arc, find position of closest point of the two.
             if dx * self.hor > dy * self.ver:
-                a = self.xpos + self.hor*self.radius
-                b = self.ypos
+                a, b = self.p_hor
             else:
-                a = self.xpos
-                b = self.ypos + self.ver*self.radius
+                a, b = self.p_ver
         return is_back_facing, a, b
     
     def intersect_with_ray(self, xpos, ypos, dx, dy, radius):
         """Return the time of intersection (as a fraction of a frame) for the closest point in the ninja's path.
         Return 0 if the ninja is already intersection or 1 if won't intersect within the frame.
         """
-        pass #TODO
+        time1 = get_time_of_intersection_circle_vs_circle(xpos, ypos, dx, dy, self.p_hor[0], self.p_hor[1], radius)
+        time2 = get_time_of_intersection_circle_vs_circle(xpos, ypos, dx, dy, self.p_ver[0], self.p_ver[1], radius)
+        time3 = get_time_of_intersection_circle_vs_arc(xpos, ypos, dx, dy, self.xpos, self.ypos,
+                                                       self.hor, self.ver, self.radius, radius)
+        return min(time1, time2, time3)
 
 
 class Entity:
@@ -644,26 +650,33 @@ class EntityDoorBase(Entity):
         self.closed = True
         self.sw_xpos = 6 * sw_xcoord
         self.sw_ypos = 6 * sw_ycoord
-        self.grid_segment_coords = []
         self.is_vertical = orientation in (0, 4)
         vec = map_orientation_to_vector(orientation)
+        #Find the cell that the door is in for the grid segment.
+        door_xcell = math.floor((self.xpos - 12*vec[0]) / 24)
+        door_ycell = math.floor((self.ypos - 12*vec[1]) / 24)
+        door_cell = clamp_cell(door_xcell, door_ycell)
+        #Find the half cell of the door for the grid edges.
+        door_half_xcell = 2*(door_cell[0] + 1)
+        door_half_ycell = 2*(door_cell[1] + 1)
+        #Create the grid segment and grid edges.
+        self.grid_edges = []
         if self.is_vertical:
             self.segment = GridSegmentLinear((self.xpos, self.ypos-12), (self.xpos, self.ypos+12),
                                              oriented=False)
-            self.grid_segment_coords.append((math.ceil(self.xpos/12)-1, math.ceil(self.ypos/12)-1))
-            self.grid_segment_coords.append((math.ceil(self.xpos/12)-1, math.ceil(self.ypos/12)))
-            for coord in self.grid_segment_coords:
-                sim.ver_grid_edge_dic[coord] += 1
+            self.grid_edges.append((door_half_xcell, door_half_ycell-2))
+            self.grid_edges.append((door_half_xcell, door_half_ycell-1))
+            for grid_edge in self.grid_edges:
+                sim.ver_grid_edge_dic[grid_edge] += 1
         else:
             self.segment = GridSegmentLinear((self.xpos-12, self.ypos), (self.xpos+12, self.ypos),
                                              oriented=False)
-            self.grid_segment_coords.append((math.ceil(self.xpos/12)-1, math.ceil(self.ypos/12)-1))
-            self.grid_segment_coords.append((math.ceil(self.xpos/12), math.ceil(self.ypos/12)-1))
-            for coord in self.grid_segment_coords:
-                sim.hor_grid_edge_dic[coord] += 1
-        seg_cell = clamp_cell(math.floor((self.xpos - 12*vec[0]) / 24), 
-                              math.floor((self.ypos - 12*vec[1]) / 24))
-        sim.segment_dic[seg_cell].append(self.segment)
+            self.grid_edges.append((door_half_xcell-2, door_half_ycell))
+            self.grid_edges.append((door_half_xcell-1, door_half_ycell))
+            for grid_edge in self.grid_edges:
+                sim.hor_grid_edge_dic[grid_edge] += 1
+        sim.segment_dic[door_cell].append(self.segment)
+        #Update position and cell so it corresponds to the switch and not the door.
         self.xpos = self.sw_xpos
         self.ypos = self.sw_ypos
         self.cell = clamp_cell(math.floor(self.xpos / 24), math.floor(self.ypos / 24))
@@ -672,11 +685,11 @@ class EntityDoorBase(Entity):
         """Change the state of the door from closed to open or from open to closed."""
         self.closed = closed
         self.segment.active = closed
-        for coord in self.grid_segment_coords:
+        for grid_edge in self.grid_edges:
             if self.is_vertical:
-                sim.ver_grid_edge_dic[coord] += 1 if closed else -1
+                sim.ver_grid_edge_dic[grid_edge] += 1 if closed else -1
             else:
-                sim.hor_grid_edge_dic[coord] += 1 if closed else -1
+                sim.hor_grid_edge_dic[grid_edge] += 1 if closed else -1
 
 
 class EntityDoorRegular(EntityDoorBase):
@@ -778,9 +791,7 @@ class EntityOneWayPlatform(Entity):
                     dy_old = ninja.ypos_old - self.ypos
                     normal_dist_old = dx_old * self.normal_x + dy_old * self.normal_y
                     if ninja.RADIUS - normal_dist_old <= 1.1:
-                        depen_x = self.normal_x * (ninja.RADIUS - normal_dist)
-                        depen_y = self.normal_y * (ninja.RADIUS - normal_dist)
-                        return (depen_x, depen_y)
+                        return (self.normal_x, self.normal_y), (ninja.RADIUS - normal_dist, 0)
 
     def physical_collision(self, ninja):
         return self.calculate_depenetration(ninja)
@@ -824,22 +835,21 @@ class EntityBounceBlock(Entity):
         """Apply 80% of the depenetration to the bounce block and 20% to the ninja."""
         depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
                                             self.SEMI_SIDE + ninja.RADIUS)
-        depen_x, depen_y = depen
-        depen_len = abs(depen_x) + abs(depen_y)
-        if depen_len > 0:
-            self.xpos -= depen_x * (1-self.STRENGTH)
-            self.ypos -= depen_y * (1-self.STRENGTH)
-            self.xspeed -= depen_x * (1-self.STRENGTH)
-            self.yspeed -= depen_y * (1-self.STRENGTH)
-            return (depen_x * self.STRENGTH, depen_y * self.STRENGTH)
+        if depen:
+            depen_x, depen_y = depen[0]
+            depen_len = depen[1][0]
+            self.xpos -= depen_x * depen_len * (1-self.STRENGTH)
+            self.ypos -= depen_y * depen_len * (1-self.STRENGTH)
+            self.xspeed -= depen_x * depen_len * (1-self.STRENGTH)
+            self.yspeed -= depen_y * depen_len * (1-self.STRENGTH)
+            return (depen_x, depen_y), (depen_len * self.STRENGTH, depen[1][1])
         
     def logical_collision(self, ninja):
         """Check if the ninja can interact with the wall of the bounce block"""
         depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
                                             self.SEMI_SIDE + ninja.RADIUS + 0.1)
-        depen_x = depen[0]
-        if depen_x:
-            return depen_x/abs(depen_x)
+        if depen:
+            return depen[0][0]
         
 
 class EntityThwump(Entity):
@@ -908,16 +918,16 @@ class EntityThwump(Entity):
                     thwump_xcell1 = math.floor((self.xpos - 11) / 12)
                     thwump_xcell2 = math.floor((self.xpos + 11) / 12)
                     dy = ninja_ycell - thwump_ycell
-                    if dy * self.direction < 0:
-                        return
-                    while dy * self.direction >= 0:
+                    if dy * self.direction >= 0:
+                        while abs(thwump_ycell) <= 100:
+                            if not is_empty_row(thwump_xcell1, thwump_xcell2, thwump_ycell, self.direction):
+                                dy = ninja_ycell - thwump_ycell
+                                if dy * self.direction < 0:
+                                    self.state = 1
+                                return
+                            thwump_ycell += self.direction
                         if dy == 0:
                             self.state = 1
-                            return
-                        if not is_empty_row(thwump_xcell1, thwump_xcell2, thwump_ycell, self.direction):
-                            return
-                        thwump_ycell += self.direction
-                        dy = ninja_ycell - thwump_ycell
             else:
                 if abs(self.ypos - ninja.ypos) < activation_range: #If the ninja is in the activation range
                     ninja_xcell = math.floor(ninja.xpos / 12)
@@ -925,29 +935,26 @@ class EntityThwump(Entity):
                     thwump_ycell1 = math.floor((self.ypos - 11) / 12)
                     thwump_ycell2 = math.floor((self.ypos + 11) / 12)
                     dx = ninja_xcell - thwump_xcell
-                    if dx * self.direction < 0:
-                        return
-                    while dx * self.direction >= 0:
+                    if dx * self.direction >= 0:
+                        while abs(thwump_xcell) <= 100:
+                            if not is_empty_column(thwump_xcell, thwump_ycell1, thwump_ycell2, self.direction):
+                                dx = ninja_xcell - thwump_xcell
+                                if dx * self.direction < 0:
+                                    self.state = 1
+                                return
+                            thwump_xcell += self.direction
                         if dx == 0:
                             self.state = 1
-                            return
-                        if not is_empty_column(thwump_xcell, thwump_ycell1, thwump_ycell2, self.direction):
-                            return
-                        thwump_xcell += self.direction
-                        dx = ninja_xcell - thwump_xcell
 
     def physical_collision(self, ninja):
-        depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
-                                          self.SEMI_SIDE + ninja.RADIUS)
-        if depen != (0, 0):
-            return depen
+        return penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
+                                           self.SEMI_SIDE + ninja.RADIUS)
     
     def logical_collision(self, ninja):
         depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
                                           self.SEMI_SIDE + ninja.RADIUS + 0.1)
-        depen_x = depen[0]
-        if depen_x:
-            return depen_x/abs(depen_x)
+        if depen:
+            return depen[0][0]
 
 
 class EntityBoostPad(Entity):
@@ -1038,28 +1045,28 @@ class EntityShoveThwump(Entity):
         if self.state <= 1:
             depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
                                                 self.SEMI_SIDE + ninja.RADIUS)
-            if depen != (0, 0):
-                if self.state == 0 or self.xdir * depen[0] + self.ydir * depen[1] >= 0.01:
+            if depen:
+                depen_x, depen_y = depen[0]
+                if self.state == 0 or self.xdir * depen_x + self.ydir * depen_y >= 0.01:
                     return depen
 
     def logical_collision(self, ninja):
         depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
                                             self.SEMI_SIDE + ninja.RADIUS + 0.1)
-        if depen != (0, 0) and self.state <= 1:
+        if depen and self.state <= 1:
+            depen_x, depen_y = depen[0]
             if self.state == 0:
                 self.activated = True
-                depen_x, depen_y = depen
-                depen_len = abs(depen_x) + abs(depen_y)
-                self.xdir = depen_x/depen_len
-                self.ydir = depen_y/depen_len
-                self.state = 1
+                if depen[1][1] > 0.2:
+                    self.xdir = depen_x
+                    self.ydir = depen_y
+                    self.state = 1
             elif self.state == 1:
-                if self.xdir * depen[0] + self.ydir * depen[1] >= 0.01:
+                if self.xdir * depen_x + self.ydir * depen_y >= 0.01:
                     self.activated = True
                 else:
                     return               
-            if depen[0]:
-                return depen[0]/abs(depen[0])
+            return depen_x
 
 
 class Simulator:
@@ -1306,7 +1313,7 @@ class Simulator:
         for entity in self.entity_list:
             if entity.is_thinkable and entity.active:
                 entity.think()
-
+        
         self.ninja.integrate() #Do preliminary speed and position updates.
         self.ninja.pre_collision() #Do pre collision calculations.
         for _ in range(4):
@@ -1355,9 +1362,8 @@ def sweep_circle_vs_tiles(xpos_old, ypos_old, dx, dy, radius):
     segments = gather_segments_from_region(x1, y1, x2, y2)
     shortest_time = 1
     for segment in segments:
-        if segment.type == "linear": #This temporary check is not needed once routine with circular tiles is added.
-            time = segment.intersect_with_ray(xpos_old, ypos_old, dx, dy, radius)
-            shortest_time = min(time, shortest_time)
+        time = segment.intersect_with_ray(xpos_old, ypos_old, dx, dy, radius)
+        shortest_time = min(time, shortest_time)
     return shortest_time
 
 def get_time_of_intersection_circle_vs_circle(xpos, ypos, vx, vy, a, b, radius):
@@ -1365,12 +1371,12 @@ def get_time_of_intersection_circle_vs_circle(xpos, ypos, vx, vy, a, b, radius):
     dx = xpos - a
     dy = ypos - b
     dist_sq = dx**2 + dy**2
-    radius_sq = radius**2
     vel_sq = vx**2 + vy**2
     dot_prod = dx * vx + dy * vy
-    if (dist_sq - radius_sq) > 0:
-        if vel_sq > 0.0001 and dot_prod < 0 and dot_prod**2 >= vel_sq * (dist_sq - radius_sq):
-            return (-dot_prod - math.sqrt(dot_prod**2 - vel_sq * (dist_sq - radius_sq))) / vel_sq
+    if dist_sq - radius**2 > 0:
+        radicand = dot_prod**2 - vel_sq * (dist_sq - radius**2)
+        if vel_sq > 0.0001 and dot_prod < 0 and radicand >= 0:
+            return (-dot_prod - math.sqrt(radicand)) / vel_sq
         return 1
     return 0
 
@@ -1395,9 +1401,32 @@ def get_time_of_intersection_circle_vs_lineseg(xpos, ypos, dx, dy, a1, b1, a2, b
             return 0
     return 1
 
-def get_time_of_intersection_circle_vs_arc():
-    """Return time of intersection by interpolation by sweeping a circle onto a circle arc."""
-    pass #TODO
+def get_time_of_intersection_circle_vs_arc(xpos, ypos, vx, vy, a, b, hor, ver,
+                                           radius_arc, radius_circle):
+    """Return time of intersection by interpolation by sweeping a circle onto a circle arc.
+    This algorithm assumes the radius of the circle is lesser than the radius of the arc.
+    """
+    dx = xpos - a
+    dy = ypos - b
+    dist_sq = dx**2 + dy**2
+    vel_sq = vx**2 + vy**2
+    dot_prod = dx * vx + dy * vy
+    radius1 = radius_arc + radius_circle
+    radius2 = radius_arc - radius_circle
+    t = 1
+    if dist_sq > radius1**2:
+        radicand = dot_prod**2 - vel_sq * (dist_sq - radius1**2)
+        if vel_sq > 0.0001 and dot_prod < 0 and radicand >= 0:
+            t = (-dot_prod - math.sqrt(radicand)) / vel_sq
+    elif dist_sq < radius2**2:
+        radicand = dot_prod**2 - vel_sq * (dist_sq - radius2**2)
+        if vel_sq > 0.0001:
+            t = min((-dot_prod + math.sqrt(radicand)) / vel_sq, 1)
+    else:
+        t = 0
+    if (dx + t*vx) * hor > 0 and (dy + t*vy) * ver > 0:
+        return t
+    return 1
 
 def get_single_closest_point(xpos, ypos, radius):
     """Find the closest point belonging to a collidable segment from the given position.
@@ -1425,10 +1454,11 @@ def overlap_circle_vs_circle(xpos1, ypos1, radius1, xpos2, ypos2, radius2):
     return dist < radius1 + radius2
 
 def penetration_square_vs_point(s_xpos, s_ypos, p_xpos, p_ypos, semi_side):
-    """Return the depenetration vector to depenetrate a point out of a square.
+    """If a point is inside an orthogonal square, return the orientation of the shortest vector
+    to depenetate the point out of the square, and return the penetrations on both axis.
     The square is defined by its center and semi side length. In the case of depenetrating the
-    ninja out of square entity (bounce block, thwump...), we consider a square of with a semi side
-    equal to the semi side of the entity plus the radius of the ninja.
+    ninja out of square entity (bounce block, thwump, shwump), we consider a square of with a
+    semi side equal to the semi side of the entity plus the radius of the ninja.
     """
     dx = p_xpos - s_xpos
     dy = p_ypos - s_ypos
@@ -1436,9 +1466,12 @@ def penetration_square_vs_point(s_xpos, s_ypos, p_xpos, p_ypos, semi_side):
     peny = semi_side - abs(dy)
     if  penx > 0 and peny > 0:
         if peny <= penx:
-            return (0, -peny) if dy < 0 else (0, peny)
-        return (-penx, 0) if dx < 0 else (penx, 0)
-    return (0, 0)
+            depen_normal = (0, -1) if dy < 0 else (0, 1)
+            depen_values = (peny, penx)
+        else:
+            depen_normal = (-1, 0) if dx < 0 else (1, 0)
+            depen_values = (penx, peny)
+        return depen_normal, depen_values
 
 def map_orientation_to_vector(orientation):
     """Return a normalized vector pointing in the direction of the orientation.
@@ -1457,21 +1490,29 @@ def clamp_cell(xcell, ycell):
     ycell = min(ycell, 24)
     return (xcell, ycell)
 
+def clamp_half_cell(xcell, ycell):
+    """If necessary, adjust coordinates of half cell so it is in bounds."""
+    xcell = max(xcell, 0)
+    xcell = min(xcell, 88)
+    ycell = max(ycell, 0)
+    ycell = min(ycell, 50)
+    return (xcell, ycell)
+
 def is_empty_row(xcoord1, xcoord2, ycoord, dir):
     """Return true if the cell has no solid horizontal edge in the specified direction."""
     xcoords = range(xcoord1, xcoord2+1)
     if dir == 1:
-        return not any(sim.hor_grid_edge_dic[xcoord, ycoord+1] for xcoord in xcoords)
+        return not any(sim.hor_grid_edge_dic[clamp_half_cell(xcoord, ycoord+1)] for xcoord in xcoords)
     if dir == -1:
-        return not any(sim.hor_grid_edge_dic[xcoord, ycoord] for xcoord in xcoords)
+        return not any(sim.hor_grid_edge_dic[clamp_half_cell(xcoord, ycoord)] for xcoord in xcoords)
     
 def is_empty_column(xcoord, ycoord1, ycoord2, dir):
     """Return true if the cell has no solid vertical edge in the specified direction."""
     ycoords = range(ycoord1, ycoord2+1)
     if dir == 1:
-        return not any(sim.ver_grid_edge_dic[xcoord+1, ycoord] for ycoord in ycoords)
+        return not any(sim.ver_grid_edge_dic[clamp_half_cell(xcoord+1, ycoord)] for ycoord in ycoords)
     if dir == -1:
-        return not any(sim.ver_grid_edge_dic[xcoord, ycoord] for ycoord in ycoords)
+        return not any(sim.ver_grid_edge_dic[clamp_half_cell(xcoord, ycoord)] for ycoord in ycoords)
 
 
 xposlog = []
