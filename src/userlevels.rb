@@ -1068,12 +1068,17 @@ def send_userlevel_individual(event, msg, userlevel = nil, &block)
 end
 
 def send_userlevel_demo_download(event)
-  msg = clean_userlevel_message(parse_message(event))
-  msg = remove_word_first(msg, 'download')
+  msg = parse_message(event)
+  msg.sub!(/(for|of)?\w*userlevel\w*/i, '')
+  msg.sub!(/\w*download\w*/i, '')
+  msg.sub!(/\w*replay\w*/i, '')
+  msg.squish!
   send_userlevel_individual(event, msg){ |map|
     h     = map[:query]
-    rank  = [parse_range(msg).first, map[:query].scores.size - 1].min
-    score = map[:query].scores[rank]
+    h.update_scores
+    rank  = [parse_range(msg).first, h.scores.size - 1].min
+    score = h.scores[rank]
+    perror("This userlevel has no scores.") if !score
 
     output = "Downloading #{rank.ordinalize} score by `#{score.player.name}` "
     output += "(#{"%.3f" % [score.score / 60.0]}) in userlevel #{verbatim(h.title)} "
@@ -1088,8 +1093,10 @@ rescue => e
 end
 
 def send_userlevel_download(event)
-  msg = clean_userlevel_message(parse_message(event))
-  msg = remove_word_first(msg, 'download')
+  msg = parse_message(event)
+  msg.sub!(/(for|of)?\w*userlevel\w*/i, '')
+  msg.sub!(/\w*download\w*/i, '')
+  msg.squish!
   send_userlevel_individual(event, msg){ |map|
     output = "Downloading userlevel #{verbatim(map[:query].title)} "
     output += "with ID #{verbatim(map[:query].id.to_s)} "
@@ -1125,8 +1132,10 @@ rescue => e
 end
 
 def send_userlevel_scores(event)
-  msg = clean_userlevel_message(parse_message(event))
-  msg = remove_word_first(msg, 'scores')
+  msg = parse_message(event)
+  msg.sub!(/(for|of)?\w*userlevel\w*/i, '')
+  msg.sub!(/\w*scores\w*/i, '')
+  msg.squish!
   send_userlevel_individual(event, msg){ |map|
     output = "Scores for userlevel #{verbatim(map[:query].title)} "
     output += "with ID #{verbatim(map[:query].id.to_s)} "
