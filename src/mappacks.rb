@@ -408,10 +408,10 @@ module Map
   def self.gather_cells(bbox, ppc, neighbours = false)
     dim = 4 * ppc
     pad = neighbours ? 1 : 0
-    x_min = [bbox[0] / dim - pad, 0].max
-    y_min = [bbox[1] / dim - pad, 0].max
-    x_max = [(bbox[0] + bbox[2] - 1) / dim + pad, COLUMNS + 1].min
-    y_max = [(bbox[1] + bbox[3] - 1) / dim + pad, ROWS + 1].min
+    x_min = [bbox[0].to_i / dim - pad, 0].max
+    y_min = [bbox[1].to_i / dim - pad, 0].max
+    x_max = [(bbox[0].to_i + bbox[2].to_i - 1) / dim + pad, COLUMNS + 1].min
+    y_max = [(bbox[1].to_i + bbox[3].to_i - 1) / dim + pad, ROWS + 1].min
     [x_min, y_min, x_max, y_max]
   end
 
@@ -431,6 +431,39 @@ module Map
       }
     }
     objs.sort_by{ |o| -OBJECTS[o[0]][:pref] }
+  end
+
+  # Find all collected gold in a given frame range by any ninja, and remove it
+  # from the object dictionary.
+  def self.collect_gold(objects, coords, f, step, ppc)
+    scale = PPU * ppc / PPC
+    sizes = coords.map(&:size)
+
+    # For every ninja and every frame in the range, find collected gold
+    collected_gold = []
+    (0 ... step).each{ |s|
+      coords.each_with_index{ |c_list, i|
+        next if sizes[i] <= f + s
+        nx = c_list[f + s][0]
+        ny = c_list[f + s][1]
+
+        # Gather neighbour objects to the ninja
+        gather_objects(objects, [nx * scale, ny * scale, 1, 1], ppc).each{ |o|
+          next unless o[0] == 2
+          ox = o[1] * UNITS / 4
+          oy = o[2] * UNITS / 4
+
+          # Add gold piece if euclidean distance is smaller than sum of radiuses
+          collected_gold << o if ((nx - ox) ** 2 + (ny - oy) ** 2) ** 0.5 <= 10 + 6
+        }
+      }
+    }
+    collected_gold.uniq!
+
+    # Remove gold from object dictionary, so that it won't get rendered again
+    collected_gold.each{ |o| objects[o[1] / 4][o[2] / 4].delete(o) }
+
+    collected_gold
   end
 
   # Parse map(s) data, sanitize it, and return objects and tiles conveniently
@@ -1092,6 +1125,9 @@ module Map
           markers = []
           (0 .. frames - 1).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
+            
+            # Find collected gold
+            gold = collect_gold(objects[0], coords, f, step, ppc)
 
             # Find bounding box for this frame
             bbox = find_frame_bbox(f, pixel_coords, step, markers, trace: trace, ppc: ppc)
