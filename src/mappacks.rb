@@ -474,7 +474,7 @@ module Map
       tile_list
     }
 
-    [objects_dicts, tiles]
+    [object_dicts, tiles]
   end
 
   # Create an initial image with the right dimensions and color
@@ -506,7 +506,7 @@ module Map
             base = s ? 1 : 0
             if !atlas[o[0]].key?(base)
               atlas[o[0]][base] = generate_object(o[0], palette_idx, true, s)
-              atlas[o[0]][base].resample_bilinear!(
+              atlas[o[0]][base].resample_nearest_neighbor!(
                 (scale * atlas[o[0]][base].width).round,
                 (scale * atlas[o[0]][base].height).round,
               ) if ppc != PPC
@@ -544,7 +544,7 @@ module Map
           base = t - o                   # Base shape
           if !atlas.key?(base)
             atlas[base] = generate_object(base, palette_idx, false)
-            atlas[base].resample_bilinear!(
+            atlas[base].resample_nearest_neighbor!(
               (scale * atlas[base].width).round,
               (scale * atlas[base].height).round,
             ) if ppc != PPC
@@ -594,12 +594,21 @@ module Map
       # TODO:
       # - Actually intersect each object's image with the bbox when composing.
       # - We need 2 methods: ChunkyPNG and Gifenc.
-      gather_objects(map, bbox, ppc).each do |o|
+      gather_objects(map, bbox, ppc).uniq.each do |o|
+        # Skip objects don't have in the atlas
         next if !atlas.key?(o[0])
         r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
         next if r.nil?
         obj = atlas[o[0]][r]
-        image.compose!(obj, off_x + ppc * o[1] - obj.width / 2, off_y + ppc * o[2] - obj.height / 2) rescue nil
+
+        # Draw differently depending on whether we have a PNG or a GIF
+        x = off_x + ppc * o[1] - obj.width / 2
+        y = off_y + ppc * o[2] - obj.height / 2
+        if ChunkyPNG::Image === image
+          image.compose!(obj, x, y) rescue nil
+        else
+          image.copy(src: obj, dest: [x, y], trans: true) rescue nil
+        end
       end
 
       # Adjust offsets
@@ -736,10 +745,21 @@ module Map
     end
   end
 
+  # Redraw only a rectangular region of the screenshot. This is used for updating
+  # the background during animations, so that we can have some features, such as
+  # gold collecting or toggles toggling. Redrawing must be done in the same order
+  # as usual (bg -> objects -> tiles -> borders -> traces), and restricted to the
+  # box, otherwise we could mess other parts up.
+  def self.redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette_idx = 0, ppc = PPC, frame = true)
+    image.rect(*bbox, nil, PALETTE[0, palette_idx])
+    #render_objects(objects, image, ppc: ppc, atlas: object_atlas, bbox: bbox, frame: frame)
+    #render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, bbox: bbox, frame: frame, palette_idx: palette_idx)
+    #render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
+  end
+
   # Render the timbars with names and scores on top of animated GIFs
   def self.render_timebars(image, update, names, scores, font, colors_border, colors_bg, colors_text, ppc = PPC, bbox = nil)
     dim = 4 * ppc
-    timebars = []
     n = names.length
 
     n.times.each{ |i|
@@ -756,12 +776,6 @@ module Map
       p = Gifenc::Geometry.transform([p], bbox)[0] if bbox
 
       # Rectangle
-      timebars[j] = [
-        [pos_x               , pos_y          ],
-        [pos_x + dx.round - 1, pos_y          ],
-        [pos_x               , pos_y + dim - 1],
-        [pos_x + dx.round - 1, pos_y + dim - 1]
-      ]
       image.rect(p.x, p.y, dx.round, dim, colors_border[j], colors_bg[j], weight: 2, anchor: 0)
 
       # Vertical bar
@@ -793,8 +807,6 @@ module Map
         align: :right
       ) if colors_text[j]
     }
-
-    timebars
   end
 
   # For a given frame, find the minimum region (bounding box) of the image that
@@ -853,7 +865,7 @@ module Map
     r = ANIMATION_RADIUS
     markers.each{ |p|
       gif.images.last.copy(
-        source: gif.images.first,
+        src:    gif.images.first,
         offset: [p[0] - r, p[1] - r],
         dim:    [2 * r + 1, 2 * r + 1],
         dest:   Gifenc::Geometry.transform([[p[0] - r, p[1] - r]], bbox)[0]
@@ -916,23 +928,39 @@ module Map
   end
 
   # Build a Global Color Table (a GIF palette) from a ChunkyPNG image
-  def self.init_gct(image, ninja_colors)
-    # Since each color table supports a max of 256 colors, we sort the colors by
-    # frequency and take the top 256 ones (we usually have way fewer).
-    frequencies = Hash.new(0)
-    image.pixels.each{ |color| frequencies[color] += 1 }
-    colors = frequencies.sort_by{ |color, freq| -freq }
-                        .take(246)
-                        .map{ |c| c[0] >> 8 }
-    palette = Gifenc::ColorTable.new(colors).compact
+  # Since each N++ palette has at most 91 unique tile/object colors (typically
+  # way less), and we're not creating new colors when building the screenshot
+  # (nearest neighbour resampling, no intermediate transparency, etc), we can be
+  # sure all colors fit into a GIF palette (max 256 colors).
+  def self.init_gct(palette_idx)
+    # Include all of the palette's colors
+    palette = PALETTE.row(palette_idx).map{ |c| c >> 8 }
+    table = Gifenc::ColorTable.new(palette.uniq)
 
-    # Add the 4 ninja colors and their inverse ones, as well as a weird color
-    # to use for transparency
-    ninja_colors.each{ |c| palette.add(c >> 8) }
-    ninja_colors.each{ |c| palette.add((c >> 8) ^ 0xFFFFFF) }
-    palette.add(TRANSPARENT_COLOR)
+    # Add the inverted ninja colors, and a rare color to use for transparency
+    inverted = palette[OBJECTS[0][:pal], 4].map{ |c| c ^ 0xFFFFFF }
+    table.add(*inverted)
+    table.add(TRANSPARENT_COLOR)
 
-    palette
+    # Remove duplicates and empty slots from table
+    table.simplify
+  end
+
+  # Convert a PNG image from ChunkyPNG to a GIF from Gifenc
+  # This assumes we've already created a palette holding all the PNG's colors.
+  def self.png2gif(png, palette, bg, trans = nil)
+    # Create palette index for fast access
+    index = palette.colors.compact.each_with_index.to_h
+    bg = index[bg >> 8]
+
+    # Create GIF frame with same dimensions and the specified background color
+    gif = Gifenc::Image.new(png.width, png.height, color: bg)
+    gif.trans_color = trans if trans
+
+    # Transform color values to color indices in the palette
+    gif.replace(png.pixels.map{ |c| index[c >> 8] || bg })
+
+    gif
   end
 
   # Generate a PNG screenshot of a level in the chosen palette.
@@ -1030,21 +1058,33 @@ module Map
         }
 
         if use_gif
-          # Initialize GIF palette
-          palette = init_gct(image, ninja_colors)
+          # Initialize GIF palette and fetch some colors
+          palette = init_gct(palette_idx)
           index = palette.colors.compact.each_with_index.to_h
-
-          # Construct GIF and add background image
-          bg = index[PALETTE[2, palette_idx] >> 8]
+          bg_color = PALETTE[2, palette_idx]
           ninja_colors_inv = ninja_colors.map{ |c| index[(c >> 8) ^ 0xFFFFFF] }
           ninja_colors.map!{ |c| index[c >> 8] }
+
+          # Construct GIF and add screenshot as first frame
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1, destroy: true)
-          gif.images << Gifenc::Image.new(image.width, image.height, color: bg)
-          gif.images.first.replace(image.pixels.map{ |c| index[c >> 8] || bg })
+          gif.images << png2gif(image, palette, bg_color)
+
+          # Convert tile and object atlases to GIF
+          tile_atlas.each{ |id, png|
+            png.pixels.map!{ |c| c == 0 ? bg_color : c }
+            png2gif(png, palette, bg_color, bg_color)
+          }
+          object_atlas.each{ |id, list|
+            list.each{ |o, png|
+              png.pixels.map!{ |c| c == 0 ? bg_color : c }
+              png2gif(png, palette, bg_color, bg_color)
+            }
+          }
 
           # Timebars and legend
           font = parse_bmfont(FONT_TIMEBAR)
-          timebars = render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [bg] * n, ninja_colors, ppc)
+          render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc)
+          bench(:step, 'GIF bg    ') if BENCH_IMAGES
 
           # Render frames
           sizes = coords.map(&:size)
