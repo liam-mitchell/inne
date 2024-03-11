@@ -1143,6 +1143,9 @@ module Map
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
             
             # Find collected gold
+            # NOTE: For doors, we could store in the 5th field (mode) whether the door is
+            # open or not. Then use that when rendering to decide if it must be drawn or
+            # not. Initialize it properly, and toggle it when the switch is collected.
             gold = collect_gold(objects[0], coords, f, step, ppc)
 
             # Find bounding box for this frame
