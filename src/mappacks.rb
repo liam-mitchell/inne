@@ -793,33 +793,8 @@ module Map
   # as usual (bg -> objects -> tiles -> borders -> traces), and restricted to the
   # box, otherwise we could mess other parts up.
   def self.redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx = 0, ppc = PPC, frame = true)
-    bbox = [400, 300, 119.9, 119.9]
-    scale = PPU * ppc / PPC
-    image.rect(
-      (bbox[0] * scale).round,
-      (bbox[1] * scale).round,
-      (bbox[2] * scale).round,
-      (bbox[3] * scale).round,
-      0xFF
-    )
-    inner = gather_cells(bbox, false)
-    outer = gather_cells(bbox, true)
-    image.rect(
-      (inner[0] * UNITS * scale).round,
-      (inner[1] * UNITS * scale).round,
-      ((inner[2] - inner[0] + 1) * UNITS * scale).round,
-      ((inner[3] - inner[1] + 1) * UNITS * scale).round,
-      0xFF
-    )
-    image.rect(
-      (outer[0] * UNITS * scale).round,
-      (outer[1] * UNITS * scale).round,
-      ((outer[2] - outer[0] + 1) * UNITS * scale).round,
-      ((outer[3] - outer[1] + 1) * UNITS * scale).round,
-      0xFF
-    )
-    
-    #image.rect(*bbox, nil, PALETTE[0, palette_idx])
+    pixel_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
+    image.rect(*pixel_bbox, nil, palette.colors.index(PALETTE[0, palette_idx]))
     render_objects(objects, image, ppc: ppc, atlas: object_atlas, bbox: bbox, frame: frame)
     render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, bbox: bbox, frame: frame, palette: palette, palette_idx: palette_idx)
     render_borders(tiles, image, palette: palette, palette_idx: palette_idx, bbox: bbox, ppc: ppc, frame: frame)
@@ -1094,15 +1069,15 @@ module Map
       bench(:step, 'Init objs ') if BENCH_IMAGES
 
       # Draw objects
-      #render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame)
+      render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame)
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
-      #render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx)
+      render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx)
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
-      #render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
+      render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
       # Animate runs. We implement two modes:
@@ -1160,11 +1135,9 @@ module Map
           render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc)
           bench(:step, 'GIF bg    ') if BENCH_IMAGES
 
-          redraw_bbox(gif.images.first, nil, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, frame)
-
           # Render frames
           sizes = coords.map(&:size)
-          frames = 0#sizes.max
+          frames = sizes.max
           markers = []
           (0 .. frames - 1).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
@@ -1173,6 +1146,7 @@ module Map
             gold = collect_gold(objects[0], coords, f, step, ppc)
 
             # Find bounding box for this frame
+            # TODO: We have to add the bboxes of the collected objects to the full frame bbox
             bbox = find_frame_bbox(f, pixel_coords, step, markers, trace: trace, ppc: ppc)
             break if !bbox
             done = sizes.map{ |s| s.between?(f + (trace ? 2 : step), f + step + 1) }
@@ -1185,8 +1159,18 @@ module Map
               trans_color: index[TRANSPARENT_COLOR]
             )
 
-            # Redraw background regions to erase markers from previous frame
-            erase_markers(gif, markers, bbox) if !trace
+            # Redraw background regions to erase markers from previous frame and
+            # change any objects that have been collected / toggled this frame.
+            if !trace
+              # 1) Remove / changed collected objects from dictionary here
+              # 2) Redraw background COPY
+              # 3) Erase markers
+              # Note: We no longer need to keep the original background uncompressed.
+              #   Add it to the GIF and compress it, since we only need to keep
+              #   the dynamic copy with the updated objects around (which will
+              #   actually never need to be encoded).
+              erase_markers(gif, markers, bbox)
+            end
 
             # Draw trace chunks
             markers = draw_frame_gif(gif, pixel_coords, f, step, trace, bbox, ninja_colors)
