@@ -403,27 +403,29 @@ module Map
     output
   end
 
-  # Given a bounding box (rectangle), return the range of grid cells intersected
-  # by it. The neighbouring cells may also be optionally included.
-  def self.gather_cells(bbox, ppc, neighbours = false)
-    dim = 4 * ppc
+  # Given a bounding box (rectangle) in game units, return the range of grid
+  # cells intersected by it. The rectangle is given in the form [X, Y, W, H],
+  # where [X, Y] are the coordinates of the upper left corner (not the center),
+  # and [W, H] are the width and height, respectively.
+  #
+  # The neighbouring cells may also be optionally included.
+  # If the bbox only has 2 components (X and Y), then a single point is checked.
+  def self.gather_cells(bbox, neighbours = false)
+    bbox << 0 << 0 if bbox.size == 2
     pad = neighbours ? 1 : 0
-    x_min = [bbox[0].to_i / dim - pad, 0].max
-    y_min = [bbox[1].to_i / dim - pad, 0].max
-    x_max = [(bbox[0].to_i + bbox[2].to_i - 1) / dim + pad, COLUMNS + 1].min
-    y_max = [(bbox[1].to_i + bbox[3].to_i - 1) / dim + pad, ROWS + 1].min
+    x_min = [(bbox[0] / UNITS).floor - pad, 0].max
+    y_min = [(bbox[1] / UNITS).floor - pad, 0].max
+    x_max = [((bbox[0] + bbox[2]) / UNITS).floor + pad, COLUMNS + 1].min
+    y_max = [((bbox[1] + bbox[3]) / UNITS).floor + pad, ROWS    + 1].min
     [x_min, y_min, x_max, y_max]
   end
 
-  # Gather a list of all the objects that intersect a given rectangle (X, Y, W, H)
-  # and its neighbouring cells. The list is sorted by drawing preference.
+  # Gather a list of all the objects that intersect a given rectangle and its
+  # neighbouring cells. The list is sorted by drawing preference.
   # Notes:
   # - We are ignoring out of bounds objects (frame is included though).
-  # - The coordinates of that bbox are given with respect to the image's
-  #   dimensions, so they must be rescaled by the ppc.
-  def self.gather_objects(objects, bbox, ppc)
-    dim = 4 * ppc
-    x_min, y_min, x_max, y_max = gather_cells(bbox, ppc, true)
+  def self.gather_objects(objects, bbox)
+    x_min, y_min, x_max, y_max = gather_cells(bbox, true)
     objs = []
     (x_min .. x_max).each{ |x|
       (y_min .. y_max).each{ |y|
@@ -448,7 +450,7 @@ module Map
         ny = c_list[f + s][1]
 
         # Gather neighbour objects to the ninja
-        gather_objects(objects, [nx * scale, ny * scale, 1, 1], ppc).each{ |o|
+        gather_objects(objects, [nx, ny]).each{ |o|
           next unless o[0] == 2
           ox = o[1] * UNITS / 4
           oy = o[2] * UNITS / 4
@@ -531,8 +533,8 @@ module Map
       map.each{ |col, hash|
         hash.each{ |row, objs|
           objs.each{ |o|
-            # Skip if this object is already initialized
-            next if atlas.key?(o[0]) && atlas[o[0]].key?(o[3])
+            # Skip if this object is already initialized or doesn't exist
+            next if atlas.key?(o[0]) && atlas[o[0]].key?(o[3]) || o[0] >= 29
 
             # Initialize base object image
             s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
@@ -617,18 +619,17 @@ module Map
     dim = 4 * ppc
     width = dim * (COLUMNS + 2)
     height = dim * (ROWS + 2)
-    bbox = [0, 0, width, height] if !bbox
+    bbox = [0, 0, UNITS * (COLUMNS + 2), UNITS * (ROWS + 2)] if !bbox
+    dest_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
+    gif = Gifenc::Image === image
 
     # Draw objects
     off_x = frame ? dim : 0
     off_y = frame ? dim : 0
     objects.each_with_index do |map, i|
       # Compose images, only for those objects intersecting the bbox
-      # TODO:
-      # - Actually intersect each object's image with the bbox when composing.
-      # - We need 2 methods: ChunkyPNG and Gifenc.
-      gather_objects(map, bbox, ppc).uniq.each do |o|
-        # Skip objects don't have in the atlas
+      gather_objects(map, bbox).uniq.each do |o|
+        # Skip objects we don't have in the atlas
         next if !atlas.key?(o[0])
         r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
         next if r.nil?
@@ -637,10 +638,10 @@ module Map
         # Draw differently depending on whether we have a PNG or a GIF
         x = off_x + ppc * o[1] - obj.width / 2
         y = off_y + ppc * o[2] - obj.height / 2
-        if ChunkyPNG::Image === image
+        if !gif
           image.compose!(obj, x, y) rescue nil
         else
-          image.copy(src: obj, dest: [x, y], trans: true) rescue nil
+          image.copy(src: obj, dest: [x, y], trans: true, bbox: dest_bbox) rescue nil
         end
       end
 
@@ -655,47 +656,48 @@ module Map
 
   # Render a list of tiles onto a base image, optionally only updating a
   # given bounding box (for redraws in animations).
-  def self.render_tiles(tiles, image, ppc: PPC, atlas: {}, bbox: nil, frame: true, palette_idx: 0)
+  def self.render_tiles(tiles, image, ppc: PPC, atlas: {}, bbox: nil, frame: true, palette: nil, palette_idx: 0)
     # Prepare scale params
     dim = 4 * ppc
     width = dim * (COLUMNS + 2)
     height = dim * (ROWS + 2)
     color = PALETTE[0, palette_idx]
-    bbox = [0, 0, width, height] if !bbox
-    x_min, y_min, x_max, y_max = gather_cells(bbox, ppc, true)
+    gif = Gifenc::Image === image
+    color = palette.colors.index(color >> 8) if gif
+    bbox = [0, 0, UNITS * (COLUMNS + 2), UNITS * (ROWS + 2)] if !bbox
+    dest_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
+    x_min, y_min, x_max, y_max = gather_cells(bbox, false)
 
-    # Draw tiles
+    # Draw tiles within the given cell range
     off_x = frame ? dim : 0
     off_y = frame ? dim : 0
     tiles.each_with_index do |map, i|
-      map.each_with_index do |slice, row|
-        # Only care about tiles within the given cell range
-        next if row < y_min
-        break if row > y_max
-        slice.each_with_index do |t, column|
-          next if t < x_min
-          break if t > x_max
-          # TODO:
-          # - Actually intersect each tile's image with the bbox when composing.
-          # - We need 2 methods: ChunkyPNG and Gifenc.
+      (y_min .. y_max).each do |row|
+        (x_min .. x_max).each do |column|
+          t = map[row][column]
 
           # Empty and full tiles are handled separately
           next if t == 0
           if t == 1
-            image.fast_rect(
-              off_x + dim * column,
-              off_y + dim * row,
-              off_x + dim * column + dim - 1,
-              off_y + dim * row + dim - 1,
-              nil,
-              color
-            )
+            x = off_x + dim * column
+            y = off_y + dim * row
+            if !gif
+              image.fast_rect(x, y, x + dim - 1, y + dim - 1, nil, color)
+            else
+              image.rect(x, y, dim, dim, nil, color, bbox: dest_bbox)
+            end
             next
           end
 
           # Compose all other tiles
           next if !atlas.key?(t)
-          image.compose!(atlas[t], off_x + dim * column, off_y + dim * row)
+          x = off_x + dim * column
+          y = off_y + dim * row
+          if !gif
+            image.compose!(atlas[t], x, y) rescue nil
+          else
+            image.copy(src: atlas[t], dest: [x, y], trans: true, bbox: dest_bbox) rescue nil
+          end
         end
       end
 
@@ -710,62 +712,69 @@ module Map
 
   # Render a list of tile borders onto a base image, optionally only updating a
   # given bounding box (for redraws in animations).
-  def self.render_borders(tiles, image, palette_idx: 0, ppc: PPC, frame: true)
-    # Prepare scale params
+  def self.render_borders(tiles, image, palette: nil, palette_idx: 0, ppc: PPC, frame: true, bbox: nil)
+    # Prepare scale and color params
     dim = 4 * ppc
     width = dim * (COLUMNS + 2)
     height = dim * (ROWS + 2)
-    thin = ppc <= 6
+    thin = ppc <= 6 ? 0 : 1
+    color = PALETTE[1, palette_idx]
+    gif = Gifenc::Image === image
+    color = palette.colors.index(color >> 8) if gif
+    bbox = [0, 0, UNITS * (COLUMNS + 2), UNITS * (ROWS + 2)] if !bbox
+    dest_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
+    x_min, y_min, x_max, y_max = gather_cells(bbox, true)
 
     # Parse borders and color
     borders = BORDERS.to_i(16).to_s(2)[1..-1].chars.map(&:to_i).each_slice(8).to_a
-    bd_color = PALETTE[1, palette_idx]
 
     # Draw borders
     off_x = frame ? dim : 0
     off_y = frame ? dim : 0
     tiles.each_with_index do |m, i|
       #                  Frame surrounding entire level
-      if frame
+      if frame && !gif
         image.fast_rect(
-          off_x, off_y, off_x + width - 1, off_y + height - 1, bd_color, nil
+          off_x, off_y, off_x + width - 1, off_y + height - 1, color, nil
         )
         image.fast_rect(
-          off_x + 1, off_y + 1, off_x + width - 2, off_y + height - 2, bd_color, nil
+          off_x + 1, off_y + 1, off_x + width - 2, off_y + height - 2, color, nil
         )
       end
 
       #                  Horizontal borders
-      (0 .. ROWS).each do |row|
-        (0 ... 2 * (COLUMNS + 2)).each do |col|
+      (y_min ... y_max).each do |row|
+        (2 * x_min ... 2 * (x_max + 1)).each do |col|
           tile_a = m[row][col / 2]
           tile_b = m[row + 1][col / 2]
-          bool = col % 2 == 0 ? (borders[tile_a][3] + borders[tile_b][6]) % 2 : (borders[tile_a][2] + borders[tile_b][7]) % 2
-          image.fast_rect(
-            off_x + dim / 2 * col - (thin ? 0 : 1),
-            off_y + dim * (row + 1) - (thin ? 0 : 1),
-            off_x + dim / 2 * (col + 1) - (thin ? 1 : 0),
-            off_y + dim * (row + 1),
-            nil,
-            bd_color
-          ) if bool == 1
+          next unless (col % 2 == 0 ? (borders[tile_a][3] + borders[tile_b][6]) % 2 : (borders[tile_a][2] + borders[tile_b][7]) % 2) == 1
+          x = off_x + dim / 2 * col
+          y = off_y + dim * (row + 1)
+          w = dim / 2 + 2 * thin
+          h = thin + 1
+          if !gif
+            image.fast_rect(x - thin, y - thin, x + dim / 2 + thin - 1, y, nil, color)
+          else
+            image.rect(x - thin, y - thin, w, h, nil, color, bbox: dest_bbox)
+          end
         end
       end
 
       #                  Vertical borders
-      (0 ... 2 * (ROWS + 2)).each do |row|
-        (0 .. COLUMNS).each do |col|
+      (2 * y_min ... 2 * (y_max + 1)).each do |row|
+        (x_min ... x_max).each do |col|
           tile_a = m[row / 2][col]
           tile_b = m[row / 2][col + 1]
-          bool = row % 2 == 0 ? (borders[tile_a][0] + borders[tile_b][5]) % 2 : (borders[tile_a][1] + borders[tile_b][4]) % 2
-          image.fast_rect(
-            off_x + dim * (col + 1) - (thin ? 0 : 1),
-            off_y + dim / 2 * row - (thin ? 0 : 1),
-            off_x + dim * (col + 1),
-            off_y + dim / 2 * (row + 1) - (thin ? 1 : 0),
-            nil,
-            bd_color
-          ) if bool == 1
+          next unless (row % 2 == 0 ? (borders[tile_a][0] + borders[tile_b][5]) % 2 : (borders[tile_a][1] + borders[tile_b][4]) % 2) == 1
+          x = off_x + dim * (col + 1)
+          y = off_y + dim / 2 * row
+          w = thin + 1
+          h = dim / 2 + 2 * thin
+          if !gif
+            image.fast_rect(x - thin, y - thin, x, y + dim / 2 + thin - 1, nil, color)
+          else
+            image.rect(x - thin, y - thin, w, h, nil, color, bbox: dest_bbox)
+          end
         end
       end
 
@@ -783,11 +792,37 @@ module Map
   # gold collecting or toggles toggling. Redrawing must be done in the same order
   # as usual (bg -> objects -> tiles -> borders -> traces), and restricted to the
   # box, otherwise we could mess other parts up.
-  def self.redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette_idx = 0, ppc = PPC, frame = true)
-    image.rect(*bbox, nil, PALETTE[0, palette_idx])
-    #render_objects(objects, image, ppc: ppc, atlas: object_atlas, bbox: bbox, frame: frame)
-    #render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, bbox: bbox, frame: frame, palette_idx: palette_idx)
-    #render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
+  def self.redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx = 0, ppc = PPC, frame = true)
+    bbox = [400, 300, 119.9, 119.9]
+    scale = PPU * ppc / PPC
+    image.rect(
+      (bbox[0] * scale).round,
+      (bbox[1] * scale).round,
+      (bbox[2] * scale).round,
+      (bbox[3] * scale).round,
+      0xFF
+    )
+    inner = gather_cells(bbox, false)
+    outer = gather_cells(bbox, true)
+    image.rect(
+      (inner[0] * UNITS * scale).round,
+      (inner[1] * UNITS * scale).round,
+      ((inner[2] - inner[0] + 1) * UNITS * scale).round,
+      ((inner[3] - inner[1] + 1) * UNITS * scale).round,
+      0xFF
+    )
+    image.rect(
+      (outer[0] * UNITS * scale).round,
+      (outer[1] * UNITS * scale).round,
+      ((outer[2] - outer[0] + 1) * UNITS * scale).round,
+      ((outer[3] - outer[1] + 1) * UNITS * scale).round,
+      0xFF
+    )
+    
+    #image.rect(*bbox, nil, PALETTE[0, palette_idx])
+    render_objects(objects, image, ppc: ppc, atlas: object_atlas, bbox: bbox, frame: frame)
+    render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, bbox: bbox, frame: frame, palette: palette, palette_idx: palette_idx)
+    render_borders(tiles, image, palette: palette, palette_idx: palette_idx, bbox: bbox, ppc: ppc, frame: frame)
   end
 
   # Render the timbars with names and scores on top of animated GIFs
@@ -988,7 +1023,7 @@ module Map
 
     # Create GIF frame with same dimensions and the specified background color
     gif = Gifenc::Image.new(png.width, png.height, color: bg)
-    gif.trans_color = trans if trans
+    gif.trans_color = index[trans >> 8] if trans
 
     # Transform color values to color indices in the palette
     gif.replace(png.pixels.map{ |c| index[c >> 8] || bg })
@@ -1059,15 +1094,15 @@ module Map
       bench(:step, 'Init objs ') if BENCH_IMAGES
 
       # Draw objects
-      render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame)
+      #render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame)
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
-      render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx)
+      #render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx)
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
-      render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
+      #render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
       # Animate runs. We implement two modes:
@@ -1103,25 +1138,33 @@ module Map
           gif.images << png2gif(image, palette, bg_color)
 
           # Convert tile and object atlases to GIF
-          tile_atlas.each{ |id, png|
+          tile_atlas = tile_atlas.map{ |id, png|
             png.pixels.map!{ |c| c == 0 ? bg_color : c }
-            png2gif(png, palette, bg_color, bg_color)
-          }
-          object_atlas.each{ |id, list|
-            list.each{ |o, png|
-              png.pixels.map!{ |c| c == 0 ? bg_color : c }
-              png2gif(png, palette, bg_color, bg_color)
-            }
-          }
+            [id, png2gif(png, palette, bg_color, bg_color)]
+          }.to_h
+          object_atlas = object_atlas.map{ |id, list|
+            [
+              id,
+              list.map{ |o, png|
+                png.pixels.map!{ |c| c == 0 ? bg_color : c }
+                [
+                  o,
+                  png2gif(png, palette, bg_color, bg_color)
+                ]
+              }.to_h
+            ]
+          }.to_h
 
           # Timebars and legend
           font = parse_bmfont(FONT_TIMEBAR)
           render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc)
           bench(:step, 'GIF bg    ') if BENCH_IMAGES
 
+          redraw_bbox(gif.images.first, nil, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, frame)
+
           # Render frames
           sizes = coords.map(&:size)
-          frames = sizes.max
+          frames = 0#sizes.max
           markers = []
           (0 .. frames - 1).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
