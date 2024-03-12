@@ -748,14 +748,14 @@ module Map
           tile_a = m[row][col / 2]
           tile_b = m[row + 1][col / 2]
           next unless (col % 2 == 0 ? (borders[tile_a][3] + borders[tile_b][6]) % 2 : (borders[tile_a][2] + borders[tile_b][7]) % 2) == 1
-          x = off_x + dim / 2 * col
-          y = off_y + dim * (row + 1)
+          x = off_x + dim / 2 * col - thin
+          y = off_y + dim * (row + 1) - thin
           w = dim / 2 + 2 * thin
           h = thin + 1
           if !gif
-            image.fast_rect(x - thin, y - thin, x + dim / 2 + thin - 1, y, nil, color)
+            image.fast_rect(x, y, x + w - 1, y + h - 1, nil, color)
           else
-            image.rect(x - thin, y - thin, w, h, nil, color, bbox: dest_bbox)
+            image.rect(x, y, w, h, nil, color, bbox: dest_bbox)
           end
         end
       end
@@ -766,14 +766,14 @@ module Map
           tile_a = m[row / 2][col]
           tile_b = m[row / 2][col + 1]
           next unless (row % 2 == 0 ? (borders[tile_a][0] + borders[tile_b][5]) % 2 : (borders[tile_a][1] + borders[tile_b][4]) % 2) == 1
-          x = off_x + dim * (col + 1)
-          y = off_y + dim / 2 * row
+          x = off_x + dim * (col + 1) - thin
+          y = off_y + dim / 2 * row - thin
           w = thin + 1
           h = dim / 2 + 2 * thin
           if !gif
-            image.fast_rect(x - thin, y - thin, x, y + dim / 2 + thin - 1, nil, color)
+            image.fast_rect(x, y, x + w - 1, y + h - 1, nil, color)
           else
-            image.rect(x - thin, y - thin, w, h, nil, color, bbox: dest_bbox)
+            image.rect(x, y, w, h, nil, color, bbox: dest_bbox)
           end
         end
       end
@@ -794,10 +794,29 @@ module Map
   # box, otherwise we could mess other parts up.
   def self.redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx = 0, ppc = PPC, frame = true)
     pixel_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
-    image.rect(*pixel_bbox, nil, palette.colors.index(PALETTE[0, palette_idx]))
+    image.rect(*pixel_bbox, nil, palette.colors.index(PALETTE[2, palette_idx]))
     render_objects(objects, image, ppc: ppc, atlas: object_atlas, bbox: bbox, frame: frame)
     render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, bbox: bbox, frame: frame, palette: palette, palette_idx: palette_idx)
     render_borders(tiles, image, palette: palette, palette_idx: palette_idx, bbox: bbox, ppc: ppc, frame: frame)
+  end
+
+  # Given a list of objects that have changed on this frame (collected gold,
+  # toggled mines, etc), redraw each of their corresponding bounding boxes onto
+  # the background.
+  def self.redraw_changes(image, changes, objects, tiles, object_atlas, tile_atlas, palette, palette_idx = 0, ppc = PPC, frame = true)
+    changes.each{ |o|
+      # Skip objects we don't have in the atlas
+      next if !object_atlas.key?(o[0])
+      r = object_atlas[o[0]].key?(o[3]) ? o[3] : object_atlas[o[0]].keys.first
+      next if r.nil?
+      obj = object_atlas[o[0]][r]
+
+      # Redraw bounding box
+      x = ppc * o[1] - obj.width / 2
+      y = ppc * o[2] - obj.height / 2
+      bbox = [x, y, obj.width, obj.height].map{ |c| c * PPC / ppc.to_f / PPU }
+      #redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, frame)
+    }
   end
 
   # Render the timbars with names and scores on top of animated GIFs
@@ -854,14 +873,13 @@ module Map
 
   # For a given frame, find the minimum region (bounding box) of the image that
   # needs to be redrawn. This region must contain all points that are subject to
-  # change on this frame (trace bits, ninja markers, timebars...), and must be
-  # rectangular.
-  def self.find_frame_bbox(f, coords, step, markers, trace: false, ppc: PPC)
+  # change on this frame (trace bits, ninja markers, collected objects,
+  # timebars...), and must be rectangular.
+  def self.find_frame_bbox(f, coords, step, markers, objects, atlas, trace: false, ppc: PPC)
     dim = 4 * ppc
     r = ANIMATION_RADIUS
     endpoints = []
 
-    # Gather points that changed this frame
     coords.each_with_index{ |c_list, i|
       if trace # Trace chunks
         next if c_list.size < f + 2
@@ -873,8 +891,6 @@ module Map
         next if c_list.size < f + step
         frame = [f + step - 1, c_list.size - 1].min
         endpoints << [c_list[frame][0] - r, c_list[frame][1] - r]
-        endpoints << [c_list[frame][0] - r, c_list[frame][1] + r]
-        endpoints << [c_list[frame][0] + r, c_list[frame][1] - r]
         endpoints << [c_list[frame][0] + r, c_list[frame][1] + r]
       end
 
@@ -888,14 +904,29 @@ module Map
       end
     }
 
+    # Collected objects
+    # TODO: When a collected object changes size (e.g. exit door when opened)
+    # we must account for that here (just take the largest, or add both).
+    objects.each{ |o|
+      # Skip objects we don't have in the atlas
+      next if !atlas.key?(o[0])
+      r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
+      next if r.nil?
+      obj = atlas[o[0]][r]
+
+      # Add object sprite bounding box
+      x = ppc * o[1] - obj.width / 2
+      y = ppc * o[2] - obj.height / 2
+      endpoints << [x, y]
+      endpoints << [x + obj.width - 1, y + obj.height - 1]
+    }
+
     # Nothing to plot, animation has finished
     return if endpoints.empty?
 
     # Also add points from the previous frame's markers (to erase them)
     markers.each{ |p|
       endpoints << [p[0] - r, p[1] - r]
-      endpoints << [p[0] - r, p[1] + r]
-      endpoints << [p[0] + r, p[1] - r]
       endpoints << [p[0] + r, p[1] + r]
     }
 
@@ -903,15 +934,36 @@ module Map
     Gifenc::Geometry.bbox(endpoints, 1)
   end
 
-  # Redraw the background over the previous frame's markers to erase them
-  def self.erase_markers(gif, markers, bbox)
+  # Redraw the background over the last frame to erase or change the
+  # elements that have been updated
+  def self.restore_background(gif, background, markers, objects, atlas, bbox, ppc = PPC)
+    # Remove ninja markers from previous frame
     r = ANIMATION_RADIUS
     markers.each{ |p|
       gif.images.last.copy(
-        src:    gif.images.first,
+        src:    background,
         offset: [p[0] - r, p[1] - r],
         dim:    [2 * r + 1, 2 * r + 1],
         dest:   Gifenc::Geometry.transform([[p[0] - r, p[1] - r]], bbox)[0]
+      )
+    }
+
+    # Update changed elements (collected gold, toggled mines, ...)
+    objects.each{ |o|
+      # Skip objects we don't have in the atlas
+      next if !atlas.key?(o[0])
+      r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
+      next if r.nil?
+      obj = atlas[o[0]][r]
+
+      # Redraw
+      x = ppc * o[1] - obj.width / 2
+      y = ppc * o[2] - obj.height / 2
+      gif.images.last.copy(
+        src:    background,
+        offset: [x, y],
+        dim:    [obj.width, obj.height],
+        dest:   Gifenc::Geometry.transform([[x, y]], bbox)[0]
       )
     }
   end
@@ -1122,10 +1174,7 @@ module Map
               id,
               list.map{ |o, png|
                 png.pixels.map!{ |c| c == 0 ? bg_color : c }
-                [
-                  o,
-                  png2gif(png, palette, bg_color, bg_color)
-                ]
+                [o, png2gif(png, palette, bg_color, bg_color)]
               }.to_h
             ]
           }.to_h
@@ -1133,6 +1182,11 @@ module Map
           # Timebars and legend
           font = parse_bmfont(FONT_TIMEBAR)
           render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc)
+
+          # Save a copy of the background, which we will be updating dynamically with
+          # collected / toggled objects, that will be used to redraw each frame.
+          background = gif.images.first.dup
+          gif.images.first.compress
           bench(:step, 'GIF bg    ') if BENCH_IMAGES
 
           # Render frames
@@ -1141,7 +1195,7 @@ module Map
           markers = []
           (0 .. frames - 1).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
-            
+
             # Find collected gold
             # NOTE: For doors, we could store in the 5th field (mode) whether the door is
             # open or not. Then use that when rendering to decide if it must be drawn or
@@ -1149,8 +1203,7 @@ module Map
             gold = collect_gold(objects[0], coords, f, step, ppc)
 
             # Find bounding box for this frame
-            # TODO: We have to add the bboxes of the collected objects to the full frame bbox
-            bbox = find_frame_bbox(f, pixel_coords, step, markers, trace: trace, ppc: ppc)
+            bbox = find_frame_bbox(f, pixel_coords, step, markers, gold, object_atlas, trace: trace, ppc: ppc)
             break if !bbox
             done = sizes.map{ |s| s.between?(f + (trace ? 2 : step), f + step + 1) }
 
@@ -1165,14 +1218,8 @@ module Map
             # Redraw background regions to erase markers from previous frame and
             # change any objects that have been collected / toggled this frame.
             if !trace
-              # 1) Remove / changed collected objects from dictionary here
-              # 2) Redraw background COPY
-              # 3) Erase markers
-              # Note: We no longer need to keep the original background uncompressed.
-              #   Add it to the GIF and compress it, since we only need to keep
-              #   the dynamic copy with the updated objects around (which will
-              #   actually never need to be encoded).
-              erase_markers(gif, markers, bbox)
+              redraw_changes(background, gold, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false)
+              restore_background(gif, background, markers, gold, object_atlas, bbox, ppc)
             end
 
             # Draw trace chunks
