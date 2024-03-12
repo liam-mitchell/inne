@@ -1013,7 +1013,7 @@ module Map
         c_list[f][1],
         c_list[f + 1][0],
         c_list[f + 1][1],
-        ninja_colors[i],
+        colors[i],
         false,
         weight: 2,
         antialiasing: false
@@ -1166,15 +1166,15 @@ module Map
 
           # Convert tile and object atlases to GIF
           tile_atlas = tile_atlas.map{ |id, png|
-            png.pixels.map!{ |c| c == 0 ? bg_color : c }
-            [id, png2gif(png, palette, bg_color, bg_color)]
+            png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
+            [id, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
           }.to_h
           object_atlas = object_atlas.map{ |id, list|
             [
               id,
               list.map{ |o, png|
-                png.pixels.map!{ |c| c == 0 ? bg_color : c }
-                [o, png2gif(png, palette, bg_color, bg_color)]
+                png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
+                [o, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
               }.to_h
             ]
           }.to_h
