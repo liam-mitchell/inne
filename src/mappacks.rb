@@ -794,7 +794,7 @@ module Map
   # box, otherwise we could mess other parts up.
   def self.redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx = 0, ppc = PPC, frame = true)
     pixel_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
-    image.rect(*pixel_bbox, nil, palette.colors.index(PALETTE[2, palette_idx]))
+    image.rect(*pixel_bbox, nil, palette.colors.index(PALETTE[2, palette_idx] >> 8))
     render_objects(objects, image, ppc: ppc, atlas: object_atlas, bbox: bbox, frame: frame)
     render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, bbox: bbox, frame: frame, palette: palette, palette_idx: palette_idx)
     render_borders(tiles, image, palette: palette, palette_idx: palette_idx, bbox: bbox, ppc: ppc, frame: frame)
@@ -815,12 +815,12 @@ module Map
       x = ppc * o[1] - obj.width / 2
       y = ppc * o[2] - obj.height / 2
       bbox = [x, y, obj.width, obj.height].map{ |c| c * PPC / ppc.to_f / PPU }
-      #redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, frame)
+      redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, frame)
     }
   end
 
   # Render the timbars with names and scores on top of animated GIFs
-  def self.render_timebars(image, update, names, scores, font, colors_border, colors_bg, colors_text, ppc = PPC, bbox = nil)
+  def self.render_timebars(image, update, names, scores, font, colors_border, colors_bg, colors_text, ppc = PPC)
     dim = 4 * ppc
     n = names.length
 
@@ -835,7 +835,7 @@ module Map
       pos_x = (dim * 1.25 + i * (dim / 2.0 + dx)).round
       pos_y = 1
       p = Gifenc::Geometry::Point.parse([pos_x, pos_y])
-      p = Gifenc::Geometry.transform([p], bbox)[0] if bbox
+      p = Gifenc::Geometry.transform([p], image.bbox)[0]
 
       # Rectangle
       image.rect(p.x, p.y, dx.round, dim, colors_border[j], colors_bg[j], weight: 2, anchor: 0)
@@ -910,9 +910,9 @@ module Map
     objects.each{ |o|
       # Skip objects we don't have in the atlas
       next if !atlas.key?(o[0])
-      r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
-      next if r.nil?
-      obj = atlas[o[0]][r]
+      i = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
+      next if i.nil?
+      obj = atlas[o[0]][i]
 
       # Add object sprite bounding box
       x = ppc * o[1] - obj.width / 2
@@ -936,7 +936,9 @@ module Map
 
   # Redraw the background over the last frame to erase or change the
   # elements that have been updated
-  def self.restore_background(gif, background, markers, objects, atlas, bbox, ppc = PPC)
+  def self.restore_background(gif, background, markers, objects, atlas, ppc = PPC)
+    bbox = gif.images.last.bbox
+
     # Remove ninja markers from previous frame
     r = ANIMATION_RADIUS
     markers.each{ |p|
@@ -971,8 +973,9 @@ module Map
   # Draw a single frame of an animated GIF. We have two modes:
   # - Tracing the routes by plotting the lines.
   # - Animating the ninjas by drawing moving circles.
-  def self.draw_frame_gif(gif, coords, f, step, trace, bbox, colors)
+  def self.draw_frame_gif(gif, coords, f, step, trace, colors)
     sizes = coords.map(&:size)
+    bbox = gif.images.last.bbox
 
     # Trace route bits for this frame _range_
     if trace
@@ -1035,7 +1038,7 @@ module Map
     # Add the inverted ninja colors, and a rare color to use for transparency
     inverted = palette[OBJECTS[0][:pal], 4].map{ |c| c ^ 0xFFFFFF }
     table.add(*inverted)
-    table.add(TRANSPARENT_COLOR)
+    table.add(TRANSPARENT_COLOR >> 8)
 
     # Remove duplicates and empty slots from table
     table.simplify
@@ -1210,23 +1213,23 @@ module Map
             # Add new frame
             gif.images << Gifenc::Image.new(
               bbox:        bbox,
-              color:       index[TRANSPARENT_COLOR],
+              color:       index[TRANSPARENT_COLOR >> 8],
               delay:       delay,
-              trans_color: index[TRANSPARENT_COLOR]
+              trans_color: index[TRANSPARENT_COLOR >> 8]
             )
 
             # Redraw background regions to erase markers from previous frame and
             # change any objects that have been collected / toggled this frame.
             if !trace
               redraw_changes(background, gold, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false)
-              restore_background(gif, background, markers, gold, object_atlas, bbox, ppc)
+              restore_background(gif, background, markers, gold, object_atlas, ppc)
             end
 
             # Draw trace chunks
-            markers = draw_frame_gif(gif, pixel_coords, f, step, trace, bbox, ninja_colors)
+            markers = draw_frame_gif(gif, pixel_coords, f, step, trace, ninja_colors)
 
             # Draw other elements
-            render_timebars(gif.images.last, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc, bbox)
+            render_timebars(gif.images.last, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc)
 
             # LZW-compress frames on the fly to save memory
             gif.images.last.compress
@@ -2376,7 +2379,6 @@ class MappackEpisode < ActiveRecord::Base
   def hash(c: false, v: nil, pre: false)
     hashes = levels.order(:id).map{ |l|
       stored = l.hashes.where("version <= #{v}").order(:version).last
-      binding.pry if !stored
       c && pre && stored ? stored.sha1_hash : l.hash(c: c, v: v)
     }.compact
     hashes.size < 5 ? nil : hashes.join
