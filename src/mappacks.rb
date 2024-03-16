@@ -52,6 +52,8 @@ module Map
   FIXED_OBJECTS = [0, 1, 2, 3, 4, 7, 9, 16, 17, 18, 19, 21, 22, 24, 25, 28]
   # Objects that admit diagonal rotations
   SPECIAL_OBJECTS = [10, 11, 23]
+  # Objects that have a different "toggled" sprite
+  TOGGLABLE_OBJECTS = [1, 3, 4, 6, 7, 8, 9]
   THEMES = [
     "acid",           "airline",         "argon",         "autumn",
     "BASIC",          "berry",           "birthday cake", "bloodmoon",
@@ -385,17 +387,22 @@ module Map
   # Generate the image of an object in the specified palette, by painting and combining each layer.
   # Note: "special" indicates that we take the special version of the layers. In practice,
   # this is used because we can't rotate images 45 degrees with this library, so we have a
-  # different image for that, which we call special.
-  def self.generate_object(object_id, palette_id, object = true, special = false)
+  # different image for that, which we call special. Some sprites have 2 versions, a toggled
+  # and an untoggled one.
+  def self.generate_object(object_id, palette_id, object = true, special = false, toggled = false)
     # Select necessary layers
     path = object ? PATH_OBJECTS : PATH_TILES
-    parts = Dir.entries(path).select{ |file| file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") }.sort
-    parts_normal = parts.select{ |file| file[-6] == "-" }
-    parts_special = parts.select{ |file| file[-6] == "s" }
+    parts = Dir.entries(path).select{ |file|
+      bool1 = file[0..1] == object_id.to_s(16).upcase.rjust(2, "0") # Select only sprites for this object
+      bool2 = file[-5] == 't' # Select only toggled/untoggled sprites
+      bool1 && (!toggled ^ bool2)
+    }.sort
+    parts_normal = parts.select{ |file| file[2] == "-" }
+    parts_special = parts.select{ |file| file[2] == "s" }
     parts = (!special ? parts_normal : (parts_special.empty? ? parts_normal : parts_special))
 
     # Paint and combine the layers
-    masks = parts.map{ |part| [part[-5], ChunkyPNG::Image.from_file(File.join(path, part))] }
+    masks = parts.map{ |part| [part[toggled ? -6 : -5], ChunkyPNG::Image.from_file(File.join(path, part))] }
     images = masks.map{ |mask| mask(mask[1], ChunkyPNG::Color::BLACK, PALETTE[(object ? OBJECTS[object_id][:pal] : 0) + mask[0].to_i, palette_id], fast: true) }
     dims = [ images.map{ |i| i.width }.max || 1, images.map{ |i| i.height }.max || 1]
     output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
@@ -435,14 +442,14 @@ module Map
     objs.sort_by{ |o| -OBJECTS[o[0]][:pref] }
   end
 
-  # Find all collected gold in a given frame range by any ninja, and remove it
-  # from the object dictionary.
-  def self.collect_gold(objects, coords, f, step, ppc)
+  # Find all touched objects in a given frame range by any ninja, and logically
+  # collide with them, by either removing or toggling them.
+  def self.collide_vs_objects(objects, coords, f, step, ppc)
     scale = PPU * ppc / PPC
     sizes = coords.map(&:size)
 
-    # For every ninja and every frame in the range, find collected gold
-    collected_gold = []
+    # For every ninja and every frame in the range, find collected objects
+    collided_objects = []
     (0 ... step).each{ |s|
       coords.each_with_index{ |c_list, i|
         next if sizes[i] <= f + s
@@ -451,21 +458,31 @@ module Map
 
         # Gather neighbour objects to the ninja
         gather_objects(objects, [nx, ny]).each{ |o|
-          next unless o[0] == 2
+          next unless [1, 2].include?(o[0])
           ox = o[1] * UNITS / 4
           oy = o[2] * UNITS / 4
+          r = o[0] == 2 ? 6 : 4
 
-          # Add gold piece if euclidean distance is smaller than sum of radiuses
-          collected_gold << o if ((nx - ox) ** 2 + (ny - oy) ** 2) ** 0.5 <= 10 + 6
+          # Add object if euclidean distance is smaller than sum of radiuses
+          collided_objects << o if ((nx - ox) ** 2 + (ny - oy) ** 2) ** 0.5 <= 10 + r
         }
       }
     }
-    collected_gold.uniq!
+    collided_objects.uniq! # Might have to remove this for doors in case of overlapping switches
 
-    # Remove gold from object dictionary, so that it won't get rendered again
-    collected_gold.each{ |o| objects[o[1] / 4][o[2] / 4].delete(o) }
+    # Collide object, by either removing it from object dictionary (so that it
+    # won't get rendered again) or toggling it (so the sprite will change in
+    # the next redrawing).
+    collided_objects.each{ |o|
+      list = objects[o[1] / 4][o[2] / 4]
+      if o[0] == 2
+        list.delete(o)
+      else
+        list.find(o).first[4] = 1
+      end
+    }
 
-    collected_gold
+    collided_objects
   end
 
   # Parse map(s) data, sanitize it, and return objects and tiles conveniently
@@ -481,6 +498,11 @@ module Map
     objects.each{ |map|
       map.each{ |o|
         o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0]) # Remove glitched orientations
+        o[4] = 0 # Use 5th field as "toggled" marker, all objects start untoggled
+
+        # Convert toggle mines and mines to the same object
+        o[4] = 1 if o[0] == 1
+        o[0] = 1 if o[0] == 21
       }
     }
 
@@ -528,35 +550,43 @@ module Map
   # Initialize the object sprites with the given palette and scale
   def self.init_objects(objects, palette_idx, ppc = PPC)
     scale = ppc.to_f / PPC
-    atlas = 30.times.map{ |i| [i, {}] }.to_h
+    atlas = {}
     objects.each{ |map|
       map.each{ |col, hash|
         hash.each{ |row, objs|
           objs.each{ |o|
-            # Skip if this object is already initialized or doesn't exist
-            next if atlas.key?(o[0]) && atlas[o[0]].key?(o[3]) || o[0] >= 29
+            # Skip if this object doesn't exist
+            next if o[0] >= 29
+            atlas[o[0]] = {} if !atlas.key?(o[0])
 
-            # Initialize base object image
-            s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
-            base = s ? 1 : 0
-            if !atlas[o[0]].key?(base)
-              atlas[o[0]][base] = generate_object(o[0], palette_idx, true, s)
-              atlas[o[0]][base].resample_nearest_neighbor!(
-                (scale * atlas[o[0]][base].width).round,
-                (scale * atlas[o[0]][base].height).round,
-              ) if ppc != PPC
-            end
-            next if o[3] <= 1
+            (TOGGLABLE_OBJECTS.include?(o[0]) ? [0, 1] : [0]).each{ |state|
+              # Skip if this object is already initialized
+              atlas[o[0]][state] = {} if !atlas[o[0]].key?(state)
+              next if atlas[o[0]][state].key?(o[3])
+              sprite_list = atlas[o[0]][state]
 
-            # Initialize rotated copies
-            case o[3] / 2
-            when 1
-              atlas[o[0]][o[3]] = atlas[o[0]][base].rotate_right
-            when 2
-              atlas[o[0]][o[3]] = atlas[o[0]][base].rotate_180
-            when 3
-              atlas[o[0]][o[3]] = atlas[o[0]][base].rotate_left
-            end
+              # Initialize base object image
+              s = o[3] % 2 == 1 && SPECIAL_OBJECTS.include?(o[0]) # Special variant of sprite (diagonal)
+              base = s ? 1 : 0
+              if !sprite_list.key?(base)
+                sprite_list[base] = generate_object(o[0], palette_idx, true, s, state == 1)
+                sprite_list[base].resample_nearest_neighbor!(
+                  (scale * sprite_list[base].width).round,
+                  (scale * sprite_list[base].height).round,
+                ) if ppc != PPC
+              end
+              next if o[3] <= 1
+
+              # Initialize rotated copies
+              case o[3] / 2
+              when 1
+                sprite_list[o[3]] = sprite_list[base].rotate_right
+              when 2
+                sprite_list[o[3]] = sprite_list[base].rotate_180
+              when 3
+                sprite_list[o[3]] = sprite_list[base].rotate_left
+              end
+            }
           }
         }
       }
@@ -630,10 +660,8 @@ module Map
       # Compose images, only for those objects intersecting the bbox
       gather_objects(map, bbox).uniq.each do |o|
         # Skip objects we don't have in the atlas
-        next if !atlas.key?(o[0])
-        r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
-        next if r.nil?
-        obj = atlas[o[0]][r]
+        obj = atlas[o[0]][o[4]][o[3]] rescue nil
+        next if !obj
 
         # Draw differently depending on whether we have a PNG or a GIF
         x = off_x + ppc * o[1] - obj.width / 2
@@ -807,14 +835,16 @@ module Map
     changes.each{ |o|
       # Skip objects we don't have in the atlas
       next if !object_atlas.key?(o[0])
-      r = object_atlas[o[0]].key?(o[3]) ? o[3] : object_atlas[o[0]].keys.first
-      next if r.nil?
-      obj = object_atlas[o[0]][r]
+
+      # Find max size of sprites corresponding to this object and orientation
+      width = object_atlas[o[0]].map{ |_, list| list[o[3]].width rescue nil }.compact.max
+      height = object_atlas[o[0]].map{ |_, list| list[o[3]].height rescue nil }.compact.max
+      next if !width || !height
 
       # Redraw bounding box
-      x = ppc * o[1] - obj.width / 2
-      y = ppc * o[2] - obj.height / 2
-      bbox = [x, y, obj.width, obj.height].map{ |c| c * PPC / ppc.to_f / PPU }
+      x = ppc * o[1] - width / 2
+      y = ppc * o[2] - height / 2
+      bbox = [x, y, width, height].map{ |c| c * PPC / ppc.to_f / PPU }
       redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, frame)
     }
   end
@@ -905,20 +935,20 @@ module Map
     }
 
     # Collected objects
-    # TODO: When a collected object changes size (e.g. exit door when opened)
-    # we must account for that here (just take the largest, or add both).
     objects.each{ |o|
       # Skip objects we don't have in the atlas
       next if !atlas.key?(o[0])
-      i = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
-      next if i.nil?
-      obj = atlas[o[0]][i]
 
-      # Add object sprite bounding box
-      x = ppc * o[1] - obj.width / 2
-      y = ppc * o[2] - obj.height / 2
+      # Find max size of sprites corresponding to this object and orientation
+      width = atlas[o[0]].map{ |_, list| list[o[3]].width rescue nil }.compact.max
+      height = atlas[o[0]].map{ |_, list| list[o[3]].height rescue nil }.compact.max
+      next if !width || !height
+
+      # Get bounding box of sprites
+      x = ppc * o[1] - width / 2
+      y = ppc * o[2] - height / 2
       endpoints << [x, y]
-      endpoints << [x + obj.width - 1, y + obj.height - 1]
+      endpoints << [x + width - 1, y + height - 1]
     }
 
     # Nothing to plot, animation has finished
@@ -954,17 +984,19 @@ module Map
     objects.each{ |o|
       # Skip objects we don't have in the atlas
       next if !atlas.key?(o[0])
-      r = atlas[o[0]].key?(o[3]) ? o[3] : atlas[o[0]].keys.first
-      next if r.nil?
-      obj = atlas[o[0]][r]
 
-      # Redraw
-      x = ppc * o[1] - obj.width / 2
-      y = ppc * o[2] - obj.height / 2
+      # Find max size of sprites corresponding to this object and orientation
+      width = atlas[o[0]].map{ |_, list| list[o[3]].width rescue nil }.compact.max
+      height = atlas[o[0]].map{ |_, list| list[o[3]].height rescue nil }.compact.max
+      next if !width || !height
+
+      # Copy background region
+      x = ppc * o[1] - width / 2
+      y = ppc * o[2] - height / 2
       gif.images.last.copy(
         src:    background,
         offset: [x, y],
-        dim:    [obj.width, obj.height],
+        dim:    [width, height],
         dest:   Gifenc::Geometry.transform([[x, y]], bbox)[0]
       )
     }
@@ -1110,6 +1142,7 @@ module Map
       image = init_image(palette_idx, ppc, h)
       next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
+      #binding.pry
 
       # Parse map
       objects, tiles = parse_maps(maps, v)
@@ -1172,12 +1205,17 @@ module Map
             png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
             [id, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
           }.to_h
-          object_atlas = object_atlas.map{ |id, list|
+          object_atlas = object_atlas.map{ |id, states|
             [
               id,
-              list.map{ |o, png|
-                png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
-                [o, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
+              states.map{ |state, sprites|
+                [
+                  state,
+                  sprites.map{ |o, png|
+                    png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
+                    [o, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
+                  }.to_h
+                ]
               }.to_h
             ]
           }.to_h
@@ -1200,10 +1238,7 @@ module Map
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
 
             # Find collected gold
-            # NOTE: For doors, we could store in the 5th field (mode) whether the door is
-            # open or not. Then use that when rendering to decide if it must be drawn or
-            # not. Initialize it properly, and toggle it when the switch is collected.
-            gold = collect_gold(objects[0], coords, f, step, ppc)
+            gold = collide_vs_objects(objects[0], coords, f, step, ppc)
 
             # Find bounding box for this frame
             bbox = find_frame_bbox(f, pixel_coords, step, markers, gold, object_atlas, trace: trace, ppc: ppc)
