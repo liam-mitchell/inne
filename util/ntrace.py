@@ -919,14 +919,12 @@ class EntityThwump(Entity):
                     thwump_xcell2 = math.floor((self.xpos + 11) / 12)
                     dy = ninja_ycell - thwump_ycell
                     if dy * self.direction >= 0:
-                        while abs(thwump_ycell) <= 100:
+                        for i in range(100):
                             if not is_empty_row(thwump_xcell1, thwump_xcell2, thwump_ycell, self.direction):
                                 dy = ninja_ycell - thwump_ycell
-                                if dy * self.direction < 0:
-                                    self.state = 1
-                                return
+                                break
                             thwump_ycell += self.direction
-                        if dy == 0:
+                        if i > 0 and dy * self.direction <= 0:
                             self.state = 1
             else:
                 if abs(self.ypos - ninja.ypos) < activation_range: #If the ninja is in the activation range
@@ -936,14 +934,12 @@ class EntityThwump(Entity):
                     thwump_ycell2 = math.floor((self.ypos + 11) / 12)
                     dx = ninja_xcell - thwump_xcell
                     if dx * self.direction >= 0:
-                        while abs(thwump_xcell) <= 100:
+                        for i in range(100):
                             if not is_empty_column(thwump_xcell, thwump_ycell1, thwump_ycell2, self.direction):
                                 dx = ninja_xcell - thwump_xcell
-                                if dx * self.direction < 0:
-                                    self.state = 1
-                                return
+                                break
                             thwump_xcell += self.direction
-                        if dx == 0:
+                        if i > 0 and dx * self.direction <= 0:
                             self.state = 1
 
     def physical_collision(self, ninja):

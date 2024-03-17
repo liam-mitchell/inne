@@ -539,7 +539,7 @@ end
 
 def parse_ranks(msg, clamp = 20)
   ranks = msg.scan(/(?<=\s|^|$)\d{1,3}(?=\s|^|$)/).map(&:to_i)
-  ranks.map!{ |r| r.clamp(0, clamp - 1) } unless clamp == -1
+  ranks.map!{ |r| r.clamp(0, clamp - 1) } unless clamp <= 0
   ranks.uniq!
   ranks.empty? ? [0] : ranks
 end
