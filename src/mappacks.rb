@@ -371,17 +371,18 @@ module Map
   def self.mask(image, before, after, bg: ChunkyPNG::Color::WHITE, tolerance: 0.5, fast: false)
     if fast
       image.pixels.map!{ |p| p == before ? after : 0 }
-      image
-    else
-      new_image = ChunkyPNG::Image.new(image.width, image.height, ChunkyPNG::Color::TRANSPARENT)
-      image.width.times{ |x|
-        image.height.times{ |y|
-          score = ChunkyPNG::Color.euclidean_distance_rgba(image[x,y], before).to_f / ChunkyPNG::Color::MAX_EUCLIDEAN_DISTANCE_RGBA
-          if score < tolerance then new_image[x,y] = ChunkyPNG::Color.compose(after, bg) end
-        }
-      }
-      new_image
+      return image
     end
+
+    new_image = ChunkyPNG::Image.new(image.width, image.height, ChunkyPNG::Color::TRANSPARENT)
+    image.width.times{ |x|
+      image.height.times{ |y|
+        distance = ChunkyPNG::Color.euclidean_distance_rgba(image[x, y], before)
+        score = distance.to_f / ChunkyPNG::Color::MAX_EUCLIDEAN_DISTANCE_RGBA
+        new_image[x, y] = ChunkyPNG::Color.compose(after, bg) if score < tolerance
+      }
+    }
+    new_image
   end
 
   # Generate the image of an object in the specified palette, by painting and combining each layer.
@@ -408,6 +409,9 @@ module Map
     output = ChunkyPNG::Image.new(*dims, ChunkyPNG::Color::TRANSPARENT)
     images.each{ |image| output.compose!(image, 0, 0) }
     output
+  rescue => e
+    lex(e, "Failed to generate sprite for object #{object_id}.")
+    ChunkyPNG::Image.new(1, 1, ChunkyPNG::Color::TRANSPARENT)
   end
 
   # Given a bounding box (rectangle) in game units, return the range of grid
@@ -439,7 +443,7 @@ module Map
         objs.push(*objects[x][y])
       }
     }
-    objs.sort_by{ |o| -OBJECTS[o[0]][:pref] }
+    objs
   end
 
   # Find all touched objects in a given frame range by any ninja, and logically
@@ -448,7 +452,7 @@ module Map
     scale = PPU * ppc / PPC
     sizes = coords.map(&:size)
 
-    # For every ninja and every frame in the range, find collected objects
+    # For every ninja and every frame in the range, find collided objects
     collided_objects = []
     (0 ... step).each{ |s|
       coords.each_with_index{ |c_list, i|
@@ -456,29 +460,40 @@ module Map
         nx = c_list[f + s][0]
         ny = c_list[f + s][1]
 
-        # Gather neighbour objects to the ninja
+        # Gather neighbouring objects to the ninja
         gather_objects(objects, [nx, ny]).each{ |o|
-          next unless [1, 2].include?(o[0])
-          ox = o[1] * UNITS / 4
-          oy = o[2] * UNITS / 4
-          r = o[0] == 2 ? 6 : 4
+          # Only include a select few collisions
+          next unless [1, 2, 4, 7, 9].include?(o[0]) && o[4] == 0
 
           # Add object if euclidean distance is smaller than sum of radiuses
+          ox = o[1] * UNITS / 4
+          oy = o[2] * UNITS / 4
+          r = { 1 => 3.5, 2 => 6, 4 => 6, 7 => 5, 9 => 5 }[o[0]]
           collided_objects << o if ((nx - ox) ** 2 + (ny - oy) ** 2) ** 0.5 <= 10 + r
         }
       }
     }
-    collided_objects.uniq! # Might have to remove this for doors in case of overlapping switches
+    collided_objects.uniq!
 
     # Collide object, by either removing it from object dictionary (so that it
     # won't get rendered again) or toggling it (so the sprite will change in
     # the next redrawing).
     collided_objects.each{ |o|
       list = objects[o[1] / 4][o[2] / 4]
-      if o[0] == 2
-        list.delete(o)
-      else
-        list.find(o).first[4] = 1
+
+      # Remove or toggle object
+      o[0] == 2 ? list.delete(o) : o[4] = 1
+
+      # For switches, toggle / remove door too
+      if [4, 7, 9].include?(o[0])
+        other_list = objects[o[6] / 4][o[7] / 4]
+        door = other_list.find{ |d| d[0] == o[0] - 1 && d[5] == o[5] }
+        if door
+          o[0] == 7 ? other_list.delete(door) : door[4] = 1
+          collided_objects << door
+        else
+          warn("Door for collided switch not found.")
+        end
       end
     }
 
@@ -486,23 +501,39 @@ module Map
   end
 
   # Parse map(s) data, sanitize it, and return objects and tiles conveniently
-  # organized for screenshot generation. Note that objects are sorted by
-  # overlapping preference for the rendering process.
+  # organized for screenshot generation.
   def self.parse_maps(maps, v = 1)
-    # Parse objects, remove glitch ones, and normalize bad orientations
+    # Read objects, remove glitch ones
     objects = maps.map{ |map|
-      map.objects(version: v)
-        .reject{ |o| o[0] > 28 || o[0] == 8 } # Remove glitch objs and trap doors
-        .sort_by{ |o| -OBJECTS[o[0]][:pref] } # Sort objs by overlap preference
+      map.objects(version: v).reject{ |o| o[0] > 28 }
     }
+
+    # Perform some additional convenience modifications and sanity checks
     objects.each{ |map|
       map.each{ |o|
-        o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0]) # Remove glitched orientations
-        o[4] = 0 # Use 5th field as "toggled" marker, all objects start untoggled
+        # Remove glitched orientations and non-zero orientations for still objects
+        o[3] = 0 if o[3] > 7 || FIXED_OBJECTS.include?(o[0])
+
+        # Use 5th field as "toggled" marker, all objects start untoggled
+        o[4] = 0
 
         # Convert toggle mines and mines to the same object
         o[4] = 1 if o[0] == 1
         o[0] = 1 if o[0] == 21
+      }
+
+      # Link each door-switch pair within the object data
+      [[3, 4], [6, 7], [8, 9]].each{ |door_id, switch_id|
+        door_index = 0
+        doors      = map.select{ |o| o[0] == door_id   }
+        switches   = map.select{ |o| o[0] == switch_id }
+        warn("Unpaired doors/switches found when parsing map data.") if doors.size != switches.size
+        switches.each_with_index{ |switch, i|
+          break if !doors[i]
+          switch << door_index << doors[i][1] << doors[i][2]
+          doors[i] << door_index
+          door_index += 1
+        }
       }
     }
 
@@ -513,6 +544,7 @@ module Map
         [t, (ROWS + 2).times.map{ |s| [s, []] }.to_h]
       }.to_h
     }
+
     objects.each_with_index{ |map, i|
       map.each{ |o|
         x = o[1] / 4
@@ -571,8 +603,8 @@ module Map
               if !sprite_list.key?(base)
                 sprite_list[base] = generate_object(o[0], palette_idx, true, s, state == 1)
                 sprite_list[base].resample_nearest_neighbor!(
-                  (scale * sprite_list[base].width).round,
-                  (scale * sprite_list[base].height).round,
+                  [(scale * sprite_list[base].width).round, 1].max,
+                  [(scale * sprite_list[base].height).round, 1].max,
                 ) if ppc != PPC
               end
               next if o[3] <= 1
@@ -658,7 +690,8 @@ module Map
     off_y = frame ? dim : 0
     objects.each_with_index do |map, i|
       # Compose images, only for those objects intersecting the bbox
-      gather_objects(map, bbox).uniq.each do |o|
+      # We ignore duplicates, and sort by drawing overlap preference
+      gather_objects(map, bbox).uniq.sort_by{ |o| -OBJECTS[o[0]][:pref] }.each do |o|
         # Skip objects we don't have in the atlas
         obj = atlas[o[0]][o[4]][o[3]] rescue nil
         next if !obj
@@ -1142,7 +1175,6 @@ module Map
       image = init_image(palette_idx, ppc, h)
       next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
-      #binding.pry
 
       # Parse map
       objects, tiles = parse_maps(maps, v)
@@ -1238,10 +1270,10 @@ module Map
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
 
             # Find collected gold
-            gold = collide_vs_objects(objects[0], coords, f, step, ppc)
+            collided = collide_vs_objects(objects[0], coords, f, step, ppc) if !trace
 
             # Find bounding box for this frame
-            bbox = find_frame_bbox(f, pixel_coords, step, markers, gold, object_atlas, trace: trace, ppc: ppc)
+            bbox = find_frame_bbox(f, pixel_coords, step, markers, collided, object_atlas, trace: trace, ppc: ppc)
             break if !bbox
             done = sizes.map{ |s| s.between?(f + (trace ? 2 : step), f + step + 1) }
 
@@ -1256,8 +1288,8 @@ module Map
             # Redraw background regions to erase markers from previous frame and
             # change any objects that have been collected / toggled this frame.
             if !trace
-              redraw_changes(background, gold, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false)
-              restore_background(gif, background, markers, gold, object_atlas, ppc)
+              redraw_changes(background, collided, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false)
+              restore_background(gif, background, markers, collided, object_atlas, ppc)
             end
 
             # Draw trace chunks

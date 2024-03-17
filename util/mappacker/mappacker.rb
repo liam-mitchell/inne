@@ -4,13 +4,16 @@ require 'win32/registry'
 require 'zip'
 
 # Mappack-specific constants
-MAPPACK   = 'SPECTRA'
-AUTHOR    = 'abho & MegalordX8'
-NAME      = 'spe'
-FILES     = ['SI']
+MAPPACK   = 'REDUX v1.1'
+AUTHOR    = 'WheatyTruffles & DarkStuff'
+NAME      = 'rdx'
+FILES     = ['S', 'Scodes']
 SPLASH    = "#{MAPPACK} by #{AUTHOR}"
-SIGN      = AUTHOR.dup
+SIGN      = "Wheaty & DS"
 TITLE     = "#{MAPPACK} by #{AUTHOR}"
+CONTROLS  = false
+NPROFILE  = true
+PALETTES  = false
 
 # General constants
 TEST      = false
@@ -23,9 +26,6 @@ METANET   = "Metanet Software"
 BY        = SIGN[0...METANET.length].ljust(METANET.length, "\x00")
 DIALOG    = true
 PAD       = 32
-CONTROLS  = false
-NPROFILE  = true
-PALETTES  = true
 
 def dialog(title, text)
   print "\a"
