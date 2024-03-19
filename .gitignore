@@ -3,6 +3,7 @@
 *.sql
 .byebug_history
 Gemfile.lock
+/**/__pycache__
 /logs
 /util/hash_*
 /.bundle

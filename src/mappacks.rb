@@ -3053,7 +3053,12 @@ class MappackScore < ActiveRecord::Base
     # Export input files and run ntrace
     File.binwrite('map_data', highscoreable.dump_level)
     File.binwrite("inputs_0", demo.demo)
-    score = shell("python3 #{PATH_NTRACE}", output: true, stream: true).split("\n").last
+    stdout, stderr, status = shell("python3 #{PATH_NTRACE}", output: true)
+    if !status.success?
+      err("ntrace failed:\n#{stderr}")
+      return false
+    end
+    score = stdout.split("\n").last
 
     # Read output files
     file = File.binread('output.txt') rescue nil

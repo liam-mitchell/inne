@@ -1619,8 +1619,8 @@ def sha1(data, c: false, hex: false)
     name_out = File.join(DIR_UTILS, HASH_OUTPUT_FN + '_' + suffix)
 
     File.binwrite(name_in, data)
-    code = shell("#{PATH_SHA1} #{name_in} #{name_out}")
-    return nil if !code
+    code = shell("#{PATH_SHA1} #{name_in} #{name_out}", output: true).last
+    return nil if !code.success?
     hash = File.binread(name_out)
     FileUtils.rm([name_in, name_out])
   else
