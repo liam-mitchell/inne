@@ -982,7 +982,7 @@ module Map
       y = ppc * o[2] - height / 2
       endpoints << [x, y]
       endpoints << [x + width - 1, y + height - 1]
-    }
+    } if objects
 
     # Nothing to plot, animation has finished
     return if endpoints.empty?
@@ -1270,7 +1270,7 @@ module Map
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
 
             # Find collected gold
-            collided = collide_vs_objects(objects[0], coords, f, step, ppc) if !trace
+            collided = !trace ? collide_vs_objects(objects[0], coords, f, step, ppc) : []
 
             # Find bounding box for this frame
             bbox = find_frame_bbox(f, pixel_coords, step, markers, collided, object_atlas, trace: trace, ppc: ppc)
