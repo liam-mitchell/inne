@@ -3053,15 +3053,15 @@ class MappackScore < ActiveRecord::Base
     # Export input files and run ntrace
     File.binwrite('map_data', highscoreable.dump_level)
     File.binwrite("inputs_0", demo.demo)
-    score = shell("python3 #{PATH_NTRACE}", output: true, stream: true)
+    score = shell("python3 #{PATH_NTRACE}", output: true, stream: true).split("\n").last
 
     # Read output files
     file = File.binread('output.txt') rescue nil
     FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
-    return false if !file || file.strip.empty? || score.strip.empty?
+    return false if !file || file.strip.empty? || !score || score.strip.empty?
     valid = file.scan(/True|False/).map{ |b| b == 'True' }
     return false if valid.count(false) > 0 || valid.count(true) == 0
-    round_score(score.to_f)
+    round_score(score.strip.to_f)
   rescue => e
     lex(e, 'ntrace testing failed')
     nil
