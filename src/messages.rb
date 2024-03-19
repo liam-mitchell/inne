@@ -1444,33 +1444,59 @@ rescue => e
 end
 
 # Command to allow SimVYo to dynamically update his ntrace tool by sending the
-# file via Discord
+# files via Discord
 def update_ntrace(event)
   # Ensure only those allowed can do this
   assert_permissions(event, ['ntracer'])
+  msg = ""
+  yes = []
+  no = []
 
-  # Fetch attached file and perform integrity checks
-  files = event.message.attachments.select{ |a| a.filename == 'ntrace.py' }
-  perror("File #{verbatim('ntrace.py')} not found in the attachments") if files.size == 0
-  perror("Too many #{verbatim('ntrace.py')} files found in the attachments") if files.size > 1
-  file = files.first
-  perror("The ntrace file provided is too big") if file.size > 1024 ** 2
-  res = Net::HTTP.get(URI(file.url))
-  perror("The received ntrace file is corrupt") if res.size != file.size
+  ['ntrace', 'nsim', 'nplay'].each{ |filename| 
+    # Fetch attached file and perform integrity checks
+    files = event.message.attachments.select{ |a| a.filename == "#{filename}.py" }
+    if files.size == 0
+      no << filename
+      next
+    end
+    if files.size > 1
+      msg << "Didn't update #{verbatim("#{filename}.py")}: Too many #{filename}.py files found.\n"
+      no << filename
+      next
+    end
+    file = files.first
+    if file.size > 1024 ** 2
+      msg << "Didn't update #{verbatim("#{filename}.py")}: File is too large.\n"
+      no << filename
+      next
+    end
+    res = Net::HTTP.get(URI(file.url))
+    if res.size != file.size
+      msg << "Didn't update #{verbatim("#{filename}.py")}: File is corrupt.\n"
+      no << filename
+      next
+    end
 
-  # Update file
-  old_date = File.mtime(PATH_NTRACE) rescue nil
-  old_size = File.size(PATH_NTRACE) rescue nil
-  File.binwrite(PATH_NTRACE, res)
-  new_date = File.mtime(PATH_NTRACE) rescue nil
-  new_size = File.size(PATH_NTRACE) rescue nil
-  event << (new_date.nil? ? 'Failed to update ntrace.' : "ntrace updated successfully.")
-  versions = ''
-  versions << "Old version: #{old_date.strftime('%Y/%m/%d %H:%M:%S')} (#{old_size} bytes)\n" if !old_date.nil?
-  versions << "New version: #{new_date.strftime('%Y/%m/%d %H:%M:%S')} (#{new_size} bytes)\n" if !new_date.nil?
-  event << format_block(versions)
+    # Update file
+    path = File.join(File.dirname(PATH_NTRACE), "#{filename}.py")
+    old_date = File.mtime(path) rescue nil
+    old_size = File.size(path) rescue nil
+    File.binwrite(path, res)
+    new_date = File.mtime(path) rescue nil
+    new_size = File.size(path) rescue nil
+    msg << (new_date.nil? ? "Failed to update #{verbatim("#{filename}.py")}." : "Updated #{verbatim("#{filename}.py")} successfully.")
+    versions = ''
+    versions << "Old version: #{old_date.strftime('%Y/%m/%d %H:%M:%S')} (#{old_size} bytes)\n" if !old_date.nil?
+    versions << "New version: #{new_date.strftime('%Y/%m/%d %H:%M:%S')} (#{new_size} bytes)\n" if !new_date.nil?
+    msg << format_block(versions)
+    yes << filename
+  }
+  msg << "Updated files: #{yes.map{ |fn| verbatim(fn) }.join(', ')}.\n" unless yes.empty?
+  msg << "Not updated files: #{no.map{ |fn| verbatim(fn) }.join(', ')}." unless no.empty?
 
-  Thread.new { ld("#{event.user.name} updated ntrace:\n#{format_block(versions)}") }
+  event << "**ntrace update**:"
+  event << msg
+  Thread.new { ld("#{event.user.name} updated ntrace:\n#{msg}") }
 rescue => e
   lex(e, "Error updating ntrace.", event: event)
 end
