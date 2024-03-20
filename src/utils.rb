@@ -1263,6 +1263,53 @@ def compute_name(id, type)
   end
 end
 
+# Execute ntrace and parse the output. It assumes the input files have already
+# been exported previously.
+def ntrace(silent = false, debug = false)
+  # Execute ntrace and save output
+  stdout, stderr, status = shell("python3 #{PATH_NTRACE}", output: true)
+  ret = [stdout, stderr].join("\n\n")
+  FileUtils.rm(['map_data', *Dir.glob('inputs_*')])
+  output = 'output.bin'
+
+  # If ntrace failed, return or perror
+  if !status.success? || !File.file?(output)
+    FileUtils.rm([output]) if File.file?(output)
+    return nil if silent
+    str = "ntrace failed, please contact the botmaster for details."
+    if debug
+      if ret.length < DISCORD_CHAR_LIMIT - 100
+        str << "\n"
+        str << format_block(ret)
+      else
+        _thread do
+          sleep(0.5)
+          event.send_file(
+            tmp_file(ret, 'ntrace_output.txt', binary: false),
+            caption: 'ntrace output:'
+          )
+        end
+      end
+    end
+    perror(str)
+  end
+
+  # Parse output file
+  valid = []
+  coords = []
+  File.open(output, 'rb') do |f|
+    n = f.read(1).unpack('C')[0]
+    valid = f.read(n).bytes.map{ |b| b > 0 }
+    coords = n.times.map do |i|
+      frames = f.read(2).unpack('<S')[0]
+      f.read(16 * frames).unpack("E#{2 * frames}").each_slice(2).to_a
+    end
+  end
+  FileUtils.rm([output])
+
+  [valid, coords, ret]
+end
+
 # <---------------------------------------------------------------------------->
 # <------                           GRAPHICS                             ------>
 # <---------------------------------------------------------------------------->

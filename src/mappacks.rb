@@ -25,7 +25,7 @@ module Map
     0x04 => { name: 'exit switch',        pref: 20, att: 0, old: -1, pal: 25 },
     0x05 => { name: 'regular door',       pref: 19, att: 3, old:  4, pal: 30 },
     0x06 => { name: 'locked door',        pref: 28, att: 5, old:  5, pal: 31 },
-    0x07 => { name: 'locked door switch', pref: 27, att: 0, old: -1, pal: 33 },
+    0x07 => { name: 'locked door switch', pref: 0, att: 0, old: -1, pal: 33 },
     0x08 => { name: 'trap door',          pref: 29, att: 5, old:  6, pal: 39 },
     0x09 => { name: 'trap door switch',   pref: 26, att: 0, old: -1, pal: 41 },
     0x0A => { name: 'launch pad',         pref: 18, att: 3, old:  7, pal: 47 },
@@ -1544,34 +1544,7 @@ module Map
       File.binwrite("inputs_#{i}", demo)
     }
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    stdout, stderr, status = shell("python3 #{PATH_NTRACE}", output: true)
-    ret = stdout + " \n" + stderr
-
-    # Read output files
-    file = File.binread('output.txt') rescue nil
-    if file.nil?
-      str = "ntrace failed, please contact the botmaster for details."
-      if debug
-        if ret.length < DISCORD_CHAR_LIMIT - 100
-          str << "\n"
-          str << format_block(ret)
-        else
-          _thread do
-            sleep(0.5)
-            event.send_file(
-              tmp_file(ret, 'ntrace_output.txt', binary: false),
-              caption: 'ntrace output:'
-            )
-          end
-        end
-      end
-      perror(str)
-    end
-    valid = file.scan(/True|False/).map{ |b| b == 'True' }
-    coords = file.split(/True|False/)[1..-1].map{ |d|
-      d.strip.split("\n").map{ |c| c.split(' ').map(&:to_f) }
-    }
-    FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
+    valid, coords, ret = ntrace(false, debug)
 
     # Draw
     names = scores.map{ |s| s.player.print_name }
@@ -1634,18 +1607,15 @@ module Map
     scores = ranks.map{ |r| leaderboard[r] }.compact
     return :other if scores.empty?
 
-    # Export input files and run ntrace
+    # Export input files
     demos = scores.map{ |s| s.demo.demo }
     return :other if demos.count(nil) > 0
     File.binwrite('map_data', dump_level)
     demos.each_with_index.map{ |demo, i| File.binwrite("inputs_#{i}", demo) }
-    shell("python3 #{PATH_NTRACE}")
 
-    # Read output files
-    file = File.binread('output.txt') rescue nil
-    return :error if file.nil?
-    valid = file.scan(/True|False/).map{ |b| b == 'True' }
-    FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
+    # Run ntrace and parse output
+    valid, = ntrace(true)
+    return :error if !valid
     return valid.count(false) == 0 ? :good : :bad
   rescue => e
     lex(e, 'ntrace testing failed')
@@ -3053,18 +3023,12 @@ class MappackScore < ActiveRecord::Base
     # Export input files and run ntrace
     File.binwrite('map_data', highscoreable.dump_level)
     File.binwrite("inputs_0", demo.demo)
-    stdout, stderr, status = shell("python3 #{PATH_NTRACE}", output: true)
-    if !status.success?
-      err("ntrace failed:\n#{stderr}")
-      return false
-    end
-    score = stdout.split("\n").last
+    valid, coords, ret = ntrace(true)
 
-    # Read output files
-    file = File.binread('output.txt') rescue nil
-    FileUtils.rm(['map_data', *Dir.glob('inputs_*'), 'output.txt'])
-    return false if !file || file.strip.empty? || !score || score.strip.empty?
-    valid = file.scan(/True|False/).map{ |b| b == 'True' }
+    # Parse output
+    return false if !valid
+    score = ret.split("\n").last
+    return false if !score || score.strip.empty?
     return false if valid.count(false) > 0 || valid.count(true) == 0
     round_score(score.strip.to_f)
   rescue => e
