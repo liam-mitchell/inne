@@ -1169,7 +1169,6 @@ module Map
 
       # Initialize base image
       image = init_image(palette_idx, ppc, h)
-      next image.to_blob(:fast_rgba) if blank
       bench(:step, 'Setup     ') if BENCH_IMAGES
 
       # Parse map
@@ -1185,15 +1184,15 @@ module Map
       bench(:step, 'Init objs ') if BENCH_IMAGES
 
       # Draw objects
-      render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame)
+      render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame) unless blank
       bench(:step, 'Objects   ') if BENCH_IMAGES
 
       # Draw tiles
-      render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx)
+      render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx) unless blank
       bench(:step, 'Tiles     ') if BENCH_IMAGES
 
       # Draw tile borders
-      render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame)
+      render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame) unless blank
       bench(:step, 'Borders   ') if BENCH_IMAGES
 
       # Animate runs. We implement two modes:
@@ -1250,7 +1249,7 @@ module Map
 
           # Timebars and legend
           font = parse_bmfont(FONT_TIMEBAR)
-          render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc)
+          render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc) unless blank
 
           # Save a copy of the background, which we will be updating dynamically with
           # collected / toggled objects, that will be used to redraw each frame.
@@ -1284,7 +1283,7 @@ module Map
             # Redraw background regions to erase markers from previous frame and
             # change any objects that have been collected / toggled this frame.
             if !trace
-              redraw_changes(background, collided, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false)
+              redraw_changes(background, collided, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false) unless blank
               restore_background(gif, background, markers, collided, object_atlas, ppc)
             end
 
@@ -1292,7 +1291,7 @@ module Map
             markers = draw_frame_gif(gif, pixel_coords, f, step, trace, ninja_colors)
 
             # Draw other elements
-            render_timebars(gif.images.last, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc)
+            render_timebars(gif.images.last, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc) unless blank
 
             # LZW-compress frames on the fly to save memory
             gif.images.last.compress
