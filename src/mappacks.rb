@@ -25,7 +25,7 @@ module Map
     0x04 => { name: 'exit switch',        pref: 20, att: 0, old: -1, pal: 25 },
     0x05 => { name: 'regular door',       pref: 19, att: 3, old:  4, pal: 30 },
     0x06 => { name: 'locked door',        pref: 28, att: 5, old:  5, pal: 31 },
-    0x07 => { name: 'locked door switch', pref: 0, att: 0, old: -1, pal: 33 },
+    0x07 => { name: 'locked door switch', pref: 27, att: 0, old: -1, pal: 33 },
     0x08 => { name: 'trap door',          pref: 29, att: 5, old:  6, pal: 39 },
     0x09 => { name: 'trap door switch',   pref: 26, att: 0, old: -1, pal: 41 },
     0x0A => { name: 'launch pad',         pref: 18, att: 3, old:  7, pal: 47 },
@@ -448,28 +448,23 @@ module Map
 
   # Find all touched objects in a given frame range by any ninja, and logically
   # collide with them, by either removing or toggling them.
-  def self.collide_vs_objects(objects, coords, f, step, ppc)
+  def self.collide_vs_objects(objects, objs, f, step, ppc)
     scale = PPU * ppc / PPC
-    sizes = coords.map(&:size)
 
-    # For every ninja and every frame in the range, find collided objects
+    # For every frame in the range, find collided objects by any ninja, by matching
+    # the log returned by ntrace with the object dictionary
     collided_objects = []
     (0 ... step).each{ |s|
-      coords.each_with_index{ |c_list, i|
-        next if sizes[i] <= f + s
-        nx = c_list[f + s][0]
-        ny = c_list[f + s][1]
+      next unless objs.key?(f + s)
+      objs[f + s].each{ |obj|
+        # Only include a select few collisions
+        next unless [1, 2, 4, 7, 9].include?(obj[0])
 
-        # Gather neighbouring objects to the ninja
-        gather_objects(objects, [nx, ny]).each{ |o|
-          # Only include a select few collisions
-          next unless [1, 2, 4, 7, 9].include?(o[0]) && o[4] == 0
-
-          # Add object if euclidean distance is smaller than sum of radiuses
-          ox = o[1] * UNITS / 4
-          oy = o[2] * UNITS / 4
-          r = { 1 => 3.5, 2 => 6, 4 => 6, 7 => 5, 9 => 5 }[o[0]]
-          collided_objects << o if ((nx - ox) ** 2 + (ny - oy) ** 2) ** 0.5 <= 10 + r
+        # Gather objects matching the collided one
+        x = (obj[1] / 4).floor
+        y = (obj[2] / 4).floor
+        objects[x][y].each{ |o|
+          collided_objects << o if obj[0, 3] == o[0, 3] && o[4] == 0
         }
       }
     }
@@ -1144,6 +1139,7 @@ module Map
       step:    ANIMATION_STEP_NORMAL,  # How many frames per frame to trace
       delay:   ANIMATION_DELAY_NORMAL, # Time between frames, in 1/100ths sec
       coords:  [],                     # Coordinates of routes to trace
+      objs:    {},                     # Collected objects in the runs, keyed by frame
       texts:   [],                     # Texts for the legend
       spoiler: false,                  # Whether the screenshot should be spoilered in Discord
       v:       nil                     # Version of the map data to use (nil = latest)
@@ -1270,7 +1266,7 @@ module Map
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
 
             # Find collected gold
-            collided = !trace ? collide_vs_objects(objects[0], coords, f, step, ppc) : []
+            collided = !trace ? collide_vs_objects(objects[0], objs, f, step, ppc) : []
 
             # Find bounding box for this frame
             bbox = find_frame_bbox(f, pixel_coords, step, markers, collided, object_atlas, trace: trace, ppc: ppc)
@@ -1544,19 +1540,19 @@ module Map
       File.binwrite("inputs_#{i}", demo)
     }
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    valid, coords, ret = ntrace(false, debug)
+    res = ntrace(false, debug)
 
     # Draw
     names = scores.map{ |s| s.player.print_name }
-    wrong_names = names.each_with_index.select{ |_, i| !valid[i] }.map(&:first)
+    wrong_names = names.each_with_index.select{ |_, i| !res[:valid][i] }.map(&:first)
     event << error.strip if !error.empty?
     event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel #{verbatim(level.name)}" : level.name} in palette #{verbatim(palette)}:"
     texts = level.format_scores(np: anim ? 0 : 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
-    event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valid.count(false) > 0
+    event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if res[:valid].count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if anim
       ball = !msg[/trace/i]
-      trace = screenshot(palette, coords: coords, blank: blank, anim: true, use_gif: use_gif, texts: texts, step: step, delay: delay, trace: !ball)
+      trace = screenshot(palette, coords: res[:coords], objs: res[:objs], blank: blank, anim: true, use_gif: use_gif, texts: texts, step: step, delay: delay, trace: !ball)
       perror('Failed to generate screenshot') if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
@@ -1565,7 +1561,7 @@ module Map
       trace = _trace(
         theme:   palette,
         bg:      screenshot,
-        coords:  coords,
+        coords:  res[:coords],
         demos:   demos,
         markers: markers,
         texts:   !blank ? texts : []
@@ -1576,13 +1572,13 @@ module Map
     ext = anim ? (use_gif ? 'gif' : 'mp4') : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
     if debug
-      if ret.length < DISCORD_CHAR_LIMIT - 200
-        event << format_block(ret)
+      if res[:msg].length < DISCORD_CHAR_LIMIT - 200
+        event << format_block(res[:msg])
       else
         _thread do
           sleep(0.5)
           event.send_file(
-            tmp_file(ret, 'ntrace_output.txt', binary: false),
+            tmp_file(res[:msg], 'ntrace_output.txt', binary: false),
             caption: 'ntrace output:'
           )
         end
@@ -1614,9 +1610,9 @@ module Map
     demos.each_with_index.map{ |demo, i| File.binwrite("inputs_#{i}", demo) }
 
     # Run ntrace and parse output
-    valid, = ntrace(true)
-    return :error if !valid
-    return valid.count(false) == 0 ? :good : :bad
+    res = ntrace(true)
+    return :error if !res[:success]
+    return res[:valid].count(false) == 0 ? :good : :bad
   rescue => e
     lex(e, 'ntrace testing failed')
     nil
@@ -3023,13 +3019,13 @@ class MappackScore < ActiveRecord::Base
     # Export input files and run ntrace
     File.binwrite('map_data', highscoreable.dump_level)
     File.binwrite("inputs_0", demo.demo)
-    valid, coords, ret = ntrace(true)
+    res = ntrace(true)
 
     # Parse output
-    return false if !valid
-    score = ret.split("\n").last
+    return false if !res[:success]
+    score = res[:msg].split("\n").last
     return false if !score || score.strip.empty?
-    return false if valid.count(false) > 0 || valid.count(true) == 0
+    return false if res[:valid].count(false) > 0 || res[:valid].count(true) == 0
     round_score(score.strip.to_f)
   rescue => e
     lex(e, 'ntrace testing failed')

@@ -1275,7 +1275,7 @@ def ntrace(silent = false, debug = false)
   # If ntrace failed, return or perror
   if !status.success? || !File.file?(output)
     FileUtils.rm([output]) if File.file?(output)
-    return nil if silent
+    return { success: false } if silent
     str = "ntrace failed, please contact the botmaster for details."
     if debug
       if ret.length < DISCORD_CHAR_LIMIT - 100
@@ -1297,17 +1297,32 @@ def ntrace(silent = false, debug = false)
   # Parse output file
   valid = []
   coords = []
+  objs = []
   File.open(output, 'rb') do |f|
     n = f.read(1).unpack('C')[0]
     valid = f.read(n).bytes.map{ |b| b > 0 }
-    coords = n.times.map do |i|
-      frames = f.read(2).unpack('<S')[0]
-      f.read(16 * frames).unpack("E#{2 * frames}").each_slice(2).to_a
+    n.times do |i|
+      obj_count = f.read(2).unpack('S<')[0]
+      obj_count.times { objs << f.read(20).unpack("S<CEEC") }
+      frames = f.read(2).unpack('S<')[0]
+      coords << f.read(16 * frames).unpack("E#{2 * frames}").each_slice(2).to_a
     end
   end
   FileUtils.rm([output])
+  objs.uniq!
+  objs = objs.group_by(&:first).to_h
+  objs.each{ |frame, list|
+    list.each{ |o|
+      o.shift
+      o[0] = 1 if o[0] == 21
+      o[0] = 7 if o[0] == 6
+      o[0] = 9 if o[0] == 8
+      o[1] = (o[1] / 6).round
+      o[2] = (o[2] / 6).round
+    }
+  }
 
-  [valid, coords, ret]
+  { success: true, valid: valid, coords: coords, objs: objs, msg: ret }
 end
 
 # <---------------------------------------------------------------------------->
