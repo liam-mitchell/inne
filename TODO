@@ -1,5 +1,6 @@
 Ongoing:
 - Animated traces:
+  * For multiple players, perhaps color gold differently depending on how many players have collected / remain to collect each piece.
   * Precompute bounding boxes for all frames, and use this to estimate how long the encoding might take, then decide if it's worth it to update the Discord message with progress information, such as frames rendered or percentage done.
   * Remove level name from msg, so that it may not interfere with other parameters of the command.
   * Add level name to screenshot background.

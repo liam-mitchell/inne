@@ -661,6 +661,7 @@ class EntityGold(Entity):
                                     ninja.xpos, ninja.ypos, ninja.RADIUS):
             self.collected = self.sim.frame
             self.active = False
+            self.log()
 
 class EntityToggleMine(Entity):
     RADIUS = 3.5
