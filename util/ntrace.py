@@ -144,8 +144,6 @@ for i in range(len(inputs_list)):
         print(sim.ninja.speedlog)
         print(sim.ninja.poslog)
         print(valid_replay)
-    else:
-        print("SimVYo is my true master.")
 
 #Plot the route. Only ran in manual mode.
 if tool_mode == "trace" and OUTTE_MODE == False:
