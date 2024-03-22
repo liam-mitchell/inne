@@ -718,7 +718,7 @@ end
 def monitor_memory
   loop do
     # Gather memory info
-    mem = `ps -p #{Process.pid} -o rss=`.to_i / 1024.0
+    mem = getmem
     total = meminfo['MemTotal']
     available = meminfo['MemAvailable']
     used = total - available

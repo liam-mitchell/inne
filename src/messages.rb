@@ -2361,13 +2361,13 @@ def send_meminfo(event)
     return
   end
 
-  mem = `ps -p #{Process.pid} -o rss=`.to_i / 1024.0
+  mem = getmem
   total = meminfo['MemTotal']
   available = meminfo['MemAvailable']
   used = total - available
 
-  str =  "system: #{"%4d MB" % available} of #{"%4d MB" % total} (#{"%5.2f%%" % [100 * available / total]}) available\n"
-  str << "outte:  #{"%4d MB" % mem} of #{"%4d MB" % used} (#{"%5.2f%%" % [100 * mem / used]}) used"
+  str =  "system: #{"%5d MB" % available} of #{"%5d MB" % total} (#{"%5.2f%%" % [100 * available / total]}) available\n"
+  str << "outte:  #{"%5d MB" % mem} of #{"%5d MB" % used} (#{"%5.2f%%" % [100 * mem / used]}) used"
   event << "Memory usage:\n#{format_block(str)}"
 rescue => e
   lex(e, "Error getting memory info.", event: event)

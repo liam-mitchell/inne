@@ -485,6 +485,22 @@ rescue => e
   lex(e, "Failed to execute shell command: #{cmd}")
 end
 
+# Return this process's memory usage in MB (Linux only)
+# Spawning ps is slower but has broader support
+def getmem(ps = false)
+  return `ps -p #{Process.pid} -o rss=`.to_i / 1024.0 if ps
+  line = nil
+  File.open("/proc/#{Process.pid}/status", 'rb') do |f|
+    line = f.find{ |l| l=~ /vmrss/i }
+  end
+  return 0 if !line
+  name, value, unit = line.downcase.split
+  conversion = 1024 ** ['b', 'kb', 'mb', 'gb', 'tb'].index(unit)
+  value.to_f * conversion / 1024 ** 2
+rescue
+  0
+end
+
 # Return system's memory info in MB as a hash (Linux only)
 def meminfo
   File.read("/proc/meminfo").split("\n").map{ |f| f.split(':') }
