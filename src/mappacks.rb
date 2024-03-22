@@ -994,13 +994,13 @@ module Map
 
   # Redraw the background over the last frame to erase or change the
   # elements that have been updated
-  def self.restore_background(gif, background, markers, objects, atlas, ppc = PPC)
-    bbox = gif.images.last.bbox
+  def self.restore_background(image, background, markers, objects, atlas, ppc = PPC)
+    bbox = image.bbox
 
     # Remove ninja markers from previous frame
     r = ANIMATION_RADIUS
     markers.each{ |p|
-      gif.images.last.copy(
+      image.copy(
         src:    background,
         offset: [p[0] - r, p[1] - r],
         dim:    [2 * r + 1, 2 * r + 1],
@@ -1021,7 +1021,7 @@ module Map
       # Copy background region
       x = ppc * o[1] - width / 2
       y = ppc * o[2] - height / 2
-      gif.images.last.copy(
+      image.copy(
         src:    background,
         offset: [x, y],
         dim:    [width, height],
@@ -1033,9 +1033,9 @@ module Map
   # Draw a single frame of an animated GIF. We have two modes:
   # - Tracing the routes by plotting the lines.
   # - Animating the ninjas by drawing moving circles.
-  def self.draw_frame_gif(gif, coords, f, step, trace, colors)
+  def self.draw_frame_gif(image, coords, f, step, trace, colors)
     sizes = coords.map(&:size)
-    bbox = gif.images.last.bbox
+    bbox = image.bbox
 
     # Trace route bits for this frame _range_
     if trace
@@ -1046,7 +1046,7 @@ module Map
           p1 = [c_list[f + s][0], c_list[f + s][1]]
           p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
           p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
-          gif.images.last.line(p1: p1, p2: p2, color: colors[i], weight: 2)
+          image.line(p1: p1, p2: p2, color: colors[i], weight: 2)
         }
       }
       return []
@@ -1061,7 +1061,7 @@ module Map
         markers << [c_list[frame][0], c_list[frame][1]]
         p = [c_list[frame][0], c_list[frame][1]]
         p = Gifenc::Geometry.transform([p], bbox)[0]
-        gif.images.last.circle(p, ANIMATION_RADIUS, nil, colors[i])
+        image.circle(p, ANIMATION_RADIUS, nil, colors[i])
       }
       return markers
     end
@@ -1147,6 +1147,10 @@ module Map
 
     bench(:start) if BENCHMARK
 
+    anim = false if !FEATURE_ANIMATE
+    ext = !anim ? 'png' : use_gif ? 'gif' : 'mp4'
+    filename =  "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{ext}"
+
     res = _fork do
       # Parse palette
       bench(:start) if BENCH_IMAGES
@@ -1155,7 +1159,6 @@ module Map
       theme.downcase!
       theme = DEFAULT_PALETTE if !themes.include?(theme)
       palette_idx = themes.index(theme)
-      anim = false if !FEATURE_ANIMATE
 
       # Prepare map data and map scale
       maps = h.is_level? ? [h] : h.levels
@@ -1225,7 +1228,8 @@ module Map
 
           # Construct GIF and add screenshot as first frame
           gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1, destroy: true)
-          gif.images << png2gif(image, palette, bg_color)
+          gif.open(filename)
+          background = png2gif(image, palette, bg_color)
 
           # Convert tile and object atlases to GIF
           tile_atlas = tile_atlas.map{ |id, png|
@@ -1249,18 +1253,17 @@ module Map
 
           # Timebars and legend
           font = parse_bmfont(FONT_TIMEBAR)
-          render_timebars(gif.images.first, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc) unless blank
+          render_timebars(background, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc) unless blank
 
-          # Save a copy of the background, which we will be updating dynamically with
-          # collected / toggled objects, that will be used to redraw each frame.
-          background = gif.images.first.dup
-          gif.images.first.compress
+          # Write first frame (background) to disk
+          gif.add(background)
           bench(:step, 'GIF bg    ') if BENCH_IMAGES
 
           # Render frames
           sizes = coords.map(&:size)
           frames = sizes.max
           markers = []
+          image = nil
           (0 .. frames - 1).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
 
@@ -1272,8 +1275,9 @@ module Map
             break if !bbox
             done = sizes.map{ |s| s.between?(f + (trace ? 2 : step), f + step + 1) }
 
-            # Add new frame
-            gif.images << Gifenc::Image.new(
+            # Write previous frame to disk and create new frame
+            gif.add(image) if image
+            image = Gifenc::Image.new(
               bbox:        bbox,
               color:       index[TRANSPARENT_COLOR >> 8],
               delay:       delay,
@@ -1284,21 +1288,21 @@ module Map
             # change any objects that have been collected / toggled this frame.
             if !trace
               redraw_changes(background, collided, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false) unless blank
-              restore_background(gif, background, markers, collided, object_atlas, ppc)
+              restore_background(image, background, markers, collided, object_atlas, ppc)
             end
 
             # Draw trace chunks
-            markers = draw_frame_gif(gif, pixel_coords, f, step, trace, ninja_colors)
+            markers = draw_frame_gif(image, pixel_coords, f, step, trace, ninja_colors)
 
             # Draw other elements
-            render_timebars(gif.images.last, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc) unless blank
-
-            # LZW-compress frames on the fly to save memory
-            gif.images.last.compress
+            render_timebars(image, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc) unless blank
           end
 
           # Show last frame for 1 second before looping
-          gif.exhibit(ANIMATION_EXHIBIT)
+          if image
+            image.delay = ANIMATION_EXHIBIT
+            gif.add(image)
+          end
         else
           # Video output using FFmpeg, we generate each new frame fully
           sizes = coords.map(&:size)
@@ -1317,7 +1321,9 @@ module Map
       # Export result
       if anim
         if use_gif
-          res = gif.write
+          gif.close
+          res = File.binread(filename)
+          FileUtils.rm([filename])
         else
           `ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
           res = File.binread('frames/anim.mp4')
@@ -1335,8 +1341,7 @@ module Map
     bench(:step) if BENCHMARK
 
     return nil if !res
-    ext = !anim ? 'png' : use_gif ? 'gif' : 'mp4'
-    file ? tmp_file(res, "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{ext}", binary: true) : res
+    file ? tmp_file(res, filename, binary: true) : res
   rescue => e
     lex(e, "Failed to generate screenshot")
     nil
