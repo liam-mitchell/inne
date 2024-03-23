@@ -1116,7 +1116,7 @@ module Map
     gif.trans_color = index[trans >> 8] if trans
 
     # Transform color values to color indices in the palette
-    gif.replace(png.pixels.map{ |c| index[c >> 8] || bg })
+    gif.replace(png.pixels.map{ |c| index[c >> 8] || bg }.pack('C*'))
 
     gif
   end
@@ -1151,6 +1151,7 @@ module Map
     ext = !anim ? 'png' : use_gif ? 'gif' : 'mp4'
     filename =  "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{ext}"
     memory = [] if BENCH_IMAGES
+    $time = 0
 
     res = _fork do
       memory << getmem if BENCH_IMAGES
@@ -1344,6 +1345,7 @@ module Map
         dbg('Image size: ' + res.size.to_s)
         mem_per_frame = memory.size > 3 ? (memory[3..-1].max - memory[3..-1].min) / (memory.size - 3) : 0.0
         dbg("Memory: max #{'%.3f' % memory.max}, avg #{'%.3f' % [memory.sum / memory.size]}, per frame #{'%.3f' % mem_per_frame}")
+        dbg("Time: %.3fms" % [$time * 1000])
       end
 
       res

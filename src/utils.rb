@@ -1502,6 +1502,7 @@ def txt2gif(str, image, font, x, y, color, pad_x: 0, pad_y: 0, wrap: false, alig
   wildcard       = font['char']['?'.ord]
 
   # Init params
+  color      = color.chr if color.is_a?(Integer)
   factor     = { left: 0, center: 0.5, right: 1 }[align]
   start_x    = x - strlen(str, font) * factor
   start_y    = y - font['common'][0]['base'] + 1
