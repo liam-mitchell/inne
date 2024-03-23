@@ -3,6 +3,7 @@ from itertools import product
 import os.path
 import struct
 import copy
+import random
 
 
 NINJA_ANIM_MODE = True
@@ -24,13 +25,30 @@ class Ninja:
     GRAVITY_JUMP = 0.01111111111111111 
     GROUND_ACCEL = 0.06666666666666665
     AIR_ACCEL = 0.04444444444444444
-    DRAG = 0.9933221725495059 # 0.99^(2/3)
+    DRAG_REGULAR = 0.9933221725495059 # 0.99^(2/3)
+    DRAG_SLOW = 0.8617738760127536 # 0.80^(2/3)
     FRICTION_GROUND = 0.9459290248857720 # 0.92^(2/3)
     FRICTION_GROUND_SLOW = 0.8617738760127536 # 0.80^(2/3)
     FRICTION_WALL = 0.9113380468927672 # 0.87^(2/3)
     MAX_HOR_SPEED = 3.333333333333333
     MAX_JUMP_DURATION = 45
+    MAX_SURVIVABLE = 6
     RADIUS = 10
+
+    #Parameters for victory dances.
+    #DANCE IDS (names of dances courtesy of Eddy, 0-12 are new, 13-20 are classics):
+    #0:Default pose, 1:Tired and sweaty, 2:Hands in the air, 3:Crab walk, 4:Shuffle, 5:Turk dance,
+    #6:Russian squat dance, 7:Arm wave, 8:The carlton, 9:Hanging, 10:The worm, 11:Thriller,
+    #12:Side to side, 13:Clutch to the sky, 14:Frontflip, 15:Waving, 16:On one leg, 17:Backflip,
+    #18:Kneeling, 19:Fall to the floor, 20:Russian squat dance (classic version), 21:Kick
+    DANCE_RANDOM = True #Choose whether the victory dance is picked randomly.
+    DANCE_ID_DEFAULT = 10 #Choose the id of the dance that will always play if DANCE_RANDOM is false.
+    DANCE_DIC = {0:(104, 104), 1:(106, 225), 2:(226, 345), 3:(346, 465), 4:(466, 585), 5:(586, 705),
+                 6:(706, 825), 7:(826, 945), 8:(946, 1065), 9:(1066, 1185), 10:(1186, 1305),
+                 11:(1306, 1485), 12:(1486, 1605), 13:(1606, 1664), 14:(1665, 1731), 15:(1732, 1810),
+                 16:(1811, 1852), 17:(1853, 1946), 18:(1947, 2004), 19:(2005, 2156), 20:(2157, 2241),
+                 21:(2242, 2295)}
+                 
 
     def __init__(self, sim):
         """Initiate ninja position at spawn point, and initiate other values to their initial state"""
@@ -40,6 +58,7 @@ class Ninja:
         self.xspeed = 0
         self.yspeed = 0
         self.applied_gravity = self.GRAVITY_FALL
+        self.applied_drag = self.DRAG_REGULAR
         self.applied_friction = self.FRICTION_GROUND
         self.state = 0 #0:Immobile, 1:Running, 2:Ground sliding, 3:Jumping, 4:Falling, 5:Wall sliding
         self.airborn = False
@@ -52,6 +71,8 @@ class Ninja:
         self.launch_pad_buffer = -1
         self.floor_normalized_x = 0
         self.floor_normalized_y = -1
+        self.ceiling_normalized_x = 0
+        self.ceiling_normalized_y = 1
         self.anim_state = 0
         self.facing = 1
         self.tilt = 0
@@ -66,8 +87,8 @@ class Ninja:
         
     def integrate(self):
         """Update position and speed by applying drag and gravity before collision phase."""
-        self.xspeed *= self.DRAG
-        self.yspeed *= self.DRAG
+        self.xspeed *= self.applied_drag
+        self.yspeed *= self.applied_drag
         self.yspeed += self.applied_gravity
         self.xpos_old = self.xpos
         self.ypos_old = self.ypos
@@ -80,8 +101,11 @@ class Ninja:
         self.yspeed_old = self.yspeed
         self.floor_count = 0
         self.wall_count = 0
+        self.ceiling_count = 0
         self.floor_normal_x = 0
         self.floor_normal_y = 0
+        self.ceiling_normal_x = 0
+        self.ceiling_normal_y = 0
 
     def collide_vs_objects(self):
         """Gather all entities in neighbourhood and apply physical collisions if possible."""
@@ -103,13 +127,17 @@ class Ninja:
                             yspeed_new = (self.xspeed*depen_y - self.yspeed*depen_x) * (-depen_x)
                             self.xspeed = xspeed_new
                             self.yspeed = yspeed_new
-                    if depen_y < 0: 
+                    if depen_y >= -0.0001: #Adjust ceiling variables if ninja collides with ceiling (or wall!)
+                        self.ceiling_count += 1
+                        self.ceiling_normal_x += depen_x
+                        self.ceiling_normal_y += depen_y
+                    else: #Adjust floor variables if ninja collides with floor
                         self.floor_count += 1
                         self.floor_normal_x += depen_x
                         self.floor_normal_y += depen_y
 
     def collide_vs_tiles(self):
-        """Gather all tile segments in neighbourhood and handle collisions with those."""
+        """Gather all tile segments in neighbourhood and handle collisions with those."""     
         #Interpolation routine mainly to prevent from going through walls.
         dx = self.xpos - self.xpos_old
         dy = self.ypos - self.ypos_old
@@ -143,14 +171,18 @@ class Ninja:
                 yspeed_new = (self.xspeed*dy - self.yspeed*dx) / dist**2 * (-dx)
                 self.xspeed = xspeed_new
                 self.yspeed = yspeed_new
-            if dy < -0.0001: #Adjust floor variables if ninja is standing on ground
+            if dy >= -0.0001: #Adjust ceiling variables if ninja collides with ceiling (or wall!)
+                self.ceiling_count += 1
+                self.ceiling_normal_x += dx/dist
+                self.ceiling_normal_y += dy/dist
+            else: #Adjust floor variables if ninja collides with floor
                 self.floor_count += 1
                 self.floor_normal_x += dx/dist
                 self.floor_normal_y += dy/dist
     
     def post_collision(self):
         """Perform logical collisions with entities, check for airborn state,
-        check for walled state and calculate floor normals.
+        check for walled state, calculate floor normals, check for impact or crush death.
         """
         #Perform LOGICAL collisions between the ninja and nearby entities.
         #Also check if the ninja can interact with the walls of entities when applicable.
@@ -209,6 +241,31 @@ class Ninja:
             else:
                 self.floor_normalized_x = self.floor_normal_x/floor_scalar
                 self.floor_normalized_y = self.floor_normal_y/floor_scalar
+            if self.state != 8: #Check if died from floor impact
+                impact_vel = -(self.floor_normalized_x*self.xspeed_old + self.floor_normalized_y*self.yspeed_old)
+                if impact_vel > self.MAX_SURVIVABLE - 4/3 * abs(self.floor_normalized_y):
+                    self.xspeed = self.xspeed_old
+                    self.yspeed = self.yspeed_old
+                    self.kill()
+
+        #Calculate the combined ceiling normalized normal vector if the ninja has touched any ceiling.
+        if self.ceiling_count > 0:
+            ceiling_scalar = math.sqrt(self.ceiling_normal_x**2 + self.ceiling_normal_y**2)
+            if ceiling_scalar == 0:
+                self.ceiling_normalized_x = 0
+                self.ceiling_normalized_y = 1
+            else:
+                self.ceiling_normalized_x = self.ceiling_normal_x/ceiling_scalar
+                self.ceiling_normalized_y = self.ceiling_normal_y/ceiling_scalar
+            if self.state != 8: #Check if died from floor impact
+                impact_vel = -(self.ceiling_normalized_x*self.xspeed_old + self.ceiling_normalized_y*self.yspeed_old)
+                if impact_vel > self.MAX_SURVIVABLE - 4/3 * abs(self.ceiling_normalized_y):
+                    self.xspeed = self.xspeed_old
+                    self.yspeed = self.yspeed_old
+                    self.kill()
+
+        #Check if ninja died from crushing.
+        #TODO
 
     def floor_jump(self):
         """Perform floor jump depending on slope angle and direction."""
@@ -322,6 +379,14 @@ class Ninja:
         if not self.airborn:
             self.floor_buffer = 0
 
+        #This part deals with the special states: awaiting death or celebrating.
+        if self.state == 7:
+            self.think_awaiting_death()
+            return
+        if self.state == 8:
+            self.applied_drag = self.DRAG_REGULAR if self.airborn else self.DRAG_SLOW
+            return
+
         #This block deals with the case where the ninja is touching a floor.
         if not self.airborn: 
             xspeed_new = self.xspeed + self.GROUND_ACCEL * self.hor_input
@@ -423,6 +488,10 @@ class Ninja:
                             self.applied_gravity = self.GRAVITY_FALL
                         self.state = 5
 
+    def think_awaiting_death(self):
+        """Should be were the ragdoll gets initiated among other things. TODO"""
+        self.state = 6
+
     def update_graphics(self):
         """Update parameters necessary to draw the limbs of the ninja."""
         anim_state_old = self.anim_state
@@ -431,12 +500,6 @@ class Ninja:
             self.tilt = 0
             self.facing = -self.wall_normal
             self.anim_rate = self.yspeed
-        elif self.state == 6:
-            self.anim_state = 5
-            return
-        elif self.state == 9:
-            self.anim_state = 7
-            return
         elif not self.airborn and self.state != 3:
             self.tilt = math.atan2(self.floor_normalized_y, self.floor_normalized_x) + math.pi/2
             if self.state == 0:
@@ -487,7 +550,8 @@ class Ninja:
             if self.anim_state == 4:
                 self.anim_frame = 103
             if self.anim_state == 6:
-                self.anim_frame = 104
+                self.dance_id = random.choice(list(self.DANCE_DIC)) if self.DANCE_RANDOM else self.DANCE_ID_DEFAULT
+                self.anim_frame = self.DANCE_DIC[self.dance_id][0]
 
         if self.anim_state == 0:
             if self.anim_frame < 11:
@@ -503,11 +567,16 @@ class Ninja:
             else:
                 rate = max(self.anim_rate*1.5, -1)
             self.anim_frame = 93 + math.floor(9*rate)
+        if self.anim_state == 6:
+            if self.anim_frame < self.DANCE_DIC[self.dance_id][1]:
+                self.anim_frame += 1
         
         if NINJA_ANIM_MODE:
             self.calc_ninja_position()
     
     def calc_ninja_position(self):
+        """Calculate the positions of ninja's joints. The positions are fetched from the animation data,
+        after applying mirroring, rotation or interpolation if necessary."""
         new_bones = copy.deepcopy(ninja_animation[self.anim_frame])
         if self.anim_state == 1:
             interpolation = (self.run_cycle % 6) / 6
@@ -521,6 +590,24 @@ class Ninja:
             new_bones[i][0] = x*tcos - y*tsin
             new_bones[i][1] = x*tsin + y*tcos
         self.bones = new_bones
+
+    def win(self):
+        """Set ninja's state to celebrating."""
+        if self.state < 6:
+            if self.state == 3:
+                self.applied_gravity = self.GRAVITY_FALL
+            self.state = 8
+            
+    def kill(self):
+        """Set ninja's state to just killed."""
+        if self.state < 6:
+            if self.state == 3:
+                self.applied_gravity = self.GRAVITY_FALL
+            self.state = 7
+
+    def is_valid_target(self):
+        """Return whether the ninja is a valid target for various interactions."""
+        return not self.state in (6, 8, 9)
 
 
 class GridSegmentLinear:
@@ -642,8 +729,48 @@ class Entity:
             self.cell = cell_new
             self.sim.entity_dic[self.cell].append(self)
 
-    def log(self, state = 1):
+    def log(self, state=1):
         self.sim.entitylog.append((self.sim.frame, self.type, self.xpos, self.ypos, state))
+
+
+class EntityToggleMine(Entity):
+    RADII = {0:4, 1:3.5, 2:4.5}
+
+    def __init__(self, type, sim, xcoord, ycoord, state):
+        super().__init__(type, sim, xcoord, ycoord)
+        self.is_thinkable = True
+        self.is_logical_collidable = True
+        self.set_state(state)
+
+    def think(self):
+        ninja = self.sim.ninja
+        if ninja.is_valid_target():
+            if self.state == 1:
+                if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
+                                            ninja.xpos, ninja.ypos, ninja.RADIUS):
+                    self.set_state(2)
+                    self.log(2)
+            elif self.state == 2:
+                if not overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
+                                                ninja.xpos, ninja.ypos, ninja.RADIUS):
+                    self.set_state(0)
+        else:
+            if self.state == 2 and ninja.state == 6:
+                self.set_state(1)
+
+    def logical_collision(self):
+        ninja = self.sim.ninja
+        if ninja.is_valid_target() and self.state == 0: 
+            if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
+                                        ninja.xpos, ninja.ypos, ninja.RADIUS):
+                self.set_state(1)
+                ninja.kill() #temporary, probably
+
+    def set_state(self, state):
+        """Set the state of the toggle. 0:toggled, 1:untoggled, 2:toggling."""
+        if state in (0, 1, 2):
+            self.state = state
+            self.RADIUS = self.RADII[state]
 
 
 class EntityGold(Entity):
@@ -657,28 +784,12 @@ class EntityGold(Entity):
     def logical_collision(self):
         """If the ninja is colliding with the piece of gold, store the collection frame."""
         ninja = self.sim.ninja
-        if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
-                                    ninja.xpos, ninja.ypos, ninja.RADIUS):
-            self.collected = self.sim.frame
-            self.active = False
-            self.log()
-
-class EntityToggleMine(Entity):
-    RADIUS = 3.5
-
-    def __init__(self, type, sim, xcoord, ycoord):
-        super().__init__(type, sim, xcoord, ycoord)
-        self.is_logical_collidable = True
-        self.toggled = False
-
-    def logical_collision(self):
-        """If the ninja is colliding with the toggle mine, store the collection frame."""
-        ninja = self.sim.ninja
-        if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
-                                    ninja.xpos, ninja.ypos, ninja.RADIUS):
-            self.toggled = self.sim.frame
-            self.active = False
-            self.log(2)
+        if ninja.state != 8:
+            if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
+                                        ninja.xpos, ninja.ypos, ninja.RADIUS):
+                self.collected = True
+                self.active = False
+                self.log()
 
 
 class EntityExit(Entity):
@@ -695,7 +806,7 @@ class EntityExit(Entity):
         if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
                                     ninja.xpos, ninja.ypos, ninja.RADIUS):
             self.ninja_exit.append(self.sim.frame)
-            self.active = False
+            ninja.win()
 
 
 class EntityExitSwitch(Entity):
@@ -838,16 +949,17 @@ class EntityLaunchPad(Entity):
     def logical_collision(self):
         """If the ninja is colliding with the launch pad (semi circle hitbox), return boost."""
         ninja = self.sim.ninja
-        if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
-                                    ninja.xpos, ninja.ypos, ninja.RADIUS):
-            if ((self.xpos - (ninja.xpos - ninja.RADIUS*self.normal_x))*self.normal_x
-                + (self.ypos - (ninja.ypos - ninja.RADIUS*self.normal_y))*self.normal_y) >= -0.1:
-                yboost_scale = 1
-                if self.normal_y < 0:
-                    yboost_scale = 1 - self.normal_y
-                xboost = self.normal_x * self.BOOST
-                yboost = self.normal_y * self.BOOST * yboost_scale
-                return (xboost, yboost)
+        if ninja.is_valid_target():
+            if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
+                                        ninja.xpos, ninja.ypos, ninja.RADIUS):
+                if ((self.xpos - (ninja.xpos - ninja.RADIUS*self.normal_x))*self.normal_x
+                    + (self.ypos - (ninja.ypos - ninja.RADIUS*self.normal_y))*self.normal_y) >= -0.1:
+                    yboost_scale = 1
+                    if self.normal_y < 0:
+                        yboost_scale = 1 - self.normal_y
+                    xboost = self.normal_x * self.BOOST
+                    yboost = self.normal_y * self.BOOST * yboost_scale
+                    return (xboost, yboost)
 
 
 class EntityOneWayPlatform(Entity):
@@ -1036,10 +1148,11 @@ class EntityThwump(Entity):
     
     def logical_collision(self):
         ninja = self.sim.ninja
-        depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
-                                          self.SEMI_SIDE + ninja.RADIUS + 0.1)
-        if depen:
-            return depen[0][0]
+        if ninja.is_valid_target():
+            depen = penetration_square_vs_point(self.xpos, self.ypos, ninja.xpos, ninja.ypos,
+                                            self.SEMI_SIDE + ninja.RADIUS + 0.1)
+            if depen:
+                return depen[0][0]
 
 
 class EntityBoostPad(Entity):
@@ -1053,6 +1166,9 @@ class EntityBoostPad(Entity):
     def move(self):
         """If the ninja starts touching the booster, add 2 to its velocity norm."""
         ninja = self.sim.ninja
+        if not ninja.is_valid_target():
+            self.is_touching_ninja = False
+            return
         if overlap_circle_vs_circle(self.xpos, self.ypos, self.RADIUS,
                                     ninja.xpos, ninja.ypos, ninja.RADIUS):
             if not self.is_touching_ninja:
@@ -1225,9 +1341,10 @@ class Simulator:
                                  12:((24, 24), (-1, -1), True), 13:((0, 24), (1, -1), True),
                                  14:((24, 24), (-1, -1), False), 15:((0, 24), (1, -1), False),
                                  16:((0, 0), (1, 1), False), 17:((24, 0), (-1, 1), False)}
-
-    def __init__(self):
-        self.frame = 1
+      
+    def load(self, map_data):
+        """From the given map data, initiate the level geometry, the entities and the ninja."""
+        self.frame = 0
         self.entitylog = []
 
         #initiate a dictionary mapping each tile id to its cell. Start by filling it with full tiles (id of 1).
@@ -1277,9 +1394,6 @@ class Simulator:
                 if x == 88:
                     value = -1
                 self.ver_segment_dic[(x, y)] = value
-        
-    def load(self, map_data):
-        self.__init__()
 
         self.map_data = map_data
         #extract tile data from map data
@@ -1353,7 +1467,9 @@ class Simulator:
             ycoord = self.map_data[index+2]
             orientation = self.map_data[index+3]
             mode = self.map_data[index+4]
-            if type == 2:
+            if type == 1:
+                entity = EntityToggleMine(type, self, xcoord, ycoord, 0)
+            elif type == 2:
                 entity = EntityGold(type, self, xcoord, ycoord)
             elif type == 3:
                 parent = EntityExit(type, self, xcoord, ycoord)
@@ -1380,7 +1496,7 @@ class Simulator:
             elif type == 20:
                 entity = EntityThwump(type, self, xcoord, ycoord, orientation)
             elif type == 21:
-                entity = EntityToggleMine(type, self, xcoord, ycoord)
+                entity = EntityToggleMine(type, self, xcoord, ycoord, 1)
             elif type == 24:
                 entity = EntityBoostPad(type, self, xcoord, ycoord)
             elif type == 28:
@@ -1393,6 +1509,9 @@ class Simulator:
             index += 5
 
     def tick(self, hor_input, jump_input):
+        #Increment the current frame
+        self.frame += 1
+
         #Store inputs as ninja variables
         self.ninja.hor_input = hor_input
         self.ninja.jump_input = jump_input
@@ -1406,23 +1525,26 @@ class Simulator:
             if entity.is_thinkable and entity.active:
                 entity.think()
         
-        self.ninja.integrate() #Do preliminary speed and position updates.
-        self.ninja.pre_collision() #Do pre collision calculations.
-        for _ in range(4):
-            self.ninja.collide_vs_objects() #Handle PHYSICAL collisions with entities.
-            self.ninja.collide_vs_tiles() #Handle physical collisions with tiles.
-        self.ninja.post_collision() #Do post collision calculations.
-        self.ninja.think() #Make ninja think
-        self.ninja.update_graphics() #Update limbs of ninja
+        if not self.ninja.state in (6, 9):
+            ninja = self.ninja
+            self.ninja.integrate() #Do preliminary speed and position updates.
+            self.ninja.pre_collision() #Do pre collision calculations.
+            for _ in range(4):
+                self.ninja.collide_vs_objects() #Handle PHYSICAL collisions with entities.
+                self.ninja.collide_vs_tiles() #Handle physical collisions with tiles.
+            self.ninja.post_collision() #Do post collision calculations.
+            self.ninja.think() #Make ninja think
+            self.ninja.update_graphics() #Update limbs of ninja
+
+        if self.ninja.state == 6 and NINJA_ANIM_MODE: #Placeholder because no ragdoll!
+            self.ninja.anim_frame = 105
+            self.ninja.calc_ninja_position()
 
         #Update all the logs for debugging purposes and for tracing the route.
         self.ninja.poslog.append((self.frame, round(self.ninja.xpos, 6), round(self.ninja.ypos, 6)))
         self.ninja.speedlog.append((self.frame, round(self.ninja.xspeed, 6), round(self.ninja.yspeed, 6)))
         self.ninja.xposlog.append(self.ninja.xpos)
         self.ninja.yposlog.append(self.ninja.ypos)
-
-        #Increment the current frame
-        self.frame += 1
 
 
 def gather_segments_from_region(sim, x1, y1, x2, y2):

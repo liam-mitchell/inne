@@ -1393,8 +1393,8 @@ module Map
       coords = coords.take(n).reverse
       demos = demos.take(n).reverse
       texts = texts.take(n).reverse
-      color_idx = OBJECTS[0][:pal]
-      colors = n.times.map{ |i| ChunkyPNG::Color.to_hex(PALETTE[color_idx + n - 1 - i, palette_idx]) }
+      colors = n.times.map{ |i| ChunkyPNG::Color.to_hex(PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx]) }
+      color_death = ChunkyPNG::Color.to_hex(PALETTE[OBJECTS[1][:pal], palette_idx])
       Matplotlib.use('agg')
       mpl = Matplotlib::Pyplot
       mpl.ioff
@@ -1423,15 +1423,23 @@ module Map
       # Plot inputs
       n.times.each{ |i|
         break if markers.values.count(true) == 0  || demos[i].nil?
+        last_coord = nil
         demos[i].each_with_index{ |f, j|
+          if !coords[i][j]
+            mpl.plot(last_coord[0], last_coord[1], color: colors[i], marker: 'X', markersize: 2) if last_coord
+            break
+          else
+            last_coord = coords[i][j]
+          end
+
           if markers[:jump] && f[0] == 1 && (j == 0 || demos[i][j - 1][0] == 0)
-            mpl.plot(coords[i][j][0], coords[i][j][1], color: colors[i], marker: '.', markersize: 1)
+            mpl.plot(last_coord[0], last_coord[1], color: colors[i], marker: '.', markersize: 1)
           end
           if markers[:right] && f[1] == 1 && (j == 0 || demos[i][j - 1][1] == 0)
-            mpl.plot(coords[i][j][0], coords[i][j][1], color: colors[i], marker: '>', markersize: 1)
+            mpl.plot(last_coord[0], last_coord[1], color: colors[i], marker: '>', markersize: 1)
           end
           if markers[:left] && f[2] == 1 && (j == 0 || demos[i][j - 1][2] == 0)
-            mpl.plot(coords[i][j][0], coords[i][j][1], color: colors[i], marker: '<', markersize: 1)
+            mpl.plot(last_coord[0], last_coord[1], color: colors[i], marker: '<', markersize: 1)
           end
         }
       }
@@ -1461,7 +1469,7 @@ module Map
       # Plot or animate traces
       # Note: I've deprecated the animation code because the performance was horrible.
       # Instead, for animations I render each frame in the screenshot function,
-      # and then call ffmpeg to render an mp4, or generate a GIF.
+      # and then use Gifenc to generate a GIF.
       if false# animate
         anim = PyCall.import_module('matplotlib.animation')
         x = []
