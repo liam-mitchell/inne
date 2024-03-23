@@ -181,6 +181,10 @@ TRANSPARENT_COLOR = 0x00FF00FF
 # Fonts
 FONT_TIMEBAR = 'retro'
 
+# Other
+ANIM_GC      = false # Garbage collect periodically when generating frames
+ANIM_GC_STEP = 100   # How many frames to render before running the GC
+
 # <---------------------------------------------------------------------------->
 # <------                      FEATURE VARIABLES                         ------>
 # <---------------------------------------------------------------------------->

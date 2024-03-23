@@ -514,7 +514,7 @@ end
 # <---------------------------------------------------------------------------->
 
 # Wrapper to benchmark a piece of code
-def bench(action, msg = nil)
+def bench(action, msg = nil, pad_str: 1, pad_num: 8)
   @t ||= Time.now
   @total ||= 0
   @step ||= 0
@@ -528,7 +528,7 @@ def bench(action, msg = nil)
     int = Time.now - @t
     @total += int
     @t = Time.now
-    dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : msg}: #{"%8.3fms" % (int * 1000)} (Total: #{"%8.3fms" % (@total * 1000)}).")
+    dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : ("%#{pad_str}s" % msg)}: #{"%#{pad_num}.3fms" % (int * 1000)} (Total: #{"%#{pad_num}.3fms" % (@total * 1000)}).")
   end
 end
 

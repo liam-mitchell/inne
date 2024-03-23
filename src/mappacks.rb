@@ -1150,8 +1150,10 @@ module Map
     anim = false if !FEATURE_ANIMATE
     ext = !anim ? 'png' : use_gif ? 'gif' : 'mp4'
     filename =  "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{ext}"
+    memory = [] if BENCH_IMAGES
 
     res = _fork do
+      memory << getmem if BENCH_IMAGES
       # Parse palette
       bench(:start) if BENCH_IMAGES
       return nil if h.nil?
@@ -1172,31 +1174,32 @@ module Map
 
       # Initialize base image
       image = init_image(palette_idx, ppc, h)
-      bench(:step, 'Setup     ') if BENCH_IMAGES
+      bench(:step, 'Setup', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Parse map
       objects, tiles = parse_maps(maps, v)
-      bench(:step, 'Parse     ') if BENCH_IMAGES
+      bench(:step, 'Parse', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Initialize tile images
       tile_atlas = init_tiles(tiles, palette_idx, ppc)
-      bench(:step, 'Init tiles') if BENCH_IMAGES
+      bench(:step, 'Init tiles', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Initialize object images
       object_atlas = init_objects(objects, palette_idx, ppc)
-      bench(:step, 'Init objs ') if BENCH_IMAGES
+      bench(:step, 'Init objs', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Draw objects
       render_objects(objects, image, ppc: ppc, atlas: object_atlas, frame: frame) unless blank
-      bench(:step, 'Objects   ') if BENCH_IMAGES
+      bench(:step, 'Objects', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Draw tiles
       render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, frame: frame, palette_idx: palette_idx) unless blank
-      bench(:step, 'Tiles     ') if BENCH_IMAGES
+      bench(:step, 'Tiles', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Draw tile borders
       render_borders(tiles, image, palette_idx: palette_idx, ppc: ppc, frame: frame) unless blank
-      bench(:step, 'Borders   ') if BENCH_IMAGES
+      bench(:step, 'Borders', pad_str: 10, pad_num: 9) if BENCH_IMAGES
+      memory << getmem if BENCH_IMAGES
 
       # Animate runs. We implement two modes:
       # - Trace mode will plot the routes as lines.
@@ -1257,7 +1260,8 @@ module Map
 
           # Write first frame (background) to disk
           gif.add(background)
-          bench(:step, 'GIF bg    ') if BENCH_IMAGES
+          memory << getmem if BENCH_IMAGES
+          bench(:step, 'GIF bg', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
           # Render frames
           sizes = coords.map(&:size)
@@ -1296,6 +1300,8 @@ module Map
 
             # Draw other elements
             render_timebars(image, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc) unless blank
+            memory << getmem if BENCH_IMAGES
+            GC.start if ANIM_GC && (f / step + 1) % ANIM_GC_STEP == 0
           end
 
           # Show last frame for 1 second before looping
@@ -1312,7 +1318,7 @@ module Map
             draw_frame_vid(image, pixel_coords, f, ninja_colors)
           end
         end
-        bench(:step, 'Routes    ') if BENCH_IMAGES
+        bench(:step, 'Routes', pad_str: 10, pad_num: 9) if BENCH_IMAGES
       end
 
       # rb_p(rb_str_new_cstr("Hello, world!"));
@@ -1332,8 +1338,13 @@ module Map
       else
         res = image.to_blob(:fast_rgb)
       end
-      dbg('Image size: ' + res.size.to_s) if BENCH_IMAGES
-      bench(:step, 'Blobify   ') if BENCH_IMAGES
+
+      if BENCH_IMAGES
+        bench(:step, 'Blobify', pad_str: 10, pad_num: 9) if BENCH_IMAGES
+        dbg('Image size: ' + res.size.to_s)
+        mem_per_frame = memory.size > 3 ? (memory[3..-1].max - memory[3..-1].min) / (memory.size - 3) : 0.0
+        dbg("Memory: max #{'%.3f' % memory.max}, avg #{'%.3f' % [memory.sum / memory.size]}, per frame #{'%.3f' % mem_per_frame}")
+      end
 
       res
     end
@@ -1392,7 +1403,7 @@ module Map
       fm.fontManager.addfont(font)
       mpl.rcParams['font.family'] = 'sans-serif'
       mpl.rcParams['font.sans-serif'] = fm.FontProperties.new(fname: font).get_name
-      bench(:step, 'Trace setup') if BENCH_IMAGES
+      bench(:step, 'Trace setup', pad_str: 11) if BENCH_IMAGES
 
       # Configure axis
       dx = (COLUMNS + 2) * UNITS
@@ -1405,7 +1416,7 @@ module Map
       # Load background image (screenshot)
       img = mpl.imread(bg)
       ax.imshow(img, extent: [0, dx, dy, 0])
-      bench(:step, 'Trace image') if BENCH_IMAGES
+      bench(:step, 'Trace image', pad_str: 11) if BENCH_IMAGES
 
       # Plot inputs
       n.times.each{ |i|
@@ -1422,7 +1433,7 @@ module Map
           end
         }
       }
-      bench(:step, 'Trace input') if BENCH_IMAGES
+      bench(:step, 'Trace input', pad_str: 11) if BENCH_IMAGES
 
       # Plot legend
       n.times.each{ |i|
@@ -1443,7 +1454,7 @@ module Map
         mpl.text(x + ddx, y, name, ha: 'left', va: 'baseline', color: colors[i], size: 'x-small')
         mpl.text(x + dx - ddx, y, score, ha: 'right', va: 'baseline', color: colors[i], size: 'x-small')
       }
-      bench(:step, 'Trace texts') if BENCH_IMAGES
+      bench(:step, 'Trace texts', pad_str: 11) if BENCH_IMAGES
 
       # Plot or animate traces
       # Note: I've deprecated the animation code because the performance was horrible.
@@ -1475,13 +1486,13 @@ module Map
           mpl.plot(c.map(&:first), c.map(&:last), colors[i], linewidth: 0.5)
         }
       end
-      bench(:step, 'Trace plot ') if BENCH_IMAGES
+      bench(:step, 'Trace plot', pad_str: 11) if BENCH_IMAGES
 
       # Save result
       fn = tmp_filename("#{name}_aux.png")
       mpl.savefig(fn, bbox_inches: 'tight', pad_inches: 0, dpi: 390, pil_kwargs: { compress_level: 1 })
       image = File.binread(fn)
-      bench(:step, 'Trace save ') if BENCH_IMAGES
+      bench(:step, 'Trace save', pad_str: 11) if BENCH_IMAGES
 
       # Perform cleanup
       mpl.cla
