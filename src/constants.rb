@@ -155,7 +155,7 @@ DIR_FONTS       = "#{DIR_UTILS}/fonts"
 FILENAME_MAPPACK_AUTHORS = 'AUTHORS'
 
 # <---------------------------------------------------------------------------->
-# <------                     SCREENSHOT VARIABLES                       ------>
+# <------               SCREENSHOT AND ANIMATION VARIABLES               ------>
 # <---------------------------------------------------------------------------->
 
 # The scale of the screenshots is measured in pixels per quarter tile. At normal
@@ -164,16 +164,25 @@ SCREENSHOT_SCALE_LEVEL   = 11
 SCREENSHOT_SCALE_EPISODE = 3
 SCREENSHOT_SCALE_STORY   = 2
 
-# For animated traces
-ANIMATION_SCALE        = 4   # Scale of GIF
-ANIMATION_RADIUS       = 6   # Radius of ninja balls in pixels
-ANIMATION_EXHIBIT      = 100 # Showcase final frame for 1 second before looping
+# Animation playback speed
 ANIMATION_STEP_NORMAL  = 1   # How many frames to trace per GIF frame
 ANIMATION_STEP_FAST    = 3
 ANIMATION_STEP_VFAST   = 6
 ANIMATION_DELAY_NORMAL = 2   # Time between GIF frames (min. 2)
 ANIMATION_DELAY_SLOW   = 3
 ANIMATION_DELAY_VSLOW  = 5
+
+# Other animation parameters
+ANIMATION_SCALE        = 4   # Scale of GIF
+ANIMATION_RADIUS       = 6   # Radius of ninja balls in pixels
+ANIMATION_EXHIBIT      = 100 # Showcase final frame for 1 second before looping
+
+# Input display for animations
+ANIMATION_DEFAULT_INPUT = false # Whether to draw input displays by default
+ANIMATION_WEDGE_WIDTH  = 3      # Semi-width of the wedge
+ANIMATION_WEDGE_HEIGHT = 4      # Full height of the wedge
+ANIMATION_WEDGE_SEP    = 2      # Separation between wedge and ninja marker
+ANIMATION_WEDGE_WEIGHT = 2      # Thickness of the wedge
 
 # Colors
 TRANSPARENT_COLOR = 0x00FF00FF

@@ -929,31 +929,67 @@ module Map
     }
   end
 
+  # Find the bounding box of a specific ninja marker. The marker is the circle
+  # that represents the ninja in an animation, and also includes the wedges for
+  # the input display.
+  def self.find_marker_bbox(coords, demos, ninja, frame, step)
+    # Marker coords
+    f = [frame + step - 1, coords[ninja].size - 1].min
+    x, y = coords[ninja][f]
+    j, r, l = 0, 0, 0
+
+    # Extend bbox with input display, if available
+    if demos && demos[ninja] && f > 0 && (input = demos[ninja][f - 1])
+      h = ANIMATION_WEDGE_HEIGHT - 1
+      s = ANIMATION_WEDGE_SEP
+      t = ANIMATION_WEDGE_WEIGHT
+      add = h + s + (t + 1) / 2
+      j = add     if input[0]
+      r = add + 1 if input[1] # For some reason, it's not centered horizontally
+      l = add     if input[2]
+    end
+
+    # Compute required points, center will also be useful
+    rad = ANIMATION_RADIUS
+    {
+      points: [[x - rad - l, y - rad - j], [x + rad + r, y + rad]],
+      center: [x, y],
+      input:  input
+    }
+  end
+
+  # Determine whether the ninja finished the run exactly on this GIF frame
+  def self.ninja_just_finished?(coords, f, step, trace)
+    coords.size.between?(f + 1 + (trace ? 1 : 0), f + step + (trace ? 1 : 0))
+  end
+
+  # Determine whether the ninja has already finished by this GIF frame
+  def self.ninja_finished?(coords, f, trace)
+    coords.size < f + 1 + (trace ? 1 : 0)
+  end
+
   # For a given frame, find the minimum region (bounding box) of the image that
   # needs to be redrawn. This region must contain all points that are subject to
   # change on this frame (trace bits, ninja markers, collected objects,
-  # timebars...), and must be rectangular.
-  def self.find_frame_bbox(f, coords, step, markers, objects, atlas, trace: false, ppc: PPC)
+  # timebars, input display...), and must be rectangular.
+  def self.find_frame_bbox(f, coords, step, markers, demos, objects, atlas, trace: false, ppc: PPC)
     dim = 4 * ppc
-    r = ANIMATION_RADIUS
+    rad = ANIMATION_RADIUS
     endpoints = []
 
     coords.each_with_index{ |c_list, i|
+      next if ninja_finished?(c_list, f, trace)
       if trace # Trace chunks
-        next if c_list.size < f + 2
         _step = [step, c_list.size - (f + 1)].min
         (0 .. _step).each{ |s|
           endpoints << [c_list[f + s][0], c_list[f + s][1]]
         }
-      else     # Ninja markers
-        next if c_list.size < f + step
-        frame = [f + step - 1, c_list.size - 1].min
-        endpoints << [c_list[frame][0] - r, c_list[frame][1] - r]
-        endpoints << [c_list[frame][0] + r, c_list[frame][1] + r]
+      else     # Ninja markers and input display
+        endpoints.push(*find_marker_bbox(coords, demos, i, f, step)[:points])
       end
 
       # Timebars
-      if c_list.size < f + step + 2
+      if ninja_just_finished?(c_list, f, step, trace)
         j = coords.length - 1 - i
         dx = (COLUMNS - 2) * dim / 4.0
         x = (dim * 1.25 + j * (dim / 2.0 + dx)).round
@@ -979,14 +1015,11 @@ module Map
       endpoints << [x + width - 1, y + height - 1]
     } if objects
 
+    # Also add points from the previous frame's markers (to erase them)
+    endpoints.push(*markers.flatten(1))
+
     # Nothing to plot, animation has finished
     return if endpoints.empty?
-
-    # Also add points from the previous frame's markers (to erase them)
-    markers.each{ |p|
-      endpoints << [p[0] - r, p[1] - r]
-      endpoints << [p[0] + r, p[1] + r]
-    }
 
     # Construct minimum bounding box containing all points
     Gifenc::Geometry.bbox(endpoints, 1)
@@ -997,14 +1030,14 @@ module Map
   def self.restore_background(image, background, markers, objects, atlas, ppc = PPC)
     bbox = image.bbox
 
-    # Remove ninja markers from previous frame
-    r = ANIMATION_RADIUS
-    markers.each{ |p|
+    # Remove ninja markers and input display from previous frame
+    rad = ANIMATION_RADIUS
+    markers.each{ |p1, p2|
       image.copy(
         src:    background,
-        offset: [p[0] - r, p[1] - r],
-        dim:    [2 * r + 1, 2 * r + 1],
-        dest:   Gifenc::Geometry.transform([[p[0] - r, p[1] - r]], bbox)[0]
+        offset: p1,
+        dim:    [p2[0] - p1[0] + 1, p2[1] - p1[1] + 1],
+        dest:   Gifenc::Geometry.transform([p1], bbox)[0]
       )
     }
 
@@ -1033,16 +1066,18 @@ module Map
   # Draw a single frame of an animated GIF. We have two modes:
   # - Tracing the routes by plotting the lines.
   # - Animating the ninjas by drawing moving circles.
-  def self.draw_frame_gif(image, coords, f, step, trace, colors)
-    sizes = coords.map(&:size)
+  def self.draw_frame_gif(image, coords, demos, f, step, trace, colors)
     bbox = image.bbox
+    e1 = Gifenc::Geometry::E1
+    e2 = Gifenc::Geometry::E2
+    rad = ANIMATION_RADIUS
 
     # Trace route bits for this frame _range_
     if trace
+      colors = colors.reverse
       (0 ... step).each{ |s|
-        coords.reverse.each_with_index{ |c_list, j|
-          i = coords.size - j - 1
-          next if sizes[i] < f + s + 2
+        coords.reverse.each_with_index{ |c_list, i|
+          next if ninja_finished?(c_list, f + s, trace)
           p1 = [c_list[f + s][0], c_list[f + s][1]]
           p2 = [c_list[f + s + 1][0], c_list[f + s + 1][1]]
           p1, p2 = Gifenc::Geometry.transform([p1, p2], bbox)
@@ -1052,19 +1087,31 @@ module Map
       return []
     end
 
-    # Draw ninja markers for this _single_ frame
-    if f < sizes.max - 1
-      markers = []
-      coords.each_with_index{ |c_list, i|
-        next if sizes[i] < f + step
-        frame = [f + step - 1, c_list.size - 1].min
-        markers << [c_list[frame][0], c_list[frame][1]]
-        p = [c_list[frame][0], c_list[frame][1]]
-        p = Gifenc::Geometry.transform([p], bbox)[0]
-        image.circle(p, ANIMATION_RADIUS, nil, colors[i])
-      }
-      return markers
-    end
+    # Render ninja markers for this _single_ frame
+    markers = []
+    coords.each_with_index{ |c_list, i|
+      next if ninja_finished?(c_list, f, trace)
+
+      # Save bbox to clear marker next frame
+      marker_bbox = find_marker_bbox(coords, demos, i, f, step)
+      markers << marker_bbox[:points]
+
+      # Draw marker
+      p = Gifenc::Geometry.transform([marker_bbox[:center]], bbox)[0]
+      image.circle(p, rad, nil, colors[i])
+
+      #Draw input display (inputs are offset by 1 frame)
+      next if !(input = marker_bbox[:input])
+      w = ANIMATION_WEDGE_WIDTH
+      h = ANIMATION_WEDGE_HEIGHT - 1
+      s = ANIMATION_WEDGE_SEP
+      t = ANIMATION_WEDGE_WEIGHT
+      image.polygonal([p - e2 * (rad + s) - e1 * w, p - e2 * (rad + s + h), p - e2 * (rad + s) + e1 * w], line_color: colors[i], line_weight: t) if input[0] == 1
+      image.polygonal([p + e1 * (rad + s + 1) - e2 * w, p + e1 * (rad + s + h + 1), p + e1 * (rad + s + 1) + e2 * w], line_color: colors[i], line_weight: t) if input[1] == 1
+      image.polygonal([p - e1 * (rad + s) - e2 * w, p - e1 * (rad + s + h), p - e1 * (rad + s) + e2 * w], line_color: colors[i], line_weight: t) if input[2] == 1
+    }
+
+    markers
   end
 
   # Draw a single frame and export to PNG. They will later be joined into an
@@ -1130,17 +1177,19 @@ module Map
   def self.screenshot(
       theme =  DEFAULT_PALETTE,        # Palette to generate screenshot in
       file:    false,                  # Whether to export to a file or return the raw data
+      inputs:  false,                  # Add input display to animation
       blank:   false,                  # Only draw background
       ppc:     0,                      # Points per coordinate (essentially the scale) (0 = use default)
       h:       nil,                    # Highscoreable to screenshot
       anim:    false,                  # Whether to animate plotted coords or not
-      trace:   false,                  # Whether the animation should be a trace or a moving object
       use_gif: true,                   # Use GIF or MP4 for animated traces
+      trace:   false,                  # Whether the animation should be a trace or a moving object
       step:    ANIMATION_STEP_NORMAL,  # How many frames per frame to trace
       delay:   ANIMATION_DELAY_NORMAL, # Time between frames, in 1/100ths sec
       coords:  [],                     # Coordinates of routes to trace
+      demos:   [],                     # Run inputs, for input display
+      texts:   [],                     # Texts for the legend      
       objs:    {},                     # Collected objects in the runs, keyed by frame
-      texts:   [],                     # Texts for the legend
       spoiler: false,                  # Whether the screenshot should be spoilered in Discord
       v:       nil                     # Version of the map data to use (nil = latest)
     )
@@ -1209,10 +1258,11 @@ module Map
         # Prepare parameters
         n = [coords.size, MAX_TRACES].min
         coords = coords.take(n).reverse
-        texts = texts.take(n).reverse
-        ninja_colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
-        names = texts.map{ |t| t[/\d+:(.*)-/, 1].strip }
+        texts  = texts.take(n).reverse
+        demos  = inputs ? demos.take(n).reverse : nil
+        names  = texts.map{ |t| t[/\d+:(.*)-/, 1].strip }
         scores = texts.map{ |t| t[/\d+:(.*)-(.*)/, 2].strip }
+        ninja_colors = n.times.map{ |i| PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx] }
 
         # Scale coordinates
         ppu = dim.to_f / UNITS
@@ -1269,16 +1319,16 @@ module Map
           frames = sizes.max
           markers = []
           image = nil
-          (0 .. frames - 1).step(step) do |f|
+          (0 .. frames + step).step(step) do |f|
             dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
 
             # Find collected gold
             collided = !trace ? collide_vs_objects(objects[0], objs, f, step, ppc) : []
 
             # Find bounding box for this frame
-            bbox = find_frame_bbox(f, pixel_coords, step, markers, collided, object_atlas, trace: trace, ppc: ppc)
+            bbox = find_frame_bbox(f, pixel_coords, step, markers, demos, collided, object_atlas, trace: trace, ppc: ppc)
             break if !bbox
-            done = sizes.map{ |s| s.between?(f + (trace ? 2 : step), f + step + 1) }
+            done = coords.map{ |c_list| ninja_just_finished?(c_list, f, step, trace) }
 
             # Write previous frame to disk and create new frame
             gif.add(image) if image
@@ -1296,10 +1346,10 @@ module Map
               restore_background(image, background, markers, collided, object_atlas, ppc)
             end
 
-            # Draw trace chunks
-            markers = draw_frame_gif(image, pixel_coords, f, step, trace, ninja_colors)
+            # Draw new elements for this frame (trace, markers, inputs...)
+            markers = draw_frame_gif(image, pixel_coords, demos, f, step, trace, ninja_colors)
 
-            # Draw other elements
+            # Other elements
             render_timebars(image, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc) unless blank
             memory << getmem if BENCH_IMAGES
             GC.start if ANIM_GC && (f / step + 1) % ANIM_GC_STEP == 0
@@ -1426,7 +1476,7 @@ module Map
         last_coord = nil
         demos[i].each_with_index{ |f, j|
           if !coords[i][j]
-            mpl.plot(last_coord[0], last_coord[1], color: colors[i], marker: 'X', markersize: 2) if last_coord
+            mpl.plot(last_coord[0], last_coord[1], color: colors[i], marker: 'x', markersize: 2) if last_coord
             break
           else
             last_coord = coords[i][j]
@@ -1576,8 +1626,20 @@ module Map
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if res[:valid].count(false) > 0
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
     if anim
-      ball = !msg[/trace/i]
-      trace = screenshot(palette, coords: res[:coords], objs: res[:objs], blank: blank, anim: true, use_gif: use_gif, texts: texts, step: step, delay: delay, trace: !ball)
+      trace = screenshot(
+        palette,
+        trace:   !!msg[/trace/i],
+        coords:  res[:coords],
+        demos:   demos,
+        texts:   texts,
+        objs:    res[:objs],
+        anim:    true,
+        use_gif: use_gif,
+        blank:   blank,
+        inputs: ANIMATION_DEFAULT_INPUT || !!msg[/\binputs?\b/i],
+        step:    step,
+        delay:   delay
+      )
       perror('Failed to generate screenshot') if trace.nil?
     else
       screenshot = screenshot(palette, file: true, blank: blank)
