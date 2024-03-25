@@ -1130,6 +1130,9 @@ module Map
       ) if coords[i].size >= f + 2
     }
     image.save("frames/#{'%04d' % f}.png", :fast_rgb)
+    #`ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
+    #res = File.binread('frames/anim.mp4')
+    #FileUtils.rm(Dir.glob('frames/*'))
   end
 
   # Build a Global Color Table (a GIF palette) from a ChunkyPNG image
@@ -1182,7 +1185,6 @@ module Map
       ppc:     0,                      # Points per coordinate (essentially the scale) (0 = use default)
       h:       nil,                    # Highscoreable to screenshot
       anim:    false,                  # Whether to animate plotted coords or not
-      use_gif: true,                   # Use GIF or MP4 for animated traces
       trace:   false,                  # Whether the animation should be a trace or a moving object
       step:    ANIMATION_STEP_NORMAL,  # How many frames per frame to trace
       delay:   ANIMATION_DELAY_NORMAL, # Time between frames, in 1/100ths sec
@@ -1197,22 +1199,16 @@ module Map
     bench(:start) if BENCHMARK
 
     anim = false if !FEATURE_ANIMATE
-    ext = !anim ? 'png' : use_gif ? 'gif' : 'mp4'
+    ext = anim ? 'gif' : 'png'
     filename =  "#{spoiler ? 'SPOILER_' : ''}#{h.name}.#{ext}"
     memory = [] if BENCH_IMAGES
     $time = 0
 
     res = _fork do
       memory << getmem if BENCH_IMAGES
-      # Parse palette
-      bench(:start) if BENCH_IMAGES
-      return nil if h.nil?
-      themes = THEMES.map(&:downcase)
-      theme.downcase!
-      theme = DEFAULT_PALETTE if !themes.include?(theme)
-      palette_idx = themes.index(theme)
 
       # Prepare map data and map scale
+      return nil if h.nil?
       maps = h.is_level? ? [h] : h.levels
       if ppc == 0
         ppc = (anim ? ANIMATION_SCALE : SCREENSHOT_SCALE_LEVEL) if h.is_level?
@@ -1221,6 +1217,13 @@ module Map
       end
       dim = 4 * ppc
       frame = !h.is_level?
+
+      # Parse palette
+      bench(:start) if BENCH_IMAGES
+      themes = THEMES.map(&:downcase)
+      theme.downcase!
+      theme = DEFAULT_PALETTE if !themes.include?(theme)
+      palette_idx = themes.index(theme)      
 
       # Initialize base image
       image = init_image(palette_idx, ppc, h)
@@ -1272,102 +1275,92 @@ module Map
           }
         }
 
-        if use_gif
-          # Initialize GIF palette and fetch some colors
-          palette = init_gct(palette_idx)
-          index = palette.colors.compact.each_with_index.to_h
-          bg_color = PALETTE[2, palette_idx]
-          ninja_colors_inv = ninja_colors.map{ |c| index[(c >> 8) ^ 0xFFFFFF] }
-          ninja_colors.map!{ |c| index[c >> 8] }
+        # Initialize GIF palette and fetch some colors
+        palette = init_gct(palette_idx)
+        index = palette.colors.compact.each_with_index.to_h
+        bg_color = PALETTE[2, palette_idx]
+        ninja_colors_inv = ninja_colors.map{ |c| index[(c >> 8) ^ 0xFFFFFF] }
+        ninja_colors.map!{ |c| index[c >> 8] }
 
-          # Construct GIF and add screenshot as first frame
-          gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1, destroy: true)
-          gif.open(filename)
-          background = png2gif(image, palette, bg_color)
+        # Construct GIF and add screenshot as first frame
+        gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1, destroy: true)
+        gif.open(filename)
+        background = png2gif(image, palette, bg_color)
 
-          # Convert tile and object atlases to GIF
-          tile_atlas = tile_atlas.map{ |id, png|
-            png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
-            [id, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
-          }.to_h
-          object_atlas = object_atlas.map{ |id, states|
-            [
-              id,
-              states.map{ |state, sprites|
-                [
-                  state,
-                  sprites.map{ |o, png|
-                    png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
-                    [o, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
-                  }.to_h
-                ]
-              }.to_h
-            ]
-          }.to_h
+        # Convert tile and object atlases to GIF
+        tile_atlas = tile_atlas.map{ |id, png|
+          png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
+          [id, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
+        }.to_h
+        object_atlas = object_atlas.map{ |id, states|
+          [
+            id,
+            states.map{ |state, sprites|
+              [
+                state,
+                sprites.map{ |o, png|
+                  png.pixels.map!{ |c| c == 0 ? TRANSPARENT_COLOR : c }
+                  [o, png2gif(png, palette, TRANSPARENT_COLOR, TRANSPARENT_COLOR)]
+                }.to_h
+              ]
+            }.to_h
+          ]
+        }.to_h
 
-          # Timebars and legend
-          font = parse_bmfont(FONT_TIMEBAR)
-          render_timebars(background, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc) unless blank
+        # Timebars and legend
+        font = parse_bmfont(FONT_TIMEBAR)
+        render_timebars(background, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc) unless blank
 
-          # Write first frame (background) to disk
-          gif.add(background)
+        # Write first frame (background) to disk
+        gif.add(background)
+        memory << getmem if BENCH_IMAGES
+        bench(:step, 'GIF bg', pad_str: 10, pad_num: 9) if BENCH_IMAGES
+
+        # Render frames
+        sizes = coords.map(&:size)
+        frames = sizes.max
+        markers = []
+        image = nil
+        (0 .. frames + step).step(step) do |f|
+          dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
+
+          # Find collected gold
+          collided = !trace ? collide_vs_objects(objects[0], objs, f, step, ppc) : []
+
+          # Find bounding box for this frame
+          bbox = find_frame_bbox(f, pixel_coords, step, markers, demos, collided, object_atlas, trace: trace, ppc: ppc)
+          break if !bbox
+          done = coords.map{ |c_list| ninja_just_finished?(c_list, f, step, trace) }
+
+          # Write previous frame to disk and create new frame
+          gif.add(image) if image
+          image = Gifenc::Image.new(
+            bbox:        bbox,
+            color:       index[TRANSPARENT_COLOR >> 8],
+            delay:       delay,
+            trans_color: index[TRANSPARENT_COLOR >> 8]
+          )
+
+          # Redraw background regions to erase markers from previous frame and
+          # change any objects that have been collected / toggled this frame.
+          if !trace
+            redraw_changes(background, collided, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false) unless blank
+            restore_background(image, background, markers, collided, object_atlas, ppc)
+          end
+
+          # Draw new elements for this frame (trace, markers, inputs...)
+          markers = draw_frame_gif(image, pixel_coords, demos, f, step, trace, ninja_colors)
+
+          # Other elements
+          render_timebars(image, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc) unless blank
           memory << getmem if BENCH_IMAGES
-          bench(:step, 'GIF bg', pad_str: 10, pad_num: 9) if BENCH_IMAGES
+          GC.start if ANIM_GC && (f / step + 1) % ANIM_GC_STEP == 0
+        end
 
-          # Render frames
-          sizes = coords.map(&:size)
-          frames = sizes.max
-          markers = []
-          image = nil
-          (0 .. frames + step).step(step) do |f|
-            dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
-
-            # Find collected gold
-            collided = !trace ? collide_vs_objects(objects[0], objs, f, step, ppc) : []
-
-            # Find bounding box for this frame
-            bbox = find_frame_bbox(f, pixel_coords, step, markers, demos, collided, object_atlas, trace: trace, ppc: ppc)
-            break if !bbox
-            done = coords.map{ |c_list| ninja_just_finished?(c_list, f, step, trace) }
-
-            # Write previous frame to disk and create new frame
-            gif.add(image) if image
-            image = Gifenc::Image.new(
-              bbox:        bbox,
-              color:       index[TRANSPARENT_COLOR >> 8],
-              delay:       delay,
-              trans_color: index[TRANSPARENT_COLOR >> 8]
-            )
-
-            # Redraw background regions to erase markers from previous frame and
-            # change any objects that have been collected / toggled this frame.
-            if !trace
-              redraw_changes(background, collided, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false) unless blank
-              restore_background(image, background, markers, collided, object_atlas, ppc)
-            end
-
-            # Draw new elements for this frame (trace, markers, inputs...)
-            markers = draw_frame_gif(image, pixel_coords, demos, f, step, trace, ninja_colors)
-
-            # Other elements
-            render_timebars(image, done, names, scores, font, [nil] * n, ninja_colors, ninja_colors_inv, ppc) unless blank
-            memory << getmem if BENCH_IMAGES
-            GC.start if ANIM_GC && (f / step + 1) % ANIM_GC_STEP == 0
-          end
-
-          # Show last frame for 1 second before looping
-          if image
-            image.delay = ANIMATION_EXHIBIT
-            gif.add(image)
-          end
-        else
-          # Video output using FFmpeg, we generate each new frame fully
-          sizes = coords.map(&:size)
-          frames = sizes.max
-          for f in (0 .. frames - 2) do
-            dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
-            draw_frame_vid(image, pixel_coords, f, ninja_colors)
-          end
+        # Show last frame for 1 second before looping
+        if image
+          image.delay = ANIMATION_EXHIBIT
+          gif.add(image)
         end
         bench(:step, 'Routes', pad_str: 10, pad_num: 9) if BENCH_IMAGES
       end
@@ -1377,15 +1370,9 @@ module Map
 
       # Export result
       if anim
-        if use_gif
-          gif.close
-          res = File.binread(filename)
-          FileUtils.rm([filename])
-        else
-          `ffmpeg -framerate 60 -pattern_type glob -i 'frames/*.png' 'frames/anim.mp4' > /dev/null 2>&1`
-          res = File.binread('frames/anim.mp4')
-          FileUtils.rm(Dir.glob('frames/*'))
-        end
+        gif.close
+        res = File.binread(filename)
+        FileUtils.rm([filename])
       else
         res = image.to_blob(:fast_rgb)
       end
@@ -1589,7 +1576,6 @@ module Map
     markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
     markers = { jump: true,  left: false, right: false } if markers.nil?
-    use_gif = true
     if !!msg[/very\s+slow/i]
       delay = ANIMATION_DELAY_VSLOW
     elsif !!msg[/slow/i]
@@ -1634,7 +1620,6 @@ module Map
         texts:   texts,
         objs:    res[:objs],
         anim:    true,
-        use_gif: use_gif,
         blank:   blank,
         inputs: ANIMATION_DEFAULT_INPUT || !!msg[/\binputs?\b/i],
         step:    step,
@@ -1656,7 +1641,7 @@ module Map
       screenshot.close
       perror('Failed to trace replays') if trace.nil?
     end
-    ext = anim ? (use_gif ? 'gif' : 'mp4') : 'png'
+    ext = anim ? 'gif' : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
     if debug
       if res[:msg].length < DISCORD_CHAR_LIMIT - 200
