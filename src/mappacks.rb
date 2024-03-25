@@ -1068,9 +1068,6 @@ module Map
   # - Animating the ninjas by drawing moving circles.
   def self.draw_frame_gif(image, coords, demos, f, step, trace, colors)
     bbox = image.bbox
-    e1 = Gifenc::Geometry::E1
-    e2 = Gifenc::Geometry::E2
-    rad = ANIMATION_RADIUS
 
     # Trace route bits for this frame _range_
     if trace
@@ -1088,6 +1085,9 @@ module Map
     end
 
     # Render ninja markers for this _single_ frame
+    rad = ANIMATION_RADIUS    
+    e1 = Gifenc::Geometry::E1
+    e2 = Gifenc::Geometry::E2
     markers = []
     coords.each_with_index{ |c_list, i|
       next if ninja_finished?(c_list, f, trace)
@@ -1255,12 +1255,16 @@ module Map
       memory << getmem if BENCH_IMAGES
 
       # No routes to trace, return screenshot
-      next image.to_blob(:fast_rgb) if coords.empty?
+      if coords.empty?
+        res = image.to_blob(:fast_rgb)
+        bench(:step, 'Blobify', pad_str: 10, pad_num: 9) if BENCH_IMAGES
+        next res
+      end
 
-      # Animate runs. We implement two modes:
-      # - Trace mode will plot the routes as lines.
+      # Trace or animate runs. We implement two modes:
+      # - Trace mode will plot the routes as lines. Can be static or dynamic.
       # - Animation mode will draw moving circles as the ninjas.
-
+      anim = false
       # Prepare parameters
       n = [coords.size, MAX_TRACES].min
       coords = coords.take(n).reverse
@@ -1285,10 +1289,35 @@ module Map
       ninja_colors_inv = ninja_colors.map{ |c| index[(c >> 8) ^ 0xFFFFFF] }
       ninja_colors.map!{ |c| index[c >> 8] }
 
-      # Construct GIF and add screenshot as first frame
-      gif = Gifenc::Gif.new(image.width, image.height, gct: palette, loops: -1, destroy: true)
-      gif.open(filename)
+      # Construct GIF and convert screenshot to GIF format
+      gif = Gifenc::Gif.new(image.width, image.height, gct: palette, destroy: true)
       background = png2gif(image, palette, bg_color)
+
+      # Timebars and legend
+      font = parse_bmfont(FONT_TIMEBAR)
+      render_timebars(background, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc) unless blank
+
+      # Static trace
+      if !anim
+        pixel_coords.each_with_index{ |c_list, i|
+          (0 ... c_list.size - 1).each{ |f|
+            p1 = [c_list[f][0],     c_list[f][1]    ]
+            p2 = [c_list[f + 1][0], c_list[f + 1][1]]
+            background.line(p1: p1, p2: p2, color: ninja_colors[i], weight: 2)
+          }
+        }
+        gif.images << background
+        res = gif.write
+        bench(:step, 'Trace', pad_str: 10, pad_num: 9) if BENCH_IMAGES
+        next res
+      end
+
+      # Animation. Write first frame (background) to disk
+      gif.loops = -1
+      gif.open(filename)
+      gif.add(background)
+      memory << getmem if BENCH_IMAGES
+      bench(:step, 'GIF init', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Convert tile and object atlases to GIF
       tile_atlas = tile_atlas.map{ |id, png|
@@ -1309,15 +1338,6 @@ module Map
           }.to_h
         ]
       }.to_h
-
-      # Timebars and legend
-      font = parse_bmfont(FONT_TIMEBAR)
-      render_timebars(background, [true] * n, names, scores, font, ninja_colors, [index[bg_color >> 8]] * n, ninja_colors, ppc) unless blank
-
-      # Write first frame (background) to disk
-      gif.add(background)
-      memory << getmem if BENCH_IMAGES
-      bench(:step, 'GIF bg', pad_str: 10, pad_num: 9) if BENCH_IMAGES
 
       # Render frames
       sizes = coords.map(&:size)
@@ -1426,7 +1446,6 @@ module Map
       demos = demos.take(n).reverse
       texts = texts.take(n).reverse
       colors = n.times.map{ |i| ChunkyPNG::Color.to_hex(PALETTE[OBJECTS[0][:pal] + n - 1 - i, palette_idx]) }
-      color_death = ChunkyPNG::Color.to_hex(PALETTE[OBJECTS[1][:pal], palette_idx])
       Matplotlib.use('agg')
       mpl = Matplotlib::Pyplot
       mpl.ioff
