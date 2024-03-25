@@ -1326,10 +1326,7 @@ def send_trace(event)
   wait_msg = send_message(event, content: "Queued...", removable: false) if $mutex[:ntrace].locked?
   $mutex[:ntrace].synchronize do
     wait_msg.delete if !wait_msg.nil? rescue nil
-    level = parse_highscoreable(event, mappack: true)
-    perror("Failed to parse highscoreable.") if !level
-    perror("Episodes and columns can't be traced.") if !level.is_a?(Levelish)
-    level.map.trace(event, anim: !!parse_message(event)[/anim/i])
+    Map.trace(event, anim: !!parse_message(event)[/anim/i])
   end
 rescue => e
   lex(e, "Error performing trace.", event: event)

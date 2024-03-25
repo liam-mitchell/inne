@@ -1281,7 +1281,11 @@ end
 
 # Execute ntrace and parse the output. It assumes the input files have already
 # been exported previously.
-def ntrace(silent = false, debug = false)
+def ntrace(map_data, demos, silent: false, debug: false)
+  # Export files for ntrace to read
+  File.binwrite('map_data', map_data)
+  demos.each_with_index{ |demo, i| File.binwrite("inputs_#{i}", demo) }
+
   # Execute ntrace and save output
   stdout, stderr, status = shell("python3 #{PATH_NTRACE}", output: true)
   ret = [stdout, stderr].join("\n\n")

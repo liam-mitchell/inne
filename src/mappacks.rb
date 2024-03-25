@@ -1188,8 +1188,8 @@ module Map
       trace:   false,                  # Whether the animation should be a trace or a moving object
       step:    ANIMATION_STEP_NORMAL,  # How many frames per frame to trace
       delay:   ANIMATION_DELAY_NORMAL, # Time between frames, in 1/100ths sec
-      coords:  [],                     # Coordinates of routes to trace
-      demos:   [],                     # Run inputs, for input display
+      coords:  [],                     # Coordinates of routes to trace, per level and player
+      demos:   [],                     # Run inputs, for input display, per level and player
       texts:   [],                     # Texts for the legend      
       objs:    {},                     # Collected objects in the runs, keyed by frame
       spoiler: false,                  # Whether the screenshot should be spoilered in Discord
@@ -1223,7 +1223,7 @@ module Map
       themes = THEMES.map(&:downcase)
       theme.downcase!
       theme = DEFAULT_PALETTE if !themes.include?(theme)
-      palette_idx = themes.index(theme)      
+      palette_idx = themes.index(theme)
 
       # Initialize base image
       image = init_image(palette_idx, ppc, h)
@@ -1264,7 +1264,7 @@ module Map
       # Trace or animate runs. We implement two modes:
       # - Trace mode will plot the routes as lines. Can be static or dynamic.
       # - Animation mode will draw moving circles as the ninjas.
-      anim = false
+
       # Prepare parameters
       n = [coords.size, MAX_TRACES].min
       coords = coords.take(n).reverse
@@ -1413,7 +1413,7 @@ module Map
   end
 
   def screenshot(theme, **kwargs)
-    Map.screenshot(theme, h: self, ppc: 0, **kwargs)
+    Map.screenshot(theme, h: self, **kwargs)
   end
 
   # Plot routes and legend on top of an image (typically a screenshot)
@@ -1421,7 +1421,7 @@ module Map
   #
   # Note: This function is forked to a different process, because Matplotlib has
   #       memory leaks we cannot handle.
-  def _trace(
+  def mpl_trace(
       theme:   DEFAULT_PALETTE, # Palette to generate screenshot in
       bg:      nil,             # Background image (screenshot) file object
       animate: false,           # Animate trace instead of still image
@@ -1565,27 +1565,30 @@ module Map
     end
   end
 
-  def trace(event, anim: false)
+  def self.trace(event, anim: false)
+    # Parse message parameters
     t = Time.now
+    h = parse_highscoreable(event, mappack: true)
+    perror("Failed to parse highscoreable.") if !h
+    perror("Columns can't be traced.") if h.is_story?
     msg = parse_message(event)
-    tmp_msg = [nil]
-    h = parse_palette(event)
-    msg, palette, error = h[:msg], h[:palette], h[:error]
-    level = self.is_a?(MappackHighscoreable) && mappack.id == 0 ? Level.find_by(id: id) : self
-    perror("Error finding level object") if level.nil?
-    mappack = level.is_a?(MappackHighscoreable)
-    userlevel = level.is_a?(Userlevel)
+    hash = parse_palette(event)
+    msg, palette, error = hash[:msg], hash[:palette], hash[:error]
+    h = h.vanilla if h.is_mappack? && h.mappack.id == 0
+    perror("Error finding Metanet board.") if !h
+    userlevel = h.is_a?(Userlevel)
     board = parse_board(msg, 'hs')
-    perror("Non-highscore modes (e.g. speedrun) are only available for mappacks") if !mappack && board != 'hs'
-    perror("Traces are only available for either highscore or speedrun mode") if !['hs', 'sr'].include?(board)
+    perror("Non-highscore modes (e.g. speedrun) are only available for mappacks.") if !h.is_mappack? && board != 'hs'
+    perror("Traces are only available for either highscore or speedrun mode.") if !['hs', 'sr'].include?(board)
+    tmp_msg = [nil]
     if userlevel
       concurrent_edit(event, tmp_msg, "Updating scores and downloading replays...")
-      level.update_scores(fast: true)
+      h.update_scores(fast: true)
     end
-    leaderboard = level.leaderboard(board, pluck: false)
+    leaderboard = h.leaderboard(board, pluck: false)
     ranks = parse_ranks(msg, leaderboard.size).take(MAX_TRACES)
     scores = ranks.map{ |r| leaderboard[r] }.compact
-    perror("No scores found for this level") if scores.empty?
+    perror("No scores found in this board.") if scores.empty?
     blank = !!msg[/\bblank\b/i]
     markers = { jump: false, left: false, right: false } if !!msg[/\bplain\b/i]
     markers = { jump: true,  left: true,  right: true  } if !!msg[/\binputs\b/i]
@@ -1606,28 +1609,39 @@ module Map
     end
     debug = !!msg[/\bdebug\b/i] && check_permission(event, 'ntracer')
 
-    # Export input files
-    demos = []
-    File.binwrite('map_data', dump_level)
-    scores.each_with_index.map{ |s, i|
-      demo = userlevel ? Demo.encode(s.demo) : s.demo.demo
-      demos << Demo.decode(demo)
-      File.binwrite("inputs_#{i}", demo)
-    }
-    concurrent_edit(event, tmp_msg, 'Calculating routes...')
-    res = ntrace(false, debug)
+    # Prepare demos
+    demos = scores.map{ |score|
+      if userlevel
+        [Demo.encode(s.demo)]
+      else
+        Demo.decode(score.demo.demo, true).map{ |d| Demo.encode(d) }
+      end
+    }.transpose
 
-    # Draw
+    # Execute ntrace
+    concurrent_edit(event, tmp_msg, 'Calculating routes...')
+    levels = h.is_level? ? [h] : h.levels
+    res = levels.each_with_index.map{ |l, i|
+      ntrace(l.map.dump_level, demos[i], silent: false, debug: debug)
+    }
+    valids = res.map{ |l| l[:valid] }.transpose.map{ |s| s.all?(true) }
+    ntrace_log = res.map{ |l| l[:msg] }.join("\n---\n")
+    demos.each{ |l| l.map!{ |d| Demo.decode(d) } }
+
+    # Prepare output message
     names = scores.map{ |s| s.player.print_name }
-    wrong_names = names.each_with_index.select{ |_, i| !res[:valid][i] }.map(&:first)
+    wrong_names = names.each_with_index.select{ |_, i| !valids[i] }.map(&:first)
     event << error.strip if !error.empty?
-    event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel #{verbatim(level.name)}" : level.name} in palette #{verbatim(palette)}:"
-    texts = level.format_scores(np: anim ? 0 : 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
-    event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if res[:valid].count(false) > 0
+    event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel #{verbatim(h.name)}" : h.name} using palette #{verbatim(palette)}:"
+    texts = h.format_scores(np: anim ? 0 : 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
+    event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valids.count(false) > 0
+
+    # Render trace or animation
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
-    if anim
+    if anim || !h.is_level?
       trace = screenshot(
         palette,
+        h:       h,
         trace:   !!msg[/trace/i],
         coords:  res[:coords],
         demos:   demos,
@@ -1641,40 +1655,44 @@ module Map
       )
       perror('Failed to generate screenshot') if trace.nil?
     else
-      screenshot = screenshot(palette, file: true, blank: blank)
+      screenshot = h.map.screenshot(palette, file: true, blank: blank)
       perror('Failed to generate screenshot') if screenshot.nil?
       concurrent_edit(event, tmp_msg, 'Plotting routes...')
-      trace = _trace(
+      trace = h.map.mpl_trace(
         theme:   palette,
         bg:      screenshot,
-        coords:  res[:coords],
-        demos:   demos,
+        coords:  res[0][:coords],
+        demos:   demos[0],
         markers: markers,
         texts:   !blank ? texts : []
       )
       screenshot.close
       perror('Failed to trace replays') if trace.nil?
     end
+
+    # Send image file
     ext = anim ? 'gif' : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
+
+    # Output debug info
     if debug
-      if res[:msg].length < DISCORD_CHAR_LIMIT - 200
-        event << format_block(res[:msg])
+      if ntrace_log.length < DISCORD_CHAR_LIMIT - 200
+        event << format_block(ntrace_log)
       else
         _thread do
           sleep(0.5)
           event.send_file(
-            tmp_file(res[:msg], 'ntrace_output.txt', binary: false),
+            tmp_file(ntrace_log, 'ntrace_output.txt', binary: false),
             caption: 'ntrace output:'
           )
         end
       end
     end
     tmp_msg.first.delete rescue nil
-    log("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES
+    dbg("FINAL: #{"%8.3f" % [1000 * (Time.now - t)]}") if BENCH_IMAGES
   rescue OutteError => e
     # TODO: See if we can refactor this to avoid having to reference OutteError
-    # directly and making this handling more elegant
+    # directly and making this handling more elegant (have a specific TmpMsg class)
     !tmp_msg.first.nil? ? tmp_msg.first.edit(e) : raise
     event.drain
   rescue => e
@@ -1688,15 +1706,10 @@ module Map
     leaderboard = vanilla.leaderboard(board, pluck: false)
     scores = ranks.map{ |r| leaderboard[r] }.compact
     return :other if scores.empty?
-
-    # Export input files
     demos = scores.map{ |s| s.demo.demo }
     return :other if demos.count(nil) > 0
-    File.binwrite('map_data', dump_level)
-    demos.each_with_index.map{ |demo, i| File.binwrite("inputs_#{i}", demo) }
 
-    # Run ntrace and parse output
-    res = ntrace(true)
+    res = ntrace(dump_level, demos, silent: true)
     return :error if !res[:success]
     return res[:valid].count(false) == 0 ? :good : :bad
   rescue => e
@@ -3101,17 +3114,10 @@ class MappackScore < ActiveRecord::Base
   # Calculate the score using ntrace
   def ntrace_score
     return false if !highscoreable || !demo || !demo.demo
-
-    # Export input files and run ntrace
-    File.binwrite('map_data', highscoreable.dump_level)
-    File.binwrite("inputs_0", demo.demo)
-    res = ntrace(true)
-
-    # Parse output
-    return false if !res[:success]
+    res = ntrace(highscoreable.dump_level, [demo.demo], true)
+    return false if !res[:success] || res[:valid] != [true]
     score = res[:msg].split("\n").last
     return false if !score || score.strip.empty?
-    return false if res[:valid].count(false) > 0 || res[:valid].count(true) == 0
     round_score(score.strip.to_f)
   rescue => e
     lex(e, 'ntrace testing failed')
