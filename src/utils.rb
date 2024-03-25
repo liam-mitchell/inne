@@ -476,8 +476,8 @@ rescue => e
 end
 
 # Execute a shell command
-#   stream - Show or hide whatever is sent to STDOUT/STDERR
-#   output - Return the output as a string
+#   stream - Redirect STDOUT/STDERR to Ruby's terminal so we can see
+#   output - Return the output (STDOUT/STDERR/status) as an array of strings
 def shell(cmd, stream: LOG_SHELL, output: false)
   cmd += ' > /dev/null 2>&1' if !stream && !output
   output ? Open3.capture3(cmd) : system(cmd)
