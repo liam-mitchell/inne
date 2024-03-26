@@ -515,19 +515,19 @@ end
 
 # Wrapper to benchmark a piece of code
 def bench(action, msg = nil, pad_str: 1, pad_num: 8)
-  @t ||= Time.now
+  now      = Time.now
+  @t     ||= now
   @total ||= 0
-  @step ||= 0
+  @step  ||= 0
   case action
   when :start
-    @step = 0
+    @step  = 0
     @total = 0
-    @t = Time.now
+    @t     = now
   when :step
-    @step += 1
-    int = Time.now - @t
-    @total += int
-    @t = Time.now
+    @step  += 1
+    @total += now - @t
+    @t      = now
     dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : ("%#{pad_str}s" % msg)}: #{"%#{pad_num}.3fms" % (int * 1000)} (Total: #{"%#{pad_num}.3fms" % (@total * 1000)}).")
   end
 end
@@ -1342,7 +1342,7 @@ def ntrace(map_data, demos, silent: false, debug: false)
     }
   }
 
-  { success: true, valid: valid, coords: coords, objs: objs, msg: ret }
+  { success: true, valid: valid, coords: coords, collisions: objs, msg: ret }
 end
 
 # <---------------------------------------------------------------------------->
