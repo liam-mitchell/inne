@@ -173,9 +173,10 @@ ANIMATION_DELAY_SLOW   = 3
 ANIMATION_DELAY_VSLOW  = 5
 
 # Other animation parameters
-ANIMATION_SCALE        = 4   # Scale of GIF
-ANIMATION_RADIUS       = 6   # Radius of ninja balls in pixels
-ANIMATION_EXHIBIT      = 100 # Showcase final frame for 1 second before looping
+ANIMATION_SCALE         = 4   # Scale of GIF
+ANIMATION_RADIUS        = 6   # Radius of ninja balls in pixels
+ANIMATION_EXHIBIT       = 100 # Showcase final frame for 1 second before looping
+ANIMATION_EXHIBIT_INTER = 100 # Exhibit between levels (for multi-level animations)
 
 # Input display for animations
 ANIMATION_DEFAULT_INPUT = false # Whether to draw input displays by default

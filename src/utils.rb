@@ -525,8 +525,9 @@ def bench(action, msg = nil, pad_str: 1, pad_num: 8)
     @total = 0
     @t     = now
   when :step
+    int = now - @t
     @step  += 1
-    @total += now - @t
+    @total += int
     @t      = now
     dbg("Benchmark #{msg.nil? ? ("%02d" % @step) : ("%#{pad_str}s" % msg)}: #{"%#{pad_num}.3fms" % (int * 1000)} (Total: #{"%#{pad_num}.3fms" % (@total * 1000)}).")
   end

@@ -515,7 +515,7 @@ module Map
   def self.parse_maps(maps, v = 1)
     # Read objects, remove glitch ones
     objects = maps.map{ |map|
-      map.objects(version: v).reject{ |o| o[0] > 28 }
+      map.map.objects(version: v).reject{ |o| o[0] > 28 }
     }
 
     # Perform some additional convenience modifications and sanity checks
@@ -566,7 +566,7 @@ module Map
 
     # Parse tiles, add frame, and reject glitch tiles
     tiles = maps.map{ |map|
-      tile_list = map.tiles(version: v).map(&:dup)
+      tile_list = map.map.tiles(version: v).map(&:dup)
       tile_list.each{ |row| row.unshift(1).push(1) }                   # Add vertical frame
       tile_list.unshift([1] * (COLUMNS + 2)).push([1] * (COLUMNS + 2)) # Add horizontal frame
       tile_list.each{ |row| row.map!{ |t| t > 33 ? 0 : t } }           # Reject glitch tiles
@@ -577,12 +577,11 @@ module Map
   end
 
   # Parse all elements we'll need to screenshot and trace / animate the routes
-  def self.parse_trace(coords, demos, collisions, texts, h, input: false, ppc: nil, v: nil)
+  def self.parse_trace(coords, demos, collisions, texts, h, input: false, ppc: nil, v: nil, blank: false, trace: false)
     # Filter parameters
     n = [coords.size, MAX_TRACES].min
     coords = coords.map{ |l| l.take(n).reverse }
-    collisions = collisions.map{ |l| l.take(n).reverse }
-    demos  = input ? demos.map{ |l| l.take(n).reverse } : nil
+    demos  = demos.map{ |l| input ? l.take(n).reverse : nil }
     texts  = texts.take(n).reverse
     names  = texts.map{ |t| t[/\d+:(.*)-/, 1].strip }
     scores = texts.map{ |t| t[/\d+:(.*)-(.*)/, 2].strip }
@@ -613,11 +612,13 @@ module Map
       demos:      demos,
       collisions: collisions,
       names:      names,
-      scores:     scores
+      scores:     scores,
+      trace:      trace,
+      blank:      blank
     }
   end
 
-  # Create an initial image with the right dimensions and color
+  # Create an initial PNG image with the right dimensions and color to hold a screenshot
   def self.init_png(palette_idx, ppc, h)
     cols = h.is_level? ? 1 : 5
     rows = h.is_story? ? 5 : 1
@@ -724,7 +725,7 @@ module Map
     atlas
   end
 
-  # Convert the PNG sprite atlases to GIF format for animations
+  # Convert the PNG sprites to GIF format for animations
   def self.convert_atlases(context_png, context_gif)
     # Tile atlas
     context_gif[:tile_atlas] ||= context_png[:tile_atlas].map{ |id, png|
@@ -750,7 +751,8 @@ module Map
   end
 
   # Render a list of objects onto a base image, optionally only updating a
-  # given bounding box (for redraws in animations).
+  # given bounding box (for redraws in animations). Implemented for both PNGs
+  # and GIFs.
   def self.render_objects(objects, image, ppc: PPC, atlas: {}, bbox: nil, frame: true)
     # Prepare scale params
     dim = 4 * ppc
@@ -791,7 +793,8 @@ module Map
   end
 
   # Render a list of tiles onto a base image, optionally only updating a
-  # given bounding box (for redraws in animations).
+  # given bounding box (for redraws in animations). Implemented for both PNGs
+  # and GIFs.
   def self.render_tiles(tiles, image, ppc: PPC, atlas: {}, bbox: nil, frame: true, palette: nil, palette_idx: 0)
     # Prepare scale params
     dim = 4 * ppc
@@ -799,7 +802,7 @@ module Map
     height = dim * (ROWS + 2)
     color = PALETTE[0, palette_idx]
     gif = Gifenc::Image === image
-    color = palette.colors.index(color >> 8) if gif
+    color = palette[color >> 8] if gif
     bbox = [0, 0, UNITS * (COLUMNS + 2), UNITS * (ROWS + 2)] if !bbox
     dest_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
     x_min, y_min, x_max, y_max = gather_cells(bbox, false)
@@ -847,7 +850,8 @@ module Map
   end
 
   # Render a list of tile borders onto a base image, optionally only updating a
-  # given bounding box (for redraws in animations).
+  # given bounding box (for redraws in animations). Implemented for both PNGs
+  # and GIFs.
   def self.render_borders(tiles, image, palette: nil, palette_idx: 0, ppc: PPC, frame: true, bbox: nil)
     # Prepare scale and color params
     dim = 4 * ppc
@@ -856,7 +860,7 @@ module Map
     thin = ppc <= 6 ? 0 : 1
     color = PALETTE[1, palette_idx]
     gif = Gifenc::Image === image
-    color = palette.colors.index(color >> 8) if gif
+    color = palette[color >> 8] if gif
     bbox = [0, 0, UNITS * (COLUMNS + 2), UNITS * (ROWS + 2)] if !bbox
     dest_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
     x_min, y_min, x_max, y_max = gather_cells(bbox, true)
@@ -930,7 +934,7 @@ module Map
   # box, otherwise we could mess other parts up.
   def self.redraw_bbox(image, bbox, objects, tiles, object_atlas, tile_atlas, palette, palette_idx = 0, ppc = PPC, frame = true)
     pixel_bbox = bbox.map{ |c| (c * PPU * ppc / PPC).round }
-    image.rect(*pixel_bbox, nil, palette.colors.index(PALETTE[2, palette_idx] >> 8))
+    image.rect(*pixel_bbox, nil, palette[PALETTE[2, palette_idx] >> 8])
     render_objects(objects, image, ppc: ppc, atlas: object_atlas, bbox: bbox, frame: frame)
     render_tiles(tiles, image, ppc: ppc, atlas: tile_atlas, bbox: bbox, frame: frame, palette: palette, palette_idx: palette_idx)
     render_borders(tiles, image, palette: palette, palette_idx: palette_idx, bbox: bbox, ppc: ppc, frame: frame)
@@ -1218,15 +1222,15 @@ module Map
   # Render a PNG screenshot of a highscoreable
   def self.render_screenshot(info, palette_idx, ppc, blank: false)
     # Initialize image and sprites
-    image = init_png(palette_idx, ppc, h)
+    image = init_png(palette_idx, ppc, info[:h])
     tile_atlas = init_tiles(info[:tiles], palette_idx, ppc)
     object_atlas = init_objects(info[:objects], palette_idx, ppc)
 
     # Compose image
-    unless blank
-      render_objects(info[:objects], image, ppc: ppc, atlas: object_atlas, frame: !h.is_level?)
-      render_tiles(info[:tiles], image, ppc: ppc, atlas: tile_atlas, frame: !h.is_level?, palette_idx: palette_idx)
-      render_borders(info[:tiles], image, palette_idx: palette_idx, ppc: ppc, frame: !h.is_level?)
+    unless info[:blank]
+      render_objects(info[:objects], image, ppc: ppc, atlas: object_atlas, frame: !info[:h].is_level?)
+      render_tiles(info[:tiles], image, ppc: ppc, atlas: tile_atlas, frame: !info[:h].is_level?, palette_idx: palette_idx)
+      render_borders(info[:tiles], image, palette_idx: palette_idx, ppc: ppc, frame: !info[:h].is_level?)
     end
 
     # Return the whole context
@@ -1257,7 +1261,7 @@ module Map
   end
 
   # Initialize the GIF object and its associated palette
-  def self.init_gif(png, info, anim, filename)
+  def self.init_gif(png, info, filename, anim, delay)
     # Initialize GIF palette
     gct = init_gct(png[:palette_idx])
     palette = gct.colors.compact.each_with_index.to_h
@@ -1276,6 +1280,7 @@ module Map
     {
       gif:          gif,
       palette:      palette,
+      delay:        delay,
       font:         parse_bmfont(FONT_TIMEBAR),
       colors: {
         ninja:      ninja_colors.map{ |c| palette[c >> 8] },
@@ -1289,6 +1294,8 @@ module Map
 
   # Render the full initial background of the GIF
   def self.render_gif(png, gif, info, anim: false, blank: false)
+    gif[:background].destroy if gif[:background]
+
     # Convert PNG screenshot to GIF with specified palette
     bg_color = PALETTE[2, png[:palette_idx]]
     background = png2gif(png[:image], gif[:palette], bg_color)
@@ -1296,13 +1303,17 @@ module Map
     # Add timebars and legend
     colors = {
       fg:   gif[:colors][:ninja],
-      bg:   [gif[:palette][bg_color >> 8]] * n,
+      bg:   [gif[:palette][bg_color >> 8]] * info[:n],
       text: gif[:colors][:ninja]
     }
-    render_timebars(background, [true] * n, colors, gif: gif, info: info) unless blank
+    render_timebars(background, [true] * info[:n], colors, gif: gif, info: info) unless blank
 
     # No trace -> Write first frame to disk
-    return gif[:gif].add(background) if anim
+    if anim
+      gif[:background] = background
+      gif[:gif].add(background)
+      return
+    end
 
     # Trace -> Draw whole trace and return encoded (static) GIF
     dim = 4 * gif[:ppc]
@@ -1321,59 +1332,70 @@ module Map
     gif[:gif].write
   end
 
-  def self.render_frame(image)
-    dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
-
+  # Render one frame of an animation, by redrawing the parts of the background
+  # that have changed (due to e.g. collecting objects), erasing the ninja
+  # markers from the previous frame, and drawing the elements for the new frame.
+  # This involves first finding the smallest bounding box containing all the
+  # elements that must be redrawn, to minimize the redrawn area. Returns nil
+  # when there's nothing else to redraw, meaning the run has finished.
+  def self.render_frame(f, step, gif, info, i, markers)
     # Find collected gold
-    collided = !trace ? collide_vs_objects(objects[0], collisions, f, step, ppc) : []
+    collided = !info[:trace] ? collide_vs_objects(info[:objects][i], info[:collisions][i], f, step, gif[:ppc]) : []
 
     # Find bounding box for this frame
-    bbox = find_frame_bbox(f, pixel_coords, step, markers, demos, collided, object_atlas, trace: trace, ppc: ppc)
-    break if !bbox
-    done = coords.map{ |c_list| ninja_just_finished?(c_list, f, step, trace) }
+    bbox = find_frame_bbox(f, info[:coords][i], step, markers, info[:demos][i], collided, gif[:object_atlas], trace: info[:trace], ppc: gif[:ppc])
+    return if !bbox
+    done = info[:coords][i].map{ |c_list| ninja_just_finished?(c_list, f, step, info[:trace]) }
 
     # Write previous frame to disk and create new frame
-    gif.add(image) if image
     image = Gifenc::Image.new(
       bbox:        bbox,
-      color:       index[TRANSPARENT_COLOR >> 8],
-      delay:       delay,
-      trans_color: index[TRANSPARENT_COLOR >> 8]
+      color:       gif[:palette][TRANSPARENT_COLOR >> 8],
+      delay:       gif[:delay],
+      trans_color: gif[:palette][TRANSPARENT_COLOR >> 8]
     )
 
     # Redraw background regions to erase markers from previous frame and
     # change any objects that have been collected / toggled this frame.
-    if !trace
-      redraw_changes(background, collided, objects, tiles, object_atlas, tile_atlas, palette, palette_idx, ppc, false) unless blank
-      restore_background(image, background, markers, collided, object_atlas, ppc)
+    if !info[:trace]
+      redraw_changes(gif[:background], collided, info[:objects], info[:tiles], gif[:object_atlas], gif[:tile_atlas], gif[:palette], gif[:palette_idx], gif[:ppc], false) unless info[:blank]
+      restore_background(image, gif[:background], markers, collided, gif[:object_atlas], gif[:ppc])
     end
 
-    # Draw new elements for this frame (trace, markers, inputs...)
-    markers = draw_frame_gif(image, pixel_coords, demos, f, step, trace, ninja_colors)
+    # Draw new elements for this frame (trace, markers, inputs...), and save
+    # markers to we can delete them on the next frame
+    markers.pop(markers.size)
+    markers.push(*draw_frame_gif(image, info[:coords][i], info[:demos][i], f, step, info[:trace], gif[:colors][:ninja]))
 
     # Other elements
     colors = {
-      fg:   [nil] * n,
-      bg:   context_gif[:colos][:ninja],
-      text: context_gif[:colos][:inv]
+      fg:   [nil] * info[:n],
+      bg:   gif[:colors][:ninja],
+      text: gif[:colors][:inv]
     }
-    render_timebars(image, done, colors, gif: context_gif, info: context_info) unless blank
-    memory << getmem if BENCH_IMAGES
-    GC.start if ANIM_GC && (f / step + 1) % ANIM_GC_STEP == 0
+    render_timebars(image, done, colors, gif: gif, info: info) unless info[:blank]
 
     image
   end
 
   # Animate all frames in the GIF, return last frame
-  def self.animate_gif(gif, info, i)
+  def self.animate_gif(gif, info, i, step, memory, last)
     sizes = info[:coords][i].map(&:size)
     frames = sizes.max
     markers = []
     image = nil
     (0 .. frames + step).step(step) do |f|
-      image = render_frame()
+      dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
+      frame = render_frame(f, step, gif, info, i, markers)
+      if image
+        image.delay = last ? ANIMATION_EXHIBIT : ANIMATION_EXHIBIT_INTER if !frame
+        gif[:gif].add(image)
+      end
+      memory << getmem if BENCH_IMAGES
+      GC.start if ANIM_GC && (f / step + 1) % ANIM_GC_STEP == 0
+      return if !frame
+      image = frame
     end
-    image
   end
 
   # Convert a PNG image from ChunkyPNG to a GIF from Gifenc
@@ -1438,12 +1460,14 @@ module Map
       # We will encapsulate all necessary info in a few context hashes, for easy management
       context_png  = nil
       context_gif  = nil
-      context_info = parse_trace(coords, demos, collisions, texts, h, input: inputs, ppc: ppc, v: v)
+      context_info = parse_trace(coords, demos, collisions, texts, h, input: inputs, ppc: ppc, v: v, blank: blank, trace: trace)
       res = nil
 
-      (h.is_episode? && gif && anim ? h.levels : [h]).each{ |h|
+      # Render each highscoreable
+      h_list = h.is_episode? && gif && anim ? h.levels : [h]
+      h_list.each_with_index{ |h, i|
         # Generate PNG screenshot
-        context_png = render_screenshot(context_info, palette_idx, ppc, v: v, blank: blank)
+        context_png = render_screenshot(context_info, palette_idx, ppc)
         if BENCH_IMAGES
           bench(:step, 'Screenshot', pad_str: 12, pad_num: 9)
           memory << getmem
@@ -1457,7 +1481,7 @@ module Map
         end
 
         # Routes to trace -> Convert to GIF
-        context_gif = init_gif(context_png, context_info, anim, filename) if !context_gif
+        context_gif = init_gif(context_png, context_info, filename, anim, delay) if !context_gif
         res = render_gif(context_png, context_gif, context_info, anim: anim, blank: blank)
         convert_atlases(context_png, context_gif) if anim
         if BENCH_IMAGES
@@ -1469,18 +1493,13 @@ module Map
         break if !anim
 
         # Animation -> Render frames
-        # TODO: Change inter-level delay for episode traces
-        last_frame = animate_gif()
-        if last_frame
-          last_frame.delay = ANIMATION_EXHIBIT
-          context_gif[:gif].add(last_frame)
-        end
+        animate_gif(context_gif, context_info, i, step, memory, i == h_list.size - 1)
         bench(:step, 'Routes', pad_str: 12, pad_num: 9) if BENCH_IMAGES
       }
 
       # If animated GIF, close file
       if gif && anim
-        gif.close
+        context_gif[:gif].close
         res = File.binread(filename)
         FileUtils.rm([filename])
       end
@@ -1715,12 +1734,17 @@ module Map
     # Execute ntrace
     concurrent_edit(event, tmp_msg, 'Calculating routes...')
     levels = h.is_level? ? [h] : h.levels
+    bench(:start)
     res = levels.each_with_index.map{ |l, i|
-      ntrace(l.map.dump_level, demos[i], silent: false, debug: debug)
+      attrs = ntrace(l.map.dump_level, demos[i], silent: false, debug: debug)
+      bench(:step, 'Routes', pad_str: 12, pad_num: 9) if BENCH_IMAGES
+      attrs
     }
     valids = res.map{ |l| l[:valid] }.transpose.map{ |s| s.all?(true) }
     ntrace_log = res.map{ |l| l[:msg] }.join("\n---\n")
     demos.each{ |l| l.map!{ |d| Demo.decode(d) } }
+    coords = res.map{ |l| l[:coords] }
+    collisions = res.map{ |l| l[:collisions] }
 
     # Prepare output message
     names = scores.map{ |s| s.player.print_name }
@@ -1735,17 +1759,17 @@ module Map
     if anim || !h.is_level?
       trace = screenshot(
         palette,
-        h:       h,
-        trace:   !!msg[/trace/i],
-        coords:  res[:coords],
-        demos:   demos,
-        texts:   texts,
-        collisions:    res[:collisions],
-        anim:    true,
-        blank:   blank,
-        inputs: ANIMATION_DEFAULT_INPUT || !!msg[/\binputs?\b/i],
-        step:    step,
-        delay:   delay
+        h:          h,
+        trace:      !!msg[/trace/i],
+        coords:     coords,
+        demos:      demos,
+        texts:      texts,
+        collisions: collisions,
+        anim:       true,
+        blank:      blank,
+        inputs:     ANIMATION_DEFAULT_INPUT || !!msg[/\binputs?\b/i],
+        step:       step,
+        delay:      delay
       )
       perror('Failed to generate screenshot') if trace.nil?
     else
