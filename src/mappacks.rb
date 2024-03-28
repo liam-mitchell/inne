@@ -579,7 +579,7 @@ module Map
   # Parse all elements we'll need to screenshot and trace / animate the routes
   def self.parse_trace(coords, demos, collisions, texts, h, input: false, ppc: nil, v: nil, blank: false, trace: false)
     # Filter parameters
-    n = [coords.size, MAX_TRACES].min
+    n = [coords.map(&:size).max || 0, MAX_TRACES].min
     coords = coords.map{ |l| l.take(n).reverse }
     demos  = demos.map{ |l| input ? l.take(n).reverse : nil }
     texts  = texts.take(n).reverse
@@ -1220,17 +1220,24 @@ module Map
   end
 
   # Render a PNG screenshot of a highscoreable
-  def self.render_screenshot(info, palette_idx, ppc, blank: false)
+  def self.render_screenshot(info, palette_idx, ppc, i: nil)
+    # Prepare highscoreable and map data
+    h = info[:h]
+    h = h.levels[i] if i
+    tiles   = i ? [info[:tiles][i]]   : info[:tiles]
+    objects = i ? [info[:objects][i]] : info[:objects]
+
     # Initialize image and sprites
-    image = init_png(palette_idx, ppc, info[:h])
-    tile_atlas = init_tiles(info[:tiles], palette_idx, ppc)
-    object_atlas = init_objects(info[:objects], palette_idx, ppc)
+    image = init_png(palette_idx, ppc, h)
+    tile_atlas = init_tiles(tiles, palette_idx, ppc)
+    object_atlas = init_objects(objects, palette_idx, ppc)
 
     # Compose image
     unless info[:blank]
-      render_objects(info[:objects], image, ppc: ppc, atlas: object_atlas, frame: !info[:h].is_level?)
-      render_tiles(info[:tiles], image, ppc: ppc, atlas: tile_atlas, frame: !info[:h].is_level?, palette_idx: palette_idx)
-      render_borders(info[:tiles], image, palette_idx: palette_idx, ppc: ppc, frame: !info[:h].is_level?)
+      frame = !h.is_level?
+      render_objects(objects, image, ppc: ppc, frame: frame, atlas: object_atlas)
+      render_tiles(  tiles  , image, ppc: ppc, frame: frame, palette_idx: palette_idx, atlas: tile_atlas)
+      render_borders(tiles  , image, ppc: ppc, frame: frame, palette_idx: palette_idx)
     end
 
     # Return the whole context
@@ -1306,7 +1313,7 @@ module Map
       bg:   [gif[:palette][bg_color >> 8]] * info[:n],
       text: gif[:colors][:ninja]
     }
-    render_timebars(background, [true] * info[:n], colors, gif: gif, info: info) unless blank
+    render_timebars(background, [true] * info[:n], colors, gif: gif, info: info) unless blank || !anim && !info[:h].is_level?
 
     # No trace -> Write first frame to disk
     if anim
@@ -1318,11 +1325,12 @@ module Map
     # Trace -> Draw whole trace and return encoded (static) GIF
     dim = 4 * gif[:ppc]
     off_x = !info[:h].is_level? ? dim : 0
+    off_y = off_x
     info[:coords].each{ |level|
       level.each_with_index{ |c_list, i|
         (0 ... c_list.size - 1).each{ |f|
-          p1 = [off_x + c_list[f][0],     c_list[f][1]    ]
-          p2 = [off_x + c_list[f + 1][0], c_list[f + 1][1]]
+          p1 = [off_x + c_list[f][0],     off_y + c_list[f][1]    ]
+          p2 = [off_x + c_list[f + 1][0], off_y + c_list[f + 1][1]]
           background.line(p1: p1, p2: p2, color: gif[:colors][:ninja][i], weight: 2)
         }
       }
@@ -1345,7 +1353,10 @@ module Map
     # Find bounding box for this frame
     bbox = find_frame_bbox(f, info[:coords][i], step, markers, info[:demos][i], collided, gif[:object_atlas], trace: info[:trace], ppc: gif[:ppc])
     return if !bbox
-    done = info[:coords][i].map{ |c_list| ninja_just_finished?(c_list, f, step, info[:trace]) }
+    done = info[:coords][i].map{ |c_list|
+      next false if !info[:h].is_level? && i < 4
+      ninja_just_finished?(c_list, f, step, info[:trace])
+    }
 
     # Write previous frame to disk and create new frame
     image = Gifenc::Image.new(
@@ -1358,7 +1369,7 @@ module Map
     # Redraw background regions to erase markers from previous frame and
     # change any objects that have been collected / toggled this frame.
     if !info[:trace]
-      redraw_changes(gif[:background], collided, info[:objects], info[:tiles], gif[:object_atlas], gif[:tile_atlas], gif[:palette], gif[:palette_idx], gif[:ppc], false) unless info[:blank]
+      redraw_changes(gif[:background], collided, [info[:objects][i]], [info[:tiles][i]], gif[:object_atlas], gif[:tile_atlas], gif[:palette], gif[:palette_idx], gif[:ppc], false) unless info[:blank]
       restore_background(image, gif[:background], markers, collided, gif[:object_atlas], gif[:ppc])
     end
 
@@ -1387,14 +1398,16 @@ module Map
     (0 .. frames + step).step(step) do |f|
       dbg("Generating frame #{'%4d' % [f + 1]} / #{frames - 1}", newline: false) if BENCH_IMAGES
       frame = render_frame(f, step, gif, info, i, markers)
-      if image
-        image.delay = last ? ANIMATION_EXHIBIT : ANIMATION_EXHIBIT_INTER if !frame
-        gif[:gif].add(image)
-      end
       memory << getmem if BENCH_IMAGES
       GC.start if ANIM_GC && (f / step + 1) % ANIM_GC_STEP == 0
-      return if !frame
+      break if !frame
+      gif[:gif].add(image) if image
       image = frame
+    end
+
+    if image
+      image.delay = last ? ANIMATION_EXHIBIT : ANIMATION_EXHIBIT_INTER
+      gif[:gif].add(image)
     end
   end
 
@@ -1464,10 +1477,11 @@ module Map
       res = nil
 
       # Render each highscoreable
-      h_list = h.is_episode? && gif && anim ? h.levels : [h]
+      multi = h.is_episode? && gif && anim
+      h_list = multi ? h.levels : [h]
       h_list.each_with_index{ |h, i|
         # Generate PNG screenshot
-        context_png = render_screenshot(context_info, palette_idx, ppc)
+        context_png = render_screenshot(context_info, palette_idx, ppc, i: multi ? i : nil)
         if BENCH_IMAGES
           bench(:step, 'Screenshot', pad_str: 12, pad_num: 9)
           memory << getmem
@@ -1678,10 +1692,11 @@ module Map
     end
   end
 
-  def self.trace(event, anim: false)
+  def self.trace(event, anim: false, h: nil)
     # Parse message parameters
+    tmp_msg = [nil]
     t = Time.now
-    h = parse_highscoreable(event, mappack: true)
+    h = parse_highscoreable(event, mappack: true) if !h
     perror("Failed to parse highscoreable.") if !h
     perror("Columns can't be traced.") if h.is_story?
     msg = parse_message(event)
@@ -1693,7 +1708,6 @@ module Map
     board = parse_board(msg, 'hs')
     perror("Non-highscore modes (e.g. speedrun) are only available for mappacks.") if !h.is_mappack? && board != 'hs'
     perror("Traces are only available for either highscore or speedrun mode.") if !['hs', 'sr'].include?(board)
-    tmp_msg = [nil]
     if userlevel
       concurrent_edit(event, tmp_msg, "Updating scores and downloading replays...")
       h.update_scores(fast: true)
@@ -1721,11 +1735,12 @@ module Map
       step = ANIMATION_STEP_NORMAL
     end
     debug = !!msg[/\bdebug\b/i] && check_permission(event, 'ntracer')
+    gif = anim || !h.is_level?
 
     # Prepare demos
     demos = scores.map{ |score|
       if userlevel
-        [Demo.encode(s.demo)]
+        [Demo.encode(score.demo)]
       else
         Demo.decode(score.demo.demo, true).map{ |d| Demo.encode(d) }
       end
@@ -1751,12 +1766,12 @@ module Map
     wrong_names = names.each_with_index.select{ |_, i| !valids[i] }.map(&:first)
     event << error.strip if !error.empty?
     event << "Replay #{format_board(board)} #{'trace'.pluralize(names.count)} for #{names.to_sentence} in #{userlevel ? "userlevel #{verbatim(h.name)}" : h.name} using palette #{verbatim(palette)}:"
-    texts = h.format_scores(np: anim ? 0 : 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
+    texts = h.format_scores(np: gif ? 0 : 11, mode: board, ranks: ranks, join: false, cools: false, stars: false)
     event << "(**Warning**: #{'Trace'.pluralize(wrong_names.count)} for #{wrong_names.to_sentence} #{wrong_names.count == 1 ? 'is' : 'are'} likely incorrect)." if valids.count(false) > 0
 
     # Render trace or animation
     concurrent_edit(event, tmp_msg, 'Generating screenshot...')
-    if anim || !h.is_level?
+    if gif
       trace = screenshot(
         palette,
         h:          h,
@@ -1765,7 +1780,7 @@ module Map
         demos:      demos,
         texts:      texts,
         collisions: collisions,
-        anim:       true,
+        anim:       anim,
         blank:      blank,
         inputs:     ANIMATION_DEFAULT_INPUT || !!msg[/\binputs?\b/i],
         step:       step,
@@ -1789,7 +1804,7 @@ module Map
     end
 
     # Send image file
-    ext = anim ? 'gif' : 'png'
+    ext = gif ? 'gif' : 'png'
     send_file(event, trace, "#{name}_#{ranks.map(&:to_s).join('-')}_trace.#{ext}", true)
 
     # Output debug info

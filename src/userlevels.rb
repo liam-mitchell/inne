@@ -1634,7 +1634,7 @@ def send_userlevel_trace(event)
     parse_message(event).squish!
     msg = parse_palette(event)[:msg]
     send_userlevel_individual(event, msg){ |map|
-      map[:query].trace(event, anim: !!parse_message(event)[/anim/i])
+      Map.trace(event, anim: !!parse_message(event)[/anim/i], h: map[:query])
     }
   end
 rescue => e
