@@ -984,6 +984,7 @@ RTYPES = [
 # Keys are the user IDs, values are their known usernames during their active period.
 HACKERS = {
    42984 => ["Sirogabober"],
+   60747 => ["DYAVOL MYASO"],
    63944 => ["Kronogenics"],
    72791 => ["Jett Altair"],
    75839 => ["vorcazm", "Treagus", "PROG2"],
@@ -1014,6 +1015,7 @@ HACKERS = {
   353512 => ["Dragon_V.V"],
   357282 => ["MX_Er3P"],
   379163 => ["ジャイロ"],
+  384859 => ["shpakova.tany"],
   401089 => ["Haidi"],
   409973 => ["outte++2"],
   411213 => ["Nacnud54"],
